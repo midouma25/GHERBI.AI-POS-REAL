@@ -1,0 +1,55 @@
+{
+  "name": "gherbi-ai-pos",
+  "productName": "Gherbi.Ai POS",
+  "version": "3.0.0",
+  "description": "Gherbi.Ai POS - النظام المتكامل لنقاط البيع، المخزون بالدفعات (FIFO)، التصنيع (BOM)، الجرد، المحاسبة، والذكاء الاصطناعي",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "rebuild": "electron-rebuild -f -w sqlite3,serialport",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win --x64",
+    "build": "electron-builder --win --x64"
+  },
+  "author": "Gherbi.Ai Engineering",
+  "license": "PROPRIETARY",
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "axios": "^1.7.7",
+    "bcryptjs": "^2.4.3",
+    "bwip-js": "^4.5.1",
+    "cors": "^2.8.5",
+    "express": "^4.21.1",
+    "node-machine-id": "^1.1.12",
+    "qrcode": "^1.5.4",
+    "serialport": "^12.0.0",
+    "sqlite3": "^5.1.7",
+    "ws": "^8.18.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
+    "electron": "^31.7.7",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.gherbi.ai.pos",
+    "productName": "Gherbi.Ai POS",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/sqlite3/**/*",
+      "node_modules/serialport/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  }
+}
