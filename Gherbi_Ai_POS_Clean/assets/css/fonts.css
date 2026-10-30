@@ -1,0 +1,59 @@
+/**
+ * assets/css/fonts.css
+ * محرك الخطوط المحلية لنظام Gherbi.Ai POS (Offline Fonts Engine)
+ * يعتمد على خطوط Cairo و Tajawal المحملة محلياً لضمان عمل النظام بدون إنترنت
+ */
+
+/* ==========================================================================
+   1. خط Cairo (للواجهة الأساسية والعناوين)
+   ========================================================================== */
+@font-face {
+    font-family: 'Cairo';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: local('Cairo'), url('../fonts/Cairo-Regular.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Cairo';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: local('Cairo SemiBold'), url('../fonts/Cairo-SemiBold.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Cairo';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: local('Cairo Bold'), url('../fonts/Cairo-Bold.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Cairo';
+    font-style: normal;
+    font-weight: 900;
+    font-display: swap;
+    src: local('Cairo Black'), url('../fonts/Cairo-Black.woff2') format('woff2');
+}
+
+/* ==========================================================================
+   2. خط Tajawal (للفواتير الرسمية والطباعة الكلاسيكية)
+   ========================================================================== */
+@font-face {
+    font-family: 'Tajawal';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: local('Tajawal'), url('../fonts/Tajawal-Regular.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Tajawal';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: local('Tajawal Bold'), url('../fonts/Tajawal-Bold.woff2') format('woff2');
+}
