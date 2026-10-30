@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>وصل تسليم وتوصيل بضاعة</title>
+  <style>
+    @page { size: 80mm auto; margin: 2mm; }
+    body { font-family: 'Cairo', sans-serif; width: 74mm; margin: 0 auto; font-size: 11px; }
+    .hdr { text-align: center; font-weight: 900; border-bottom: 2px solid #000; padding-bottom: 5px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    th, td { border: 1px solid #000; padding: 4px; font-size: 10.5px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="hdr">
+    <div style="font-size:15px;">{{COMPANY_NAME}}</div>
+    <div>وصل تسليم وتوصيل بضاعة — {{DOC_NUMBER}}</div>
+    <div>{{DATE}}</div>
+  </div>
+  <div style="margin:6px 0;">
+    <div><strong>الزبون المستلم:</strong> {{PARTY_NAME}}</div>
+    <div><strong>السائق / الموزع:</strong> {{DRIVER_NAME}} | <strong>ترقيم المركبة:</strong> {{VEHICLE_PLATE}}</div>
+  </div>
+  <table>
+    <thead><tr><th>#</th><th>{{LBL_DESIGNATION}}</th><th>{{LBL_QTY}}</th></tr></thead>
+    <tbody>{{ITEMS_ROWS}}</tbody>
+  </table>
+</body>
+</html>

@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>نظام Gherbi.Ai POS لنقاط البيع وإدارة المخازن</title>
+  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <link rel="stylesheet" href="./assets/css/material-symbols.css">
+  <script src="./assets/js/tailwind.min.js"></script>
+  <script src="./assets/js/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body class="select-none">
+  <div id="app-container">
+    <!-- ===================================================================
+         القائمة الجانبية (Sidebar - 18 قسماً رئيسياً)
+         =================================================================== -->
+    <aside id="sidebar" class="shrink-0 select-none">
+      <!-- شعار وهوية Gherbi.Ai POS -->
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-600/30">
+            <span class="material-symbols-rounded">point_of_sale</span>
+          </div>
+          <div class="sidebar-label">
+            <div class="font-black text-base tracking-tight text-white">Gherbi.Ai POS</div>
+            <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold">
+              <span class="material-symbols-rounded" style="font-size:12px;">verified</span>
+              <span>PRO مفعل مدى الحياة</span>
+            </div>
+          </div>
+        </div>
+        <button onclick="App.toggleSidebar()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+          <span class="material-symbols-rounded icon-sm">menu_open</span>
+        </button>
+      </div>
+
+      <!-- روابط الأقسام الـ 18 -->
+      <nav id="sidebar-nav" class="flex-1 overflow-y-auto p-2.5 space-y-1 text-xs font-bold">
+        <div class="px-3 py-1 text-[10px] text-slate-400 uppercase">المبيعات والكاشير</div>
+        <button data-view="pos" onclick="App.switchView('pos')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-blue-600 text-white">
+          <span class="material-symbols-rounded icon-sm">shopping_cart_checkout</span>
+          <span class="sidebar-label" data-i18n="nav_pos">شاشة المبيعات</span>
+        </button>
+        <button data-view="sales" onclick="App.switchView('sales')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">receipt_long</span>
+          <span class="sidebar-label" data-i18n="nav_sales_history">سجل المبيعات</span>
+        </button>
+        <button data-view="caisse" onclick="App.switchView('caisse')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">account_balance_wallet</span>
+          <span class="sidebar-label" data-i18n="nav_caisse">إدارة الصندوق</span>
+        </button>
+
+        <div class="px-3 pt-3 pb-1 text-[10px] text-slate-400 uppercase">المخزون والإنتاج</div>
+        <button data-view="inventory" onclick="App.switchView('inventory')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">inventory_2</span>
+          <span class="sidebar-label" data-i18n="nav_inventory">إدارة المخزون</span>
+        </button>
+        <button data-view="bundles" onclick="App.switchView('bundles')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">redeem</span>
+          <span class="sidebar-label" data-i18n="nav_bundles">الحزم والعروض</span>
+        </button>
+        <button data-view="manufacturing" onclick="App.switchView('manufacturing')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">precision_manufacturing</span>
+          <span class="sidebar-label" data-i18n="nav_manufacturing">التصنيع والإنتاج</span>
+        </button>
+        <button data-view="stocktake" onclick="App.switchView('stocktake')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">fact_check</span>
+          <span class="sidebar-label" data-i18n="nav_stocktake">الجرد المخزني</span>
+        </button>
+        <button data-view="print" onclick="App.switchView('print')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">qr_code_2</span>
+          <span class="sidebar-label" data-i18n="nav_print_studio">مركز الطباعة والباركود</span>
+        </button>
+
+        <div class="px-3 pt-3 pb-1 text-[10px] text-slate-400 uppercase">الأطراف والمالية</div>
+        <button data-view="suppliers" onclick="App.switchView('suppliers')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">local_shipping</span>
+          <span class="sidebar-label" data-i18n="nav_suppliers">إدارة الموردين</span>
+        </button>
+        <button data-view="purchases" onclick="App.switchView('purchases')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">shopping_bag</span>
+          <span class="sidebar-label" data-i18n="nav_purchases">المشتريات والفواتير</span>
+        </button>
+        <button data-view="customers" onclick="App.switchView('customers')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">groups</span>
+          <span class="sidebar-label" data-i18n="nav_customers">الزبائن والديون</span>
+        </button>
+        <button data-view="proformas" onclick="App.switchView('proformas')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">description</span>
+          <span class="sidebar-label" data-i18n="nav_proformas">الفواتير الشكلية</span>
+        </button>
+        <button data-view="orders" onclick="App.switchView('orders')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">assignment</span>
+          <span class="sidebar-label" data-i18n="nav_orders">طلبيات الزبائن</span>
+        </button>
+        <button data-view="expenses" onclick="App.switchView('expenses')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">payments</span>
+          <span class="sidebar-label" data-i18n="nav_expenses">المصاريف ورأس المال</span>
+        </button>
+
+        <div class="px-3 pt-3 pb-1 text-[10px] text-slate-400 uppercase">الذكاء والإدارة</div>
+        <button data-view="analytics" onclick="App.switchView('analytics')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">monitoring</span>
+          <span class="sidebar-label" data-i18n="nav_analytics">الإحصائيات والزكاة</span>
+        </button>
+        <button data-view="copilot" onclick="App.switchView('copilot')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-amber-400 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">auto_awesome</span>
+          <span class="sidebar-label" data-i18n="nav_copilot">المساعد الذكي (AI)</span>
+        </button>
+        <button data-view="users" onclick="App.switchView('users')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">manage_accounts</span>
+          <span class="sidebar-label" data-i18n="nav_users">المستخدمون</span>
+        </button>
+        <button data-view="settings" onclick="App.switchView('settings')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">
+          <span class="material-symbols-rounded icon-sm">settings</span>
+          <span class="sidebar-label" data-i18n="nav_settings">الإعدادات والشبكة</span>
+        </button>
+      </nav>
+
+      <!-- بطاقة المستخدم النشط أسفل القائمة -->
+      <div class="p-3 border-t border-slate-800 flex items-center justify-between bg-slate-950/50">
+        <div class="flex items-center gap-2.5">
+          <div id="userAvatarBadge" class="w-9 h-9 rounded-xl bg-blue-600 text-white font-black flex items-center justify-center text-sm">م</div>
+          <div class="sidebar-label text-xs">
+            <div id="currentUserName" class="font-bold text-white">المدير العام</div>
+            <div id="currentUserRole" class="text-[10px] text-slate-400">Admin</div>
+          </div>
+        </div>
+        <button onclick="App.openLoginModal()" title="تبديل المستخدم" class="text-slate-400 hover:text-white p-1.5 rounded-lg">
+          <span class="material-symbols-rounded icon-sm">logout</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ===================================================================
+         المنطقة الرئيسية والشريط العلوي (Main Content & Top Navbar)
+         =================================================================== -->
+    <main id="main-content">
+      <header id="top-header">
+        <!-- البحث السريع وحقل الباركود -->
+        <div class="flex items-center gap-3 flex-1 max-w-2xl">
+          <div class="relative flex-1">
+            <span class="material-symbols-rounded icon-sm absolute right-3 top-2.5 text-slate-400">search</span>
+            <input id="globalPosSearch" type="text"
+              oninput="App.onPosSearchInput(this.value)"
+              placeholder="ابحث بالاسم، الباركود، الفئة، أو كود PLU..."
+              class="w-full pr-9 pl-3 py-2 rounded-xl text-xs font-bold">
+          </div>
+          <div class="relative w-56">
+            <span class="material-symbols-rounded icon-sm absolute right-3 top-2.5 text-blue-500">barcode_scanner</span>
+            <input id="barcodeInput" type="text"
+              onkeydown="if(event.key==='Enter') App.handleBarcodeScan(this.value)"
+              placeholder="امسح الباركود هنا (Enter)..."
+              class="w-full pr-9 pl-3 py-2 rounded-xl text-xs font-mono font-bold border-blue-500/40">
+          </div>
+        </div>
+
+        <!-- أدوات الشريط العلوي (الميزان الحي، اللغة، الوضع الليلي، ملء الشاشة) -->
+        <div class="flex items-center gap-2">
+          <!-- قراءة الميزان الإلكتروني الحية -->
+          <div id="liveScaleBox" class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
+            <span class="material-symbols-rounded icon-sm text-emerald-500">scale</span>
+            <span id="liveScaleWeight" class="font-mono font-black text-sm">0.000 kg</span>
+          </div>
+
+          <!-- شارة المناوبة المفتوحة -->
+          <button onclick="App.switchView('caisse')" id="headerShiftBadge"
+            class="px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold flex items-center gap-1.5">
+            <span class="material-symbols-rounded icon-sm">point_of_sale</span>
+            <span id="headerShiftText">المناوبة نشطة</span>
+          </button>
+
+          <!-- تبديل اللغة -->
+          <select id="langSwitcher" onchange="App.setLanguage(this.value)"
+            class="px-2.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer">
+            <option value="ar">🇩🇿 العربية</option>
+            <option value="fr">🇫🇷 Français</option>
+            <option value="en">🇬🇧 English</option>
+          </select>
+
+          <!-- الوضع الليلي -->
+          <button onclick="App.toggleDarkMode()" class="p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800" title="الوضع الليلي / النهاري">
+            <span class="material-symbols-rounded icon-sm">dark_mode</span>
+          </button>
+
+          <!-- ملء الشاشة -->
+          <button onclick="App.toggleFullscreen()" class="p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800" title="ملء الشاشة">
+            <span class="material-symbols-rounded icon-sm">fullscreen</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- =================================================================
+           1. شاشة المبيعات والكاشير (POS View)
+           ================================================================= -->
+      <section id="view-pos" class="view-section active">
+        <div class="pos-layout">
+          <!-- يمين: الفئات وشبكة المنتجات -->
+          <div class="flex flex-col gap-3 min-h-0">
+            <!-- شريط الأزرار السريعة والفئات -->
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div id="posCategoryPills" class="flex flex-wrap items-center gap-1.5"></div>
+              <div class="flex items-center gap-1.5">
+                <button onclick="App.openFreeItemModal()" class="px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-xs font-bold flex items-center gap-1">
+                  <span class="material-symbols-rounded icon-sm">add_shopping_cart</span>
+                  <span>منتج حر (F8)</span>
+                </button>
+                <button onclick="App.toggleReturnMode()" id="btnReturnMode" class="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-xs font-bold flex items-center gap-1">
+                  <span class="material-symbols-rounded icon-sm">keyboard_return</span>
+                  <span>إرجاع</span>
+                </button>
+                <button onclick="App.openProductModal()" class="px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold flex items-center gap-1">
+                  <span class="material-symbols-rounded icon-sm">add</span>
+                  <span>إضافة منتج</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- شبكة بطاقات المنتجات -->
+            <div id="posProductsGrid" class="products-grid flex-1 overflow-y-auto pr-1"></div>
+          </div>
+
+          <!-- يسار: سلة المشتريات والحسابات -->
+          <div class="cart-container">
+            <!-- تبويبات تعدد السلات واختيار الزبون ونوع السعر -->
+            <div class="p-3 border-b border-slate-200 dark:border-slate-700 space-y-2.5">
+              <div class="flex items-center justify-between gap-2">
+                <div id="multiCartTabs" class="flex items-center gap-1 overflow-x-auto"></div>
+                <button onclick="App.newCartTab()" class="px-2 py-1 rounded-lg bg-blue-600/10 text-blue-600 text-xs font-bold">+ سلة</button>
+              </div>
+
+              <div class="flex gap-2">
+                <select id="posCustomerSelect" class="flex-1 px-3 py-2 rounded-xl text-xs font-bold"></select>
+                <button onclick="App.openCustomerModal()" class="p-2 rounded-xl bg-emerald-600/15 text-emerald-600" title="زبون جديد">
+                  <span class="material-symbols-rounded icon-sm">person_add</span>
+                </button>
+                <select id="posPriceTierSelect" onchange="App.setCartPriceTier(this.value)" class="w-28 px-2 py-2 rounded-xl text-xs font-bold">
+                  <option value="retail">سعر التجزئة</option>
+                  <option value="wholesale">سعر الجملة</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- قائمة عناصر السلة -->
+            <div id="posCartItems" class="cart-items p-3 space-y-2"></div>
+
+            <!-- ملخص المجموع وأزرار الدفع -->
+            <div class="p-3.5 bg-slate-50 dark:bg-slate-900/70 border-t border-slate-200 dark:border-slate-700 space-y-3">
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-slate-500 font-bold">المجموع الفرعي:</span>
+                <span id="cartSubtotalText" class="font-mono font-bold">0.00 د.ج</span>
+              </div>
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-slate-500 font-bold">التخفيض:</span>
+                <input id="cartDiscountInput" type="number" step="any" value="0"
+                  oninput="App.recalcCart()"
+                  class="w-28 px-2 py-1 rounded-lg text-center font-mono font-bold">
+              </div>
+              <div class="flex items-center justify-between pt-1 border-t border-slate-200 dark:border-slate-700">
+                <span class="font-black text-sm">الإجمالي المستحق:</span>
+                <span id="cartTotalText" class="text-2xl font-black font-mono text-blue-600 dark:text-blue-400">0.00 د.ج</span>
+              </div>
+
+              <!-- أزرار التحكم السريعة في السلة -->
+              <div class="grid grid-cols-4 gap-1.5 text-[11px] font-bold">
+                <button onclick="App.clearCurrentCart()" class="py-2 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500/20">إلغاء (F4)</button>
+                <button onclick="App.holdCurrentCart()" class="py-2 rounded-xl bg-amber-500/10 text-amber-600 hover:bg-amber-500/20">تعليق (F2)</button>
+                <button onclick="App.openDraftsModal()" class="py-2 rounded-xl bg-slate-200 dark:bg-slate-800">مسودات (<span id="draftsCountBadge">0</span>)</button>
+                <button onclick="App.saveCartAsProforma()" class="py-2 rounded-xl bg-indigo-500/10 text-indigo-600">كمبدئية</button>
+              </div>
+
+              <button onclick="App.openCheckoutModal()"
+                class="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black text-base flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25">
+                <span class="material-symbols-rounded">payments</span>
+                <span>تسديد الفاتورة (F1)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =================================================================
+           بقية الأقسام الـ 17 (تُبنى ديناميكياً عبر renderer.js)
+           ================================================================= -->
+      <section id="view-sales" class="view-section"><div id="sales-view-root"></div></section>
+      <section id="view-caisse" class="view-section"><div id="caisse-view-root"></div></section>
+      <section id="view-inventory" class="view-section"><div id="inventory-view-root"></div></section>
+      <section id="view-bundles" class="view-section"><div id="bundles-view-root"></div></section>
+      <section id="view-manufacturing" class="view-section"><div id="manufacturing-view-root"></div></section>
+      <section id="view-stocktake" class="view-section"><div id="stocktake-view-root"></div></section>
+      <section id="view-print" class="view-section"><div id="print-view-root"></div></section>
+      <section id="view-suppliers" class="view-section"><div id="suppliers-view-root"></div></section>
+      <section id="view-purchases" class="view-section"><div id="purchases-view-root"></div></section>
+      <section id="view-customers" class="view-section"><div id="customers-view-root"></div></section>
+      <section id="view-proformas" class="view-section"><div id="proformas-view-root"></div></section>
+      <section id="view-orders" class="view-section"><div id="orders-view-root"></div></section>
+      <section id="view-expenses" class="view-section"><div id="expenses-view-root"></div></section>
+      <section id="view-analytics" class="view-section"><div id="analytics-view-root"></div></section>
+      <section id="view-copilot" class="view-section"><div id="copilot-view-root"></div></section>
+      <section id="view-users" class="view-section"><div id="users-view-root"></div></section>
+      <section id="view-settings" class="view-section"><div id="settings-view-root"></div></section>
+    </main>
+  </div>
+
+  <!-- =====================================================================
+       النوافذ المنبثقة الرئيسية (Core Modals)
+       ===================================================================== -->
+
+  <!-- 1. نافذة الدفع والتسديد (Checkout Modal مع الفئات النقدية الجزائرية) -->
+  <div id="checkoutModal" class="modal-overlay">
+    <div class="modal-content w-full max-w-2xl p-6 space-y-5">
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
+        <h3 class="text-xl font-black flex items-center gap-2">
+          <span class="material-symbols-rounded text-blue-600">point_of_sale</span>
+          <span>تسديد وإتمام الفاتورة</span>
+        </h3>
+        <button onclick="App.closeModal('checkoutModal')" class="text-slate-400 hover:text-rose-500">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+
+      <!-- تنبيه سقف الدين للزبون -->
+      <div id="creditLimitAlertBox" class="hidden p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-600 text-xs font-bold"></div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="space-y-3">
+          <div class="p-4 rounded-2xl bg-blue-600/10 border border-blue-500/20 text-center">
+            <div class="text-xs font-bold text-slate-500">الإجمالي المطلوب للدفع</div>
+            <div id="chkTotalDue" class="text-3xl font-black font-mono text-blue-600 mt-1">0.00 د.ج</div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <label class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer">
+              <input id="chkApplyTva" type="checkbox" onchange="App.recalcCheckoutModal()">
+              <span class="font-bold">تطبيق TVA (19%)</span>
+            </label>
+            <label class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer">
+              <input id="chkApplyStamp" type="checkbox" onchange="App.recalcCheckoutModal()">
+              <span class="font-bold">حق الطابع (1%)</span>
+            </label>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold mb-1">طريقة الدفع</label>
+            <select id="chkPaymentMethod" onchange="App.recalcCheckoutModal()" class="w-full px-3 py-2.5 rounded-xl text-xs font-bold">
+              <option value="cash">نقداً (Espèces / Cash)</option>
+              <option value="credit">آجل / دين (À Terme)</option>
+              <option value="cib">بطاقة ذهبية / CIB</option>
+              <option value="cheque">شيك (Chèque)</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs font-bold mb-1">المبلغ المستلم</label>
+              <input id="chkPaidAmount" type="number" step="any"
+                oninput="App.recalcCheckoutModal()"
+                class="w-full px-3 py-2.5 rounded-xl font-mono font-black text-base text-center">
+            </div>
+            <div>
+              <label class="block text-xs font-bold mb-1">الباقي للزبون (Rendu)</label>
+              <div id="chkChangeAmount" class="w-full px-3 py-2.5 rounded-xl bg-emerald-500/10 text-emerald-600 font-mono font-black text-base text-center">0.00</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- الفئات النقدية الجزائرية السريعة -->
+        <div class="space-y-2">
+          <div class="text-xs font-bold text-slate-500">الفئات النقدية الجزائرية السريعة (د.ج)</div>
+          <div class="grid grid-cols-3 gap-2">
+            <button onclick="App.addCashDenom(2000)" class="py-3 rounded-xl bg-indigo-900 text-white font-mono font-black text-sm hover:opacity-90">2000 د.ج</button>
+            <button onclick="App.addCashDenom(1000)" class="py-3 rounded-xl bg-amber-800 text-white font-mono font-black text-sm hover:opacity-90">1000 د.ج</button>
+            <button onclick="App.addCashDenom(500)" class="py-3 rounded-xl bg-emerald-800 text-white font-mono font-black text-sm hover:opacity-90">500 د.ج</button>
+            <button onclick="App.addCashDenom(200)" class="py-3 rounded-xl bg-amber-600 text-white font-mono font-black text-sm hover:opacity-90">200 د.ج</button>
+            <button onclick="App.addCashDenom(100)" class="py-3 rounded-xl bg-sky-700 text-white font-mono font-black text-sm hover:opacity-90">100 د.ج</button>
+            <button onclick="App.addCashDenom(50)" class="py-3 rounded-xl bg-slate-700 text-white font-mono font-black text-sm hover:opacity-90">50 د.ج</button>
+            <button onclick="App.addCashDenom(20)" class="py-2.5 rounded-xl bg-slate-600 text-white font-mono font-bold text-xs">20 د.ج</button>
+            <button onclick="App.addCashDenom(10)" class="py-2.5 rounded-xl bg-slate-600 text-white font-mono font-bold text-xs">10 د.ج</button>
+            <button onclick="App.setExactCash()" class="py-2.5 rounded-xl bg-blue-600 text-white font-bold text-xs">المبلغ الكامل</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-700">
+        <button onclick="App.submitSale('receipt')" class="py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5">
+          <span class="material-symbols-rounded icon-sm">receipt</span>
+          <span>حفظ وطباعة وصل حراري</span>
+        </button>
+        <button onclick="App.submitSale('a4')" class="py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5">
+          <span class="material-symbols-rounded icon-sm">print</span>
+          <span>حفظ وطباعة فاتورة A4</span>
+        </button>
+        <button onclick="App.submitSale('none')" class="py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5">
+          <span class="material-symbols-rounded icon-sm">check_circle</span>
+          <span>حفظ فقط بدون طباعة</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. نافذة إضافة/تعديل منتج (Product Modal) -->
+  <div id="productModal" class="modal-overlay">
+    <div class="modal-content w-full max-w-2xl p-6 space-y-4 overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
+        <h3 id="productModalTitle" class="text-lg font-black">إضافة / تعديل منتج</h3>
+        <button onclick="App.closeModal('productModal')" class="text-slate-400 hover:text-rose-500">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+      <input id="prodIdInput" type="hidden">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+        <div class="md:col-span-2">
+          <label class="block font-bold mb-1">اسم المنتج *</label>
+          <input id="prodNameInput" type="text" class="w-full px-3 py-2 rounded-xl font-bold">
+        </div>
+        <div>
+          <label class="block font-bold mb-1">الباركود</label>
+          <div class="flex gap-1">
+            <input id="prodBarcodeInput" type="text" class="flex-1 px-3 py-2 rounded-xl font-mono">
+            <button onclick="App.generateRandomBarcode()" class="px-2.5 bg-slate-200 dark:bg-slate-700 rounded-xl font-bold" title="توليد باركود">⚡</button>
+          </div>
+        </div>
+        <div>
+          <label class="block font-bold mb-1">الفئة</label>
+          <input id="prodCategoryInput" type="text" placeholder="عام" class="w-full px-3 py-2 rounded-xl">
+        </div>
+        <div>
+          <label class="block font-bold mb-1">المورد</label>
+          <input id="prodSupplierInput" type="text" class="w-full px-3 py-2 rounded-xl">
+        </div>
+        <div>
+          <label class="block font-bold mb-1">الوحدة</label>
+          <input id="prodUnitInput" type="text" value="قطعة" class="w-full px-3 py-2 rounded-xl">
+        </div>
+        <div>
+          <label class="block font-bold mb-1">سعر التكلفة (الشراء)</label>
+          <input id="prodCostInput" type="number" step="any" value="0" class="w-full px-3 py-2 rounded-xl font-mono font-bold">
+        </div>
+        <div>
+          <label class="block font-bold mb-1">سعر البيع (التجزئة)</label>
+          <input id="prodPriceInput" type="number" step="any" value="0" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-blue-600">
+        </div>
+        <div>
+          <label class="block font-bold mb-1">سعر الجملة (اختياري)</label>
+          <input id="prodWholesaleInput" type="number" step="any" class="w-full px-3 py-2 rounded-xl font-mono">
+        </div>
+        <div>
+          <label class="block font-bold mb-1">الكمية الابتدائية</label>
+          <input id="prodStockInput" type="number" step="any" value="0" class="w-full px-3 py-2 rounded-xl font-mono font-bold">
+        </div>
+        <div>
+          <label class="block font-bold mb-1">الحد الأدنى للتنبيه</label>
+          <input id="prodMinStockInput" type="number" value="5" class="w-full px-3 py-2 rounded-xl font-mono">
+        </div>
+        <div>
+          <label class="block font-bold mb-1">تاريخ انتهاء الصلاحية</label>
+          <input id="prodExpiryInput" type="date" class="w-full px-3 py-2 rounded-xl font-mono">
+        </div>
+        <div>
+          <label class="block font-bold mb-1">كود الميزان (PLU 5 digits)</label>
+          <input id="prodPluInput" type="text" placeholder="00101" class="w-full px-3 py-2 rounded-xl font-mono">
+        </div>
+        <div>
+          <label class="block font-bold mb-1">دور المادة في التصنيع</label>
+          <select id="prodMaterialRoleInput" class="w-full px-3 py-2 rounded-xl">
+            <option value="">منتج تجاري عادي</option>
+            <option value="finished_good">منتج مصنع نهائي</option>
+            <option value="raw_material">مادة أولية للتصنيع</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
+        <button onclick="App.closeModal('productModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء</button>
+        <button onclick="App.saveProductFromModal()" class="px-6 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold">حفظ المنتج</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. نافذة إضافة زبون سريع (Customer Modal) -->
+  <div id="customerModal" class="modal-overlay">
+    <div class="modal-content w-full max-w-md p-6 space-y-4">
+      <h3 class="text-lg font-black">إضافة / تعديل زبون</h3>
+      <input id="custIdInput" type="hidden">
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-bold mb-1">اسم الزبون *</label>
+          <input id="custNameInput" type="text" class="w-full px-3 py-2 rounded-xl font-bold">
+        </div>
+        <div>
+          <label class="block font-bold mb-1">رقم الهاتف (لدعم WhatsApp)</label>
+          <input id="custPhoneInput" type="text" placeholder="0550..." class="w-full px-3 py-2 rounded-xl font-mono">
+        </div>
+        <div>
+          <label class="block font-bold mb-1">العنوان</label>
+          <input id="custAddressInput" type="text" class="w-full px-3 py-2 rounded-xl">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block font-bold mb-1">الدين الأولي</label>
+            <input id="custInitDebtInput" type="number" step="any" value="0" class="w-full px-3 py-2 rounded-xl font-mono">
+          </div>
+          <div>
+            <label class="block font-bold mb-1">سقف الدين المسموح</label>
+            <input id="custCreditLimitInput" type="number" step="any" value="0" class="w-full px-3 py-2 rounded-xl font-mono">
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-3">
+        <button onclick="App.closeModal('customerModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء</button>
+        <button onclick="App.saveCustomerFromModal()" class="px-5 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold">حفظ الزبون</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. نافذة منتج حر غير مسجل (Free Item Modal - F8) -->
+  <div id="freeItemModal" class="modal-overlay">
+    <div class="modal-content w-full max-w-sm p-6 space-y-4">
+      <h3 class="text-lg font-black">إضافة منتج حر للسلة (F8)</h3>
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-bold mb-1">بيان / اسم العنصر</label>
+          <input id="freeItemName" type="text" value="منتج متنوع" class="w-full px-3 py-2 rounded-xl font-bold">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block font-bold mb-1">سعر البيع</label>
+            <input id="freeItemPrice" type="number" step="any" value="100" class="w-full px-3 py-2 rounded-xl font-mono font-bold">
+          </div>
+          <div>
+            <label class="block font-bold mb-1">الكمية</label>
+            <input id="freeItemQty" type="number" step="any" value="1" class="w-full px-3 py-2 rounded-xl font-mono font-bold">
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="App.closeModal('freeItemModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء</button>
+        <button onclick="App.confirmFreeItem()" class="px-5 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold">إضافة للسلة</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. نافذة إنشاء وصفة تصنيع (BOM Recipe Modal) -->
+  <div id="bom-recipe-modal" class="modal-overlay">
+    <div class="modal-content w-full max-w-lg p-6 space-y-4">
+      <h3 class="text-lg font-black">إنشاء وصفة تصنيع (BOM Recipe)</h3>
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-bold mb-1">اسم الوصفة</label>
+          <input id="bomRecipeName" type="text" placeholder="مثال: صينية حلويات مشكلة" class="w-full px-3 py-2 rounded-xl font-bold">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block font-bold mb-1">المنتج النهائي الناتج</label>
+            <select id="bomTargetProduct" class="w-full px-3 py-2 rounded-xl"></select>
+          </div>
+          <div>
+            <label class="block font-bold mb-1">كمية الخرج للدفعة</label>
+            <input id="bomOutputQty" type="number" step="any" value="1" class="w-full px-3 py-2 rounded-xl font-mono">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block font-bold mb-1">المكون الأولي</label>
+            <select id="bomComponentSelect" class="w-full px-3 py-2 rounded-xl"></select>
+          </div>
+          <div>
+            <label class="block font-bold mb-1">الكمية اللازمة</label>
+            <input id="bomComponentQty" type="number" step="any" value="1" class="w-full px-3 py-2 rounded-xl font-mono">
+          </div>
+        </div>
+        <label class="flex items-center gap-2 cursor-pointer pt-1">
+          <input id="bomAutoOnSale" type="checkbox" checked>
+          <span class="font-bold">تفعيل التصنيع التلقائي الفوري عند البيع في الكاشير</span>
+        </label>
+      </div>
+      <div class="flex justify-end gap-2 pt-3">
+        <button onclick="App.closeModal('bom-recipe-modal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء</button>
+        <button onclick="App.saveBomRecipeFromModal()" class="px-5 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold">حفظ الوصفة</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. نافذة إعداد المدير أو تسجيل الدخول (Auth Modal) -->
+  <div id="authModal" class="modal-overlay">
+    <div class="modal-content w-full max-w-sm p-6 space-y-4">
+      <div class="text-center space-y-1">
+        <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center mx-auto">
+          <span class="material-symbols-rounded">lock_person</span>
+        </div>
+        <h3 id="authModalTitle" class="text-lg font-black">تسجيل الدخول — Gherbi.Ai POS</h3>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-bold mb-1">اسم المستخدم</label>
+          <input id="authUsernameInput" type="text" value="admin" class="w-full px-3 py-2.5 rounded-xl font-bold">
+        </div>
+        <div>
+          <label class="block font-bold mb-1">كلمة المرور</label>
+          <input id="authPasswordInput" type="password" value="1234" class="w-full px-3 py-2.5 rounded-xl font-mono">
+        </div>
+        <div id="authErrorBox" class="text-rose-500 font-bold text-center"></div>
+      </div>
+      <button onclick="App.submitAuthModal()" class="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs">دخول للنظام</button>
+    </div>
+  </div>
+
+  <!-- حاوية الإشعارات الفورية (Toast Container) -->
+  <div id="toastContainer" class="fixed bottom-5 left-5 z-50 space-y-2"></div>
+
+  <!-- تحميل جميع وحدات ومحركات الواجهة الأمامية بالترتيب -->
+  <script src="./assets/js/translations.js"></script>
+  <script src="./assets/js/numberToWords.js"></script>
+  <script src="./print-engine.js"></script>
+  <script src="./template-designer/template-i18n.js"></script>
+  <script src="./template-designer/template-presets.js"></script>
+  <script src="./template-designer/template-renderer.js"></script>
+  <script src="./template-designer/template-builder.js"></script>
+  <script src="./manufacturing/manufacturing.js"></script>
+  <script src="./manufacturing/manufacturing-ui.js"></script>
+  <script src="./stocktake/stocktake-ui.js"></script>
+  <script src="./renderer.js"></script>
+</body>
+</html>

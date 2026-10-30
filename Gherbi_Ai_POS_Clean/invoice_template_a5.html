@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
+  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <style>
+    @page { size: A5 portrait; margin: 8mm; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body {
+      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
+      font-size: 11px;
+      color: #0f172a;
+      margin: 0;
+      padding: 10px;
+      background: #ffffff;
+    }
+    .doc-container {
+      max-width: 148mm;
+      margin: 0 auto;
+    }
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      padding-bottom: 14px;
+      margin-bottom: 14px;
+      border-bottom: 3px solid #1d4ed8;
+      
+    }
+    .company-block { flex: 1; }
+    .company-name {
+      font-size: 18px;
+      font-weight: 900;
+      color: #1d4ed8;
+      margin: 0 0 4px 0;
+    }
+    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
+    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
+    .fiscal-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 6px;
+      font-size: 10px;
+      font-family: 'Segoe UI', Tahoma, monospace;
+      color: #1e293b;
+    }
+    .fiscal-pills span {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-weight: 700;
+    }
+    .doc-badge {
+      text-align: left;
+      min-width: 190px;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-top: 4px solid #1d4ed8;
+      border-radius: 10px;
+      padding: 10px 14px;
+    }
+    .doc-type {
+      font-size: 16px;
+      font-weight: 900;
+      color: #1d4ed8;
+      text-transform: uppercase;
+    }
+    .doc-num {
+      font-family: 'Segoe UI', Tahoma, monospace;
+      font-size: 14px;
+      font-weight: 900;
+      color: #0f172a;
+      margin-top: 4px;
+    }
+    .doc-date {
+      font-size: 11px;
+      color: #475569;
+      margin-top: 4px;
+    }
+    .party-card {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-bottom: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .party-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: #1d4ed8;
+      margin-bottom: 3px;
+    }
+    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
+    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
+    .party-fiscal {
+      font-size: 10px;
+      font-family: 'Segoe UI', Tahoma, monospace;
+      color: #334155;
+      text-align: left;
+      line-height: 1.6;
+    }
+    table.items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 14px;
+    }
+    table.items-table th {
+      background: #1d4ed8;
+      color: #ffffff;
+      font-weight: 800;
+      font-size: 11px;
+      padding: 7px 6px;
+      border: 1px solid #1d4ed8;
+      text-align: center;
+    }
+    table.items-table td {
+      padding: 6px 6px;
+      border: 1px solid #cbd5e1;
+      font-size: 11px;
+      text-align: center;
+    }
+    table.items-table td.text-left,
+    table.items-table td.desig {
+      text-align: right;
+      font-weight: 700;
+    }
+    table.items-table tbody tr:nth-child(even) {
+      background: #f8fafc;
+    }
+    .summary-section {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 18px;
+      margin-top: 8px;
+    }
+    .words-and-payment { flex: 1; }
+    .words-box {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-right: 4px solid #1d4ed8;
+      border-radius: 8px;
+      padding: 9px 12px;
+      margin-bottom: 10px;
+    }
+    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
+    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
+    .payment-meta {
+      font-size: 11px;
+      color: #334155;
+      font-weight: 700;
+    }
+    .totals-box {
+      width: 270px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .totals-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 12px;
+      font-size: 11px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .totals-row .val {
+      font-family: 'Segoe UI', Tahoma, monospace;
+      font-weight: 800;
+    }
+    .totals-row.net-row {
+      background: #1d4ed8;
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 900;
+      padding: 8px 12px;
+    }
+    .footer-sign {
+      margin-top: 24px;
+      padding-top: 10px;
+      border-top: 1px dashed #cbd5e1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: #475569;
+    }
+    .sign-box {
+      min-width: 160px;
+      text-align: center;
+      font-weight: 800;
+      color: #0f172a;
+      padding-bottom: 36px;
+    }
+  </style>
+</head>
+<body>
+  <div class="doc-container">
+    <div class="header-bar">
+      <div class="company-block">
+        {{#if COMPANY_LOGO}}
+        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
+        {{/if}}
+        <h1 class="company-name">{{COMPANY_NAME}}</h1>
+        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
+        <div class="company-meta">
+          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
+          <div>
+            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
+            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
+            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
+          </div>
+        </div>
+        <div class="fiscal-pills">
+          <span>RC: {{COMPANY_RC}}</span>
+          <span>NIF: {{COMPANY_NIF}}</span>
+          <span>AI: {{COMPANY_AI}}</span>
+          <span>NIS: {{COMPANY_NIS}}</span>
+        </div>
+      </div>
+
+      <div class="doc-badge">
+        <div class="doc-type">{{INVOICE_TYPE_LABEL}}</div>
+        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
+        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
+      </div>
+    </div>
+
+    <div class="party-card">
+      <div>
+        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
+        <div class="party-name">{{PARTY_NAME}}</div>
+        <div class="party-details">
+          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
+          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
+        </div>
+      </div>
+      <div class="party-fiscal">
+        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
+        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
+      </div>
+    </div>
+
+    <table class="items-table">
+      <thead>
+      <tr>
+        <th style="width:6%;">{{LBL_N_INDEX}}</th>
+        <th style="width:13%;">{{LBL_REF}}</th>
+        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
+        <th style="width:9%;">{{LBL_QTY}}</th>
+        <th style="width:9%;">{{LBL_UNIT}}</th>
+        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
+        <th style="width:7%;">{{LBL_TVA}}</th>
+        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
+      </tr></thead>
+      <tbody>
+        {{ITEMS_ROWS}}
+      </tbody>
+    </table>
+
+    <div class="summary-section">
+      <div class="words-and-payment">
+        <div class="words-box">
+          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
+          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
+        </div>
+        <div class="payment-meta">
+          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
+        </div>
+      </div>
+
+      <div class="totals-box">
+        <div class="totals-row">
+          <span>{{LBL_SUBTOTAL}}</span>
+          <span class="val">{{SUBTOTAL}}</span>
+        </div>
+        {{#if DISCOUNT}}
+        <div class="totals-row">
+          <span>{{LBL_DISCOUNT}}</span>
+          <span class="val">-{{DISCOUNT}}</span>
+        </div>
+        {{/if}}
+        {{#if TAX_TOTAL}}
+        <div class="totals-row">
+          <span>{{LBL_TAX_TOTAL}}</span>
+          <span class="val">{{TAX_TOTAL}}</span>
+        </div>
+        {{/if}}
+        {{#if STAMP_AMOUNT}}
+        <div class="totals-row">
+          <span>{{LBL_STAMP}}</span>
+          <span class="val">{{STAMP_AMOUNT}}</span>
+        </div>
+        {{/if}}
+        <div class="totals-row net-row">
+          <span>{{LBL_NET_PAY}}</span>
+          <span class="val">{{NET_TO_PAY}}</span>
+        </div>
+        
+        {{#if REMAINING_DEBT}}
+        <div class="totals-row">
+          <span>{{LBL_REMAINING_PAY}}</span>
+          <span class="val">{{REMAINING_DEBT}}</span>
+        </div>
+        {{/if}}
+        {{#if TOTAL_DEBT}}
+        <div class="totals-row">
+          <span>{{LBL_TOTAL_DEBT}}</span>
+          <span class="val">{{TOTAL_DEBT}}</span>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+
+    <div class="footer-sign">
+      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
+      <div class="sign-box">{{LBL_SIGNATURE}}</div>
+    </div>
+  </div>
+</body>
+</html>

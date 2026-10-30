@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>Barcode Label — Gherbi.Ai POS</title>
+  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <style>
+    @page {
+      size: {{LABEL_W}}mm {{LABEL_H}}mm;
+      margin: 0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: {{LABEL_W}}mm;
+      height: {{LABEL_H}}mm;
+      overflow: hidden;
+      font-family: 'Cairo', Arial, sans-serif;
+      background: #ffffff;
+      color: #000000;
+    }
+    .label-box {
+      width: {{LABEL_W}}mm;
+      height: {{LABEL_H}}mm;
+      padding: 1.2mm 1.5mm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      text-align: center;
+    }
+    .hidden { display: none !important; }
+    .shop-name {
+      font-size: 2.3mm;
+      font-weight: 800;
+      line-height: 1.1;
+      max-width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .prod-name {
+      font-size: 2.7mm;
+      font-weight: 900;
+      line-height: 1.15;
+      max-width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .barcode-img {
+      width: 92%;
+      height: {{BARCODE_H}}mm;
+      object-fit: contain;
+    }
+    .barcode-txt {
+      font-family: 'Segoe UI', Tahoma, monospace;
+      font-size: 2.4mm;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+    }
+    .price-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 1mm;
+    }
+    .price-val {
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      font-size: 3.6mm;
+      font-weight: 900;
+    }
+    .mode-price .price-val {
+      font-size: {{PRICE_SIZE}}mm;
+      border: 0.4mm solid #000;
+      padding: 0.6mm 2mm;
+      border-radius: 1mm;
+    }
+    .meta-line {
+      font-size: 2.1mm;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="label-box {{MODE_CLASS}}">
+    <div class="shop-name {{HIDE_SHOP}}">{{SHOP_NAME}}</div>
+    <div class="prod-name {{HIDE_NAME}}">{{PRODUCT_NAME}}</div>
+    <div class="meta-line {{HIDE_VARIANTS}}">{{VARIANTS_TEXT}}</div>
+    <img src="{{BARCODE_IMAGE}}" class="barcode-img {{HIDE_BARCODE}}" alt="Barcode">
+    <div class="barcode-txt {{HIDE_BCTEXT}}">{{BARCODE_TEXT}}</div>
+    <div class="price-row {{HIDE_PRICE}}">
+      <span class="price-val">{{PRICE_TEXT}}</span>
+      <span class="meta-line {{HIDE_PRICETYPE}}">{{PRICE_TYPE}}</span>
+    </div>
+    <div class="meta-line {{HIDE_DISCOUNT}}">{{DISCOUNT_TEXT}}</div>
+    <div class="meta-line {{HIDE_PLU}}">PLU: {{PLU_TEXT}}</div>
+    <div class="meta-line {{HIDE_CUSTPHONE}}">{{CUST_PHONE}}</div>
+    <div class="meta-line {{HIDE_CUSTDEBT}}">{{CUST_DEBT}}</div>
+    <div class="meta-line {{HIDE_CUSTDATE}}">{{CUST_DATE}}</div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <title>BON DE LIVRAISON - {{DOC_NUMBER}}</title>
+  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <style>
+    @page { size: A4 portrait; margin: 10mm; }
+    body { font-family: 'Cairo', sans-serif; font-size: 12px; color: #0f172a; margin: 0; padding: 16px; }
+    .hdr { display: flex; justify-content: space-between; border-bottom: 3px solid #0f766e; padding-bottom: 12px; margin-bottom: 14px; }
+    .title { font-size: 20px; font-weight: 900; color: #0f766e; }
+    .info-grid { display: flex; justify-content: space-between; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    th { background: #0f766e; color: #fff; padding: 8px; border: 1px solid #0f766e; }
+    td { padding: 7px; border: 1px solid #cbd5e1; text-align: center; }
+    .signs { display: flex; justify-content: space-between; margin-top: 32px; font-weight: 800; }
+  </style>
+</head>
+<body>
+  <div class="hdr">
+    <div>
+      <div class="title">{{COMPANY_NAME}}</div>
+      <div>{{COMPANY_ADDRESS}} | {{COMPANY_PHONE}}</div>
+    </div>
+    <div style="text-align:left;">
+      <div class="title">BON DE LIVRAISON</div>
+      <div>N°: {{DOC_NUMBER}} | {{DATE}}</div>
+    </div>
+  </div>
+  <div class="info-grid">
+    <div><strong>Client Destinataire:</strong> {{PARTY_NAME}} ({{PARTY_PHONE}})</div>
+    <div><strong>Chauffeur / Livreur:</strong> {{DRIVER_NAME}} | <strong>Matricule Véhicule:</strong> {{VEHICLE_PLATE}}</div>
+  </div>
+  <table>
+    <thead><tr><th>#</th><th>{{LBL_REF}}</th><th>{{LBL_DESIGNATION}}</th><th>{{LBL_QTY}}</th><th>{{LBL_UNIT}}</th></tr></thead>
+    <tbody>{{ITEMS_ROWS}}</tbody>
+  </table>
+  <div class="signs">
+    <div>Cachet Fournisseur</div>
+    <div>Signature Client</div>
+  </div>
+</body>
+</html>

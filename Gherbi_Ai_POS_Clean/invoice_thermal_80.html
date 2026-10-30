@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>{{INVOICE_TYPE_LABEL}} - {{INVOICE_NUMBER}}</title>
+  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <style>
+    @page { size: 80mm auto; margin: 2mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Cairo', 'Tajawal', sans-serif;
+      width: 76mm;
+      margin: 0 auto;
+      padding: 4px;
+      font-size: 11px;
+      color: #000;
+    }
+    .center { text-align: center; }
+    .shop-title { font-size: 15px; font-weight: 900; }
+    .divider { border-top: 1px dashed #000; margin: 6px 0; }
+    .t-item { padding: 4px 0; border-bottom: 1px dotted #ccc; }
+    .t-name { font-weight: 800; font-size: 11px; }
+    .t-line { display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; }
+    .b { font-weight: 900; }
+    .row { display: flex; justify-content: space-between; padding: 2px 0; }
+    .grand { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <div class="center">
+    <div class="shop-title">{{COMPANY_NAME}}</div>
+    <div>{{COMPANY_ADDRESS}}</div>
+    <div>{{COMPANY_PHONE}}</div>
+    <div style="font-size:9.5px;">RC: {{COMPANY_RC}} | NIF: {{COMPANY_NIF}}</div>
+  </div>
+  <div class="divider"></div>
+  <div class="row"><span><strong>{{INVOICE_TYPE_LABEL}}:</strong> {{INVOICE_NUMBER}}</span><span>{{DATE}}</span></div>
+  <div class="row"><span><strong>{{CLIENT_ROLE_LABEL}}:</strong> {{PARTY_NAME}}</span><span>{{PARTY_PHONE}}</span></div>
+  <div class="divider"></div>
+  <div>{{ITEMS_ROWS}}</div>
+  <div class="divider"></div>
+  <div class="row"><span>{{LBL_SUBTOTAL}}</span><span>{{SUBTOTAL}}</span></div>
+  {{#if DISCOUNT}}<div class="row"><span>{{LBL_DISCOUNT}}</span><span>-{{DISCOUNT}}</span></div>{{/if}}
+  {{#if TAX_TOTAL}}<div class="row"><span>{{LBL_TAX_TOTAL}}</span><span>{{TAX_TOTAL}}</span></div>{{/if}}
+  {{#if STAMP_AMOUNT}}<div class="row"><span>{{LBL_STAMP}}</span><span>{{STAMP_AMOUNT}}</span></div>{{/if}}
+  <div class="row grand"><span>{{LBL_NET_PAY}}</span><span>{{NET_TO_PAY}}</span></div>
+  {{#if REMAINING_DEBT}}<div class="row"><span>{{LBL_REMAINING_PAY}}</span><span>{{REMAINING_DEBT}}</span></div>{{/if}}
+  <div style="font-size:10px;margin-top:6px;">{{TOTAL_IN_WORDS}}</div>
+</body>
+</html>

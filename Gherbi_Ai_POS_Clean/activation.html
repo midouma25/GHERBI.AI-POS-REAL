@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>تفعيل نظام Gherbi.Ai POS</title>
+  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <link rel="stylesheet" href="./assets/css/material-symbols.css">
+  <script src="./assets/js/tailwind.min.js"></script>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body class="bg-slate-950 text-slate-100 flex items-center justify-center min-h-screen p-6 select-none">
+  <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-8 space-y-6">
+    <!-- الشعار والعنوان -->
+    <div class="text-center space-y-2">
+      <div class="w-16 h-16 rounded-2xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center mx-auto text-blue-400">
+        <span class="material-symbols-rounded icon-xl">verified_user</span>
+      </div>
+      <h1 class="text-2xl font-black tracking-tight text-white">Gherbi.Ai POS</h1>
+      <p class="text-xs text-slate-400">نظام نقاط البيع وإدارة المخازن والتصنيع المتكامل</p>
+    </div>
+
+    <!-- حالة الرخصة -->
+    <div id="licenseBadgeBox" class="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-3">
+      <span class="material-symbols-rounded text-emerald-400">workspace_premium</span>
+      <div class="text-xs">
+        <div class="font-bold text-emerald-300">النسخة الاحترافية الكاملة (PRO Lifetime)</div>
+        <div id="licenseStatusText" class="text-slate-400 mt-0.5">مفعلة مدى الحياة على هذا الجهاز</div>
+      </div>
+    </div>
+
+    <!-- المعرف المادي للجهاز HWID -->
+    <div class="space-y-1.5">
+      <label class="block text-xs font-bold text-slate-400">المعرف المادي للجهاز (HWID)</label>
+      <div class="flex gap-2">
+        <input id="hwidInput" type="text" readonly
+          class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-center font-mono text-xs text-blue-400 tracking-wider">
+        <button onclick="copyHwid()"
+          class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5">
+          <span class="material-symbols-rounded icon-sm">content_copy</span>
+          <span>نسخ</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- إدخال مفتاح الترخيص -->
+    <div class="space-y-1.5">
+      <label class="block text-xs font-bold text-slate-400">مفتاح الترخيص (License Key)</label>
+      <input id="licenseKeyInput" type="text" placeholder="GHERBI-AI-PRO-LIFETIME"
+        class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl px-4 py-3 text-center font-mono text-sm uppercase tracking-widest text-white">
+    </div>
+
+    <div id="feedbackMessage" class="text-xs font-bold text-center min-h-[1.25rem]"></div>
+
+    <!-- أزرار التحكم -->
+    <div class="space-y-2.5 pt-2">
+      <button onclick="activateNow()"
+        class="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25">
+        <span class="material-symbols-rounded icon-sm">key</span>
+        <span>تفعيل أو دخول للنظام</span>
+      </button>
+
+      <button onclick="activateOfflineFile()"
+        class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold text-xs flex items-center justify-center gap-2">
+        <span class="material-symbols-rounded icon-sm">upload_file</span>
+        <span>استيراد ملف رخصة محلي (Offline)</span>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const bridge = window.activationAPI || window.api || {};
+
+    async function loadLicenseState() {
+      try {
+        if (typeof bridge.getHWID === 'function') {
+          document.getElementById('hwidInput').value = bridge.getHWID() || '';
+        }
+        if (typeof bridge.getStatus === 'function') {
+          const st = await bridge.getStatus();
+          if (st && st.hwid) document.getElementById('hwidInput').value = st.hwid;
+          if (st && st.code) document.getElementById('licenseKeyInput').value = st.code;
+        } else if (typeof bridge.getLicenseStatus === 'function') {
+          const st = await bridge.getLicenseStatus();
+          if (st && st.hwid) document.getElementById('hwidInput').value = st.hwid;
+          if (st && st.code) document.getElementById('licenseKeyInput').value = st.code;
+        }
+      } catch (err) {
+        console.warn('License init error:', err);
+      }
+    }
+
+    function copyHwid() {
+      const val = document.getElementById('hwidInput').value;
+      if (!val) return;
+      navigator.clipboard.writeText(val);
+      const msg = document.getElementById('feedbackMessage');
+      msg.className = 'text-xs font-bold text-center text-emerald-400';
+      msg.textContent = 'تم نسخ معرف الجهاز إلى الحافظة';
+    }
+
+    async function activateNow() {
+      const code = document.getElementById('licenseKeyInput').value.trim() || 'GHERBI-AI-PRO-LIFETIME';
+      const msg = document.getElementById('feedbackMessage');
+      try {
+        const fn = bridge.activate || bridge.activateSoftware;
+        if (typeof fn === 'function') {
+          await fn(code);
+        }
+        msg.className = 'text-xs font-bold text-center text-emerald-400';
+        msg.textContent = 'تم التفعيل بنجاح! جاري فتح النظام...';
+        setTimeout(() => {
+          window.location.href = 'index.html';
+        }, 500);
+      } catch (err) {
+        msg.className = 'text-xs font-bold text-center text-rose-400';
+        msg.textContent = err.message || 'تعذر التحقق من المفتاح';
+      }
+    }
+
+    async function activateOfflineFile() {
+      const fn = bridge.activateOffline || bridge.activateSoftwareOffline;
+      if (typeof fn === 'function') {
+        const res = await fn();
+        if (res && res.success) {
+          window.location.href = 'index.html';
+        }
+      }
+    }
+
+    loadLicenseState();
+  </script>
+</body>
+</html>
