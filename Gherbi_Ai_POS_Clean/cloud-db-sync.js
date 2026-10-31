@@ -1,6 +1,7 @@
 /**
  * cloud-db-sync.js
- * محرك المزامنة السحابية الثنائية للجداول (Bi-Directional LWW Cloud DB Sync)
+ * محرك المزامنة السحابية الثنائية الكامل لقاعدة البيانات (100% Bi-Directional LWW Cloud DB Sync)
+ * يدعم: sale_replay، recomputeBatchSet، resolvePendingFkFixups، sync_row_errors، pull_row_errors، و Fresh Bootstrap
  */
 
 'use strict';
@@ -51,7 +52,11 @@ const SYNC_TABLES_ORDER = [
   'supplier_return_items',
   'expenses',
   'capital_injections',
-  'caisse_transactions'
+  'caisse_transactions',
+  'installment_plans',
+  'installment_schedules',
+  'cheques_portfolio',
+  'audit_logs'
 ];
 
 const IMAGE_TABLES = ['products', 'product_variants', 'product_bundles'];
@@ -68,6 +73,30 @@ function createCloudDbSync({ db, getSetting, setSetting, getMainWindow }) {
     lastError: null,
     dirtyCount: 0
   };
+
+  function rawGet(sql, params = []) {
+    const fn = db._rawGet ? db._rawGet.bind(db) : db.get.bind(db);
+    return new Promise((resolve, reject) => {
+      fn(sql, params, (err, row) => (err ? reject(err) : resolve(row)));
+    });
+  }
+
+  function rawAll(sql, params = []) {
+    const fn = db._rawAll ? db._rawAll.bind(db) : db.all.bind(db);
+    return new Promise((resolve, reject) => {
+      fn(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
+    });
+  }
+
+  function rawRun(sql, params = []) {
+    const fn = db._rawRun ? db._rawRun.bind(db) : db.run.bind(db);
+    return new Promise((resolve, reject) => {
+      fn(sql, params, function onDone(err) {
+        if (err) return reject(err);
+        resolve({ lastID: this ? this.lastID : null, changes: this ? this.changes : 0 });
+      });
+    });
+  }
 
   function emitStatus() {
     const win = typeof getMainWindow === 'function' ? getMainWindow() : null;
@@ -87,7 +116,7 @@ function createCloudDbSync({ db, getSetting, setSetting, getMainWindow }) {
     let total = 0;
     for (const tbl of SYNC_TABLES_ORDER) {
       try {
-        const r = await db.dbGet(`SELECT COUNT(*) AS n FROM ${tbl} WHERE dirty = 1`);
+        const r = await rawGet(`SELECT COUNT(*) AS n FROM ${tbl} WHERE dirty = 1`);
         total += Number((r && r.n) || 0);
       } catch (_) {}
     }
@@ -97,7 +126,7 @@ function createCloudDbSync({ db, getSetting, setSetting, getMainWindow }) {
 
   async function gatherTableBatch(tableName, limit = 150) {
     const nowMs = Date.now();
-    return await db.dbAll(
+    return await rawAll(
       `
       SELECT t.*
       FROM ${tableName} t
@@ -112,9 +141,101 @@ function createCloudDbSync({ db, getSetting, setSetting, getMainWindow }) {
     );
   }
 
+  async function ensureStockMovementForSaleItem(saleItemRow) {
+    if (!saleItemRow || !saleItemRow.uuid) return null;
+    if (Number(saleItemRow.sold_without_stock || 0) === 1) return null;
+
+    const existing = await rawGet(
+      "SELECT id FROM stock_movements WHERE ref_type = 'sale_item' AND ref_uuid = ? LIMIT 1",
+      [saleItemRow.uuid]
+    );
+    if (existing) return null;
+
+    if (!saleItemRow.batch_id) return null;
+    const batchRow = await rawGet(
+      'SELECT uuid, product_id, variant_id FROM inventory_batches WHERE id = ?',
+      [saleItemRow.batch_id]
+    );
+    if (!batchRow || !batchRow.uuid) return null;
+
+    const prodRow = batchRow.product_id
+      ? await rawGet('SELECT uuid FROM products WHERE id = ?', [batchRow.product_id])
+      : null;
+    const varRow = batchRow.variant_id
+      ? await rawGet('SELECT uuid FROM product_variants WHERE id = ?', [batchRow.variant_id])
+      : null;
+
+    const delta = -Math.abs(Number(saleItemRow.quantity || 0));
+    if (Math.abs(delta) < 0.000001) return null;
+
+    const nowStr = new Date().toISOString();
+    await rawRun(
+      `
+      INSERT INTO stock_movements (
+        uuid, batch_uuid, product_uuid, variant_uuid, delta, reason,
+        ref_type, ref_uuid, origin_device, occurred_at, updated_at, dirty
+      ) VALUES (
+        lower(hex(randomblob(16))), ?, ?, ?, ?, 'sale_replay',
+        'sale_item', ?, ?, ?, ?, 0
+      )
+      `,
+      [
+        batchRow.uuid,
+        prodRow ? prodRow.uuid : null,
+        varRow ? varRow.uuid : null,
+        delta,
+        saleItemRow.uuid,
+        saleItemRow.origin_device || 'cloud-replay',
+        saleItemRow.updated_at || nowStr,
+        nowStr
+      ]
+    );
+
+    return batchRow.uuid;
+  }
+
+  async function recomputeBatchSet(batchUuids = []) {
+    const unique = Array.from(new Set((batchUuids || []).filter(Boolean)));
+    if (unique.length === 0) return;
+
+    await stockLedger.withSkipStockLedger(db, async () => {
+      for (const bUuid of unique) {
+        await rawRun(
+          `
+          UPDATE inventory_batches
+          SET stock = COALESCE((
+            SELECT SUM(delta) FROM stock_movements
+            WHERE batch_uuid = ? AND deleted_at IS NULL
+          ), 0)
+          WHERE uuid = ?
+          `,
+          [bUuid, bUuid]
+        );
+      }
+    });
+  }
+
+  async function resolvePendingFkFixups() {
+    const fixups = await rawAll('SELECT * FROM pending_fk_fixups ORDER BY id ASC LIMIT 500');
+    for (const fx of fixups) {
+      try {
+        const parentRow = await rawGet(`SELECT id FROM ${fx.parent_table} WHERE uuid = ?`, [
+          fx.parent_uuid
+        ]);
+        if (parentRow && parentRow.id) {
+          await rawRun(`UPDATE ${fx.tbl} SET ${fx.fk_col} = ? WHERE uuid = ?`, [
+            parentRow.id,
+            fx.row_uuid
+          ]);
+          await rawRun('DELETE FROM pending_fk_fixups WHERE id = ?', [fx.id]);
+        }
+      } catch (_) {}
+    }
+  }
+
   async function applyPulledRow(tableName, rowData) {
     if (!rowData || !rowData.uuid) return false;
-    const colInfo = await db.dbAll(`PRAGMA table_info(${tableName})`);
+    const colInfo = await rawAll(`PRAGMA table_info(${tableName})`);
     const validCols = new Set(colInfo.map((c) => c.name));
 
     const cols = [];
@@ -143,7 +264,7 @@ function createCloudDbSync({ db, getSetting, setSetting, getMainWindow }) {
       .map((c) => `${c} = excluded.${c}`)
       .join(', ');
 
-    await db.dbRun(
+    await rawRun(
       `
       INSERT INTO ${tableName} (${cols.join(', ')})
       VALUES (${placeholders})
@@ -180,11 +301,33 @@ function createCloudDbSync({ db, getSetting, setSetting, getMainWindow }) {
     });
 
     const accepted = (res && res.accepted) || {};
+    const rejected = (res && res.rejected) || {};
+
     for (const [tbl, uuids] of Object.entries(accepted)) {
       if (Array.isArray(uuids) && uuids.length > 0) {
         const ph = uuids.map(() => '?').join(',');
-        await db.dbRun(`UPDATE ${tbl} SET dirty = 0 WHERE uuid IN (${ph})`, uuids);
-        await db.dbRun(`DELETE FROM sync_row_errors WHERE table_name = ? AND uuid IN (${ph})`, [tbl, ...uuids]);
+        await rawRun(`UPDATE ${tbl} SET dirty = 0 WHERE uuid IN (${ph})`, uuids);
+        await rawRun(`DELETE FROM sync_row_errors WHERE table_name = ? AND uuid IN (${ph})`, [
+          tbl,
+          ...uuids
+        ]);
+      }
+    }
+
+    for (const [tbl, errItems] of Object.entries(rejected)) {
+      for (const item of Array.isArray(errItems) ? errItems : []) {
+        const nextRetry = Date.now() + 60000;
+        await rawRun(
+          `
+          INSERT INTO sync_row_errors (table_name, uuid, attempts, last_error, next_retry_ms)
+          VALUES (?, ?, 1, ?, ?)
+          ON CONFLICT(table_name, uuid) DO UPDATE SET
+            attempts = sync_row_errors.attempts + 1,
+            last_error = excluded.last_error,
+            next_retry_ms = excluded.next_retry_ms
+          `,
+          [tbl, item.uuid || 'unknown', String(item.error || 'rejected'), nextRetry]
+        );
       }
     }
 
@@ -193,7 +336,7 @@ function createCloudDbSync({ db, getSetting, setSetting, getMainWindow }) {
   }
 
   async function pullRemoteChanges() {
-    const cursorRows = await db.dbAll('SELECT table_name, last_rev FROM sync_cursors');
+    const cursorRows = await rawAll('SELECT table_name, last_rev FROM sync_cursors');
     const cursors = {};
     for (const r of cursorRows) cursors[r.table_name] = Number(r.last_rev || 0);
 
@@ -204,7 +347,18 @@ function createCloudDbSync({ db, getSetting, setSetting, getMainWindow }) {
     });
     if (!res) return { pulled: 0 };
 
+    const localEpoch = await getSetting('cloud_sync_epoch', '');
+    if (res.epoch && localEpoch && String(res.epoch) !== String(localEpoch)) {
+      await rawRun('DELETE FROM sync_cursors');
+      await rawRun('DELETE FROM pending_fk_fixups');
+      await rawRun('DELETE FROM pull_row_errors');
+    }
+    if (res.epoch && typeof setSetting === 'function') {
+      await setSetting('cloud_sync_epoch', String(res.epoch));
+    }
+
     const serverTables = (res && res.tables) || {};
+    const touchedBatchUuids = [];
     const changedTables = [];
     let totalPulled = 0;
 
@@ -220,13 +374,34 @@ function createCloudDbSync({ db, getSetting, setSetting, getMainWindow }) {
           try {
             await applyPulledRow(tbl, row);
             totalPulled += 1;
+
+            if (tbl === 'stock_movements' && row.batch_uuid) {
+              touchedBatchUuids.push(row.batch_uuid);
+            } else if (tbl === 'sale_items') {
+              const replayBatchUuid = await ensureStockMovementForSaleItem(row);
+              if (replayBatchUuid) touchedBatchUuids.push(replayBatchUuid);
+            }
+
             if (row.server_rev && Number(row.server_rev) > maxRev) {
               maxRev = Number(row.server_rev);
             }
-          } catch (_) {}
+          } catch (err) {
+            await rawRun(
+              `
+              INSERT INTO pull_row_errors (table_name, uuid, payload, attempts, last_error, next_retry_ms)
+              VALUES (?, ?, ?, 1, ?, ?)
+              ON CONFLICT(table_name, uuid) DO UPDATE SET
+                payload = excluded.payload,
+                attempts = pull_row_errors.attempts + 1,
+                last_error = excluded.last_error,
+                next_retry_ms = excluded.next_retry_ms
+              `,
+              [tbl, row.uuid || 'unknown', JSON.stringify(row), err.message, Date.now() + 30000]
+            );
+          }
         }
 
-        await db.dbRun(
+        await rawRun(
           `INSERT INTO sync_cursors (table_name, last_rev, last_pulled_at)
            VALUES (?, ?, ?)
            ON CONFLICT(table_name) DO UPDATE SET last_rev = excluded.last_rev, last_pulled_at = excluded.last_pulled_at`,
@@ -234,6 +409,12 @@ function createCloudDbSync({ db, getSetting, setSetting, getMainWindow }) {
         );
       }
     });
+
+    await resolvePendingFkFixups();
+
+    if (touchedBatchUuids.length > 0) {
+      await recomputeBatchSet(touchedBatchUuids);
+    }
 
     if (changedTables.length > 0) {
       emitDataChanged(changedTables);
@@ -273,9 +454,9 @@ function createCloudDbSync({ db, getSetting, setSetting, getMainWindow }) {
   }
 
   async function runFreshBootstrap() {
-    await db.dbRun('DELETE FROM fresh_bootstrap_images');
+    await rawRun('DELETE FROM fresh_bootstrap_images');
     for (const tbl of IMAGE_TABLES) {
-      await db.dbRun(
+      await rawRun(
         `INSERT OR REPLACE INTO fresh_bootstrap_images (tbl, uuid, image)
          SELECT ?, uuid, image FROM ${tbl}
          WHERE image IS NOT NULL AND image != '' AND uuid IS NOT NULL AND uuid != ''`,
@@ -286,9 +467,13 @@ function createCloudDbSync({ db, getSetting, setSetting, getMainWindow }) {
     const tablesToWipe = [...SYNC_TABLES_ORDER].reverse().filter((t) => t !== 'users');
     await stockLedger.withSkipStockLedger(db, async () => {
       for (const tbl of tablesToWipe) {
-        await db.dbRun(`DELETE FROM ${tbl}`);
+        await rawRun(`DELETE FROM ${tbl}`);
       }
-      await db.dbRun('DELETE FROM sync_cursors');
+      await rawRun('DELETE FROM sync_cursors');
+      await rawRun('DELETE FROM sync_row_errors');
+      await rawRun('DELETE FROM pull_row_errors');
+      await rawRun('DELETE FROM pending_fk_fixups');
+      await rawRun("DELETE FROM settings WHERE key = 'cloud_sync_epoch'");
     });
 
     let pages = 0;
@@ -299,15 +484,34 @@ function createCloudDbSync({ db, getSetting, setSetting, getMainWindow }) {
     }
 
     for (const tbl of IMAGE_TABLES) {
-      await db.dbRun(
+      await rawRun(
+        `UPDATE fresh_bootstrap_images
+         SET
+           post_updated_at = (SELECT r.updated_at FROM ${tbl} r WHERE r.uuid = fresh_bootstrap_images.uuid),
+           post_dirty = (SELECT r.dirty FROM ${tbl} r WHERE r.uuid = fresh_bootstrap_images.uuid),
+           post_origin = (SELECT r.origin_device FROM ${tbl} r WHERE r.uuid = fresh_bootstrap_images.uuid)
+         WHERE tbl = ?`,
+        [tbl]
+      );
+
+      await rawRun(
         `UPDATE ${tbl}
          SET image = (SELECT b.image FROM fresh_bootstrap_images b WHERE b.tbl = ? AND b.uuid = ${tbl}.uuid)
          WHERE (image IS NULL OR image = '') AND uuid IN (SELECT uuid FROM fresh_bootstrap_images WHERE tbl = ?)`,
         [tbl, tbl]
       );
+
+      await rawRun(
+        `UPDATE ${tbl}
+         SET
+           updated_at = COALESCE((SELECT b.post_updated_at FROM fresh_bootstrap_images b WHERE b.tbl = ? AND b.uuid = ${tbl}.uuid), updated_at),
+           dirty = COALESCE((SELECT b.post_dirty FROM fresh_bootstrap_images b WHERE b.tbl = ? AND b.uuid = ${tbl}.uuid), 0)
+         WHERE uuid IN (SELECT uuid FROM fresh_bootstrap_images WHERE tbl = ?)`,
+        [tbl, tbl, tbl]
+      );
     }
 
-    await db.dbRun('DELETE FROM fresh_bootstrap_images');
+    await rawRun('DELETE FROM fresh_bootstrap_images');
     await stockLedger.recomputeAllBatches(db);
     return { ok: true, pagesPulled: pages };
   }
@@ -344,13 +548,13 @@ function createCloudDbSync({ db, getSetting, setSetting, getMainWindow }) {
     },
     pushSnapshot: async () => {
       for (const tbl of SYNC_TABLES_ORDER) {
-        await db.dbRun(`UPDATE ${tbl} SET dirty = 1 WHERE deleted_at IS NULL`);
+        await rawRun(`UPDATE ${tbl} SET dirty = 1 WHERE deleted_at IS NULL`);
       }
       return await triggerNow();
     },
     wipeCloudData: async () => {
       const res = await signedRequest(db, { method: 'POST', path: '/api/cloud/sync/wipe', data: {} });
-      await db.dbRun('DELETE FROM sync_cursors');
+      await rawRun('DELETE FROM sync_cursors');
       return res || { ok: true };
     },
     runFreshBootstrap,
@@ -359,7 +563,7 @@ function createCloudDbSync({ db, getSetting, setSetting, getMainWindow }) {
       return await triggerNow();
     },
     resetAndResync: async () => {
-      await db.dbRun('DELETE FROM sync_cursors');
+      await rawRun('DELETE FROM sync_cursors');
       return await triggerNow();
     }
   };

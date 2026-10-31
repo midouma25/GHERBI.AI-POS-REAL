@@ -1,74 +1,136 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
-  <title>وصل بيع رقم {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reçu - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; }
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
+      background: #f3f4f6;
       color: #000;
-      background: #fff;
+      margin: 0;
+      padding: 0;
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 1px dashed #000;  }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: right; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+
+    .paper {
+      width: 100%;
+      /* عرض البكرة يأتي من إعداد receipt_paper_width_mm عبر PrintEngine.
+         الافتراضي 80مم حين لا يُحقن المتغيّر (معاينة/تصدير مباشر). */
+      max-width: var(--rcpt-paper-w, 80mm);
+      background: #fff;
+      margin: 0 auto;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .08);
+      border: 1px solid #e5e7eb;
+      font-family: 'Cairo', 'Cairo', sans-serif;
+    }
+
+    @page {
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        /* صندوق الصفحة هو مَن يحدّد العرض (pageSize بعرض البكرة) — لا رقم
+           مثبّت هنا، وإلا خرج الوصل بعرض 80مم على بكرة 58مم. */
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .paper {
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm) !important;
+        box-shadow: none;
+        border: none;
+        max-width: none;
+      }
+    }
+
+    /* ── وضوح الطباعة الحرارية ──────────────────────────────────────────────
+       الطابعات الحرارية أحادية اللون تُظهر النص/الحدود الرمادية باهتة وغير
+       واضحة. نفرض أسود صريحاً على كل النص والحدود داخل الوصل، ونجعل الخط عريضاً
+       (700) كحد أدنى مع الإبقاء على العناوين الأثقل (font-black كما هي). */
+    .paper { font-weight: 900; }
+    .paper * { color: #000 !important; border-color: #000 !important; }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
+  <main class="paper">
+    <!-- Header -->
+    <header class="text-center border-b-2 border-black pb-3 mb-4">
+      <div class="text-xl font-black">{{COMPANY_NAME}}</div>
+      <div class="text-xs font-bold text-slate-700 mt-1">{{COMPANY_ADDRESS}}</div>
+      <div class="text-xs font-bold text-slate-700 mt-1">الهاتف: {{COMPANY_PHONE}}</div>
+    </header>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>وصل بيع رقم:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>الزبون:</strong> {{CLIENT_NAME}}</span><span><strong>البائع:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+    <!-- Meta -->
+    <section class="text-sm font-bold mb-4 space-y-1">
+      <div class="flex justify-between">
+        <div class="font-black underline">وصل رقم</div>
+        <div class="font-black">{{RECEIPT_NUMBER}}</div>
+      </div>
+      <div class="flex justify-between text-xs">
+        <div>تاريخ: {{DATE}}</div>
+        <div class="italic">وقت: {{TIME}}</div>
+      </div>
+      <div class="text-xs font-bold pt-2">الزبون: {{CLIENT_NAME}}</div>
+      <div class="text-xs font-bold">البائع: {{SELLER_NAME}}</div>
+    </section>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:right;">المنتج</th>
-        <th>الكمية</th>
-        <th>السعر</th>
-        <th>المجموع</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <!-- Items -->
+    <section class="mb-4">
+      <div class="grid grid-cols-12 gap-1 bg-slate-100 border border-black rounded-xl p-2 text-xs font-black">
+        <div class="col-span-2 text-center">كمية</div>
+        <div class="col-span-6 text-center">المنتج</div>
+        <div class="col-span-2 text-center">سعر</div>
+        <div class="col-span-2 text-center">مجموع</div>
+      </div>
 
-  <div class="totals">
-    <div class="t-row"><span>المجموع الفرعي:</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>التخفيض:</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>الإجمالي:</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>المدفوع:</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>الباقي للزبون:</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>الباقي (دين):</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+      <div class="mt-2 border border-black rounded-xl overflow-hidden">
+        <table class="w-full text-xs">
+          <tbody>
+            {{ITEMS_ROWS}}
+          </tbody>
+        </table>
+      </div>
+    </section>
 
-  
-  <div class="footer">شكراً لزيارتكم — مرحباً بكم دائماً</div>
+    <!-- Totals -->
+    <section class="border-t-2 border-black pt-3 text-sm font-black space-y-2">
+      <div class="flex justify-between">
+        <div>المجموع:</div>
+        <div>{{TOTAL}}</div>
+      </div>
+      <div class="flex justify-between text-xs font-bold">
+        <div>المدفوع =</div>
+        <div>{{PAID}}</div>
+      </div>
+      <div
+        class="flex justify-between text-[11px] font-bold text-slate-700 pt-1 border-t border-dashed mt-2 border-slate-300">
+        <div>الرصيد السابق :</div>
+        <div>{{OLD_BALANCE}}</div>
+      </div>
+      <div class="flex justify-between text-[11px] font-bold text-slate-700">
+        <div>المتبقي للدفع :</div>
+        <div>{{RECEIPT_REST}}</div>
+      </div>
+      <div class="flex justify-between text-xs font-black pt-1">
+        <div>إجمالي الديون :</div>
+        <div class="underline">{{REST}}</div>
+      </div>
+    </section>
+
+    <footer class="text-center text-xs font-bold text-slate-700 mt-6">
+      شكراً لزيارتكم.
+    </footer>
+  </main>
 </body>
+
 </html>

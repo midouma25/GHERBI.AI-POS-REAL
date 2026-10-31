@@ -1,43 +1,161 @@
 <!DOCTYPE html>
 <html lang="fr" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>BON DE LIVRAISON - {{DOC_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
-  <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    body { font-family: 'Cairo', sans-serif; font-size: 12px; color: #0f172a; margin: 0; padding: 16px; }
-    .hdr { display: flex; justify-content: space-between; border-bottom: 3px solid #0f766e; padding-bottom: 12px; margin-bottom: 14px; }
-    .title { font-size: 20px; font-weight: 900; color: #0f766e; }
-    .info-grid { display: flex; justify-content: space-between; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-    th { background: #0f766e; color: #fff; padding: 8px; border: 1px solid #0f766e; }
-    td { padding: 7px; border: 1px solid #cbd5e1; text-align: center; }
-    .signs { display: flex; justify-content: space-between; margin-top: 32px; font-weight: 800; }
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Bon de Livraison - {{DELIVERY_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
+  <style data-purpose="typography">
+    body {
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
+    }
+
+    .font-serif-bold {
+      font-family: serif;
+      font-weight: bold;
+    }
   </style>
+  <style data-purpose="layout-and-borders">
+    .delivery-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+    }
+
+    .table-border td {
+      padding: 6px 4px;
+    }
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .delivery-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        box-sizing: border-box;
+        padding: 12mm 14mm;
+      }
+    }
+  </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="hdr">
-    <div>
-      <div class="title">{{COMPANY_NAME}}</div>
-      <div>{{COMPANY_ADDRESS}} | {{COMPANY_PHONE}}</div>
-    </div>
-    <div style="text-align:left;">
-      <div class="title">BON DE LIVRAISON</div>
-      <div>N°: {{DOC_NUMBER}} | {{DATE}}</div>
-    </div>
-  </div>
-  <div class="info-grid">
-    <div><strong>Client Destinataire:</strong> {{PARTY_NAME}} ({{PARTY_PHONE}})</div>
-    <div><strong>Chauffeur / Livreur:</strong> {{DRIVER_NAME}} | <strong>Matricule Véhicule:</strong> {{VEHICLE_PLATE}}</div>
-  </div>
-  <table>
-    <thead><tr><th>#</th><th>{{LBL_REF}}</th><th>{{LBL_DESIGNATION}}</th><th>{{LBL_QTY}}</th><th>{{LBL_UNIT}}</th></tr></thead>
-    <tbody>{{ITEMS_ROWS}}</tbody>
-  </table>
-  <div class="signs">
-    <div>Cachet Fournisseur</div>
-    <div>Signature Client</div>
-  </div>
+
+<body class="p-4">
+  <main class="delivery-container mx-auto bg-white" data-purpose="delivery-document">
+
+    <!-- Header Section -->
+    <header class="mb-8">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>Tél : {{COMPANY_PHONE}}</div>
+        <div>Tél Fixe : {{COMPANY_FAX}}</div>
+        <div>Email : {{COMPANY_EMAIL}}</div>
+      </div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>R.C : {{COMPANY_RC}}</div>
+        <div>NIF : {{COMPANY_NIF}}</div>
+        <div>AI : {{COMPANY_AI}}</div>
+      </div>
+      <div class="font-bold text-[10px] mt-1">NIS : {{COMPANY_NIS}}</div>
+    </header>
+
+    <!-- Client and Delivery Info -->
+    <section class="flex justify-between items-start mb-10" data-purpose="info-block">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>Client : {{PARTY_NAME}}</p>
+        <p>Adresse : {{PARTY_ADDRESS}}</p>
+        <p>R.C : {{PARTY_RC}}</p>
+        <p>NIF : {{PARTY_NIF}}</p>
+        <p>AI : {{PARTY_AI}}</p>
+        <p>NIS : {{PARTY_NIS}}</p>
+      </div>
+      <div class="w-[48%] text-right pr-8">
+        <h2 class="text-xl font-bold mb-2">BON DE LIVRAISON N° {{DELIVERY_NUMBER}}</h2>
+        <p class="text-sm font-bold">Date : {{DATE}}</p>
+        <p class="text-sm font-bold mt-1">N° de commande : {{ORDER_NUMBER}}</p>
+        <p class="text-[11px] font-bold mt-1">Livreur : {{CARRIER_NAME}}</p>
+        <p class="text-[11px] font-bold mt-1">Matricule : {{VEHICLE_PLATE}}</p>
+      </div>
+    </section>
+
+    <!-- Items Table -->
+    <section class="mb-8" data-purpose="items-table">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr class="bg-white">
+            <th class="w-[6%]">N°</th>
+            <th class="w-[14%]">Réf</th>
+            <th class="w-[30%]">Désignation</th>
+            <th class="w-[12%]">Unité</th>
+            <th class="w-[12%]">Quantité</th>
+            <th class="w-[26%]">Observations et réserves du client</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Footer / Signature -->
+    <section class="flex justify-between items-start mt-12" data-purpose="signature-section">
+      <div class="w-[45%]">
+        <p class="font-bold text-[10px] mb-1">Expéditeur :</p>
+        <p class="font-bold text-[10px] mb-8">{{COMPANY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">Signature et cachet</p>
+        </div>
+      </div>
+      <div class="w-[45%] text-right">
+        <p class="font-bold text-[10px] mb-1">Signature du client :</p>
+        <p class="font-bold text-[10px] mb-8">{{PARTY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1 ml-auto">
+          <p class="text-[9px] font-bold text-slate-500">Signature et cachet</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>

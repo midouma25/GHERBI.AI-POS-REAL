@@ -1,18 +1,20 @@
 /**
  * print-engine.js
- * محرك الطباعة وتوليد المستندات الشامل لنظام Gherbi.Ai POS (11 نوع مستند + 53 قالب HTML + شهادة الضمان)
- * يغطي:
- * 1. الفواتير الرسمية (renderInvoiceHtml: قوالب 1..9, A5, Detailed, Thermal 80mm)
- * 2. الوصولات الحرارية (renderReceiptHtml: قوالب 1..5 بجميع اللغات مع باركود الفاتورة)
- * 3. إشعار الدائن (renderCreditNoteHtml: Facture d'Avoir بالعربية والفرنسية والإنجليزية)
- * 4. وصل التوصيل (renderDeliveryNoteHtml: Bon de Livraison A4/A5/Thermal بدون أسعار مع السائق والمركبة)
- * 5. وصل الاستلام المخزني (renderReceptionNoteHtml: Bon de Réception)
- * 6. الفاتورة الشكلية (renderProformaHtml: Facture Proforma مع تاريخ انتهاء الصلاحية)
- * 7. سند الطلبية (renderOrderReceiptHtml: Bon de Commande مع العربون والباقي)
- * 8. وصل تسديد الديون (renderPaymentReceiptHtml: Reçu de Paiement مع الدين السابق والمدفوع والباقي)
- * 9. الفاتورة المجمعة للفترة (renderRecapInvoiceHtml: Facture Récapitulative)
- * 10. تقرير ملخص المبيعات وقائمة الأسعار (renderSalesSummaryHtml & renderPriceListHtml)
- * 11. ملصقات الباركود وأسعار الرفوف وشهادة الضمان (renderBarcodeLabelHtml & renderWarrantyCertificateHtml)
+ * محرك الطباعة وتوليد المستندات الشامل لنظام Gherbi.Ai POS (13 نوع مستند + 53 قالب HTML)
+ * يشمل:
+ * - الفواتير الرسمية (مع تفصيل الدفع المختلط Split Payment Breakdown)
+ * - الوصولات الحرارية (مع باركود الفاتورة وتفصيل الدفع المختلط)
+ * - إشعار الدائن (Facture d'Avoir)
+ * - وصل التوصيل (Bon de Livraison A4/A5/Thermal)
+ * - وصل الاستلام المخزني (Bon de Réception)
+ * - الفاتورة الشكلية (Facture Proforma)
+ * - سند الطلبية (Bon de Commande)
+ * - وصل تسديد الديون (Reçu de Paiement)
+ * - الفاتورة المجمعة (Facture Récapitulative)
+ * - قائمة الأسعار (Catalogue des Prix)
+ * - ملصق الباركود المفرد + طابور طباعة الملصقات بالجملة (renderBatchBarcodeLabelsHtml)
+ * - شهادة الضمان (Certificat de Garantie IMEI/Serial)
+ * - عقد البيع بالتقسيط الرسمي (Contrat de Vente par Facilité A4)
  */
 
 'use strict';
@@ -100,6 +102,39 @@ if (typeof window === 'undefined') {
         return window.NumberToWords.toWords(Number(amount || 0), lang);
       }
       return `${formatMoney(amount)} DZD`;
+    }
+
+    function formatPaymentMethodWithSplits(saleOrInvoice = {}) {
+      const rawMethod = String(saleOrInvoice.payment_method || 'cash').toLowerCase();
+      const map = {
+        cash: 'نقداً (Espèces)',
+        credit: 'آجل / دين (À Terme)',
+        cib: 'بطاقة بنكية / الذهبية (CIB)',
+        baridimob: 'بريدي موب (BaridiMob)',
+        cheque: 'شيك (Chèque)',
+        installment: 'بيع بالتقسيط (Facilités)',
+        split: 'دفع مختلط (Multi-Paiement)'
+      };
+      if (saleOrInvoice.split_payments_json) {
+        try {
+          const splits =
+            typeof saleOrInvoice.split_payments_json === 'string'
+              ? JSON.parse(saleOrInvoice.split_payments_json)
+              : saleOrInvoice.split_payments_json;
+          if (Array.isArray(splits) && splits.length > 0) {
+            const parts = splits.map(
+              (s) => `${s.method === 'cib' ? 'CIB/BaridiMob' : 'نقداً'}: ${formatMoney(s.amount)} د.ج`
+            );
+            const total = Number(saleOrInvoice.total || 0);
+            const paid = Number(saleOrInvoice.paid_amount || 0);
+            if (total - paid > 0.01) {
+              parts.push(`آجل: ${formatMoney(total - paid)} د.ج`);
+            }
+            return parts.join(' | ');
+          }
+        } catch (_) {}
+      }
+      return saleOrInvoice.payment_method_label || map[rawMethod] || saleOrInvoice.payment_method || 'نقداً';
     }
 
     async function loadTemplateHtml(fileNameOrKey) {
@@ -285,9 +320,6 @@ if (typeof window === 'undefined') {
       return dicts[lang] || dicts.ar;
     }
 
-    /**
-     * 1. توليد فاتورة بيع أو شراء (A4 1..9 / A5 / Detailed / Thermal 80mm)
-     */
     async function renderInvoiceHtml(invoiceData = {}, settings = {}, options = {}) {
       const lang = options.lang || settings.receipt_lang || settings.app_lang || 'ar';
       const templateKey = options.template || settings.invoice_template || 'template1';
@@ -313,12 +345,14 @@ if (typeof window === 'undefined') {
       let itemsRowsHtml = '';
       items.forEach((it, idx) => {
         const name = escapeHtml(it.product_name || it.custom_product_name || it.name || 'منتج');
-        const serialBadge = it.serial_number ? ` <small style="font-family:monospace;">[S/N: ${escapeHtml(it.serial_number)}]</small>` : '';
+        const serialBadge = it.serial_number
+          ? ` <small style="font-family:monospace;">[S/N: ${escapeHtml(it.serial_number)}]</small>`
+          : '';
         const ref = escapeHtml(it.product_barcode || it.barcode || it.id || idx + 1);
         const unit = escapeHtml(it.product_unit || it.unit || 'قطعة');
         const qty = Number(it.quantity || 1);
         const price = Number(it.price ?? it.cost_price ?? it.selling_price ?? 0);
-        const lineTotal = Number(it.subtotal ?? it.total_cost ?? (qty * price));
+        const lineTotal = Number(it.subtotal ?? it.total_cost ?? qty * price);
 
         if (isThermal) {
           itemsRowsHtml += `
@@ -380,7 +414,7 @@ if (typeof window === 'undefined') {
         PARTY_AI: invoiceData.customer_ai || invoiceData.supplier_ai || '-',
         PARTY_NIS: invoiceData.customer_nis || invoiceData.supplier_nis || '-',
         ITEMS_ROWS: itemsRowsHtml,
-        SUBTOTAL: discount > 0 ? formatMoney(subtotal) : formatMoney(subtotal),
+        SUBTOTAL: formatMoney(subtotal),
         DISCOUNT: discount > 0 ? formatMoney(discount) : '',
         TAX_TOTAL: taxTotal > 0 ? formatMoney(taxTotal) : '',
         STAMP_AMOUNT: stampAmount > 0 ? formatMoney(stampAmount) : '',
@@ -391,16 +425,13 @@ if (typeof window === 'undefined') {
         REMAINING_DEBT: remainingDebt > 0 ? formatMoney(remainingDebt) : '',
         TOTAL_DEBT: totalDebt > 0 ? formatMoney(totalDebt) : '',
         CLIENT_TOTAL_DEBT: formatMoney(totalDebt),
-        PAYMENT_MODE: invoiceData.payment_method_label || invoiceData.payment_method || 'نقداً',
+        PAYMENT_MODE: formatPaymentMethodWithSplits(invoiceData),
         TOTAL_IN_WORDS: toWords(netToPay, lang)
       };
 
       return compileTemplate(rawTpl, vars);
     }
 
-    /**
-     * 2. توليد وصل البيع الحراري السريع (Thermal Receipt 1..5 مع باركود الفاتورة)
-     */
     async function renderReceiptHtml(saleData = {}, settings = {}, options = {}) {
       const lang = options.lang || settings.receipt_lang || 'ar';
       const baseNum = String(options.template || settings.receipt_template || 'receipt1').replace(/\D/g, '') || '1';
@@ -411,7 +442,7 @@ if (typeof window === 'undefined') {
       const items = Array.isArray(saleData.items) ? saleData.items : [];
       const subtotal = Number(saleData.subtotal ?? saleData.total ?? 0);
       const discount = Number(saleData.discount || 0);
-      const total = Number(saleData.total ?? (subtotal - discount));
+      const total = Number(saleData.total ?? subtotal - discount);
       const paid = Number(saleData.paid_amount ?? total);
       const rest = Math.max(0, Number((total - paid).toFixed(2)));
       const change = Math.max(0, Number((paid - total).toFixed(2)));
@@ -422,7 +453,7 @@ if (typeof window === 'undefined') {
         const name = escapeHtml(it.product_name || it.custom_product_name || it.name || 'منتج');
         const qty = Number(it.quantity || 1);
         const price = Number(it.price ?? it.selling_price ?? 0);
-        const lineSub = Number(it.subtotal ?? (qty * price));
+        const lineSub = Number(it.subtotal ?? qty * price);
         itemsRowsHtml += `
           <tr>
             <td>${name}</td>
@@ -436,6 +467,7 @@ if (typeof window === 'undefined') {
       const dateStr = now.toISOString().slice(0, 10);
       const timeStr = now.toTimeString().slice(0, 5);
       const receiptNum = String(saleData.doc_number || saleData.id || '0001');
+      const paperWidthMm = Number(settings.receipt_paper_width_mm || 80);
 
       const vars = {
         ...buildCompanyVars(settings),
@@ -455,13 +487,23 @@ if (typeof window === 'undefined') {
         REST: formatMoney(oldBalance + rest),
         OLD_BALANCE: formatMoney(oldBalance),
         CHANGE: change > 0 ? formatMoney(change) : '',
-        PAYMENT_MODE: saleData.payment_method || 'نقداً',
+        PAYMENT_MODE: formatPaymentMethodWithSplits(saleData),
         TOTAL_IN_WORDS: toWords(total, lang)
       };
 
       let compiled = compileTemplate(rawTpl, vars);
 
-      // إضافة باركود الفاتورة أسفل التذكرة الحرارية إذا كان الخيار مفعلاً
+      if (paperWidthMm === 58) {
+        compiled = compiled.replace('width: 74mm;', 'width: 54mm;');
+      }
+
+      if (saleData.split_payments_json) {
+        const splitLine = `<div style="font-size:9.5px;border-top:1px dotted #000;margin-top:4px;padding-top:3px;text-align:center;font-weight:700;">${escapeHtml(
+          formatPaymentMethodWithSplits(saleData)
+        )}</div>`;
+        compiled = compiled.replace('</body>', `${splitLine}</body>`);
+      }
+
       if (String(settings.show_receipt_barcode) !== 'false' && window.api && window.api.generateBarcodeImage) {
         try {
           const bcDataUrl = await window.api.generateBarcodeImage(receiptNum, {
@@ -472,7 +514,7 @@ if (typeof window === 'undefined') {
           if (bcDataUrl) {
             compiled = compiled.replace(
               '</body>',
-              `<div style="text-align:center;margin-top:8px;"><img src="${bcDataUrl}" style="max-width:62mm;height:11mm;object-fit:contain;"><div style="font-family:monospace;font-size:9px;">${receiptNum}</div></div></body>`
+              `<div style="text-align:center;margin-top:8px;"><img src="${bcDataUrl}" style="max-width:56mm;height:11mm;object-fit:contain;"><div style="font-family:monospace;font-size:9px;">${receiptNum}</div></div></body>`
             );
           }
         } catch (_) {}
@@ -481,9 +523,6 @@ if (typeof window === 'undefined') {
       return compiled;
     }
 
-    /**
-     * 3. توليد إشعار الدائن الرسمي (Facture d'Avoir - credit_note_ar/fr/en.html)
-     */
     async function renderCreditNoteHtml(saleData = {}, settings = {}, lang = 'ar') {
       const fileKey = `credit_note_${lang}`;
       const rawTpl = await loadTemplateHtml(TEMPLATE_FILES[fileKey] || 'credit_note_ar.html');
@@ -504,7 +543,9 @@ if (typeof window === 'undefined') {
           const qty = Math.abs(Number(it.quantity || 1));
           const price = Number(it.price || 0);
           const sub = Number((qty * price).toFixed(2));
-          return `<tr><td>${idx + 1}</td><td>${ref}</td><td>${name}</td><td>${unit}</td><td>${qty}</td><td>${formatMoney(price)}</td><td>${taxPercent}%</td><td>${formatMoney(sub)}</td></tr>`;
+          return `<tr><td>${idx + 1}</td><td>${ref}</td><td>${name}</td><td>${unit}</td><td>${qty}</td><td>${formatMoney(
+            price
+          )}</td><td>${taxPercent}%</td><td>${formatMoney(sub)}</td></tr>`;
         })
         .join('');
 
@@ -512,10 +553,13 @@ if (typeof window === 'undefined') {
       const vars = {
         ...buildCompanyVars(settings),
         ...lbl,
-        CREDIT_NOTE_NUMBER: saleData.credit_note_number || `AV-${new Date().getFullYear()}-${saleData.id || '001'}`,
+        CREDIT_NOTE_NUMBER:
+          saleData.credit_note_number || `AV-${new Date().getFullYear()}-${saleData.id || '001'}`,
         INVOICE_NUMBER: saleData.credit_note_number || saleData.doc_number || saleData.id || '001',
         ORIGINAL_INVOICE_NUMBER: saleData.original_invoice_number || saleData.doc_number || `#${saleData.id}`,
-        ORIGINAL_INVOICE_DATE: String(saleData.original_invoice_date || saleData.sale_date || new Date().toISOString()).slice(0, 10),
+        ORIGINAL_INVOICE_DATE: String(
+          saleData.original_invoice_date || saleData.sale_date || new Date().toISOString()
+        ).slice(0, 10),
         RETURN_REASON: saleData.credit_note_reason || saleData.reason || 'إرجاع بضاعة / تصحيح فاتورة',
         DATE: String(saleData.credit_note_issued_at || new Date().toISOString()).slice(0, 10),
         PARTY_NAME: saleData.customer_name || 'زبون عابر',
@@ -540,9 +584,6 @@ if (typeof window === 'undefined') {
       return compileTemplate(rawTpl, vars);
     }
 
-    /**
-     * 4. توليد وصل التوصيل (Bon de Livraison - delivery_note_ar/fr/en/a5/thermal.html)
-     */
     async function renderDeliveryNoteHtml(deliveryData = {}, settings = {}, modeOrLang = 'ar') {
       const keyMap = {
         ar: 'delivery_ar',
@@ -563,9 +604,9 @@ if (typeof window === 'undefined') {
         const unit = escapeHtml(it.product_unit || it.unit || 'قطعة');
         const qty = Number(it.quantity || 1);
         if (isThermal) {
-          rowsHtml += `<div class="t-item"><div class="t-name">${idx + 1}. ${name}</div><div class="t-line"><span>الكمية:</span><span class="b">${qty} ${unit}</span></div></div>`;
+          rowsHtml += `<tr><td>${idx + 1}</td><td>${name}</td><td>${qty} ${unit}</td></tr>`;
         } else {
-          rowsHtml += `<tr><td>${idx + 1}</td><td>${ref}</td><td>${name}</td><td>${unit}</td><td>${qty}</td><td>${escapeHtml(it.notes || '')}</td></tr>`;
+          rowsHtml += `<tr><td>${idx + 1}</td><td>${ref}</td><td>${name}</td><td>${qty}</td><td>${unit}</td></tr>`;
         }
       });
 
@@ -573,16 +614,14 @@ if (typeof window === 'undefined') {
       const vars = {
         ...buildCompanyVars(settings),
         ...lbl,
-        LBL_DELIVERY_TITLE: modeOrLang === 'fr' ? 'BON DE LIVRAISON' : modeOrLang === 'en' ? 'DELIVERY NOTE' : 'وصل تسليم وتوصيل',
-        LBL_ORDER_NUMBER: modeOrLang === 'fr' ? 'Commande N°:' : 'رقم الطلبية:',
-        LBL_CLIENT: modeOrLang === 'fr' ? 'Client' : 'الزبون',
-        LBL_CARRIER: modeOrLang === 'fr' ? 'Chauffeur / Livreur' : 'السائق / الناقل',
-        LBL_VEHICLE: modeOrLang === 'fr' ? 'Matricule' : 'ترقيم المركبة',
-        LBL_NOTES: modeOrLang === 'fr' ? 'Observations' : 'ملاحظات',
-        LBL_SIGNATURE_SENDER: modeOrLang === 'fr' ? 'Signature Expéditeur' : 'إمضاء المسلّم',
-        LBL_SIGNATURE_CLIENT: modeOrLang === 'fr' ? 'Signature Client' : 'إمضاء المستلم',
-        DELIVERY_NUMBER: deliveryData.delivery_number || deliveryData.doc_number || `BL-${new Date().getFullYear()}-${deliveryData.id || '001'}`,
-        DOC_NUMBER: deliveryData.delivery_number || deliveryData.doc_number || `BL-${new Date().getFullYear()}-${deliveryData.id || '001'}`,
+        DELIVERY_NUMBER:
+          deliveryData.delivery_number ||
+          deliveryData.doc_number ||
+          `BL-${new Date().getFullYear()}-${deliveryData.id || '001'}`,
+        DOC_NUMBER:
+          deliveryData.delivery_number ||
+          deliveryData.doc_number ||
+          `BL-${new Date().getFullYear()}-${deliveryData.id || '001'}`,
         ORDER_NUMBER: deliveryData.order_number || deliveryData.doc_number || '-',
         DATE: String(deliveryData.sale_date || deliveryData.date || new Date().toISOString()).slice(0, 10),
         PARTY_NAME: deliveryData.customer_name || deliveryData.party_name || 'زبون',
@@ -601,9 +640,6 @@ if (typeof window === 'undefined') {
       return compileTemplate(rawTpl, vars);
     }
 
-    /**
-     * 5. توليد وصل الاستلام المخزني (Bon de Réception - reception_note_ar/fr/en.html)
-     */
     async function renderReceptionNoteHtml(purchaseData = {}, settings = {}, lang = 'ar') {
       const fileName = TEMPLATE_FILES[`reception_${lang}`] || 'reception_note_ar.html';
       const rawTpl = await loadTemplateHtml(fileName);
@@ -616,7 +652,9 @@ if (typeof window === 'undefined') {
           const qty = Number(it.quantity || 1);
           const cost = Number(it.cost_price || 0);
           const total = Number(it.total_cost || qty * cost);
-          return `<tr><td>${idx + 1}</td><td>${ref}</td><td>${name}</td><td>${qty}</td><td>${unit}</td><td>${formatMoney(cost)}</td><td>0%</td><td>${formatMoney(total)}</td></tr>`;
+          return `<tr><td>${idx + 1}</td><td>${ref}</td><td>${name}</td><td>${qty}</td><td>${unit}</td><td>${formatMoney(
+            cost
+          )}</td><td>0%</td><td>${formatMoney(total)}</td></tr>`;
         })
         .join('');
 
@@ -641,9 +679,6 @@ if (typeof window === 'undefined') {
       return compileTemplate(rawTpl, vars);
     }
 
-    /**
-     * 6. توليد الفاتورة الشكلية (Facture Proforma - proforma_invoice_ar/fr.html)
-     */
     async function renderProformaHtml(proformaData = {}, settings = {}, lang = 'ar') {
       const fileName = lang === 'fr' ? 'proforma_invoice_fr.html' : 'proforma_invoice_ar.html';
       const rawTpl = await loadTemplateHtml(fileName);
@@ -652,10 +687,12 @@ if (typeof window === 'undefined') {
       const subtotal = Number(proformaData.subtotal ?? proformaData.total ?? 0);
       const discount = Number(proformaData.discount || 0);
       const taxTotal = Number(((subtotal - discount) * (taxPercent / 100)).toFixed(2));
-      const total = Number(proformaData.total ?? (subtotal - discount + taxTotal));
+      const total = Number(proformaData.total ?? subtotal - discount + taxTotal);
       const validityDays = Number(proformaData.validity_days || 15);
       const createdDate = new Date(proformaData.created_at || Date.now());
-      const validUntilDate = new Date(createdDate.getTime() + validityDays * 86400000).toISOString().slice(0, 10);
+      const validUntilDate = new Date(createdDate.getTime() + validityDays * 86400000)
+        .toISOString()
+        .slice(0, 10);
 
       const rowsHtml = items
         .map((it, idx) => {
@@ -664,8 +701,10 @@ if (typeof window === 'undefined') {
           const unit = escapeHtml(it.unit || 'قطعة');
           const qty = Number(it.quantity || 1);
           const price = Number(it.price || 0);
-          const sub = Number(it.subtotal ?? (qty * price));
-          return `<tr><td>${idx + 1}</td><td>${ref}</td><td>${name}</td><td>${qty}</td><td>${unit}</td><td>${formatMoney(price)}</td><td>${taxPercent}%</td><td>${formatMoney(sub)}</td></tr>`;
+          const sub = Number(it.subtotal ?? qty * price);
+          return `<tr><td>${idx + 1}</td><td>${ref}</td><td>${name}</td><td>${qty}</td><td>${unit}</td><td>${formatMoney(
+            price
+          )}</td><td>${taxPercent}%</td><td>${formatMoney(sub)}</td></tr>`;
         })
         .join('');
 
@@ -698,9 +737,6 @@ if (typeof window === 'undefined') {
       return compileTemplate(rawTpl, vars);
     }
 
-    /**
-     * 7. توليد سند الطلبية (Bon de Commande - order_receipt_ar/fr.html)
-     */
     async function renderOrderReceiptHtml(orderData = {}, settings = {}, lang = 'ar') {
       const fileName = lang === 'fr' ? 'order_receipt_fr.html' : 'order_receipt_ar.html';
       const rawTpl = await loadTemplateHtml(fileName);
@@ -709,7 +745,7 @@ if (typeof window === 'undefined') {
       const discount = Number(orderData.discount || 0);
       const taxPercent = Number(orderData.tax_percentage || 0);
       const taxTotal = Number(((subtotal - discount) * (taxPercent / 100)).toFixed(2));
-      const total = Number(orderData.total ?? (subtotal - discount + taxTotal));
+      const total = Number(orderData.total ?? subtotal - discount + taxTotal);
       const deposit = Number(orderData.deposit_amount || 0);
       const remaining = Math.max(0, Number((total - deposit).toFixed(2)));
 
@@ -720,8 +756,10 @@ if (typeof window === 'undefined') {
           const unit = escapeHtml(it.unit || 'قطعة');
           const qty = Number(it.quantity || 1);
           const price = Number(it.price || 0);
-          const sub = Number(it.subtotal ?? (qty * price));
-          return `<tr><td>${idx + 1}</td><td>${ref}</td><td>${name}</td><td>${unit}</td><td>${qty}</td><td>${formatMoney(price)}</td><td>${formatMoney(sub)}</td><td>${orderData.status || 'قيد التجهيز'}</td></tr>`;
+          const sub = Number(it.subtotal ?? qty * price);
+          return `<tr><td>${idx + 1}</td><td>${ref}</td><td>${name}</td><td>${qty}</td><td>${unit}</td><td>${formatMoney(
+            price
+          )}</td><td>0%</td><td>${formatMoney(sub)}</td></tr>`;
         })
         .join('');
 
@@ -748,6 +786,7 @@ if (typeof window === 'undefined') {
         NET_TO_PAY: formatMoney(total),
         DEPOSIT: formatMoney(deposit),
         REMAINING: formatMoney(remaining),
+        REMAINING_DEBT: formatMoney(remaining),
         NOTES: orderData.notes || '',
         TOTAL_IN_WORDS: toWords(total, lang)
       };
@@ -755,9 +794,6 @@ if (typeof window === 'undefined') {
       return compileTemplate(rawTpl, vars);
     }
 
-    /**
-     * 8. توليد وصل تسديد الديون (Reçu de Paiement - payment_receipt_ar/fr.html)
-     */
     async function renderPaymentReceiptHtml(paymentDetails = {}, settings = {}, lang = 'ar') {
       const fileName = lang === 'fr' ? 'payment_receipt_fr.html' : 'payment_receipt_ar.html';
       const rawTpl = await loadTemplateHtml(fileName);
@@ -792,9 +828,6 @@ if (typeof window === 'undefined') {
       return compileTemplate(rawTpl, vars);
     }
 
-    /**
-     * 9. توليد الفاتورة المجمعة للزبون عن فترة (Facture Récapitulative - recap_invoice_ar/fr/en.html)
-     */
     async function renderRecapInvoiceHtml(recapData = {}, settings = {}, lang = 'ar') {
       const fileName = TEMPLATE_FILES[`recap_${lang}`] || 'recap_invoice_ar.html';
       const rawTpl = await loadTemplateHtml(fileName);
@@ -813,7 +846,9 @@ if (typeof window === 'undefined') {
           const qty = Number(it.total_qty || 1);
           const avgPrice = Number(it.avg_price || 0);
           const sub = Number(it.total_subtotal || qty * avgPrice);
-          return `<tr><td>${idx + 1}</td><td>${ref}</td><td>${name}</td><td>${qty}</td><td>${unit}</td><td>${formatMoney(avgPrice)}</td><td>0%</td><td>${formatMoney(sub)}</td></tr>`;
+          return `<tr><td>${idx + 1}</td><td>${ref}</td><td>${name}</td><td>${qty}</td><td>${unit}</td><td>${formatMoney(
+            avgPrice
+          )}</td><td>0%</td><td>${formatMoney(sub)}</td></tr>`;
         })
         .join('');
 
@@ -821,8 +856,10 @@ if (typeof window === 'undefined') {
       const vars = {
         ...buildCompanyVars(settings),
         ...lbl,
-        RECAP_NUMBER: recapData.recap_number || `FR-${new Date().getFullYear()}-${Date.now().toString().slice(-3)}`,
-        INVOICE_NUMBER: recapData.recap_number || `FR-${new Date().getFullYear()}-${Date.now().toString().slice(-3)}`,
+        RECAP_NUMBER:
+          recapData.recap_number || `FR-${new Date().getFullYear()}-${Date.now().toString().slice(-3)}`,
+        INVOICE_NUMBER:
+          recapData.recap_number || `FR-${new Date().getFullYear()}-${Date.now().toString().slice(-3)}`,
         DATE: new Date().toISOString().slice(0, 10),
         DATE_FROM: recapData.dateFrom || '-',
         DATE_TO: recapData.dateTo || '-',
@@ -851,9 +888,6 @@ if (typeof window === 'undefined') {
       return compileTemplate(rawTpl, vars);
     }
 
-    /**
-     * 10. توليد تقرير ملخص المبيعات وقائمة الأسعار (sales_summary & price_list)
-     */
     async function renderPriceListHtml(products = [], settings = {}, scopeLabel = 'جميع المنتجات') {
       const rawTpl = await loadTemplateHtml('price_list.html');
       const rowsHtml = (Array.isArray(products) ? products : [])
@@ -889,9 +923,6 @@ if (typeof window === 'undefined') {
       return compileTemplate(rawTpl, vars);
     }
 
-    /**
-     * 11. توليد ملصق الباركود أو ملصق سعر الرفوف أو شهادة الضمان (Warranty Certificate)
-     */
     async function renderBarcodeLabelHtml(labelData = {}, settings = {}) {
       const rawTpl = await loadTemplateHtml('barcode_label_template_1.html');
       const labelW = Number(labelData.widthMm || settings.label_width_mm || 40);
@@ -908,8 +939,12 @@ if (typeof window === 'undefined') {
         });
       }
 
-      const priceStr = labelData.price !== undefined && labelData.price !== '' ? `${formatMoney(labelData.price)} د.ج` : '';
-      const computedPriceSize = Math.max(4.5, Math.min(11, (labelW / Math.max(6, priceStr.length)) * 1.45)).toFixed(1);
+      const priceStr =
+        labelData.price !== undefined && labelData.price !== '' ? `${formatMoney(labelData.price)} د.ج` : '';
+      const computedPriceSize = Math.max(
+        4.5,
+        Math.min(11, (labelW / Math.max(6, priceStr.length)) * 1.45)
+      ).toFixed(1);
 
       const vars = {
         LABEL_W: labelW,
@@ -944,6 +979,90 @@ if (typeof window === 'undefined') {
       };
 
       return compileTemplate(rawTpl, vars);
+    }
+
+    /**
+     * توليد صفحة أو رول ملصقات باركود متعددة من طابور الطباعة بالجملة (Batch Label Queue Renderer)
+     */
+    async function renderBatchBarcodeLabelsHtml(queueItems = [], settings = {}, cfg = {}) {
+      const labelW = Number(cfg.widthMm || settings.label_width_mm || 40);
+      const labelH = Number(cfg.heightMm || settings.label_height_mm || 25);
+      const barcodeH = Number(cfg.barcodeHeightMm || settings.label_barcode_height_mm || 11);
+      const isPriceMode = Boolean(cfg.priceOnlyMode);
+      const cols = Math.max(1, parseInt(cfg.columns || 1, 10) || 1);
+
+      const cardsHtml = [];
+      for (const item of queueItems) {
+        const copies = Math.max(1, parseInt(item.copies || 1, 10) || 1);
+        let bcImg = '';
+        if (!isPriceMode && item.barcode && window.api && window.api.generateBarcodeImage) {
+          bcImg = await window.api.generateBarcodeImage(item.barcode, {
+            bcid: 'code128',
+            height: barcodeH,
+            scale: 3
+          });
+        }
+        const priceStr =
+          item.price !== undefined && item.price !== '' ? `${formatMoney(item.price)} د.ج` : '';
+
+        const singleBox = `
+          <div class="lbl-item">
+            ${cfg.showShop ? `<div class="shop">${escapeHtml(settings.shop_name || 'Gherbi.Ai POS')}</div>` : ''}
+            ${cfg.showName !== false ? `<div class="name">${escapeHtml(item.name || '')}</div>` : ''}
+            ${!isPriceMode && bcImg ? `<img src="${bcImg}" class="bc-img">` : ''}
+            ${!isPriceMode && cfg.showBarcodeText !== false ? `<div class="bc-txt">${escapeHtml(item.barcode || '')}</div>` : ''}
+            ${cfg.showPrice && priceStr ? `<div class="price">${priceStr}</div>` : ''}
+            ${cfg.showPlu && item.plu ? `<div class="plu">PLU: ${escapeHtml(item.plu)}</div>` : ''}
+          </div>`;
+
+        for (let c = 0; c < copies; c++) {
+          cardsHtml.push(singleBox);
+        }
+      }
+
+      return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>طابور طباعة الملصقات — Gherbi.Ai POS</title>
+  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <style>
+    @page { margin: 2mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Cairo', Arial, sans-serif; background: #fff; color: #000; }
+    .sheet-grid {
+      display: grid;
+      grid-template-columns: repeat(${cols}, ${labelW}mm);
+      gap: 2mm;
+      justify-content: center;
+      padding: 2mm;
+    }
+    .lbl-item {
+      width: ${labelW}mm;
+      height: ${labelH}mm;
+      border: 0.25mm dashed #cbd5e1;
+      padding: 1mm 1.5mm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      page-break-inside: avoid;
+      overflow: hidden;
+    }
+    .shop { font-size: 2.2mm; font-weight: 800; }
+    .name { font-size: 2.6mm; font-weight: 900; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bc-img { width: 92%; height: ${barcodeH}mm; object-fit: contain; margin: 0.4mm 0; }
+    .bc-txt { font-family: monospace; font-size: 2.3mm; font-weight: 800; }
+    .price { font-family: 'Segoe UI', sans-serif; font-size: ${isPriceMode ? '5.5mm' : '3.4mm'}; font-weight: 900; margin-top: 0.3mm; }
+    .plu { font-size: 2mm; font-weight: 700; }
+    @media print { .lbl-item { border: none; } }
+  </style>
+</head>
+<body>
+  <div class="sheet-grid">${cardsHtml.join('')}</div>
+</body>
+</html>`;
     }
 
     function renderWarrantyCertificateHtml(saleItem = {}, sale = {}, settings = {}) {
@@ -994,6 +1113,96 @@ if (typeof window === 'undefined') {
       <div>إمضاء الزبون</div>
       <div>ختم وإمضاء المتجر</div>
     </div>
+  </div>
+</body>
+</html>`;
+    }
+
+    /**
+     * توليد عقد البيع بالتقسيط الرسمي (Contrat de Vente par Facilité A4)
+     */
+    function renderInstallmentContractHtml(plan = {}, settings = {}) {
+      const schedules = Array.isArray(plan.schedules) ? plan.schedules : [];
+      const rowsHtml = schedules
+        .map(
+          (s) => `
+          <tr>
+            <td>القسط رقم #${s.installment_num}</td>
+            <td style="font-family:monospace;">${escapeHtml(s.due_date)}</td>
+            <td style="font-family:monospace;font-weight:800;">${formatMoney(s.amount)} د.ج</td>
+            <td style="font-family:monospace;">${formatMoney(s.paid_amount)} د.ج</td>
+            <td>${s.status === 'paid' ? 'مسدد ✓' : 'قيد الانتظار'}</td>
+            <td></td>
+          </tr>`
+        )
+        .join('');
+
+      return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>عقد بيع بالتقسيط — Contrat de Vente par Facilité #${plan.id || ''}</title>
+  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <style>
+    @page { size: A4 portrait; margin: 12mm; }
+    body { font-family: 'Cairo', Arial, sans-serif; color: #0f172a; font-size: 12px; padding: 14px; }
+    .hdr { display: flex; justify-content: space-between; border-bottom: 3px solid #1d4ed8; padding-bottom: 12px; margin-bottom: 16px; }
+    .title { font-size: 20px; font-weight: 900; color: #1d4ed8; }
+    .box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px; margin-bottom: 14px; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    th { background: #1d4ed8; color: #fff; padding: 8px; border: 1px solid #1d4ed8; font-size: 11px; }
+    td { padding: 7px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px; }
+    .terms { font-size: 10.5px; color: #334155; line-height: 1.6; border: 1px dashed #94a3b8; border-radius: 8px; padding: 10px; margin-top: 12px; }
+    .signs { display: flex; justify-content: space-between; margin-top: 32px; font-weight: 800; }
+  </style>
+</head>
+<body>
+  <div class="hdr">
+    <div>
+      <div class="title">${escapeHtml(settings.shop_name || 'Gherbi.Ai POS')}</div>
+      <div>${escapeHtml(settings.shop_address || '')} | هاتف: ${escapeHtml(settings.shop_phone || '')}</div>
+      <div style="font-size:10px;font-family:monospace;">RC: ${escapeHtml(settings.shop_rc || '-')} | NIF: ${escapeHtml(settings.shop_nif || '-')}</div>
+    </div>
+    <div style="text-align:left;">
+      <div class="title">عقد بيع بالتقسيط والجدولة الشهرية</div>
+      <div style="font-weight:800;">CONTRAT DE VENTE PAR FACILITÉ N° #${plan.id || '01'}</div>
+      <div>تاريخ العقد: ${escapeHtml(plan.start_date || new Date().toISOString().slice(0, 10))}</div>
+    </div>
+  </div>
+
+  <div class="box">
+    <div><strong>الطرف الأول (البائع):</strong> ${escapeHtml(settings.shop_name || 'Gherbi.Ai POS')}</div>
+    <div style="margin-top:4px;"><strong>الطرف الثاني (المشتري):</strong> ${escapeHtml(plan.customer_name || 'زبون')} — <strong>رقم الهاتف:</strong> <span style="font-family:monospace;">${escapeHtml(plan.customer_phone || '-')}</span></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid #e2e8f0;">
+      <div><strong>المبلغ الإجمالي:</strong> <span style="font-family:monospace;">${formatMoney(plan.total_amount)} د.ج</span></div>
+      <div><strong>التسبقة (Acompte):</strong> <span style="font-family:monospace;color:#059669;">${formatMoney(plan.down_payment)} د.ج</span></div>
+      <div><strong>الباقي للتقسيط:</strong> <span style="font-family:monospace;color:#e11d48;">${formatMoney(plan.remaining_amount)} د.ج</span></div>
+      <div><strong>عدد الأقساط:</strong> ${plan.months_count} أشهر</div>
+    </div>
+  </div>
+
+  <h4 style="margin:6px 0;font-weight:900;">جدول الأقساط الشهرية المتفق عليها (Échéancier de Paiement):</h4>
+  <table>
+    <thead>
+      <tr>
+        <th>رقم القسط</th>
+        <th>تاريخ الاستحقاق</th>
+        <th>المبلغ المستحق</th>
+        <th>المبلغ المسدد</th>
+        <th>الحالة</th>
+        <th>إمضاء الاستلام</th>
+      </tr>
+    </thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+
+  <div class="terms">
+    <strong>التزام وشروط التعاقد:</strong> يقر الطرف الثاني (المشتري) باستلام البضاعة موضوع هذا العقد كاملة وسليمة، ويلتزم بتسديد الأقساط الشهرية في مواعيد استحقاقها المحددة في الجدول أعلاه، سواء نقداً أو عبر الحساب البريدي / BaridiMob (${escapeHtml(settings.shop_baridimob_rip || '-')}).
+  </div>
+
+  <div class="signs">
+    <div>إمضاء وبصمة المشتري (قرئ وصودق عليه)</div>
+    <div>ختم وإمضاء المتجر البائع</div>
   </div>
 </body>
 </html>`;
@@ -1052,7 +1261,9 @@ if (typeof window === 'undefined') {
       renderRecapInvoiceHtml,
       renderPriceListHtml,
       renderBarcodeLabelHtml,
+      renderBatchBarcodeLabelsHtml,
       renderWarrantyCertificateHtml,
+      renderInstallmentContractHtml,
       printHtmlDocument
     };
   })();

@@ -82,6 +82,7 @@ const SYNCED_TABLES = [
   'custom_templates',
   'installment_plans',
   'installment_schedules',
+  'cheques_portfolio',
   'audit_logs'
 ];
 
@@ -174,6 +175,7 @@ const DEFAULT_SETTINGS = {
   usb_scale_tare_cmd: 'T\\r\\n',
   usb_scale_zero_cmd: 'Z\\r\\n',
   loyalty_enabled: 'true',
+  stamp_duty_mode: 'progressive_dz',
   loyalty_points_per_100_dzd: '1',
   zakat_gold_price_per_gram: '14500',
   ai_copilot_enabled: 'true',
@@ -1410,7 +1412,29 @@ function initializeDatabase() {
     `);
 
     db._rawRun(`
-      CREATE TABLE IF NOT EXISTS dz_product_dictionary (
+      CREATE TABLE IF NOT EXISTS cheques_portfolio (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        direction TEXT NOT NULL DEFAULT 'in', -- 'in' (من زبون) | 'out' (لمورد)
+        party_id INTEGER,
+        party_name TEXT,
+        cheque_number TEXT NOT NULL,
+        bank_name TEXT DEFAULT 'BNA',
+        amount REAL NOT NULL DEFAULT 0,
+        issue_date TEXT,
+        due_date TEXT NOT NULL,
+        status TEXT DEFAULT 'pending', -- pending | deposited | cashed | rejected
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        uuid TEXT,
+        updated_at TEXT,
+        deleted_at TEXT,
+        origin_device TEXT,
+        server_rev INTEGER,
+        dirty INTEGER DEFAULT 1
+      )
+    `);
+
+    db._rawRun(`CREATE TABLE IF NOT EXISTS dz_product_dictionary (
         barcode TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         category TEXT DEFAULT 'عام',

@@ -3006,6 +3006,96 @@ function startLocalServer(port = 8080, onStartedCallback = null) {
     }
   });
 
+  
+  // مسارات حافظة الشيكات والصكوك البريدية والتصريح الجبائي الجزائري (LAN Routes)
+  app.get('/api/cheques', async (req, res) => {
+    try {
+      const rows = await dbAll('SELECT * FROM cheques_portfolio WHERE deleted_at IS NULL ORDER BY due_date ASC, id DESC');
+      res.json(rows || []);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/cheques', async (req, res) => {
+    try {
+      const p = req.body || {};
+      const ins = await dbRun(
+        'INSERT INTO cheques_portfolio (direction, party_id, party_name, cheque_number, bank_name, amount, issue_date, due_date, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          p.direction || 'in',
+          p.party_id || null,
+          p.party_name || '',
+          String(p.cheque_number || '').trim(),
+          p.bank_name || 'BNA / CCP',
+          Number(p.amount || 0),
+          p.issue_date || new Date().toISOString().slice(0, 10),
+          p.due_date || new Date().toISOString().slice(0, 10),
+          p.status || 'pending',
+          p.notes || ''
+        ]
+      );
+      res.json({ success: true, id: ins.lastID });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put('/api/cheques/:id/status', async (req, res) => {
+    try {
+      await dbRun('UPDATE cheques_portfolio SET status = ? WHERE id = ?', [
+        String((req.body && req.body.status) || 'cashed'),
+        Number(req.params.id)
+      ]);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/cheques/:id', async (req, res) => {
+    try {
+      await dbRun('DELETE FROM cheques_portfolio WHERE id = ?', [Number(req.params.id)]);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/fiscal-report', async (req, res) => {
+    try {
+      const year = String((req.query && req.query.year) || new Date().getFullYear());
+      const etat104 = await dbAll(
+        `SELECT
+           c.id AS customer_id, c.name, c.rc, c.nif, c.ai, c.nis, c.address,
+           COUNT(s.id) AS invoices_count,
+           COALESCE(SUM(s.subtotal - s.discount), 0) AS total_ht,
+           COALESCE(SUM(CASE WHEN s.tax_percentage > 0 THEN (s.total * s.tax_percentage / (100.0 + s.tax_percentage)) ELSE 0 END), 0) AS total_tva,
+           COALESCE(SUM(s.stamp_amount), 0) AS total_stamp,
+           COALESCE(SUM(s.total), 0) AS total_ttc
+         FROM customers c
+         INNER JOIN sales s ON s.customer_id = c.id AND s.deleted_at IS NULL
+         WHERE c.deleted_at IS NULL AND strftime('%Y', s.sale_date) = ?
+         GROUP BY c.id
+         ORDER BY total_ttc DESC`,
+        [year]
+      );
+      const g50Summary = await dbGet(
+        `SELECT
+           COALESCE(SUM(CASE WHEN total >= 0 THEN (subtotal - discount) ELSE 0 END), 0) AS chiffre_affaires_ht,
+           COALESCE(SUM(CASE WHEN tax_percentage > 0 THEN (total * tax_percentage / (100.0 + tax_percentage)) ELSE 0 END), 0) AS tva_collectee,
+           COALESCE(SUM(stamp_amount), 0) AS droits_timbre,
+           COALESCE(SUM(total), 0) AS chiffre_affaires_ttc
+         FROM sales
+         WHERE deleted_at IS NULL AND strftime('%Y', sale_date) = ?`,
+        [year]
+      );
+      res.json({ year, etat104: etat104 || [], g50: g50Summary || {} });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get('/api/settings', async (_req, res) => {
     try {
       const rows = await db.dbAll('SELECT key, value FROM settings');
@@ -3034,6 +3124,166 @@ function startLocalServer(port = 8080, onStartedCallback = null) {
   });
 
   // مسارات الميزات الجزائرية (القاموس 613، الأقساط، وسجل الرقابة الأمنية)
+  
+  // [RC-100% LAN MULTI-POS PARITY ROUTES]
+  app.get('/api/dz-dictionary/stats', async (_req, res) => {
+    try {
+      const row = await db.dbGet('SELECT COUNT(*) AS count FROM dz_product_dictionary');
+      res.json({ count: Number((row && row.count) || 0) });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/warranty/:serial', async (req, res) => {
+    try {
+      const serial = String(req.params.serial || '').trim();
+      const item = await db.dbGet(
+        `SELECT si.*, COALESCE(p.name, si.custom_product_name, 'منتج') AS product_name,
+                p.barcode AS product_barcode, p.warranty_months AS default_warranty_months,
+                s.doc_number, s.sale_date, s.total AS sale_total,
+                c.name AS customer_name, c.phone AS customer_phone
+         FROM sale_items si
+         INNER JOIN sales s ON s.id = si.sale_id AND s.deleted_at IS NULL
+         LEFT JOIN products p ON p.id = si.product_id
+         LEFT JOIN customers c ON c.id = s.customer_id
+         WHERE si.serial_number = ? COLLATE NOCASE AND si.deleted_at IS NULL
+         ORDER BY si.id DESC LIMIT 1`,
+        [serial]
+      );
+      if (!item) return res.json({ found: false, serial });
+      const months = Number(item.warranty_months || item.default_warranty_months || 12);
+      const startDate = new Date(item.sale_date || Date.now());
+      const endDate = new Date(startDate);
+      endDate.setMonth(endDate.getMonth() + months);
+      const daysLeft = Math.ceil((endDate.getTime() - Date.now()) / 86400000);
+      res.json({
+        found: true,
+        serial,
+        sale_id: item.sale_id,
+        doc_number: item.doc_number || ('#' + item.sale_id),
+        sale_date: String(item.sale_date || '').slice(0, 10),
+        product_name: item.product_name,
+        product_barcode: item.product_barcode || '',
+        price: item.price,
+        customer_name: item.customer_name || 'زبون عابر',
+        customer_phone: item.customer_phone || '',
+        warranty_months: months,
+        warranty_end_date: endDate.toISOString().slice(0, 10),
+        days_remaining: daysLeft,
+        is_valid: daysLeft >= 0
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/suppliers/:id/ledger', async (req, res) => {
+    try {
+      const sid = Number(req.params.id);
+      const supplier = await db.dbGet('SELECT * FROM suppliers WHERE id = ? AND deleted_at IS NULL', [sid]);
+      const purchases = await db.dbAll('SELECT * FROM purchase_invoices WHERE supplier_id = ? AND deleted_at IS NULL ORDER BY id DESC', [sid]);
+      const payments = await db.dbAll(
+        `SELECT ip.*, pi.invoice_number FROM invoice_payments ip
+         LEFT JOIN purchase_invoices pi ON pi.id = ip.invoice_id
+         WHERE (ip.supplier_id = ? OR pi.supplier_id = ?) AND ip.deleted_at IS NULL ORDER BY ip.id DESC`,
+        [sid, sid]
+      );
+      const returns = await db.dbAll('SELECT * FROM supplier_returns WHERE supplier_id = ? AND deleted_at IS NULL ORDER BY id DESC', [sid]);
+      res.json({ supplier, purchases, payments, returns });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/installments', async (req, res) => {
+    try {
+      res.json(await createInstallmentPlanRecord(req.body || {}));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/installments/:scheduleId/pay', async (req, res) => {
+    try {
+      const sid = Number(req.params.scheduleId);
+      const sched = await db.dbGet('SELECT * FROM installment_schedules WHERE id = ?', [sid]);
+      if (!sched) return res.status(404).json({ error: 'schedule_not_found' });
+      const amount = req.body && req.body.amount !== undefined ? Number(req.body.amount) : Number(sched.amount) - Number(sched.paid_amount || 0);
+      const newPaid = Number((Number(sched.paid_amount || 0) + amount).toFixed(2));
+      const newStatus = newPaid >= Number(sched.amount) - 0.01 ? 'paid' : 'partial';
+      const nowIso = new Date().toISOString();
+
+      await db.withTransaction(async () => {
+        await db.dbRun('UPDATE installment_schedules SET paid_amount = ?, status = ?, paid_at = ? WHERE id = ?', [newPaid, newStatus, nowIso, sid]);
+        await db.dbRun('UPDATE installment_plans SET remaining_amount = MAX(0, COALESCE(remaining_amount, 0) - ?) WHERE id = ?', [amount, sched.plan_id]);
+        const pendingRow = await db.dbGet("SELECT COUNT(*) AS c FROM installment_schedules WHERE plan_id = ? AND status <> 'paid' AND deleted_at IS NULL", [sched.plan_id]);
+        if (Number((pendingRow && pendingRow.c) || 0) === 0) {
+          await db.dbRun("UPDATE installment_plans SET status = 'completed' WHERE id = ?", [sched.plan_id]);
+        }
+      });
+      res.json({ success: true, scheduleId: sid, status: newStatus });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/doc-counters', async (_req, res) => {
+    try {
+      res.json(await db.dbAll('SELECT * FROM document_counters ORDER BY doc_type ASC'));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put('/api/doc-counters', async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const docType = String(payload.doc_type || 'invoice').trim();
+      const year = Number(payload.year || new Date().getFullYear());
+      const lastNum = Math.max(0, parseInt(payload.last_number ?? 0, 10) || 0);
+      const prefixFmt = String(payload.prefix_format || 'FAC-{YYYY}-{0000}').trim();
+      await db.dbRun(
+        `INSERT INTO document_counters (doc_type, year, last_number, prefix_format)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(doc_type, year) DO UPDATE SET last_number = excluded.last_number, prefix_format = excluded.prefix_format`,
+        [docType, year, lastNum, prefixFmt]
+      );
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/copilot-insights', async (_req, res) => {
+    try {
+      res.json(await analyticsQueries.getAiCopilotInsights(db));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/products/:id/serials', async (req, res) => {
+    try {
+      res.json(await db.dbAll('SELECT * FROM product_serials WHERE product_id = ? AND deleted_at IS NULL ORDER BY id DESC', [Number(req.params.id)]));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/products/:id/serials', async (req, res) => {
+    try {
+      const p = req.body || {};
+      const ins = await db.dbRun(
+        "INSERT INTO product_serials (product_id, variant_id, batch_id, serial_number, status, warranty_months, notes) VALUES (?, ?, ?, ?, 'in_stock', ?, ?)",
+        [Number(req.params.id), p.variant_id || null, p.batch_id || null, String(p.serial_number || '').trim(), Number(p.warranty_months ?? 12), p.notes || null]
+      );
+      res.json({ success: true, id: ins.lastID });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get('/api/dz-barcode/:barcode', async (req, res) => {
     try {
       const row = await db.dbGet('SELECT * FROM dz_product_dictionary WHERE barcode = ?', [String(req.params.barcode).trim()]);

@@ -219,6 +219,69 @@ class LanApiClient {
   getCustomTemplate(id) { return this._req('GET', `/api/custom-templates/${id}`); }
   saveCustomTemplate(data) { return this._req('POST', '/api/custom-templates', data); }
   deleteCustomTemplate(id) { return this._req('DELETE', `/api/custom-templates/${id}`); }
+
+  lookupDzBarcode(barcode) {
+    return this._req('GET', `/api/dz-barcode/${encodeURIComponent(barcode)}`);
+  }
+  getDzDictionaryStats() {
+    return this._req('GET', '/api/dz-dictionary/stats');
+  }
+  lookupWarrantySerial(serial) {
+    return this._req('GET', `/api/warranty/${encodeURIComponent(serial)}`);
+  }
+  getSupplierLedger(supplierId) {
+    return this._req('GET', `/api/suppliers/${supplierId}/ledger`);
+  }
+  getInstallmentPlans(filters = {}) {
+    return this._req('GET', '/api/installments', undefined, filters);
+  }
+  createInstallmentPlan(payload) {
+    return this._req('POST', '/api/installments', payload);
+  }
+  payInstallmentSchedule(scheduleId, amount) {
+    return this._req('POST', `/api/installments/${scheduleId}/pay`, { amount });
+  }
+  getAuditLogs(filters = {}) {
+    return this._req('GET', '/api/audit-logs', undefined, filters);
+  }
+  addAuditLog(payload) {
+    return this._req('POST', '/api/audit-logs', payload);
+  }
+  getDocCounters() {
+    return this._req('GET', '/api/doc-counters');
+  }
+  updateDocCounter(payload) {
+    return this._req('PUT', '/api/doc-counters', payload);
+  }
+  getAiCopilotInsights() {
+    return this._req('GET', '/api/copilot-insights');
+  }
+  getProductSerials(productId) {
+    return this._req('GET', `/api/products/${productId}/serials`);
+  }
+  addProductSerial(payload) {
+    return this._req('POST', `/api/products/${payload.product_id || payload.productId}/serials`, payload);
+  }
+
+  getChequesPortfolio(filters = {}) {
+    return this._req('GET', '/api/cheques', undefined, filters);
+  }
+  saveChequeRecord(payload) {
+    return this._req('POST', '/api/cheques', payload);
+  }
+  updateChequeStatus(id, status) {
+    return this._req('PUT', `/api/cheques/${id}/status`, { status });
+  }
+  deleteChequeRecord(id) {
+    return this._req('DELETE', `/api/cheques/${id}`);
+  }
+  getAlgerianFiscalReport(params = {}) {
+    return this._req('GET', '/api/fiscal-report', undefined, params);
+  }
+  importDzMasterCsv() {
+    return this._req('POST', '/api/dz-dictionary/import-csv');
+  }
+
   getSettings() { return this._req('GET', '/api/settings'); }
   updateSettings(data) { return this._req('PUT', '/api/settings', data); }
 }

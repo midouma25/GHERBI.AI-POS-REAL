@@ -1,7 +1,7 @@
 /**
  * preload.js
- * جسر الربط الآمن والنظيف 100% (ContextBridge) بين العملية الرئيسية والواجهة الأمامية
- * يضم كافة دوال النظام + دوال القاموس الجزائري 613 + الأقساط + سجل الرقابة + شاشة الزبون الثانية
+ * جسر الربط الآمن الشامل 100% (ContextBridge) بين العملية الرئيسية والواجهة الأمامية
+ * يضم كافة دوال Lumina POS + الميزات الجزائرية الـ 6 + فاحص الضمان + استيراد قاموس 613 + عدادات الفواتير
  */
 
 'use strict';
@@ -31,7 +31,15 @@ const api = {
   updateSettings: (settingsObj) => invoke('update-settings', settingsObj),
   resetSystem: () => invoke('reset-system'),
   seedDemoData: () => invoke('seed-demo-data'),
+  getChequesPortfolio: (filters) => invoke('get-cheques-portfolio', filters),
+  saveChequeRecord: (payload) => invoke('save-cheque-record', payload),
+  updateChequeStatus: (id, status) => invoke('update-cheque-status', id, status),
+  deleteChequeRecord: (id) => invoke('delete-cheque-record', id),
+  getAlgerianFiscalReport: (params) => invoke('get-algerian-fiscal-report', params),
+  exportEtat104Excel: (rows) => invoke('export-etat104-excel', rows),
   getPerformanceMetrics: () => invoke('get-performance-metrics'),
+  getDocCounters: () => invoke('get-doc-counters'),
+  updateDocCounter: (payload) => invoke('update-doc-counter', payload),
 
   // 2. المستخدمون والحسابات
   checkFirstRun: () => invoke('check-first-run'),
@@ -66,6 +74,7 @@ const api = {
   toggleFeatured: (productId) => invoke('toggle-featured', productId),
   getProductSerials: (productId) => invoke('get-product-serials', productId),
   addProductSerial: (payload) => invoke('add-product-serial', payload),
+  lookupWarrantySerial: (serial) => invoke('lookup-warranty-serial', serial),
 
   // 4. المبيعات، الزبائن، والائتمان
   processSale: (saleData) => invoke('process-sale', saleData),
@@ -97,6 +106,7 @@ const api = {
   updateSupplier: (...args) => invoke('update-supplier', ...args),
   deleteSupplier: (supplierId) => invoke('delete-supplier', supplierId),
   getSupplierPurchases: (supplierId) => invoke('get-supplier-purchases', supplierId),
+  getSupplierLedger: (supplierId) => invoke('get-supplier-ledger', supplierId),
   addSupplierPayment: (supplierId, amount, date, meta) =>
     invoke('add-supplier-payment', supplierId, amount, date, meta),
   getSupplierReturnableItems: (supplierId) =>
@@ -187,8 +197,10 @@ const api = {
   saveCustomTemplate: (data) => invoke('save-custom-template', data),
   deleteCustomTemplate: (id) => invoke('delete-custom-template', id),
 
-  // 10. الميزات الـ 6 الحصرية للسوق الجزائري (القاموس 613، الأقساط، الرقابة، وشاشة الزبون)
+  // 10. الميزات الحصرية للسوق الجزائري (القاموس 613 الضخم، الأقساط، الرقابة، شاشة الزبون، والضمان)
   lookupDzBarcode: (barcode) => invoke('lookup-dz-barcode', barcode),
+  importDzDictionaryCsv: () => invoke('import-dz-dictionary-csv'),
+  getDzDictionaryStats: () => invoke('get-dz-dictionary-stats'),
   getAuditLogs: (filters) => invoke('get-audit-logs', filters),
   addAuditLog: (payload) => invoke('add-audit-log', payload),
   getInstallmentPlans: (filters) => invoke('get-installment-plans', filters),
@@ -205,6 +217,7 @@ const api = {
   openCashDrawer: () => invoke('open-cash-drawer'),
   generateBarcodeImage: (text, opts) => invoke('generate-barcode-image', text, opts),
   pairingQrDataUrl: () => invoke('pairing-qr-dataurl'),
+  ripQrDataUrl: (txt) => invoke('rip-qr-dataurl', txt),
   exportDatabaseBackup: () => invoke('export-db-backup'),
   importDatabaseBackup: () => invoke('import-db-backup'),
   exportProductsToExcel: () => invoke('export-products-excel'),

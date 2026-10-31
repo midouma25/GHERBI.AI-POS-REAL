@@ -1,7 +1,7 @@
 /**
- * renderer.js — [الشطر الأول 1/3]
+ * renderer.js — [الشطر الأول 1/3 من الترقية الختامية 100%]
  * المحرك الرئيسي الشامل للواجهة الأمامية ونقطة البيع (Enterprise Frontend & POS Controller)
- * لنظام Gherbi.Ai POS — يعمل بالكامل عبر النوافذ المنبثقة التفاعلية (Zero window.prompt)
+ * لنظام Gherbi.Ai POS — تطابق 100% مع Lumina POS + الميزات الحصرية للسوق الجزائري
  */
 
 'use strict';
@@ -21,7 +21,7 @@ const AppState = {
   activeSession: null,
   notifications: { lowStock: [], expiring: [], dueInstallments: [] },
 
-  // حالة شاشة الكاشير (POS State & Pagination)
+  // حالة شاشة الكاشير والتخصيص (POS State, Customization & Edit Sale Mode)
   selectedCategory: 'all',
   searchQuery: '',
   posFilterFamily: '',
@@ -31,21 +31,32 @@ const AppState = {
   posPageSize: 24,
   posCardSize: 'medium',
   posShowImages: true,
+  posShowCost: false,
+  posCartWidth: 420,
   isReturnMode: false,
   priceTier: 'retail',
+  editingSaleId: null,
+  editingSaleNumber: null,
+  unregisteredScannedBarcode: '',
+  numpadActiveField: 'qty',
 
   // السلات المتعددة والمسودات
   carts: [{ id: 1, label: 'سلة #1', items: [], customerId: '', discount: 0 }],
   activeCartIndex: 0,
   draftCarts: [],
 
-  // حالة النوافذ المؤقتة (Modals Temp State)
+  // حالة المخزون والنوافذ المؤقتة
+  invStockFilter: 'all',
+  invSearchQuery: '',
+  invSortKey: 'newest',
   lastFocusedInput: null,
   liveScaleWeight: 0,
   tempExtraPrices: [],
   tempExtraBarcodes: [],
   tempVariantsMatrix: [],
   tempPurchaseItems: [],
+
+  // الإحصائيات، استوديو الطباعة، وطابور الملصقات بالجملة (Batch Label Queue)
   analyticsTab: 'summary',
   analyticsDateFrom: '',
   analyticsDateTo: '',
@@ -53,6 +64,7 @@ const AppState = {
   segmentData: null,
   charts: {},
   printStudioTab: 'labels',
+  labelPrintQueue: [],
   labelStudioConfig: {
     source: 'products',
     selectedId: '',
@@ -60,6 +72,7 @@ const AppState = {
     widthMm: 40,
     heightMm: 25,
     barcodeHeightMm: 11,
+    columns: 1,
     copies: 1,
     showShop: false,
     showName: true,
@@ -69,7 +82,10 @@ const AppState = {
     showVariants: false,
     showDiscount: false,
     showPlu: false
-  }
+  },
+
+  // تبويب الإعدادات النشط (7 تبويبات)
+  settingsTab: 'general'
 };
 
 window.AppState = AppState;
@@ -160,6 +176,10 @@ const App = {
     AppState.posPageSize = Math.max(6, parseInt(AppState.settings.pos_page_size || '24', 10) || 24);
     AppState.posCardSize = AppState.settings.pos_card_size || 'medium';
     AppState.posShowImages = String(AppState.settings.pos_show_images) !== 'false';
+    AppState.posShowCost = String(AppState.settings.pos_show_cost) === 'true';
+    AppState.posCartWidth = Math.min(620, Math.max(320, parseInt(AppState.settings.pos_cart_width || '420', 10) || 420));
+
+    this.applyCartWidthLayout(AppState.posCartWidth);
 
     const isFirst = await window.api.checkFirstRun().catch(() => false);
     if (isFirst === true || (isFirst && isFirst.isFirstRun === true)) {
@@ -174,6 +194,7 @@ const App = {
     this.updateShiftHeaderBadge();
     this.setLanguage(AppState.settings.app_lang || 'ar', false);
     this.initVirtualKeyboard();
+    this.initCartResizer();
     this.bindKeyboardShortcuts();
     this.bindLiveEvents();
     this.renderPosView();
@@ -192,6 +213,64 @@ const App = {
   closeModal(id) {
     const el = document.getElementById(id);
     if (el) el.classList.remove('active');
+  },
+
+  applyCartWidthLayout(widthPx) {
+    const w = Math.min(620, Math.max(320, Number(widthPx) || 420));
+    AppState.posCartWidth = w;
+    const grid = document.getElementById('posMainGridContainer');
+    if (grid) {
+      grid.style.gridTemplateColumns = `1fr 6px ${w}px`;
+    }
+  },
+
+  initCartResizer() {
+    const resizer = document.getElementById('posCartResizer');
+    if (!resizer) return;
+    let dragging = false;
+
+    resizer.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      dragging = true;
+      document.body.style.cursor = 'col-resize';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const isRtl = document.documentElement.dir !== 'ltr';
+      const newWidth = isRtl ? e.clientX - 20 : window.innerWidth - e.clientX - 20;
+      if (newWidth >= 320 && newWidth <= 620) {
+        this.applyCartWidthLayout(newWidth);
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      document.body.style.cursor = '';
+      if (window.api) {
+        window.api.updateSettings({ pos_cart_width: String(AppState.posCartWidth) });
+      }
+    });
+  },
+
+  openLockScreenModal() {
+    document.getElementById('lockPassword').value = '';
+    document.getElementById('lockErrorText').textContent = '';
+    this.openModal('lockScreenModal');
+  },
+
+  async unlockScreen() {
+    const pass = document.getElementById('lockPassword').value;
+    const username = AppState.currentUser ? AppState.currentUser.username : 'admin';
+    const res = await window.api.loginUser(username, pass);
+    if (res && res.success) {
+      this.closeModal('lockScreenModal');
+      showToast('تم فتح قفل الشاشة بنجاح', 'success');
+    } else {
+      document.getElementById('lockErrorText').textContent = 'كلمة المرور غير صحيحة!';
+      playBeep(false);
+    }
   },
 
   updateUserBadge() {
@@ -381,6 +460,7 @@ const App = {
 
   bindKeyboardShortcuts() {
     window.addEventListener('keydown', (e) => {
+      if (document.getElementById('lockScreenModal')?.classList.contains('active')) return;
       if (e.key === 'F1') {
         e.preventDefault();
         this.openCheckoutModal();
@@ -402,7 +482,9 @@ const App = {
         logSecurityAudit('open_cash_drawer_manual', { source: 'F10_shortcut' }, 'warning');
         showToast('تم إرسال نبضة فتح درج النقود (مسجل في الرقابة)', 'info');
       } else if (e.key === 'Escape') {
-        document.querySelectorAll('.modal-overlay.active').forEach((m) => m.classList.remove('active'));
+        document.querySelectorAll('.modal-overlay.active').forEach((m) => {
+          if (m.id !== 'lockScreenModal') m.classList.remove('active');
+        });
       }
     });
   },
@@ -412,10 +494,13 @@ const App = {
       window.api.scale.onReading((reading) => {
         if (!reading) return;
         AppState.liveScaleWeight = Number(reading.weight || 0);
+        const unit = reading.unit || 'kg';
         const txt = document.getElementById('liveScaleWeight');
-        if (txt) txt.textContent = `${AppState.liveScaleWeight.toFixed(3)} ${reading.unit || 'kg'}`;
+        if (txt) txt.textContent = `${AppState.liveScaleWeight.toFixed(3)} ${unit}`;
         const modalDisp = document.getElementById('scaleModalWeightDisplay');
-        if (modalDisp) modalDisp.textContent = `${AppState.liveScaleWeight.toFixed(3)} ${reading.unit || 'kg'}`;
+        if (modalDisp) modalDisp.textContent = `${AppState.liveScaleWeight.toFixed(3)} ${unit}`;
+        const numScaleVal = document.getElementById('numModalScaleValue');
+        if (numScaleVal) numScaleVal.textContent = `${AppState.liveScaleWeight.toFixed(3)} ${unit}`;
       });
     }
   },
@@ -551,7 +636,7 @@ const App = {
   },
 
   // ==========================================================================
-  // 4. محرك شاشة المبيعات المتقدم (POS View, Pagination, Scale, Pickers)
+  // 4. محرك شاشة المبيعات المتقدم، لوحة الأرقام اللمسية، وتعديل الفاتورة
   // ==========================================================================
   get currentCart() {
     return AppState.carts[AppState.activeCartIndex] || AppState.carts[0];
@@ -566,6 +651,21 @@ const App = {
   },
 
   renderPosView() {
+    const editBanner = document.getElementById('posEditSaleBanner');
+    const editBannerTxt = document.getElementById('posEditSaleBannerText');
+    const chkBtnTxt = document.getElementById('btnCheckoutMainText');
+
+    if (AppState.editingSaleId) {
+      if (editBanner) editBanner.classList.remove('hidden');
+      if (editBannerTxt) {
+        editBannerTxt.textContent = `✏️ وضع تعديل الفاتورة (${AppState.editingSaleNumber || '#' + AppState.editingSaleId})`;
+      }
+      if (chkBtnTxt) chkBtnTxt.textContent = 'حفظ تعديلات الفاتورة (F1)';
+    } else {
+      if (editBanner) editBanner.classList.add('hidden');
+      if (chkBtnTxt) chkBtnTxt.textContent = 'تسديد الفاتورة (F1)';
+    }
+
     const pillsBox = document.getElementById('posCategoryPills');
     if (pillsBox) {
       const cats = ['all', 'featured', ...AppState.categories];
@@ -707,6 +807,10 @@ const App = {
             ? `<img src="${p.image}" class="w-full h-20 object-contain rounded-lg bg-slate-50 dark:bg-slate-900 mb-1">`
             : '';
 
+        const costLine = AppState.posShowCost
+          ? `<div class="text-[10px] font-mono text-slate-400">شراء: ${Number(p.cost_price || 0).toFixed(2)}</div>`
+          : '';
+
         return `
           <div onclick="App.onPosProductCardClick(${p.id})" class="product-card flex flex-col justify-between gap-1.5">
             <div>
@@ -720,6 +824,7 @@ const App = {
               </div>
               ${imgHtml}
               <div class="font-bold text-xs line-clamp-2 min-h-[2rem]">${p.name}</div>
+              ${costLine}
             </div>
             <div class="pt-1 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
               <span class="font-mono font-black text-sm text-blue-600 dark:text-blue-400">${price.toFixed(2)}</span>
@@ -734,13 +839,18 @@ const App = {
     AppState.posCardSize = document.getElementById('posCardSizeSelect').value || 'medium';
     AppState.posPageSize = parseInt(document.getElementById('posPageSizeSelect').value || '24', 10) || 24;
     AppState.posShowImages = document.getElementById('posShowImagesCheckbox').checked;
+    AppState.posShowCost = Boolean(document.getElementById('posShowCostCheckbox')?.checked);
+    const widthVal = parseInt(document.getElementById('posCartWidthInput')?.value || '420', 10) || 420;
+    this.applyCartWidthLayout(widthVal);
     AppState.posPage = 1;
 
     if (window.api) {
       window.api.updateSettings({
         pos_card_size: AppState.posCardSize,
         pos_page_size: String(AppState.posPageSize),
-        pos_show_images: String(AppState.posShowImages)
+        pos_show_images: String(AppState.posShowImages),
+        pos_show_cost: String(AppState.posShowCost),
+        pos_cart_width: String(AppState.posCartWidth)
       });
     }
     this.closeModal('posCustomizeModal');
@@ -950,7 +1060,7 @@ const App = {
       }
     }
 
-    // 2. البحث بالباركود الأساسي أو الباركودات الفرعية (مع دعم تسعيرة الباركود الفرعي)
+    // 2. البحث بالباركود الأساسي أو الباركودات الفرعية
     for (const p of AppState.products) {
       if (String(p.barcode) === code) {
         this.addProductToCart(p.id, 1);
@@ -972,7 +1082,7 @@ const App = {
       }
     }
 
-    // 3. إذا كان الباركود جزائرياً (613) وغير مسجل، نبحث في القاموس الوطني ونفتح نافذة إضافته فوراً!
+    // 3. البحث في القاموس الجزائري الذكي لباركود 613
     if (code.startsWith('613') && window.api && window.api.lookupDzBarcode) {
       const dictItem = await window.api.lookupDzBarcode(code).catch(() => null);
       if (dictItem) {
@@ -991,8 +1101,56 @@ const App = {
       }
     }
 
+    // 4. فتح نافذة مساعد الباركود غير المسجل (#posBarcodeSuggestModal) كما في Lumina POS
     playBeep(false);
-    showToast(`الباركود (${code}) غير مسجل في المخزون`, 'warning');
+    this.openUnregisteredBarcodeModal(code);
+  },
+
+  openUnregisteredBarcodeModal(barcode) {
+    AppState.unregisteredScannedBarcode = barcode;
+    const txt = document.getElementById('unregisteredBarcodeText');
+    if (txt) txt.textContent = barcode;
+    const sel = document.getElementById('posBarcodeLinkProductSelect');
+    if (sel) {
+      sel.innerHTML = AppState.products
+        .map((p) => `<option value="${p.id}">${p.name} (${Number(p.selling_price || 0).toFixed(2)} د.ج)</option>`)
+        .join('');
+    }
+    this.openModal('posBarcodeSuggestModal');
+  },
+
+  createProductFromUnregisteredBarcode() {
+    const bc = AppState.unregisteredScannedBarcode;
+    this.closeModal('posBarcodeSuggestModal');
+    this.openProductModal({ barcode: bc, name: '', stock: 10 });
+  },
+
+  async linkUnregisteredBarcodeToProduct() {
+    const bc = AppState.unregisteredScannedBarcode;
+    const pid = Number(document.getElementById('posBarcodeLinkProductSelect')?.value);
+    if (!bc || !pid) return;
+    await window.api.addProductBarcode(pid, bc, null);
+    this.closeModal('posBarcodeSuggestModal');
+    await this.refreshProducts();
+    this.addProductToCart(pid, 1);
+    showToast(`تم ربط الباركود (${bc}) بالمنتج وإضافته للسلة`, 'success');
+  },
+
+  createSimilarProductFromSuggest() {
+    const bc = AppState.unregisteredScannedBarcode;
+    const pid = Number(document.getElementById('posBarcodeLinkProductSelect')?.value);
+    const prod = AppState.products.find((p) => Number(p.id) === pid);
+    this.closeModal('posBarcodeSuggestModal');
+    if (prod) {
+      this.openProductModal({
+        ...prod,
+        id: '',
+        barcode: bc,
+        name: `${prod.name} (نسخة)`
+      });
+    } else {
+      this.openProductModal({ barcode: bc });
+    }
   },
 
   addProductToCart(productId, customQty = 1, options = {}) {
@@ -1000,7 +1158,7 @@ const App = {
     if (!prod) return;
 
     const sign = AppState.isReturnMode ? -1 : 1;
-    let qtyToAdd = Number(customQty || 1) * sign;
+    const qtyToAdd = Number(customQty || 1) * sign;
 
     let unitPrice =
       options.overridePrice !== undefined && options.overridePrice !== null
@@ -1056,19 +1214,177 @@ const App = {
     this.renderCartItems();
   },
 
-  toggleCartItemWholesaleUnit(idx) {
-    const it = this.currentCart.items[idx];
-    if (!it || !it.wholesale_qty || it.wholesale_qty <= 1) return;
-    it._isWholesaleBox = !it._isWholesaleBox;
-    if (it._isWholesaleBox) {
-      it.quantity = it.wholesale_qty;
-      if (it.wholesale_price > 0) it.price = it.wholesale_price;
-    } else {
-      it.quantity = 1;
-      it.price = it.retail_price || it.price;
+  // نافذة اختيار الوحدة والتسعيرة (#posUnitChoiceModal)
+  openPosUnitChoiceModal(cartIndex) {
+    const it = this.currentCart.items[cartIndex];
+    if (!it) return;
+    document.getElementById('unitChoiceModalTitle').textContent = `اختيار الوحدة والتسعيرة: ${it.name}`;
+    const body = document.getElementById('posUnitChoiceModalBody');
+
+    const choices = [
+      {
+        label: `بيع بالوحدة (${it.unit || 'قطعة'}) — تجزئة`,
+        qty: 1,
+        price: Number(it.retail_price || it.price || 0)
+      }
+    ];
+
+    if (it.wholesale_price > 0) {
+      choices.push({
+        label: `سعر الجملة بالوحدة (${it.unit || 'قطعة'})`,
+        qty: it.quantity || 1,
+        price: Number(it.wholesale_price)
+      });
     }
+
+    if (it.wholesale_qty && it.wholesale_qty > 1) {
+      choices.push({
+        label: `بيع بـ ${it.wholesale_unit || 'كرتونة'} (${it.wholesale_qty} ${it.unit || 'قطعة'})`,
+        qty: Number(it.wholesale_qty),
+        price: Number(it.wholesale_price > 0 ? it.wholesale_price : it.retail_price)
+      });
+    }
+
+    if (Array.isArray(it.extra_prices)) {
+      for (const ep of it.extra_prices) {
+        choices.push({
+          label: `تسعيرة خاصة: ${ep.label}`,
+          qty: it.quantity || 1,
+          price: Number(ep.price || 0)
+        });
+      }
+    }
+
+    body.innerHTML = choices
+      .map(
+        (ch) => `
+        <button onclick="App.selectUnitOrPriceForCartItem(${cartIndex}, ${ch.qty}, ${ch.price})"
+          class="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-blue-500 flex items-center justify-between font-bold">
+          <span>${ch.label}</span>
+          <span class="font-mono text-blue-600">${ch.price.toFixed(2)} د.ج (الكمية: ${ch.qty})</span>
+        </button>`
+      )
+      .join('');
+
+    this.openModal('posUnitChoiceModal');
+  },
+
+  selectUnitOrPriceForCartItem(cartIndex, newQty, newPrice) {
+    const it = this.currentCart.items[cartIndex];
+    if (!it) return;
+    it.quantity = Number(newQty);
+    it.price = Number(newPrice);
     it.subtotal = Number((it.quantity * it.price).toFixed(2));
+    this.closeModal('posUnitChoiceModal');
     this.renderCartItems();
+  },
+
+  // لوحة الأرقام اللمسية للكمية والسعر والوزن (#numberInputModal)
+  openNumberInputModal(cartIndex, focusField = 'qty') {
+    const it = this.currentCart.items[cartIndex];
+    if (!it) return;
+    AppState.numpadActiveField = focusField;
+    document.getElementById('numModalCartIndex').value = String(cartIndex);
+    document.getElementById('numModalTitle').textContent = it.name;
+
+    const qtyInp = document.getElementById('numModalInput');
+    const prcInp = document.getElementById('numModalPriceInput');
+    qtyInp.value = String(it.quantity);
+    prcInp.value = String(it.price);
+
+    qtyInp.onclick = () => { AppState.numpadActiveField = 'qty'; };
+    prcInp.onclick = () => { AppState.numpadActiveField = 'price'; };
+
+    this.openModal('numberInputModal');
+  },
+
+  tapNumpad(key) {
+    const targetId = AppState.numpadActiveField === 'price' ? 'numModalPriceInput' : 'numModalInput';
+    const inp = document.getElementById(targetId);
+    if (!inp) return;
+
+    if (key === 'C') {
+      inp.value = '';
+    } else if (key.startsWith('+')) {
+      const add = parseFloat(key.slice(1)) || 0;
+      inp.value = String(Number(((parseFloat(inp.value) || 0) + add).toFixed(4)));
+    } else {
+      inp.value = String(inp.value || '') + key;
+    }
+  },
+
+  pullWeightIntoNumberModal() {
+    if (AppState.liveScaleWeight > 0) {
+      document.getElementById('numModalInput').value = AppState.liveScaleWeight.toFixed(3);
+    } else {
+      showToast('وزن الميزان الحالي 0.000 كغ', 'warning');
+    }
+  },
+
+  confirmNumberInputModal() {
+    const idx = Number(document.getElementById('numModalCartIndex').value);
+    const it = this.currentCart.items[idx];
+    if (!it) return;
+    const newQty = parseFloat(document.getElementById('numModalInput').value) || 0;
+    const newPrice = parseFloat(document.getElementById('numModalPriceInput').value) || 0;
+
+    if (newPrice < it.price) {
+      logSecurityAudit(
+        'price_reduced_in_cart',
+        { product: it.name, old_price: it.price, new_price: newPrice },
+        'warning',
+        'product',
+        it.product_id
+      );
+    }
+
+    it.quantity = newQty;
+    it.price = newPrice;
+    it.subtotal = Number((it.quantity * it.price).toFixed(2));
+    this.closeModal('numberInputModal');
+    this.renderCartItems();
+  },
+
+  // نافذة خصم السلة بالـ % أو المبلغ (#cartModifierModal)
+  openCartModifierModal() {
+    const subtotal = this.currentCart.items.reduce((s, it) => s + Number(it.subtotal || 0), 0);
+    const curDisc = Number(this.currentCart.discount || 0);
+    const pct = subtotal > 0 ? Number(((curDisc / subtotal) * 100).toFixed(2)) : 0;
+
+    document.getElementById('modPercentInput').value = String(pct);
+    document.getElementById('modAmountInput').value = String(curDisc);
+    document.getElementById('modPercentPreview').textContent = `الصافي بعد الخصم: ${(subtotal - curDisc).toFixed(2)} د.ج`;
+    this.openModal('cartModifierModal');
+  },
+
+  applyQuickCartPercent(pct) {
+    document.getElementById('modPercentInput').value = String(pct);
+    this.onCartModPercentChange(pct);
+  },
+
+  onCartModPercentChange(pctVal) {
+    const subtotal = this.currentCart.items.reduce((s, it) => s + Number(it.subtotal || 0), 0);
+    const pct = Math.min(100, Math.max(0, parseFloat(pctVal) || 0));
+    const amt = Number(((subtotal * pct) / 100).toFixed(2));
+    document.getElementById('modAmountInput').value = String(amt);
+    document.getElementById('modPercentPreview').textContent = `الصافي بعد الخصم: ${(subtotal - amt).toFixed(2)} د.ج`;
+  },
+
+  onCartModAmountChange(amtVal) {
+    const subtotal = this.currentCart.items.reduce((s, it) => s + Number(it.subtotal || 0), 0);
+    const amt = Math.max(0, parseFloat(amtVal) || 0);
+    const pct = subtotal > 0 ? Number(((amt / subtotal) * 100).toFixed(2)) : 0;
+    document.getElementById('modPercentInput').value = String(pct);
+    document.getElementById('modPercentPreview').textContent = `الصافي بعد الخصم: ${(subtotal - amt).toFixed(2)} د.ج`;
+  },
+
+  confirmCartModifierModal() {
+    const amt = Math.max(0, parseFloat(document.getElementById('modAmountInput').value) || 0);
+    const discInput = document.getElementById('cartDiscountInput');
+    if (discInput) discInput.value = String(amt);
+    this.closeModal('cartModifierModal');
+    this.recalcCart();
+    this.syncCustomerDisplay();
   },
 
   renderCartTabs() {
@@ -1125,32 +1441,35 @@ const App = {
 
     box.innerHTML = cart.items
       .map((it, idx) => {
-        const hasBoxToggle = it.wholesale_qty && it.wholesale_qty > 1;
+        const hasUnitOptions =
+          (it.wholesale_qty && it.wholesale_qty > 1) ||
+          it.wholesale_price > 0 ||
+          (Array.isArray(it.extra_prices) && it.extra_prices.length > 0);
         return `
         <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 flex items-center justify-between gap-2 text-xs">
           <div class="flex-1 min-w-0">
             <div class="font-bold truncate">${it.name}</div>
-            <div class="text-[11px] text-slate-400 font-mono flex items-center gap-1.5">
-              <span>${it.price.toFixed(2)} د.ج / ${it.unit || 'وحدة'}</span>
+            <div class="text-[11px] text-slate-400 font-mono flex flex-wrap items-center gap-1.5">
+              <span>${Number(it.price || 0).toFixed(2)} د.ج / ${it.unit || 'وحدة'}</span>
               ${it.serial_number ? `<span class="text-blue-500">[S/N: ${it.serial_number}]</span>` : ''}
               ${
-                hasBoxToggle
-                  ? `<button onclick="App.toggleCartItemWholesaleUnit(${idx})" class="px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-600 font-bold text-[10px]">${
-                      it._isWholesaleBox ? it.wholesale_unit || 'كرتونة' : 'تحويل لكرتونة'
-                    }</button>`
+                hasUnitOptions
+                  ? `<button onclick="App.openPosUnitChoiceModal(${idx})" class="px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-600 font-bold text-[10px]">وحدة/تسعيرة</button>`
                   : ''
               }
             </div>
           </div>
           <div class="flex items-center gap-1">
-            <input type="number" step="any" value="${it.quantity}"
-              onchange="App.updateCartItemQty(${idx}, this.value)"
-              class="w-16 px-1.5 py-1 rounded-lg text-center font-mono font-bold">
-            <input type="number" step="any" value="${it.price}"
-              onchange="App.updateCartItemPrice(${idx}, this.value)"
-              class="w-20 px-1.5 py-1 rounded-lg text-center font-mono font-bold text-blue-600">
+            <button onclick="App.openNumberInputModal(${idx}, 'qty')" title="تعديل الكمية باللمس"
+              class="min-w-[3.2rem] px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-center font-mono font-black hover:border-blue-500">
+              ${it.quantity}
+            </button>
+            <button onclick="App.openNumberInputModal(${idx}, 'price')" title="تعديل السعر باللمس"
+              class="min-w-[4rem] px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-center font-mono font-bold text-blue-600 hover:border-blue-500">
+              ${Number(it.price || 0).toFixed(2)}
+            </button>
           </div>
-          <div class="w-20 text-left font-mono font-black">${it.subtotal.toFixed(2)}</div>
+          <div class="w-20 text-left font-mono font-black">${Number(it.subtotal || 0).toFixed(2)}</div>
           <button onclick="App.removeCartItem(${idx})" class="text-rose-500 hover:bg-rose-500/10 p-1 rounded-lg">
             <span class="material-symbols-rounded icon-sm">delete</span>
           </button>
@@ -1161,33 +1480,6 @@ const App = {
     this.recalcCart();
     this.renderCartTabs();
     this.syncCustomerDisplay();
-  },
-
-  updateCartItemQty(idx, val) {
-    const it = this.currentCart.items[idx];
-    if (!it) return;
-    it.quantity = parseFloat(val) || 0;
-    it.subtotal = Number((it.quantity * it.price).toFixed(2));
-    this.renderCartItems();
-  },
-
-  updateCartItemPrice(idx, val) {
-    const it = this.currentCart.items[idx];
-    if (!it) return;
-    const oldPrice = it.price;
-    const newPrice = parseFloat(val) || 0;
-    if (newPrice < oldPrice) {
-      logSecurityAudit(
-        'price_reduced_in_cart',
-        { product: it.name, old_price: oldPrice, new_price: newPrice },
-        'warning',
-        'product',
-        it.product_id
-      );
-    }
-    it.price = newPrice;
-    it.subtotal = Number((it.quantity * it.price).toFixed(2));
-    this.renderCartItems();
   },
 
   removeCartItem(idx) {
@@ -1222,16 +1514,53 @@ const App = {
 
   clearCurrentCart() {
     if (this.currentCart.items.length > 0) {
-      logSecurityAudit(
-        'cart_cleared',
-        { items_count: this.currentCart.items.length },
-        'warning'
-      );
+      logSecurityAudit('cart_cleared', { items_count: this.currentCart.items.length }, 'warning');
     }
     this.currentCart.items = [];
+    AppState.editingSaleId = null;
+    AppState.editingSaleNumber = null;
     const discInput = document.getElementById('cartDiscountInput');
     if (discInput) discInput.value = '0';
-    this.renderCartItems();
+    this.renderPosView();
+  },
+
+  async loadSaleIntoPosForEdit(saleId) {
+    const fullSale = await window.api.getSaleDetails(saleId);
+    if (!fullSale) return;
+
+    AppState.editingSaleId = fullSale.id;
+    AppState.editingSaleNumber = fullSale.doc_number || `#${fullSale.id}`;
+
+    const cart = this.currentCart;
+    cart.customerId = fullSale.customer_id || '';
+    cart.discount = Number(fullSale.discount || 0);
+    const discInput = document.getElementById('cartDiscountInput');
+    if (discInput) discInput.value = String(cart.discount);
+
+    cart.items = (fullSale.items || []).map((it) => ({
+      product_id: it.product_id || null,
+      variant_id: it.variant_id || null,
+      batch_id: it.batch_id || null,
+      name: it.product_name || it.custom_product_name || 'منتج',
+      barcode: it.product_barcode || '',
+      unit: it.product_unit || 'قطعة',
+      quantity: Number(it.quantity || 1),
+      price: Number(it.price || 0),
+      cost_price: Number(it.cost_price || 0),
+      subtotal: Number(it.subtotal || 0),
+      serial_number: it.serial_number || null,
+      warranty_months: Number(it.warranty_months || 0)
+    }));
+
+    await this.switchView('pos');
+    showToast(`تم تحميل الفاتورة (${AppState.editingSaleNumber}) في السلة للتعديل`, 'info');
+  },
+
+  cancelEditSaleMode() {
+    AppState.editingSaleId = null;
+    AppState.editingSaleNumber = null;
+    this.clearCurrentCart();
+    showToast('تم إلغاء وضع تعديل الفاتورة', 'info');
   },
 
   holdCurrentCart() {
@@ -1329,7 +1658,7 @@ const App = {
                 <td class="py-2 flex gap-1.5">
                   <button onclick="App.reprintSale(${s.id}, 'receipt')" class="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold">تذكرة</button>
                   <button onclick="App.reprintSale(${s.id}, 'a4')" class="px-2.5 py-1 bg-blue-600 text-white rounded-lg font-bold">A4</button>
-                  <button onclick="App.openDeliveryNoteModal(${s.id})" class="px-2.5 py-1 bg-teal-600 text-white rounded-lg font-bold">وصل توصيل</button>
+                  <button onclick="App.closeModal('recentSalesModal'); App.loadSaleIntoPosForEdit(${s.id})" class="px-2.5 py-1 bg-amber-500 text-white rounded-lg font-bold">تعديل</button>
                 </td>
               </tr>`
               )
@@ -1359,7 +1688,7 @@ const App = {
   },
 
   // ==========================================================================
-  // 5. نافذة الدفع الشاملة (Checkout + Split Payment + Installments)
+  // 5. نافذة الدفع الشاملة (Checkout + Split Payment + Installments + Edit Sale)
   // ==========================================================================
   async openCheckoutModal() {
     if (this.currentCart.items.length === 0) {
@@ -1379,7 +1708,9 @@ const App = {
     if (alertBox) alertBox.classList.add('hidden');
 
     if (this.currentCart.customerId && window.api.getCustomerCreditSummary) {
-      const creditInfo = await window.api.getCustomerCreditSummary(this.currentCart.customerId).catch(() => null);
+      const creditInfo = await window.api
+        .getCustomerCreditSummary(this.currentCart.customerId, AppState.editingSaleId)
+        .catch(() => null);
       if (creditInfo && creditInfo.credit_limit > 0) {
         alertBox.classList.remove('hidden');
         alertBox.textContent = `الزبون: ${creditInfo.name} | الدين الحالي: ${creditInfo.current_debt} د.ج | سقف الدين: ${creditInfo.credit_limit} د.ج`;
@@ -1509,6 +1840,7 @@ const App = {
     }
 
     const salePayload = {
+      editSaleId: AppState.editingSaleId || undefined,
       customer_id: cart.customerId || null,
       user_id: AppState.currentUser ? AppState.currentUser.id : 1,
       subtotal: calc.subtotal,
@@ -1527,7 +1859,12 @@ const App = {
     try {
       const res = await window.api.processSale(salePayload);
       this.closeModal('checkoutModal');
-      showToast(`تم تسجيل الفاتورة بنجاح (${res.docNumber || '#' + res.saleId})`, 'success');
+      showToast(
+        AppState.editingSaleId
+          ? `تم تحديث الفاتورة بنجاح (${AppState.editingSaleNumber})`
+          : `تم تسجيل الفاتورة بنجاح (${res.docNumber || '#' + res.saleId})`,
+        'success'
+      );
 
       if (printMode !== 'none' && window.PrintEngine) {
         const fullSale = await window.api.getSaleDetails(res.saleId);
@@ -1540,6 +1877,8 @@ const App = {
         });
       }
 
+      AppState.editingSaleId = null;
+      AppState.editingSaleNumber = null;
       this.currentCart.items = [];
       const discInput = document.getElementById('cartDiscountInput');
       if (discInput) discInput.value = '0';
@@ -1618,6 +1957,7 @@ const App = {
       await window.PrintEngine.printHtmlDocument(html, { silent: false });
     }
   },
+
   // ==========================================================================
   // 6. النوافذ السريعة (المنتج الحر F8، وصفة التصنيع BOM، والمصادقة) — [الشطر الثاني 2/3]
   // ==========================================================================
@@ -1689,29 +2029,67 @@ const App = {
   },
 
   // ==========================================================================
-  // 7. سجل المبيعات، تفاصيل الفاتورة، إشعارات الدائن (Avoir)، وصل التوصيل، وشهادة الضمان
+  // 7. سجل المبيعات المطور، تعديل الفاتورة، وفاحص الضمان برقم IMEI / Serial
   // ==========================================================================
   async renderSalesHistoryView(filters = {}) {
     const root = document.getElementById('sales-view-root');
     if (!root) return;
-    const sales = (await window.api.getSales(filters).catch(() => [])) || [];
+    let sales = (await window.api.getSales(filters).catch(() => [])) || [];
+
+    if (filters.paymentStatus === 'paid') {
+      sales = sales.filter((s) => Number(s.paid_amount || 0) >= Number(s.total || 0) - 0.01);
+    } else if (filters.paymentStatus === 'unpaid') {
+      sales = sales.filter((s) => Number(s.paid_amount || 0) < Number(s.total || 0) - 0.01);
+    }
 
     root.innerHTML = `
       <div class="space-y-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 class="text-2xl font-black">سجل المبيعات والفواتير وإشعارات الدائن (${sales.length})</h2>
-            <p class="text-xs text-slate-500">معاينة الفواتير، طباعة وصولات التوصيل، إصدار إشعارات الدائن (Facture d'Avoir)، وشهادات الضمان</p>
+            <h2 class="text-2xl font-black">سجل المبيعات، تعديل الفواتير، وفاحص الضمان (${sales.length})</h2>
+            <p class="text-xs text-slate-500">تعديل الفواتير، فحص صلاحية الضمان برقم IMEI/Serial، طباعة وصولات التوصيل، وإشعارات الدائن</p>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <input id="salesFilterFrom" type="date" value="${filters.dateFrom || ''}" class="px-3 py-2 rounded-xl text-xs font-mono">
-            <input id="salesFilterTo" type="date" value="${filters.dateTo || ''}" class="px-3 py-2 rounded-xl text-xs font-mono">
-            <button onclick="App.filterSalesHistory()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">تصفية</button>
-            <button onclick="window.api.exportSalesToExcel()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-1">
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <select id="salesFilterCustomer" class="px-3 py-2 rounded-xl font-bold">
+              <option value="">جميع الزبائن</option>
+              ${AppState.customers
+                .map(
+                  (c) =>
+                    `<option value="${c.id}" ${Number(filters.customerId) === Number(c.id) ? 'selected' : ''}>${c.name}</option>`
+                )
+                .join('')}
+            </select>
+            <select id="salesFilterStatus" class="px-3 py-2 rounded-xl font-bold">
+              <option value="" ${!filters.paymentStatus ? 'selected' : ''}>جميع الحالات</option>
+              <option value="paid" ${filters.paymentStatus === 'paid' ? 'selected' : ''}>مسددة بالكامل</option>
+              <option value="unpaid" ${filters.paymentStatus === 'unpaid' ? 'selected' : ''}>غير مسددة (بها دين)</option>
+            </select>
+            <input id="salesFilterFrom" type="date" value="${filters.dateFrom || ''}" class="px-3 py-2 rounded-xl font-mono">
+            <input id="salesFilterTo" type="date" value="${filters.dateTo || ''}" class="px-3 py-2 rounded-xl font-mono">
+            <button onclick="App.filterSalesHistory()" class="px-4 py-2 bg-blue-600 text-white rounded-xl font-bold">تصفية</button>
+            <button onclick="window.api.exportSalesToExcel()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold flex items-center gap-1">
               <span class="material-symbols-rounded icon-sm">download</span>
               <span>تصدير Excel</span>
             </button>
           </div>
+        </div>
+
+        <!-- شريط فاحص الضمان برقم IMEI / Serial Number -->
+        <div class="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-rounded text-indigo-600">verified_user</span>
+            <div>
+              <div class="font-black text-sm text-indigo-700 dark:text-indigo-300">فاحص الضمان الفوري بالأرقام التسلسلية (IMEI / Serial Warranty Checker)</div>
+              <div class="text-slate-500">امسح أو أدخل رقم IMEI / S/N للتحقق الفوري من فاتورة الشراء وصلاحية الضمان</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 flex-1 max-w-md">
+            <input id="warrantySerialSearchInput" type="text" placeholder="أدخل أو امسح رقم IMEI / S/N هنا..."
+              onkeydown="if(event.key==='Enter') App.checkWarrantyBySerial()"
+              class="flex-1 px-3 py-2 rounded-xl font-mono font-bold">
+            <button onclick="App.checkWarrantyBySerial()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold">فحص الضمان</button>
+          </div>
+          <div id="warrantyCheckResultBox" class="w-full hidden pt-2 border-t border-indigo-500/20"></div>
         </div>
 
         <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 overflow-x-auto">
@@ -1721,7 +2099,7 @@ const App = {
                 <th class="py-2.5 px-2">رقم الفاتورة</th>
                 <th class="py-2.5 px-2">التاريخ</th>
                 <th class="py-2.5 px-2">الزبون</th>
-                <th class="py-2.5 px-2">البائع</th>
+                <th class="py-2.5 px-2">طريقة الدفع</th>
                 <th class="py-2.5 px-2">الإجمالي</th>
                 <th class="py-2.5 px-2">المدفوع</th>
                 <th class="py-2.5 px-2">الباقي</th>
@@ -1732,7 +2110,7 @@ const App = {
             <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
               ${
                 sales.length === 0
-                  ? '<tr><td colspan="9" class="py-10 text-center text-slate-400 font-bold">لا توجد فواتير مبيعات مسجلة في هذه الفترة</td></tr>'
+                  ? '<tr><td colspan="9" class="py-10 text-center text-slate-400 font-bold">لا توجد فواتير مبيعات مطابقة للبحث</td></tr>'
                   : sales
                       .map((s) => {
                         const rem = Math.max(0, Number(s.total || 0) - Number(s.paid_amount || 0));
@@ -1741,17 +2119,19 @@ const App = {
                           <td class="py-2.5 px-2 font-mono font-bold text-blue-600">${s.doc_number || '#' + s.id}</td>
                           <td class="py-2.5 px-2 font-mono">${String(s.sale_date || '').slice(0, 16)}</td>
                           <td class="py-2.5 px-2 font-bold">${s.customer_name || 'زبون عابر'}</td>
-                          <td class="py-2.5 px-2 text-slate-500">${s.seller_name || 'المدير'}</td>
+                          <td class="py-2.5 px-2 font-bold text-slate-500">${s.payment_method || 'cash'}</td>
                           <td class="py-2.5 px-2 font-mono font-black">${Number(s.total || 0).toFixed(2)} د.ج</td>
                           <td class="py-2.5 px-2 font-mono text-emerald-600 font-bold">${Number(s.paid_amount || 0).toFixed(2)}</td>
                           <td class="py-2.5 px-2 font-mono ${rem > 0 ? 'text-rose-500 font-black' : 'text-slate-400'}">${rem.toFixed(2)}</td>
                           <td class="py-2.5 px-2 font-mono text-rose-600 font-bold">${s.credit_note_number || '-'}</td>
                           <td class="py-2.5 px-2 flex flex-wrap items-center gap-1">
-                            <button onclick="App.openSaleDetailsModal(${s.id})" class="px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded-lg font-bold" title="التفاصيل والضمان">تفاصيل</button>
-                            <button onclick="App.reprintSale(${s.id}, 'a4')" class="px-2 py-1 bg-blue-600/10 text-blue-600 rounded-lg font-bold">فاتورة A4</button>
+                            <button onclick="App.openSaleDetailsModal(${s.id})" class="px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded-lg font-bold">تفاصيل</button>
+                            <button onclick="App.loadSaleIntoPosForEdit(${s.id})" class="px-2 py-1 bg-amber-500/15 text-amber-600 rounded-lg font-bold" title="تحميل الفاتورة للكاشير لتعديلها">تعديل</button>
+                            <button onclick="App.openPrintCenterModal(${s.id}, 'invoice_a4')" class="px-2 py-1 bg-indigo-600 text-white rounded-lg font-bold" title="مركز الطباعة واللغات">🖨️ طباعة</button>
+                            <button onclick="App.reprintSale(${s.id}, 'a4')" class="px-2 py-1 bg-blue-600/10 text-blue-600 rounded-lg font-bold">A4</button>
                             <button onclick="App.reprintSale(${s.id}, 'receipt')" class="px-2 py-1 bg-emerald-600/10 text-emerald-600 rounded-lg font-bold">تذكرة</button>
                             <button onclick="App.openDeliveryNoteModal(${s.id})" class="px-2 py-1 bg-teal-600/10 text-teal-600 rounded-lg font-bold">توصيل BL</button>
-                            <button onclick="App.openCreditNoteModal(${s.id})" class="px-2 py-1 bg-amber-500/15 text-amber-600 rounded-lg font-bold">إشعار دائن</button>
+                            <button onclick="App.openCreditNoteModal(${s.id})" class="px-2 py-1 bg-rose-500/15 text-rose-600 rounded-lg font-bold">إشعار دائن</button>
                             <button onclick="App.deleteSaleRecord(${s.id})" class="text-rose-500 p-1"><span class="material-symbols-rounded icon-sm">delete</span></button>
                           </td>
                         </tr>`;
@@ -1766,9 +2146,42 @@ const App = {
   },
 
   async filterSalesHistory() {
+    const customerId = document.getElementById('salesFilterCustomer')?.value || '';
+    const paymentStatus = document.getElementById('salesFilterStatus')?.value || '';
     const dateFrom = document.getElementById('salesFilterFrom')?.value || '';
     const dateTo = document.getElementById('salesFilterTo')?.value || '';
-    await this.renderSalesHistoryView({ dateFrom, dateTo });
+    await this.renderSalesHistoryView({ customerId, paymentStatus, dateFrom, dateTo });
+  },
+
+  async checkWarrantyBySerial() {
+    const serial = document.getElementById('warrantySerialSearchInput')?.value?.trim();
+    const resBox = document.getElementById('warrantyCheckResultBox');
+    if (!serial || !resBox) return;
+
+    const info = await window.api.lookupWarrantySerial(serial);
+    resBox.classList.remove('hidden');
+
+    if (!info || !info.found) {
+      resBox.innerHTML = `<div class="p-2.5 rounded-xl bg-rose-500/15 text-rose-600 font-bold">❌ لم يتم العثور على أي جهاز مباع بالرقم التسلسلي (${serial})</div>`;
+      return;
+    }
+
+    resBox.innerHTML = `
+      <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-indigo-500/30 flex flex-wrap items-center justify-between gap-3">
+        <div class="space-y-1">
+          <div class="font-black text-sm">${info.product_name} <span class="font-mono text-indigo-600">[S/N: ${info.serial}]</span></div>
+          <div class="text-slate-500">المشتري: <strong>${info.customer_name}</strong> | فاتورة: <strong class="font-mono">${info.doc_number}</strong> | تاريخ الشراء: <strong class="font-mono">${info.sale_date}</strong></div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="text-left">
+            <div class="font-black ${info.is_valid ? 'text-emerald-600' : 'text-rose-600'}">
+              ${info.is_valid ? `✅ الضمان ساري المفعول (متبقي ${info.days_remaining} يوماً)` : '❌ انتهت فترة الضمان'}
+            </div>
+            <div class="text-[11px] font-mono text-slate-400">ينتهي في: ${info.warranty_end_date} (${info.warranty_months} شهراً)</div>
+          </div>
+          <button onclick="App.openSaleDetailsModal(${info.sale_id})" class="px-3 py-1.5 bg-indigo-600 text-white rounded-xl font-bold">فتح الفاتورة والطباعة</button>
+        </div>
+      </div>`;
   },
 
   async openSaleDetailsModal(saleId) {
@@ -1777,6 +2190,7 @@ const App = {
     document.getElementById('saleDetailsModalTitle').textContent = `تفاصيل الفاتورة (${fullSale.doc_number || '#' + fullSale.id})`;
     const body = document.getElementById('saleDetailsModalBody');
     const items = fullSale.items || [];
+    const rem = Math.max(0, Number(fullSale.total || 0) - Number(fullSale.paid_amount || 0));
 
     body.innerHTML = `
       <div class="grid grid-cols-2 md:grid-cols-4 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70">
@@ -1785,6 +2199,18 @@ const App = {
         <div><span class="text-slate-400">الإجمالي:</span> <strong class="font-mono text-blue-600">${Number(fullSale.total || 0).toFixed(2)} د.ج</strong></div>
         <div><span class="text-slate-400">المدفوع:</span> <strong class="font-mono text-emerald-600">${Number(fullSale.paid_amount || 0).toFixed(2)} د.ج</strong></div>
       </div>
+
+      ${
+        rem > 0.01
+          ? `<div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
+              <span>متبقي غير مسدد على هذه الفاتورة: <strong class="font-mono text-rose-500">${rem.toFixed(2)} د.ج</strong></span>
+              <div class="flex gap-1.5">
+                <input id="saleDetailQuickPayInput" type="number" step="any" value="${rem.toFixed(2)}" class="w-28 px-2 py-1 rounded-lg font-mono font-bold text-center">
+                <button onclick="App.addQuickPaymentToSale(${fullSale.id})" class="px-3 py-1 bg-emerald-600 text-white rounded-lg font-bold">تسديد وطباعة وصل</button>
+              </div>
+            </div>`
+          : ''
+      }
 
       <table class="w-full text-xs text-right">
         <thead>
@@ -1807,7 +2233,7 @@ const App = {
               <td class="py-2 font-mono font-bold">${Number(it.subtotal || 0).toFixed(2)} د.ج</td>
               <td class="py-2">
                 <button onclick="App.printSaleItemWarranty(${fullSale.id}, ${idx})" class="px-2.5 py-1 bg-indigo-600 text-white rounded-lg font-bold text-[11px]">
-                  طباعة شهادة ضمان ${it.serial_number ? '(' + it.serial_number + ')' : ''}
+                  شهادة ضمان ${it.serial_number ? '(' + it.serial_number + ')' : ''}
                 </button>
               </td>
             </tr>`
@@ -1817,6 +2243,26 @@ const App = {
       </table>
     `;
     this.openModal('saleDetailsModal');
+  },
+
+  async addQuickPaymentToSale(saleId) {
+    const amt = parseFloat(document.getElementById('saleDetailQuickPayInput')?.value) || 0;
+    if (amt <= 0) return;
+    const res = await window.api.addSalePayment(saleId, amt, new Date().toISOString(), {
+      payment_method: 'cash',
+      userId: AppState.currentUser ? AppState.currentUser.id : 1
+    });
+    await this.openSaleDetailsModal(saleId);
+    await this.renderSalesHistoryView();
+    showToast('تم تسجيل الدفعة على الفاتورة بنجاح', 'success');
+
+    if (res && res.paymentId && window.PrintEngine) {
+      const details = await window.api.getPaymentDetails(res.paymentId, 'sale');
+      if (details) {
+        const html = await window.PrintEngine.renderPaymentReceiptHtml(details, AppState.settings, AppState.lang);
+        await window.PrintEngine.printHtmlDocument(html, { silent: false });
+      }
+    }
   },
 
   async printSaleItemWarranty(saleId, itemIndex) {
@@ -1902,7 +2348,7 @@ const App = {
   },
 
   // ==========================================================================
-  // 8. إدارة الصندوق والمناوبات (Caisse & Shifts — بدون أي prompt)
+  // 8. إدارة الصندوق والمناوبات (Caisse & Shifts)
   // ==========================================================================
   async renderCaisseView() {
     const root = document.getElementById('caisse-view-root');
@@ -1976,7 +2422,7 @@ const App = {
                     .map(
                       (s) => `
                     <tr>
-                      <td class="py-2 font-mono">#${s.id}</td>
+                      <td class="py-2 font-mono flex items-center gap-1">#${s.id} <button onclick="App.printSessionZReport(${s.id})">🖨️ Z</button><button onclick="App.openSessionReviewModal(${s.id})" class="px-1.5 py-0.5 bg-blue-600/15 text-blue-600 rounded text-[10px] font-sans font-bold" title="مراجعة تفاصيل المناوبة">تفاصيل</button><button style="display:none" class="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-[10px] font-sans font-bold" title="طباعة تقرير Z-Report">🖨️ Z</button></td>
                       <td class="py-2 font-bold">${s.user_name || 'المدير'}</td>
                       <td class="py-2 font-mono">${String(s.opened_at || '').slice(0, 16)}</td>
                       <td class="py-2 font-mono">${Number(s.opening_balance || 0).toFixed(2)}</td>
@@ -2091,28 +2537,48 @@ const App = {
   },
 
   // ==========================================================================
-  // 9. إدارة المخزون، نافذة الـ 5 تبويبات، القاموس الجزائري 613، الدفعات، وديون المخزون
+  // 9. إدارة المخزون، فلاتر المخزون المتقدمة، القاموس الجزائري 613 الضخم، و Markup %
   // ==========================================================================
   async renderInventoryView(filters = {}) {
     const root = document.getElementById('inventory-view-root');
     if (!root) return;
-    const [products, debtSum] = await Promise.all([
-      window.api.getProducts(filters).catch(() => []),
-      window.api.getStockDebtSummary().catch(() => ({ count: 0, total_qty: 0 }))
-    ]);
-    AppState.products = products;
+    if (filters.stockStatus !== undefined) AppState.invStockFilter = filters.stockStatus;
+    if (filters.search !== undefined) AppState.invSearchQuery = filters.search;
+    if (filters.sort !== undefined) AppState.invSortKey = filters.sort;
 
-    const lowStockCount = products.filter((p) => Number(p.stock) <= Number(p.min_stock || 5)).length;
-    const expiredCount = products.filter((p) => Number(p.expired_qty || 0) > 0).length;
+    const [allProducts, debtSum, dzStats] = await Promise.all([
+      window.api.getProducts({ search: AppState.invSearchQuery, sort: AppState.invSortKey }).catch(() => []),
+      window.api.getStockDebtSummary().catch(() => ({ count: 0, total_qty: 0 })),
+      window.api.getDzDictionaryStats ? window.api.getDzDictionaryStats().catch(() => ({ count: 31 })) : { count: 31 }
+    ]);
+    AppState.products = allProducts;
+
+    const lowStockCount = allProducts.filter((p) => Number(p.stock) > 0 && Number(p.stock) <= Number(p.min_stock || 5)).length;
+    const outOfStockCount = allProducts.filter((p) => Number(p.stock) <= 0).length;
+    const expiredCount = allProducts.filter((p) => Number(p.expired_qty || 0) > 0).length;
+
+    let products = allProducts;
+    if (AppState.invStockFilter === 'available') {
+      products = allProducts.filter((p) => Number(p.stock) > 0);
+    } else if (AppState.invStockFilter === 'low') {
+      products = allProducts.filter((p) => Number(p.stock) > 0 && Number(p.stock) <= Number(p.min_stock || 5));
+    } else if (AppState.invStockFilter === 'out') {
+      products = allProducts.filter((p) => Number(p.stock) <= 0);
+    } else if (AppState.invStockFilter === 'expired') {
+      products = allProducts.filter((p) => Number(p.expired_qty || 0) > 0);
+    }
 
     root.innerHTML = `
       <div class="space-y-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 class="text-2xl font-black">إدارة المخزون، الدفعات، والمتغيرات (${products.length} منتج)</h2>
-            <p class="text-xs text-slate-500">تتبع الأرصدة، الصلاحية، الباركودات المتعددة، والقاموس الجزائري الذكي لباركود 613</p>
+            <p class="text-xs text-slate-500">القاموس الجزائري الذكي (يضم حالياً <strong>${dzStats.count || 31}</strong> منتج بباركود 613)، الدفعات، ومصفوفة المتغيرات</p>
           </div>
           <div class="flex flex-wrap gap-2">
+            <button onclick="App.importDzDictionaryNow()" class="px-3.5 py-2 bg-amber-500/15 text-amber-600 border border-amber-500/30 rounded-xl text-xs font-bold">
+              🇩🇿 استيراد قاموس 613 (CSV)
+            </button>
             <button onclick="App.openStockDebtModal()" class="px-3.5 py-2 bg-rose-500/15 text-rose-600 rounded-xl text-xs font-bold">
               ديون المخزون (${debtSum.count || 0})
             </button>
@@ -2123,36 +2589,41 @@ const App = {
           </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <div class="text-xs text-slate-400 font-bold">إجمالي الأصناف</div>
-            <div class="text-2xl font-black font-mono mt-1">${products.length}</div>
+        <!-- بطاقات فلاتر حالة المخزون التفاعلية -->
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+          <div onclick="App.renderInventoryView({ stockStatus: 'all' })" class="p-3.5 rounded-2xl cursor-pointer border ${AppState.invStockFilter === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}">
+            <div class="opacity-80 font-bold">جميع المنتجات</div>
+            <div class="text-xl font-black font-mono mt-1">${allProducts.length}</div>
           </div>
-          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <div class="text-xs text-slate-400 font-bold">منخفضة المخزون</div>
-            <div class="text-2xl font-black font-mono text-amber-500 mt-1">${lowStockCount}</div>
+          <div onclick="App.renderInventoryView({ stockStatus: 'available' })" class="p-3.5 rounded-2xl cursor-pointer border ${AppState.invStockFilter === 'available' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}">
+            <div class="opacity-80 font-bold">متوفرة في المخزون</div>
+            <div class="text-xl font-black font-mono mt-1">${allProducts.length - outOfStockCount}</div>
           </div>
-          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <div class="text-xs text-slate-400 font-bold">دفعات منتهية الصلاحية</div>
-            <div class="text-2xl font-black font-mono text-rose-500 mt-1">${expiredCount}</div>
+          <div onclick="App.renderInventoryView({ stockStatus: 'low' })" class="p-3.5 rounded-2xl cursor-pointer border ${AppState.invStockFilter === 'low' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}">
+            <div class="opacity-80 font-bold">منخفضة المخزون</div>
+            <div class="text-xl font-black font-mono mt-1">${lowStockCount}</div>
           </div>
-          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <div class="text-xs text-slate-400 font-bold">مباعة بالسالب (Stock Debt)</div>
-            <div class="text-2xl font-black font-mono text-indigo-600 mt-1">${debtSum.total_qty || 0}</div>
+          <div onclick="App.renderInventoryView({ stockStatus: 'out' })" class="p-3.5 rounded-2xl cursor-pointer border ${AppState.invStockFilter === 'out' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}">
+            <div class="opacity-80 font-bold">نافدة (الرصيد <= 0)</div>
+            <div class="text-xl font-black font-mono mt-1">${outOfStockCount}</div>
+          </div>
+          <div onclick="App.renderInventoryView({ stockStatus: 'expired' })" class="p-3.5 rounded-2xl cursor-pointer border ${AppState.invStockFilter === 'expired' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}">
+            <div class="opacity-80 font-bold">منتهية الصلاحية</div>
+            <div class="text-xl font-black font-mono mt-1">${expiredCount}</div>
           </div>
         </div>
 
         <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
-            <input id="invSearchInput" type="text" placeholder="ابحث بالاسم أو الباركود..."
+            <input id="invSearchInput" type="text" value="${AppState.invSearchQuery || ''}" placeholder="ابحث بالاسم أو الباركود أو الفئة (Enter)..."
               onkeydown="if(event.key==='Enter') App.renderInventoryView({ search: this.value })"
-              class="w-72 px-3 py-2 rounded-xl text-xs font-bold">
+              class="w-80 px-3 py-2 rounded-xl text-xs font-bold">
             <select onchange="App.renderInventoryView({ sort: this.value })" class="px-3 py-2 rounded-xl text-xs font-bold">
-              <option value="newest">الأحدث إضافة</option>
-              <option value="name_asc">الاسم (أ - ي)</option>
-              <option value="stock_asc">الأقل رصيداً</option>
-              <option value="stock_desc">الأكثر رصيداً</option>
-              <option value="expiry_asc">الأقرب انتهاءً للصلاحية</option>
+              <option value="newest" ${AppState.invSortKey === 'newest' ? 'selected' : ''}>الأحدث إضافة</option>
+              <option value="name_asc" ${AppState.invSortKey === 'name_asc' ? 'selected' : ''}>الاسم (أ - ي)</option>
+              <option value="stock_asc" ${AppState.invSortKey === 'stock_asc' ? 'selected' : ''}>الأقل رصيداً</option>
+              <option value="stock_desc" ${AppState.invSortKey === 'stock_desc' ? 'selected' : ''}>الأكثر رصيداً</option>
+              <option value="expiry_asc" ${AppState.invSortKey === 'expiry_asc' ? 'selected' : ''}>الأقرب انتهاءً للصلاحية</option>
             </select>
           </div>
 
@@ -2182,12 +2653,13 @@ const App = {
                     <td class="py-2 px-2 font-mono">${Number(p.cost_price || 0).toFixed(2)}</td>
                     <td class="py-2 px-2 font-mono font-bold text-blue-600">${Number(p.selling_price || 0).toFixed(2)}</td>
                     <td class="py-2 px-2 font-mono">${p.wholesale_price ? Number(p.wholesale_price).toFixed(2) : '-'}</td>
-                    <td class="py-2 px-2 font-mono font-bold">${p.stock} ${p.unit || ''}</td>
+                    <td class="py-2 px-2 font-mono font-bold ${Number(p.stock) <= 0 ? 'text-rose-500' : ''}">${p.stock} ${p.unit || ''}</td>
                     <td class="py-2 px-2 font-mono text-slate-500">${p.next_expiry || p.expiry_date || '-'}</td>
                     <td class="py-2 px-2 flex flex-wrap items-center gap-1">
                       <button onclick="App.editProductById(${p.id})" class="px-2 py-1 bg-blue-500/10 text-blue-600 rounded-lg font-bold">تعديل</button>
                       <button onclick="App.openBatchesModal(${p.id})" class="px-2 py-1 bg-emerald-500/10 text-emerald-600 rounded-lg font-bold">الدفعات (${(p.batches || []).length})</button>
                       <button onclick="App.openProductAnalyticsModal(${p.id})" class="px-2 py-1 bg-indigo-500/10 text-indigo-600 rounded-lg font-bold">ربحية</button>
+                      <button onclick="App.enqueueProductForLabelPrint(${p.id})" class="px-2 py-1 bg-amber-500/15 text-amber-600 rounded-lg font-bold" title="إضافة لطابور طباعة الباركود">باركود</button>
                       <button onclick="window.api.deleteProduct(${p.id}).then(() => App.renderInventoryView())" class="text-rose-500 p-1"><span class="material-symbols-rounded icon-sm">delete</span></button>
                     </td>
                   </tr>`
@@ -2199,6 +2671,15 @@ const App = {
         </div>
       </div>`;
     if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  },
+
+  async importDzDictionaryNow() {
+    if (!window.api || !window.api.importDzDictionaryCsv) return;
+    const res = await window.api.importDzDictionaryCsv();
+    if (res && res.success) {
+      await this.renderInventoryView();
+      showToast(`تم استيراد ${res.imported} منتج جزائري إلى القاموس المحلي بنجاح!`, 'success');
+    }
   },
 
   switchProductModalTab(tabKey = 'basic') {
@@ -2237,8 +2718,12 @@ const App = {
     document.getElementById('prodImageDataInput').value = prod && prod.image ? prod.image : '';
     document.getElementById('prodFeaturedCheckbox').checked = Boolean(prod && Number(prod.is_featured) === 1);
 
-    document.getElementById('prodCostInput').value = prod ? prod.cost_price ?? 0 : 0;
-    document.getElementById('prodPriceInput').value = prod ? prod.selling_price ?? 0 : 0;
+    const cost = prod ? Number(prod.cost_price ?? 0) : 0;
+    const sell = prod ? Number(prod.selling_price ?? 0) : 0;
+    document.getElementById('prodCostInput').value = cost;
+    document.getElementById('prodPriceInput').value = sell;
+    document.getElementById('prodMarkupInput').value =
+      cost > 0 && sell >= cost ? Number((((sell - cost) / cost) * 100).toFixed(1)) : '';
     document.getElementById('prodWholesaleInput').value = prod && prod.wholesale_price ? prod.wholesale_price : '';
     document.getElementById('prodWholesaleUnitInput').value = prod && prod.wholesale_unit ? prod.wholesale_unit : '';
     document.getElementById('prodWholesaleQtyInput').value = prod && prod.wholesale_qty ? prod.wholesale_qty : '';
@@ -2258,6 +2743,22 @@ const App = {
     this.renderVariantsMatrixInModal();
 
     this.openModal('productModal');
+  },
+
+  onProdCostOrMarkupInput() {
+    const cost = parseFloat(document.getElementById('prodCostInput')?.value) || 0;
+    const markup = parseFloat(document.getElementById('prodMarkupInput')?.value);
+    if (cost > 0 && Number.isFinite(markup)) {
+      document.getElementById('prodPriceInput').value = Number((cost * (1 + markup / 100)).toFixed(2));
+    }
+  },
+
+  onProdMarkupChange(markupVal) {
+    const cost = parseFloat(document.getElementById('prodCostInput')?.value) || 0;
+    const markup = parseFloat(markupVal);
+    if (cost > 0 && Number.isFinite(markup)) {
+      document.getElementById('prodPriceInput').value = Number((cost * (1 + markup / 100)).toFixed(2));
+    }
   },
 
   async autoFillFromDzDictionary(barcode) {
@@ -2362,6 +2863,31 @@ const App = {
     this.renderVariantsMatrixInModal();
   },
 
+  bulkFillVariantBarcodes() {
+    const baseBc = document.getElementById('prodBarcodeInput').value.trim() || '61300099';
+    AppState.tempVariantsMatrix.forEach((v, idx) => {
+      if (!v.barcode) {
+        v.barcode = `${baseBc}-${idx + 1}`;
+      }
+    });
+    this.renderVariantsMatrixInModal();
+    showToast('تم توليد باركودات فرعية لجميع المتغيرات تلقائياً', 'success');
+  },
+
+  bulkApplyVariantFields() {
+    const bulkCost = document.getElementById('bulkVariantCost')?.value;
+    const bulkPrice = document.getElementById('bulkVariantPrice')?.value;
+    const bulkStock = document.getElementById('bulkVariantStock')?.value;
+
+    AppState.tempVariantsMatrix.forEach((v) => {
+      if (bulkCost !== '' && bulkCost !== undefined) v.cost_price = parseFloat(bulkCost) || 0;
+      if (bulkPrice !== '' && bulkPrice !== undefined) v.selling_price = parseFloat(bulkPrice) || 0;
+      if (bulkStock !== '' && bulkStock !== undefined) v.stock = parseFloat(bulkStock) || 0;
+    });
+    this.renderVariantsMatrixInModal();
+    showToast('تم تطبيق القيم الجماعية على كافة المتغيرات', 'success');
+  },
+
   addVariantRowInModal() {
     document.getElementById('prodHasVariantsCheckbox').checked = true;
     AppState.tempVariantsMatrix.push({
@@ -2380,11 +2906,13 @@ const App = {
     box.innerHTML = AppState.tempVariantsMatrix
       .map(
         (v, i) => `
-      <div class="grid grid-cols-5 gap-1.5 items-center">
-        <input type="text" value="${v.sku || ''}" placeholder="المتغير (مثال: XL - أسود)"
+      <div class="grid grid-cols-6 gap-1.5 items-center">
+        <input type="text" value="${v.sku || ''}" placeholder="المتغير (XL - أسود)"
           oninput="AppState.tempVariantsMatrix[${i}].sku = this.value" class="col-span-2 px-2 py-1.5 rounded-lg font-bold">
         <input type="text" value="${v.barcode || ''}" placeholder="الباركود"
           oninput="AppState.tempVariantsMatrix[${i}].barcode = this.value" class="px-2 py-1.5 rounded-lg font-mono">
+        <input type="number" step="any" value="${v.selling_price ?? 0}" placeholder="سعر البيع"
+          oninput="AppState.tempVariantsMatrix[${i}].selling_price = parseFloat(this.value) || 0" class="px-2 py-1.5 rounded-lg font-mono text-blue-600 font-bold">
         <input type="number" step="any" value="${v.stock ?? 0}" placeholder="الرصيد"
           oninput="AppState.tempVariantsMatrix[${i}].stock = parseFloat(this.value) || 0" class="px-2 py-1.5 rounded-lg font-mono">
         <button onclick="AppState.tempVariantsMatrix.splice(${i},1); App.renderVariantsMatrixInModal()" class="text-rose-500">حذف</button>
@@ -2556,7 +3084,7 @@ const App = {
   },
 
   // ==========================================================================
-  // 10. الحزم الترويجية (Bundles) والعروض (Promotions — بدون أي prompt)
+  // 10. الحزم الترويجية (Bundles) والعروض (Promotions)
   // ==========================================================================
   async renderBundlesAndPromosView() {
     const root = document.getElementById('bundles-view-root');
@@ -2689,7 +3217,7 @@ const App = {
   },
 
   // ==========================================================================
-  // 11. إدارة الموردين، فواتير المشتريات، ومرتجعات الموردين (بدون أي prompt)
+  // 11. إدارة الموردين، كشف حساب المورد، تفاصيل فاتورة الشراء، ومرتجعات الموردين
   // ==========================================================================
   async renderSuppliersView() {
     const root = document.getElementById('suppliers-view-root');
@@ -2701,8 +3229,8 @@ const App = {
       <div class="space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 class="text-2xl font-black">إدارة الموردين وديونهم (${suppliers.length})</h2>
-            <p class="text-xs text-slate-500">متابعة الحسابات، البيانات الجبائية، وتسديد دفعات الموردين</p>
+            <h2 class="text-2xl font-black">إدارة الموردين، كشف الحساب، والديون (${suppliers.length})</h2>
+            <p class="text-xs text-slate-500">متابعة الحسابات، الفواتير، المرتجعات، وتسديد دفعات الموردين مع طباعة وصولات التسديد</p>
           </div>
           <div class="flex gap-2">
             <button onclick="window.api.downloadSuppliersTemplate()" class="px-3 py-2 bg-slate-200 dark:bg-slate-700 rounded-xl text-xs font-bold">قالب Excel</button>
@@ -2734,8 +3262,9 @@ const App = {
                   <td class="py-2.5">${s.address || '-'}</td>
                   <td class="py-2.5 font-mono">${Number(s.total_purchases || 0).toFixed(2)} د.ج</td>
                   <td class="py-2.5 font-mono font-bold text-rose-500">${Number(s.total_debt || 0).toFixed(2)} د.ج</td>
-                  <td class="py-2.5 flex items-center gap-1.5">
+                  <td class="py-2.5 flex flex-wrap items-center gap-1.5">
                     <button onclick="App.openSupplierPaymentModal(${s.id}, '${s.name.replace(/'/g, '')}', ${Number(s.total_debt || 0)})" class="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold">تسديد دفعة</button>
+                    <button onclick="App.openSupplierLedgerModal(${s.id})" class="px-2.5 py-1 bg-indigo-600/15 text-indigo-600 rounded-lg font-bold">كشف حساب</button>
                     <button onclick='App.openSupplierModal(${JSON.stringify(s).replace(/'/g, "&apos;")})' class="px-2.5 py-1 bg-blue-500/10 text-blue-600 rounded-lg font-bold">تعديل</button>
                     <button onclick="window.api.deleteSupplier(${s.id}).then(() => App.renderSuppliersView())" class="text-rose-500 p-1"><span class="material-symbols-rounded icon-sm">delete</span></button>
                   </td>
@@ -2747,6 +3276,70 @@ const App = {
         </div>
       </div>`;
     if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  },
+
+  async openSupplierLedgerModal(supplierId) {
+    const sup = AppState.suppliers.find((s) => Number(s.id) === Number(supplierId));
+    const ledger = window.api.getSupplierLedger
+      ? await window.api.getSupplierLedger(supplierId).catch(() => null)
+      : { purchases: await window.api.getSupplierPurchases(supplierId).catch(() => []), payments: [], returns: [] };
+
+    const purchases = (ledger && ledger.purchases) || [];
+    const payments = (ledger && ledger.payments) || [];
+    const returns = (ledger && ledger.returns) || [];
+
+    document.getElementById('supLedgerTitle').textContent = `كشف حساب المورد: ${sup ? sup.name : '#' + supplierId}`;
+    const body = document.getElementById('supplierLedgerBody');
+
+    body.innerHTML = `
+      <div class="grid grid-cols-3 gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800">
+        <div>فواتير الشراء: <strong class="font-mono">${purchases.length}</strong></div>
+        <div>إجمالي التوريدات: <strong class="font-mono text-blue-600">${Number(sup?.total_purchases || 0).toFixed(2)} د.ج</strong></div>
+        <div>الدين المتبقي للمورد: <strong class="font-mono text-rose-500">${Number(sup?.total_debt || 0).toFixed(2)} د.ج</strong></div>
+      </div>
+
+      <h4 class="font-black text-xs mt-2">1. فواتير الشراء (${purchases.length})</h4>
+      <table class="w-full text-xs text-right">
+        <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-1.5">رقم الفاتورة</th><th class="py-1.5">التاريخ</th><th class="py-1.5">الإجمالي</th><th class="py-1.5">المدفوع</th><th class="py-1.5">الباقي</th><th class="py-1.5">إجراء</th></tr></thead>
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+          ${purchases
+            .map((p) => {
+              const rem = Math.max(0, Number(p.total || 0) - Number(p.paid_amount || 0));
+              return `<tr><td class="py-1.5 font-mono font-bold">${p.invoice_number || '#' + p.id}</td><td class="py-1.5 font-mono">${p.date || ''}</td><td class="py-1.5 font-mono">${Number(p.total || 0).toFixed(2)}</td><td class="py-1.5 font-mono text-emerald-600">${Number(p.paid_amount || 0).toFixed(2)}</td><td class="py-1.5 font-mono text-rose-500 font-bold">${rem.toFixed(2)}</td><td class="py-1.5"><button onclick="App.closeModal('supplierLedgerModal'); App.openPurchaseDetailsModal(${p.id})" class="px-2 py-0.5 bg-blue-600 text-white rounded font-bold">تفاصيل</button></td></tr>`;
+            })
+            .join('')}
+        </tbody>
+      </table>
+
+      <h4 class="font-black text-xs mt-3">2. سجل الدفعات المسددة للمورد (${payments.length})</h4>
+      <table class="w-full text-xs text-right">
+        <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-1.5">رقم الوصل</th><th class="py-1.5">التاريخ</th><th class="py-1.5">المبلغ</th><th class="py-1.5">الطريقة</th><th class="py-1.5">طباعة</th></tr></thead>
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+          ${payments
+            .map(
+              (pay) =>
+                `<tr><td class="py-1.5 font-mono">${pay.receipt_number || '#' + pay.id}</td><td class="py-1.5 font-mono">${String(pay.date || '').slice(0, 10)}</td><td class="py-1.5 font-mono font-bold text-emerald-600">${Number(pay.amount || 0).toFixed(2)} د.ج</td><td class="py-1.5">${pay.payment_method || 'cash'}</td><td class="py-1.5"><button onclick="App.reprintPaymentReceipt(${pay.id}, 'purchase')" class="px-2 py-0.5 bg-emerald-600 text-white rounded font-bold">وصل التسديد</button></td></tr>`
+            )
+            .join('')}
+        </tbody>
+      </table>
+
+      ${
+        returns.length > 0
+          ? `<h4 class="font-black text-xs mt-3">3. مرتجعات المورد (${returns.length})</h4>
+             <div class="space-y-1">${returns.map((r) => `<div class="p-2 rounded bg-rose-500/10 flex justify-between"><span>${r.return_number} (${r.date}) — ${r.reason || ''}</span><strong class="font-mono text-rose-500">${Number(r.total || 0).toFixed(2)} د.ج</strong></div>`).join('')}</div>`
+          : ''
+      }
+    `;
+    this.openModal('supplierLedgerModal');
+  },
+
+  async reprintPaymentReceipt(paymentId, type = 'sale') {
+    const details = await window.api.getPaymentDetails(paymentId, type);
+    if (details && window.PrintEngine) {
+      const html = await window.PrintEngine.renderPaymentReceiptHtml(details, AppState.settings, AppState.lang);
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
   },
 
   openSupplierModal(sup = null) {
@@ -2829,7 +3422,7 @@ const App = {
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 class="text-2xl font-black">فواتير المشتريات والتموين ومرتجعات الموردين</h2>
-            <p class="text-xs text-slate-500">إدخال فواتير الشراء مع توزيع مصاريف النقل، طباعة وصولات الاستلام (Bon de Réception)، وإرجاع البضاعة</p>
+            <p class="text-xs text-slate-500">إدخال فواتير الشراء مع توزيع مصاريف النقل، متابعة دفعات الفاتورة، وطباعة وصولات الاستلام (Bon de Réception)</p>
           </div>
           <div class="flex gap-2">
             <button onclick="App.openSupplierReturnModal()" class="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold">مرتجع للمورد</button>
@@ -2848,26 +3441,31 @@ const App = {
                 <th class="py-2">مصاريف إضافية</th>
                 <th class="py-2">الإجمالي</th>
                 <th class="py-2">المدفوع</th>
+                <th class="py-2">الباقي</th>
                 <th class="py-2">إجراءات</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
               ${purchases
-                .map(
-                  (p) => `
+                .map((p) => {
+                  const rem = Math.max(0, Number(p.total || 0) - Number(p.paid_amount || 0));
+                  return `
                 <tr>
                   <td class="py-2.5 font-mono font-bold text-blue-600">${p.invoice_number || '#' + p.id}</td>
                   <td class="py-2.5 font-bold">${p.supplier_name || 'مورد عام'}</td>
                   <td class="py-2.5 font-mono">${p.date || ''}</td>
                   <td class="py-2.5 font-mono">${Number(p.additional_costs || 0).toFixed(2)}</td>
                   <td class="py-2.5 font-mono font-bold">${Number(p.total || 0).toFixed(2)} د.ج</td>
-                  <td class="py-2.5 font-mono text-emerald-600">${Number(p.paid_amount || 0).toFixed(2)} د.ج</td>
+                  <td class="py-2.5 font-mono text-emerald-600">${Number(p.paid_amount || 0).toFixed(2)}</td>
+                  <td class="py-2.5 font-mono ${rem > 0 ? 'text-rose-500 font-bold' : 'text-slate-400'}">${rem.toFixed(2)}</td>
                   <td class="py-2.5 flex items-center gap-1.5">
+                    <button onclick="App.editPurchaseInvoice(${p.id})" class="px-2.5 py-1 bg-amber-500/15 text-amber-600 rounded-lg font-bold">تعديل</button>
+                    <button onclick="App.openPurchaseDetailsModal(${p.id})" class="px-2.5 py-1 bg-slate-100 dark:bg-slate-700 rounded-lg font-bold">تفاصيل / دفعات</button>
                     <button onclick="App.printReceptionNote(${p.id})" class="px-2.5 py-1 bg-emerald-600/15 text-emerald-600 rounded-lg font-bold">وصل استلام BR</button>
                     <button onclick="window.api.deletePurchase(${p.id}).then(() => App.renderPurchasesView())" class="text-rose-500 p-1"><span class="material-symbols-rounded icon-sm">delete</span></button>
                   </td>
-                </tr>`
-                )
+                </tr>`;
+                })
                 .join('')}
             </tbody>
           </table>
@@ -2903,6 +3501,60 @@ const App = {
         </div>
       </div>`;
     if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  },
+
+  async openPurchaseDetailsModal(invoiceId) {
+    const inv = await window.api.getInvoiceDetails(invoiceId);
+    if (!inv) return;
+    document.getElementById('purchaseDetailsModalTitle').textContent = `تفاصيل فاتورة الشراء (${inv.invoice_number || '#' + inv.id})`;
+    const body = document.getElementById('purchaseDetailsModalBody');
+    const rem = Math.max(0, Number(inv.total || 0) - Number(inv.paid_amount || 0));
+
+    body.innerHTML = `
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800">
+        <div>المورد: <strong>${inv.supplier_name || 'مورد'}</strong></div>
+        <div>التاريخ: <strong class="font-mono">${inv.date || ''}</strong></div>
+        <div>الإجمالي: <strong class="font-mono text-blue-600">${Number(inv.total || 0).toFixed(2)} د.ج</strong></div>
+        <div>المدفوع: <strong class="font-mono text-emerald-600">${Number(inv.paid_amount || 0).toFixed(2)} د.ج</strong></div>
+      </div>
+
+      ${
+        rem > 0.01
+          ? `<div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
+              <span>متبقي غير مسدد للمورد: <strong class="font-mono text-rose-500">${rem.toFixed(2)} د.ج</strong></span>
+              <div class="flex gap-1.5">
+                <input id="purchDetailQuickPayInput" type="number" step="any" value="${rem.toFixed(2)}" class="w-28 px-2 py-1 rounded-lg font-mono font-bold text-center">
+                <button onclick="App.addQuickPaymentToPurchase(${inv.id})" class="px-3 py-1 bg-emerald-600 text-white rounded-lg font-bold">تسديد دفعة</button>
+              </div>
+            </div>`
+          : ''
+      }
+
+      <table class="w-full text-xs text-right">
+        <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-1.5">المنتج</th><th class="py-1.5">الكمية</th><th class="py-1.5">تكلفة الوحدة</th><th class="py-1.5">سعر البيع</th><th class="py-1.5">إجمالي التكلفة</th></tr></thead>
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+          ${(inv.items || [])
+            .map(
+              (it) =>
+                `<tr><td class="py-1.5 font-bold">${it.product_name}</td><td class="py-1.5 font-mono">${it.quantity}</td><td class="py-1.5 font-mono">${Number(it.cost_price || 0).toFixed(2)}</td><td class="py-1.5 font-mono text-blue-600">${Number(it.selling_price || 0).toFixed(2)}</td><td class="py-1.5 font-mono font-bold">${Number(it.total_cost || 0).toFixed(2)} د.ج</td></tr>`
+            )
+            .join('')}
+        </tbody>
+      </table>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="App.printReceptionNote(${inv.id})" class="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold">طباعة وصل استلام (BR)</button>
+      </div>
+    `;
+    this.openModal('purchaseDetailsModal');
+  },
+
+  async addQuickPaymentToPurchase(invoiceId) {
+    const amt = parseFloat(document.getElementById('purchDetailQuickPayInput')?.value) || 0;
+    if (amt <= 0) return;
+    await window.api.addInvoicePayment(invoiceId, amt, new Date().toISOString(), { payment_method: 'cash' });
+    await this.openPurchaseDetailsModal(invoiceId);
+    await this.renderPurchasesView();
+    showToast('تم تسجيل الدفعة على فاتورة الشراء بنجاح', 'success');
   },
 
   openPurchaseInvoiceModal() {
@@ -3057,8 +3709,9 @@ const App = {
     await this.renderPurchasesView();
     showToast('تم تسجيل مرتجع المورد وخصم الكمية من المخزون', 'success');
   },
+
   // ==========================================================================
-  // 12. الزبائن، كشف الحساب، الفاتورة المجمعة، وعقود التقسيط — [الشطر الثالث والأخير 3/3]
+  // 12. الزبائن، كشف الحساب، الفاتورة المجمعة، وعقود التقسيط الرسمية — [الشطر الثالث والأخير 3/3]
   // ==========================================================================
   async renderCustomersView() {
     const root = document.getElementById('customers-view-root');
@@ -3075,8 +3728,8 @@ const App = {
       <div class="space-y-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 class="text-2xl font-black">إدارة الزبائن، الديون، نقاط الولاء، والأقساط (${customers.length})</h2>
-            <p class="text-xs text-slate-500">كشف حساب تفصيلي، توزيع التسديدات بـ FIFO، الفواتير المجمعة، وعقود البيع بالتقسيط</p>
+            <h2 class="text-2xl font-black">إدارة الزبائن، الديون، نقاط الولاء، وعقود التقسيط (${customers.length})</h2>
+            <p class="text-xs text-slate-500">كشف حساب تفصيلي، توزيع التسديدات بـ FIFO، الفواتير المجمعة، وطباعة عقود البيع بالتقسيط الرسمية</p>
           </div>
           <div class="flex flex-wrap gap-2">
             <button onclick="App.openInstallmentsManagerModal()" class="px-4 py-2 bg-amber-500 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow">
@@ -3231,7 +3884,7 @@ const App = {
             <th class="py-2">الإجمالي</th>
             <th class="py-2">المدفوع</th>
             <th class="py-2">الباقي</th>
-            <th class="py-2">طباعة</th>
+            <th class="py-2">إجراءات</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
@@ -3245,7 +3898,10 @@ const App = {
                 <td class="py-2 font-mono font-bold">${Number(s.total || 0).toFixed(2)}</td>
                 <td class="py-2 font-mono text-emerald-600">${Number(s.paid_amount || 0).toFixed(2)}</td>
                 <td class="py-2 font-mono text-rose-500 font-bold">${rem.toFixed(2)}</td>
-                <td class="py-2"><button onclick="App.reprintSale(${s.id}, 'a4')" class="px-2 py-1 bg-blue-600 text-white rounded font-bold">طباعة</button></td>
+                <td class="py-2 flex gap-1">
+                  <button onclick="App.reprintSale(${s.id}, 'a4')" class="px-2 py-0.5 bg-blue-600 text-white rounded font-bold">طباعة</button>
+                  <button onclick="App.closeModal('customerLedgerModal'); App.loadSaleIntoPosForEdit(${s.id})" class="px-2 py-0.5 bg-amber-500 text-white rounded font-bold">تعديل</button>
+                </td>
               </tr>`;
             })
             .join('')}
@@ -3280,6 +3936,7 @@ const App = {
 
   async openInstallmentsManagerModal() {
     const plans = (await window.api.getInstallmentPlans({}).catch(() => [])) || [];
+    AppState._cachedInstallmentPlans = plans;
     const body = document.getElementById('installmentPlanModalBody');
     if (body) {
       body.innerHTML =
@@ -3287,16 +3944,17 @@ const App = {
           ? `<div class="py-10 text-center text-slate-400 font-bold">لا توجد عقود بيع بالتقسيط مسجلة حالياً. يمكنك إنشاء عقد تقسيط مباشرة من نافذة تسديد الفاتورة (F1).</div>`
           : plans
               .map(
-                (p) => `
+                (p, pIdx) => `
               <div class="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 mb-3 space-y-2">
                 <div class="flex flex-wrap justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
                   <div>
                     <span class="font-black text-sm">${p.customer_name || 'زبون'}</span>
                     <span class="text-slate-400 font-mono mr-2">(${p.customer_phone || ''})</span>
                   </div>
-                  <div class="flex gap-3 font-mono text-xs">
+                  <div class="flex items-center gap-3 font-mono text-xs">
                     <span>الإجمالي: <strong>${Number(p.total_amount).toFixed(2)}</strong></span>
                     <span class="text-rose-500">المتبقي: <strong>${Number(p.remaining_amount).toFixed(2)} د.ج</strong></span>
+                    <button onclick="App.printInstallmentContract(${pIdx})" class="px-3 py-1 bg-blue-600 text-white rounded-lg font-sans font-bold">🖨️ طباعة العقد الرسمي (A4)</button>
                   </div>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -3323,6 +3981,13 @@ const App = {
               .join('');
     }
     this.openModal('installmentPlanModal');
+  },
+
+  async printInstallmentContract(planIndex) {
+    const plan = AppState._cachedInstallmentPlans && AppState._cachedInstallmentPlans[planIndex];
+    if (!plan || !window.PrintEngine || !window.PrintEngine.renderInstallmentContractHtml) return;
+    const html = window.PrintEngine.renderInstallmentContractHtml(plan, AppState.settings);
+    await window.PrintEngine.printHtmlDocument(html, { silent: false });
   },
 
   async payInstallmentRow(scheduleId, dueAmt) {
@@ -3371,6 +4036,7 @@ const App = {
                   <td class="py-2.5 font-mono font-black">${Number(pf.total || 0).toFixed(2)} د.ج</td>
                   <td class="py-2.5 font-bold">${pf.status === 'converted' ? '<span class="text-emerald-600">محولة لفاتورة</span>' : pf.status === 'cancelled' ? '<span class="text-rose-500">ملغاة</span>' : 'معلقة'}</td>
                   <td class="py-2.5 flex items-center gap-1.5">
+                    <button onclick="App.loadProformaIntoPos(${pf.id})" class="px-2.5 py-1 bg-blue-600/15 text-blue-600 rounded-lg font-bold">للسلة</button>
                     <button onclick="App.printProformaById(${pf.id})" class="px-2.5 py-1 bg-indigo-600/15 text-indigo-600 rounded-lg font-bold">طباعة</button>
                     <button onclick="App.openProformaStockCheck(${pf.id})" class="px-2.5 py-1 bg-amber-500/15 text-amber-600 rounded-lg font-bold">فحص المخزون</button>
                     ${
@@ -3446,6 +4112,7 @@ const App = {
                   <td class="py-2.5 font-mono text-emerald-600 font-bold">${Number(o.deposit_amount || 0).toFixed(2)} د.ج</td>
                   <td class="py-2.5 font-bold">${o.status === 'delivered' ? '<span class="text-emerald-600">مسلّمة</span>' : 'قيد التجهيز'}</td>
                   <td class="py-2.5 flex items-center gap-1.5">
+                    <button onclick="App.loadOrderIntoPos(${o.id})" class="px-2.5 py-1 bg-blue-600/15 text-blue-600 rounded-lg font-bold">للسلة</button>
                     <button onclick="App.printOrderById(${o.id})" class="px-2.5 py-1 bg-teal-600/15 text-teal-600 rounded-lg font-bold">طباعة BC</button>
                     ${
                       o.status === 'pending'
@@ -3490,7 +4157,7 @@ const App = {
   },
 
   // ==========================================================================
-  // 14. المصاريف التشغيلية وإيداعات رأس المال (بدون أي prompt)
+  // 14. المصاريف التشغيلية وإيداعات رأس المال
   // ==========================================================================
   async renderExpensesAndCapitalView() {
     const root = document.getElementById('expenses-view-root');
@@ -3593,8 +4260,28 @@ const App = {
   },
 
   // ==========================================================================
-  // 15. مركز الطباعة التفاعلي: استوديو ملصقات الباركود وأسعار الرفوف + مصمم القوالب + الكتالوج
+  // 15. مركز الطباعة وطابور الملصقات بالجملة (Batch Label Print Queue & Sheet Preview)
   // ==========================================================================
+  enqueueProductForLabelPrint(productId, copies = 1) {
+    const prod = AppState.products.find((p) => Number(p.id) === Number(productId));
+    if (!prod) return;
+    const ex = AppState.labelPrintQueue.find((q) => Number(q.id) === Number(prod.id));
+    if (ex) {
+      ex.copies = Number(ex.copies || 1) + Number(copies || 1);
+    } else {
+      AppState.labelPrintQueue.push({
+        id: prod.id,
+        name: prod.name,
+        barcode: prod.barcode || `613000${prod.id}`,
+        price: prod.selling_price || 0,
+        stock: Math.max(1, Math.round(Number(prod.stock || 1))),
+        plu: prod.plu_code || '',
+        copies: Math.max(1, Number(copies || 1))
+      });
+    }
+    showToast(`تمت إضافة "${prod.name}" إلى طابور طباعة الملصقات`, 'success');
+  },
+
   async renderPrintStudioView() {
     const root = document.getElementById('print-view-root');
     if (!root) return;
@@ -3603,15 +4290,17 @@ const App = {
       cfg.selectedId = AppState.products[0].id;
     }
 
+    const totalQueuedLabels = AppState.labelPrintQueue.reduce((s, q) => s + Number(q.copies || 1), 0);
+
     root.innerHTML = `
       <div class="space-y-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 class="text-2xl font-black">مركز الطباعة، استوديو ملصقات الباركود وأسعار الرفوف، ومصمم القوالب</h2>
-            <p class="text-xs text-slate-500">طباعة ملصقات المنتجات، بطاقات الزبائن، ملصقات الأسعار العريضة، وتخصيص الفواتير</p>
+            <h2 class="text-2xl font-black">مركز الطباعة، طابور ملصقات الباركود بالجملة، ومصمم القوالب</h2>
+            <p class="text-xs text-slate-500">طباعة ملصق مفرد أو طابور ملصقات كامل حسب كمية المخزون، ملصقات الأسعار للرفوف، وتخصيص الفواتير</p>
           </div>
           <div class="flex gap-2 text-xs font-bold">
-            <button onclick="App.switchPrintStudioTab('labels')" class="px-4 py-2 rounded-xl ${AppState.printStudioTab === 'labels' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800'}">1. استوديو ملصقات الباركود والأسعار</button>
+            <button onclick="App.switchPrintStudioTab('labels')" class="px-4 py-2 rounded-xl ${AppState.printStudioTab === 'labels' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800'}">1. استوديو وطابور الملصقات</button>
             <button onclick="App.switchPrintStudioTab('designer')" class="px-4 py-2 rounded-xl ${AppState.printStudioTab === 'designer' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800'}">2. مصمم قوالب الفواتير المرئي</button>
             <button onclick="App.printFullCatalogue()" class="px-4 py-2 rounded-xl bg-emerald-600 text-white">3. طباعة قائمة الأسعار (Catalogue)</button>
           </div>
@@ -3622,52 +4311,108 @@ const App = {
             ? `<div id="template-designer-root"></div>`
             : `
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              <!-- إعدادات الملصق التفاعلية -->
-              <div class="lg:col-span-5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-4 text-xs">
-                <h3 class="font-black text-sm">إعدادات ملصق الباركود / ملصق سعر الرفوف</h3>
-                <div class="grid grid-cols-2 gap-3">
+              <!-- إعدادات الملصق وطابور الطباعة بالجملة -->
+              <div class="lg:col-span-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-4 text-xs">
+                <h3 class="font-black text-sm">إعدادات الملصق (باركود / سعر رفوف / بطاقة زبون)</h3>
+                <div class="grid grid-cols-3 gap-2">
                   <div>
                     <label class="block font-bold mb-1">مصدر البيانات</label>
-                    <select onchange="App.updateLabelStudioProp('source', this.value)" class="w-full px-3 py-2 rounded-xl font-bold">
+                    <select onchange="App.updateLabelStudioProp('source', this.value)" class="w-full px-2.5 py-2 rounded-xl font-bold">
                       <option value="products" ${cfg.source === 'products' ? 'selected' : ''}>المنتجات</option>
                       <option value="customers" ${cfg.source === 'customers' ? 'selected' : ''}>بطاقات الزبائن</option>
                     </select>
                   </div>
                   <div>
                     <label class="block font-bold mb-1">وضع الملصق</label>
-                    <select onchange="App.updateLabelStudioProp('priceOnlyMode', this.value === 'price')" class="w-full px-3 py-2 rounded-xl font-bold">
-                      <option value="barcode" ${!cfg.priceOnlyMode ? 'selected' : ''}>ملصق باركود قياسي</option>
-                      <option value="price" ${cfg.priceOnlyMode ? 'selected' : ''}>ملصق سعر كبير للرفوف</option>
+                    <select onchange="App.updateLabelStudioProp('priceOnlyMode', this.value === 'price')" class="w-full px-2.5 py-2 rounded-xl font-bold">
+                      <option value="barcode" ${!cfg.priceOnlyMode ? 'selected' : ''}>باركود قياسي</option>
+                      <option value="price" ${cfg.priceOnlyMode ? 'selected' : ''}>سعر كبير للرفوف</option>
                     </select>
                   </div>
+                  <div>
+                    <label class="block font-bold mb-1">أعمدة الورقة</label>
+                    <select onchange="App.updateLabelStudioProp('columns', Number(this.value))" class="w-full px-2.5 py-2 rounded-xl font-mono font-bold">
+                      <option value="1" ${cfg.columns === 1 ? 'selected' : ''}>عمود 1 (رول حراري)</option>
+                      <option value="2" ${cfg.columns === 2 ? 'selected' : ''}>عمودان (2)</option>
+                      <option value="3" ${cfg.columns === 3 ? 'selected' : ''}>3 أعمدة (A4)</option>
+                      <option value="4" ${cfg.columns === 4 ? 'selected' : ''}>4 أعمدة (A4)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
                   <div class="col-span-2">
-                    <label class="block font-bold mb-1">اختر العنصر للمعاينة والطباعة</label>
-                    <select onchange="App.updateLabelStudioProp('selectedId', Number(this.value))" class="w-full px-3 py-2 rounded-xl font-bold">
+                    <label class="block font-bold mb-1">العنصر المختار</label>
+                    <select id="studioItemSelect" onchange="App.updateLabelStudioProp('selectedId', Number(this.value))" class="w-full px-2.5 py-2 rounded-xl font-bold">
                       ${(cfg.source === 'customers' ? AppState.customers : AppState.products)
                         .map((item) => `<option value="${item.id}" ${Number(cfg.selectedId) === Number(item.id) ? 'selected' : ''}>${item.name} ${item.barcode ? '(' + item.barcode + ')' : ''}</option>`)
                         .join('')}
                     </select>
                   </div>
-                  <div><label class="block font-bold mb-1">العرض (mm)</label><input type="number" value="${cfg.widthMm}" oninput="App.updateLabelStudioProp('widthMm', Number(this.value))" class="w-full px-3 py-2 rounded-xl font-mono font-bold"></div>
-                  <div><label class="block font-bold mb-1">الارتفاع (mm)</label><input type="number" value="${cfg.heightMm}" oninput="App.updateLabelStudioProp('heightMm', Number(this.value))" class="w-full px-3 py-2 rounded-xl font-mono font-bold"></div>
+                  <div class="flex items-end">
+                    <button onclick="App.addSelectedStudioItemToQueue()" class="w-full py-2 bg-indigo-600 text-white rounded-xl font-bold">+ أضف للطابور</button>
+                  </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.showShop ? 'checked' : ''} onchange="App.updateLabelStudioProp('showShop', this.checked)"><span>إظهار اسم المتجر</span></label>
-                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.showName ? 'checked' : ''} onchange="App.updateLabelStudioProp('showName', this.checked)"><span>إظهار اسم المنتج</span></label>
-                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.showPrice ? 'checked' : ''} onchange="App.updateLabelStudioProp('showPrice', this.checked)"><span>إظهار السعر</span></label>
-                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.showBarcodeText ? 'checked' : ''} onchange="App.updateLabelStudioProp('showBarcodeText', this.checked)"><span>إظهار أرقام الباركود</span></label>
-                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.showPlu ? 'checked' : ''} onchange="App.updateLabelStudioProp('showPlu', this.checked)"><span>إظهار كود الميزان PLU</span></label>
+                <div class="grid grid-cols-3 gap-2">
+                  <div><label class="block font-bold mb-1">العرض (mm)</label><input type="number" value="${cfg.widthMm}" oninput="App.updateLabelStudioProp('widthMm', Number(this.value))" class="w-full px-2.5 py-1.5 rounded-xl font-mono font-bold"></div>
+                  <div><label class="block font-bold mb-1">الارتفاع (mm)</label><input type="number" value="${cfg.heightMm}" oninput="App.updateLabelStudioProp('heightMm', Number(this.value))" class="w-full px-2.5 py-1.5 rounded-xl font-mono font-bold"></div>
+                  <div><label class="block font-bold mb-1">ارتفاع الباركود (mm)</label><input type="number" value="${cfg.barcodeHeightMm}" oninput="App.updateLabelStudioProp('barcodeHeightMm', Number(this.value))" class="w-full px-2.5 py-1.5 rounded-xl font-mono font-bold"></div>
                 </div>
 
-                <button onclick="App.printCurrentStudioLabel()" class="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black flex items-center justify-center gap-2 shadow">
-                  <span class="material-symbols-rounded icon-sm">print</span>
-                  <span>طباعة الملصق الآن</span>
-                </button>
+                <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                  <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ${cfg.showShop ? 'checked' : ''} onchange="App.updateLabelStudioProp('showShop', this.checked)"><span>اسم المتجر</span></label>
+                  <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ${cfg.showName ? 'checked' : ''} onchange="App.updateLabelStudioProp('showName', this.checked)"><span>اسم المنتج</span></label>
+                  <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ${cfg.showPrice ? 'checked' : ''} onchange="App.updateLabelStudioProp('showPrice', this.checked)"><span>السعر</span></label>
+                  <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ${cfg.showBarcodeText ? 'checked' : ''} onchange="App.updateLabelStudioProp('showBarcodeText', this.checked)"><span>رقم الباركود</span></label>
+                  <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ${cfg.showPlu ? 'checked' : ''} onchange="App.updateLabelStudioProp('showPlu', this.checked)"><span>كود PLU</span></label>
+                </div>
+
+                <!-- قسم طابور طباعة الملصقات بالجملة (Print Queue) -->
+                <div class="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                  <div class="flex flex-wrap items-center justify-between gap-1">
+                    <span class="font-black text-indigo-600">طابور الطباعة بالجملة (${AppState.labelPrintQueue.length} صنف | ${totalQueuedLabels} ملصق)</span>
+                    <div class="flex gap-1">
+                      <button onclick="App.addAllProductsToLabelQueue()" class="px-2 py-1 bg-slate-200 dark:bg-slate-700 rounded-lg font-bold text-[10px]">+ كل المخزون</button>
+                      <button onclick="App.applyPlQtyFromStock()" class="px-2 py-1 bg-emerald-600/15 text-emerald-600 rounded-lg font-bold text-[10px]">العدد = رصيد المخزون</button>
+                      <button onclick="App.clearLabelPrintQueue()" class="px-2 py-1 bg-rose-500/15 text-rose-500 rounded-lg font-bold text-[10px]">تفريغ</button>
+                    </div>
+                  </div>
+                  <div class="max-h-36 overflow-y-auto space-y-1">
+                    ${
+                      AppState.labelPrintQueue.length === 0
+                        ? '<div class="py-4 text-center text-slate-400">الطابور فارغ — أضف منتجات لطباعتها دفعة واحدة</div>'
+                        : AppState.labelPrintQueue
+                            .map(
+                              (q, i) => `
+                          <div class="flex items-center justify-between p-1.5 rounded-lg bg-slate-50 dark:bg-slate-900">
+                            <span class="font-bold truncate flex-1">${q.name}</span>
+                            <div class="flex items-center gap-1.5">
+                              <span class="text-[10px] text-slate-400">النسخ:</span>
+                              <input type="number" min="1" value="${q.copies}" onchange="AppState.labelPrintQueue[${i}].copies = Math.max(1, parseInt(this.value,10)||1); App.renderPrintStudioView()" class="w-16 px-1.5 py-0.5 rounded font-mono font-bold text-center">
+                              <button onclick="AppState.labelPrintQueue.splice(${i},1); App.renderPrintStudioView()" class="text-rose-500">✕</button>
+                            </div>
+                          </div>`
+                            )
+                            .join('')
+                    }
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 pt-2">
+                  <button onclick="App.printCurrentStudioLabel()" class="py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black flex items-center justify-center gap-1.5 shadow">
+                    <span class="material-symbols-rounded icon-sm">print</span>
+                    <span>طباعة الملصق المفرد</span>
+                  </button>
+                  <button onclick="App.openPlSheetPreviewModal()" class="py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black flex items-center justify-center gap-1.5 shadow">
+                    <span class="material-symbols-rounded icon-sm">layers</span>
+                    <span>معاينة وطباعة الطابور (${totalQueuedLabels})</span>
+                  </button>
+                </div>
               </div>
 
               <!-- معاينة الملصق الحية -->
-              <div class="lg:col-span-7 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 flex flex-col items-center justify-center">
+              <div class="lg:col-span-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 flex flex-col items-center justify-center">
                 <div class="text-xs font-bold text-slate-400 mb-4">معاينة حية ومطابقة للطباعة (${cfg.widthMm}mm × ${cfg.heightMm}mm)</div>
                 <iframe id="labelStudioPreviewFrame" class="border-2 border-dashed border-slate-300 rounded-xl bg-white shadow-inner" style="width:${Math.max(220, cfg.widthMm * 4.5)}px;height:${Math.max(140, cfg.heightMm * 4.5)}px;"></iframe>
               </div>
@@ -3681,6 +4426,85 @@ const App = {
       await this.refreshLabelStudioPreview();
     }
     if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  },
+
+  addSelectedStudioItemToQueue() {
+    const id = Number(document.getElementById('studioItemSelect')?.value || AppState.labelStudioConfig.selectedId);
+    if (id) {
+      this.enqueueProductForLabelPrint(id, 1);
+      this.renderPrintStudioView();
+    }
+  },
+
+  addAllProductsToLabelQueue() {
+    for (const p of AppState.products.slice(0, 100)) {
+      if (!AppState.labelPrintQueue.some((q) => Number(q.id) === Number(p.id))) {
+        AppState.labelPrintQueue.push({
+          id: p.id,
+          name: p.name,
+          barcode: p.barcode || `613000${p.id}`,
+          price: p.selling_price || 0,
+          stock: Math.max(1, Math.round(Number(p.stock || 1))),
+          plu: p.plu_code || '',
+          copies: 1
+        });
+      }
+    }
+    this.renderPrintStudioView();
+    showToast('تمت إضافة المنتجات إلى طابور الطباعة', 'success');
+  },
+
+  applyPlQtyFromStock() {
+    AppState.labelPrintQueue.forEach((q) => {
+      q.copies = Math.max(1, Number(q.stock || 1));
+    });
+    this.renderPrintStudioView();
+    showToast('تم ضبط عدد الملصقات مساوياً لرصيد المخزون لكل منتج!', 'success');
+  },
+
+  clearLabelPrintQueue() {
+    AppState.labelPrintQueue = [];
+    this.renderPrintStudioView();
+  },
+
+  async openPlSheetPreviewModal() {
+    if (AppState.labelPrintQueue.length === 0) {
+      this.addSelectedStudioItemToQueue();
+    }
+    const html = await window.PrintEngine.renderBatchBarcodeLabelsHtml(
+      AppState.labelPrintQueue,
+      AppState.settings,
+      AppState.labelStudioConfig
+    );
+    this.openModal('plSheetPreviewModal');
+    const frame = document.getElementById('plSheetPreviewFrame');
+    if (frame) {
+      const doc = frame.contentWindow.document;
+      doc.open();
+      doc.write(html);
+      doc.close();
+    }
+  },
+
+  async printAllQueuedLabelsNow() {
+    const html = await window.PrintEngine.renderBatchBarcodeLabelsHtml(
+      AppState.labelPrintQueue,
+      AppState.settings,
+      AppState.labelStudioConfig
+    );
+    this.closeModal('plSheetPreviewModal');
+    await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  },
+
+  async exportQueuedLabelsPdf() {
+    const html = await window.PrintEngine.renderBatchBarcodeLabelsHtml(
+      AppState.labelPrintQueue,
+      AppState.settings,
+      AppState.labelStudioConfig
+    );
+    if (window.api && window.api.exportPDF) {
+      await window.api.exportPDF({ html, filename: `Gherbi_Labels_${Date.now()}.pdf` });
+    }
   },
 
   async switchPrintStudioTab(tab) {
@@ -3700,7 +4524,10 @@ const App = {
   async buildCurrentLabelHtml() {
     const cfg = AppState.labelStudioConfig;
     if (cfg.source === 'customers') {
-      const cust = AppState.customers.find((c) => Number(c.id) === Number(cfg.selectedId)) || AppState.customers[0] || { id: 1, name: 'زبون', phone: '0550000000', total_debt: 0 };
+      const cust =
+        AppState.customers.find((c) => Number(c.id) === Number(cfg.selectedId)) ||
+        AppState.customers[0] ||
+        { id: 1, name: 'زبون', phone: '0550000000', total_debt: 0 };
       return await window.PrintEngine.renderBarcodeLabelHtml(
         {
           ...cfg,
@@ -3715,7 +4542,10 @@ const App = {
       );
     }
 
-    const prod = AppState.products.find((p) => Number(p.id) === Number(cfg.selectedId)) || AppState.products[0] || { name: 'منتج نموذجي', barcode: '6130001000012', selling_price: 650 };
+    const prod =
+      AppState.products.find((p) => Number(p.id) === Number(cfg.selectedId)) ||
+      AppState.products[0] ||
+      { name: 'منتج نموذجي', barcode: '6130001000012', selling_price: 650 };
     return await window.PrintEngine.renderBarcodeLabelHtml(
       {
         ...cfg,
@@ -3758,10 +4588,13 @@ const App = {
     const root = document.getElementById('analytics-view-root');
     if (!root) return;
 
-    const data = (await window.api.getAnalytics({
-      dateFrom: AppState.analyticsDateFrom,
-      dateTo: AppState.analyticsDateTo
-    }).catch(() => ({}))) || {};
+    const data =
+      (await window.api
+        .getAnalytics({
+          dateFrom: AppState.analyticsDateFrom,
+          dateTo: AppState.analyticsDateTo
+        })
+        .catch(() => ({}))) || {};
     AppState.analyticsData = data;
 
     const tab = AppState.analyticsTab || 'summary';
@@ -3783,10 +4616,11 @@ const App = {
             <button onclick="App.applyAnalyticsDateRange()" class="px-3.5 py-1.5 bg-blue-600 text-white rounded-xl font-bold">تطبيق الفترة</button>
             <button onclick="App.setAnalyticsQuickRange(0)" class="px-2.5 py-1.5 bg-slate-200 dark:bg-slate-700 rounded-xl font-bold">اليوم</button>
             <button onclick="App.setAnalyticsQuickRange(30)" class="px-2.5 py-1.5 bg-slate-200 dark:bg-slate-700 rounded-xl font-bold">30 يوماً</button>
+            <button onclick="App.openAlgerianFiscalModal()" class="px-3.5 py-1.5 bg-indigo-600 text-white rounded-xl font-bold">🇩🇿 تصريح État 104 & G50</button>
+            <button onclick="App.printAnalyticsSalesSummary()" class="px-3.5 py-1.5 bg-emerald-600 text-white rounded-xl font-bold">🖨️ طباعة ملخص المبيعات</button>
           </div>
         </div>
 
-        <!-- شريط التبويبات الـ 8 -->
         <div class="flex flex-wrap gap-1.5 border-b border-slate-200 dark:border-slate-700 pb-2 text-xs font-bold">
           ${[
             { id: 'summary', label: '1. الملخص المالي' },
@@ -3801,7 +4635,9 @@ const App = {
             .map(
               (t) =>
                 `<button onclick="App.switchAnalyticsTab('${t.id}')" class="px-3 py-1.5 rounded-xl ${
-                  tab === t.id ? 'bg-blue-600 text-white shadow' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                  tab === t.id
+                    ? 'bg-blue-600 text-white shadow'
+                    : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
                 }">${t.label}</button>`
             )
             .join('')}
@@ -3837,13 +4673,25 @@ const App = {
           <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
             <h3 class="font-black text-sm mb-3">أفضل المنتجات ربحية ومبيعاً</h3>
             <div class="space-y-2 text-xs">
-              ${(data.topProducts || []).slice(0, 10).map((tp) => `<div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-900"><span class="font-bold">${tp.name} (${tp.qty_sold})</span><span class="font-mono font-bold text-emerald-600">ربح: ${Number(tp.profit || 0).toFixed(2)} د.ج</span></div>`).join('')}
+              ${(data.topProducts || [])
+                .slice(0, 10)
+                .map(
+                  (tp) =>
+                    `<div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-900"><span class="font-bold">${tp.name} (${tp.qty_sold})</span><span class="font-mono font-bold text-emerald-600">ربح: ${Number(tp.profit || 0).toFixed(2)} د.ج</span></div>`
+                )
+                .join('')}
             </div>
           </div>
           <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
             <h3 class="font-black text-sm mb-3">أفضل الزبائن مساهمة في الإيرادات</h3>
             <div class="space-y-2 text-xs">
-              ${(data.topCustomers || []).slice(0, 10).map((tc) => `<div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-900"><span class="font-bold">${tc.name} (${tc.purchase_count} فاتورة)</span><span class="font-mono font-bold text-blue-600">${Number(tc.total_revenue || 0).toFixed(2)} د.ج</span></div>`).join('')}
+              ${(data.topCustomers || [])
+                .slice(0, 10)
+                .map(
+                  (tc) =>
+                    `<div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-900"><span class="font-bold">${tc.name} (${tc.purchase_count} فاتورة)</span><span class="font-mono font-bold text-blue-600">${Number(tc.total_revenue || 0).toFixed(2)} د.ج</span></div>`
+                )
+                .join('')}
             </div>
           </div>
         </div>`;
@@ -3885,7 +4733,12 @@ const App = {
         <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3">
           <h3 class="font-black text-sm">توزيع المصاريف حسب الفئة (الإجمالي: ${Number(data.totalExpenses || 0).toFixed(2)} د.ج)</h3>
           <div class="space-y-2 text-xs">
-            ${(data.expensesByCategory || []).map((e) => `<div class="flex justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900"><span class="font-bold">${e.category}</span><span class="font-mono font-bold text-rose-500">${Number(e.total || 0).toFixed(2)} د.ج</span></div>`).join('')}
+            ${(data.expensesByCategory || [])
+              .map(
+                (e) =>
+                  `<div class="flex justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900"><span class="font-bold">${e.category}</span><span class="font-mono font-bold text-rose-500">${Number(e.total || 0).toFixed(2)} د.ج</span></div>`
+              )
+              .join('')}
           </div>
         </div>`;
     } else if (tab === 'caisse') {
@@ -4000,7 +4853,7 @@ const App = {
   },
 
   // ==========================================================================
-  // 17. المساعد الذكي (Copilot)، المستخدمون، سجل الرقابة الأمنية، والإعدادات الشاملة
+  // 17. المساعد الذكي (Copilot)، المستخدمون، سجل الرقابة، والإعدادات ذات الـ 7 تبويبات
   // ==========================================================================
   async renderCopilotView() {
     const root = document.getElementById('copilot-view-root');
@@ -4024,13 +4877,31 @@ const App = {
           <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
             <h3 class="font-black text-sm text-emerald-600 mb-3">🚀 توصيات إعادة الطلب العاجلة (بناءً على سرعة السحب)</h3>
             <div class="space-y-2 text-xs">
-              ${reorders.length === 0 ? '<div class="text-slate-400 py-6 text-center">جميع المنتجات السريعة متوفرة بكميات كافية</div>' : reorders.map((r) => `<div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 flex justify-between"><div><div class="font-bold">${r.name}</div><div class="text-[10px] text-slate-400">معدل البيع اليومي: ${r.daily_velocity}</div></div><span class="font-mono font-bold text-rose-500">يكفي ${r.days_of_supply} يوم</span></div>`).join('')}
+              ${
+                reorders.length === 0
+                  ? '<div class="text-slate-400 py-6 text-center">جميع المنتجات السريعة متوفرة بكميات كافية</div>'
+                  : reorders
+                      .map(
+                        (r) =>
+                          `<div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 flex justify-between"><div><div class="font-bold">${r.name}</div><div class="text-[10px] text-slate-400">معدل البيع اليومي: ${r.daily_velocity}</div></div><span class="font-mono font-bold text-rose-500">يكفي ${r.days_of_supply} يوم</span></div>`
+                      )
+                      .join('')
+              }
             </div>
           </div>
           <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
             <h3 class="font-black text-sm text-amber-500 mb-3">⚠️ تنبيهات البضاعة الراكدة (لم تُبع منذ 30 يوماً)</h3>
             <div class="space-y-2 text-xs">
-              ${dead.length === 0 ? '<div class="text-slate-400 py-6 text-center">لا توجد بضاعة راكدة حالياً</div>' : dead.map((d) => `<div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 flex justify-between"><span class="font-bold">${d.name} (الرصيد: ${d.stock_qty})</span><span class="font-mono font-bold text-amber-500">رأس مال مجمد: ${Number(d.tied_capital || 0).toFixed(2)} د.ج</span></div>`).join('')}
+              ${
+                dead.length === 0
+                  ? '<div class="text-slate-400 py-6 text-center">لا توجد بضاعة راكدة حالياً</div>'
+                  : dead
+                      .map(
+                        (d) =>
+                          `<div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 flex justify-between"><span class="font-bold">${d.name} (الرصيد: ${d.stock_qty})</span><span class="font-mono font-bold text-amber-500">رأس مال مجمد: ${Number(d.tied_capital || 0).toFixed(2)} د.ج</span></div>`
+                      )
+                      .join('')
+              }
             </div>
           </div>
         </div>
@@ -4159,111 +5030,396 @@ const App = {
           : `<table class="w-full text-xs text-right">
               <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-2">التوقيت</th><th class="py-2">المستخدم</th><th class="py-2">نوع العملية</th><th class="py-2">التفاصيل</th></tr></thead>
               <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
-                ${logs.map((l) => `<tr><td class="py-2 font-mono">${String(l.created_at || '').slice(0, 19)}</td><td class="py-2 font-bold">${l.user_name || ''}</td><td class="py-2 font-bold text-amber-600">${l.action_type}</td><td class="py-2 font-mono text-[11px]">${l.details_json || ''}</td></tr>`).join('')}
+                ${logs
+                  .map(
+                    (l) =>
+                      `<tr><td class="py-2 font-mono">${String(l.created_at || '').slice(0, 19)}</td><td class="py-2 font-bold">${l.user_name || ''}</td><td class="py-2 font-bold text-amber-600">${l.action_type}</td><td class="py-2 font-mono text-[11px]">${l.details_json || ''}</td></tr>`
+                  )
+                  .join('')}
               </tbody>
             </table>`;
     }
     this.openModal('auditLogModal');
   },
 
+  // ==========================================================================
+  // 18. قسم الإعدادات المتكامل ذو الـ 7 تبويبات (7-Tab Enterprise Settings View)
+  // ==========================================================================
+  async switchSettingsTab(tabId) {
+    AppState.settingsTab = tabId;
+    await this.renderSettingsView();
+  },
+
   async renderSettingsView() {
     const root = document.getElementById('settings-view-root');
     if (!root) return;
-    const [settings, localIp, qrDataUrl, printers, comPorts] = await Promise.all([
+    const [settings, localIp, qrDataUrl, printers, comPorts, counters, dzStats] = await Promise.all([
       window.api.getSettings().catch(() => ({})),
       window.api.getLocalIp().catch(() => '127.0.0.1'),
       window.api.pairingQrDataUrl().catch(() => ''),
       window.api.getPrinters().catch(() => []),
-      window.api.listComPorts().catch(() => [])
+      window.api.listComPorts().catch(() => []),
+      window.api.getDocCounters ? window.api.getDocCounters().catch(() => []) : [],
+      window.api.getDzDictionaryStats ? window.api.getDzDictionaryStats().catch(() => ({ count: 31 })) : { count: 31 }
     ]);
     AppState.settings = settings;
+    const tab = AppState.settingsTab || 'general';
+
+    const tabsList = [
+      { id: 'general', label: '1. المتجر والشعار' },
+      { id: 'invoices', label: '2. الفواتير والطابعات والترقيم' },
+      { id: 'scale', label: '3. الميزان الإلكتروني والباركود' },
+      { id: 'policies', label: '4. سياسات المخزون والولاء' },
+      { id: 'network', label: '5. الشبكة والمزامنة السحابية' },
+      { id: 'mobile', label: '6. تطبيق الهاتف المحمول' },
+      { id: 'backup', label: '7. النسخ الاحتياطي وضبط المصنع' }
+    ];
 
     root.innerHTML = `
-      <div class="space-y-6">
+      <div class="space-y-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 class="text-2xl font-black">إعدادات المتجر، الطباعة، الميزان الإلكتروني، والشبكة المحلية</h2>
-            <p class="text-xs text-slate-500">تخصيص الهوية الجبائية، قوالب الطباعة، منافذ الميزان، والنسخ الاحتياطي</p>
-          </div>
-          <div class="flex gap-2">
-            <button onclick="window.api.exportDatabaseBackup()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold">حفظ نسخة احتياطية (ZIP)</button>
-            <button onclick="window.api.importDatabaseBackup()" class="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold">استعادة نسخة احتياطية</button>
+            <h2 class="text-2xl font-black">مركز الإعدادات الشامل وتهيئة النظام (7 تبويبات)</h2>
+            <p class="text-xs text-slate-500">تخصيص الهوية الجبائية، الطابعات، الميزان الإلكتروني، الشبكة المحلية، السحابة، والنسخ الاحتياطي</p>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div class="lg:col-span-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-4 text-xs">
-            <h3 class="font-black text-sm">معلومات المتجر، الهوية الجبائية، والطباعة</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div><label class="block font-bold mb-1">اسم المتجر / المؤسسة</label><input id="set-shop-name" value="${settings.shop_name || ''}" class="w-full px-3 py-2 rounded-xl font-bold"></div>
-              <div><label class="block font-bold mb-1">النشاط / الوصف</label><input id="set-shop-desc" value="${settings.shop_description || ''}" class="w-full px-3 py-2 rounded-xl"></div>
-              <div><label class="block font-bold mb-1">العنوان</label><input id="set-shop-addr" value="${settings.shop_address || ''}" class="w-full px-3 py-2 rounded-xl"></div>
-              <div><label class="block font-bold mb-1">رقم الهاتف</label><input id="set-shop-phone" value="${settings.shop_phone || ''}" class="w-full px-3 py-2 rounded-xl font-mono"></div>
-              <div><label class="block font-bold mb-1">السجل التجاري (RC)</label><input id="set-shop-rc" value="${settings.shop_rc || ''}" class="w-full px-3 py-2 rounded-xl font-mono"></div>
-              <div><label class="block font-bold mb-1">الرقم الجبائي (NIF)</label><input id="set-shop-nif" value="${settings.shop_nif || ''}" class="w-full px-3 py-2 rounded-xl font-mono"></div>
-              <div><label class="block font-bold mb-1">مادة الضريبة (AI)</label><input id="set-shop-ai" value="${settings.shop_ai || ''}" class="w-full px-3 py-2 rounded-xl font-mono"></div>
-              <div><label class="block font-bold mb-1">الرقم الإحصائي (NIS)</label><input id="set-shop-nis" value="${settings.shop_nis || ''}" class="w-full px-3 py-2 rounded-xl font-mono"></div>
-              <div><label class="block font-bold mb-1">حساب BaridiMob / RIP (لشاشة الزبون)</label><input id="set-shop-rip" value="${settings.shop_baridimob_rip || ''}" placeholder="00799999..." class="w-full px-3 py-2 rounded-xl font-mono"></div>
-              <div>
-                <label class="block font-bold mb-1">قالب الفاتورة الافتراضي</label>
-                <select id="set-inv-tpl" class="w-full px-3 py-2 rounded-xl font-bold">
-                  ${['template1', 'template2', 'template3', 'template4', 'template5', 'template6', 'template7', 'template8', 'template9', 'a5', 'detailed', 'thermal80']
-                    .map((k) => `<option value="${k}" ${settings.invoice_template === k ? 'selected' : ''}>${k}</option>`)
-                    .join('')}
-                </select>
-              </div>
-              <div>
-                <label class="block font-bold mb-1">منفذ الميزان الإلكتروني (COM Port)</label>
-                <select id="set-scale-port" class="w-full px-3 py-2 rounded-xl font-mono">
-                  <option value="">غير متصل</option>
-                  ${comPorts.map((cp) => `<option value="${cp.path}" ${settings.usb_scale_port === cp.path ? 'selected' : ''}>${cp.path} (${cp.manufacturer || 'Serial'})</option>`).join('')}
-                </select>
-              </div>
-              <div>
-                <label class="block font-bold mb-1">وضع الشبكة المحلية (LAN Multi-POS)</label>
-                <select id="set-net-mode" class="w-full px-3 py-2 rounded-xl font-bold">
-                  <option value="server" ${settings.network_mode !== 'client' ? 'selected' : ''}>خادم رئيسي (Server Master)</option>
-                  <option value="client" ${settings.network_mode === 'client' ? 'selected' : ''}>كاشير فرعي (LAN Client)</option>
-                </select>
-              </div>
-            </div>
-            <div class="flex gap-2 pt-2">
-              <button onclick="App.saveSettingsForm()" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold shadow">حفظ كافة الإعدادات</button>
-              <button onclick="App.testScaleConnection()" class="px-4 py-2.5 bg-emerald-600/15 text-emerald-600 rounded-xl font-bold">تشغيل / فحص الميزان</button>
-            </div>
-          </div>
-
-          <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 text-center space-y-3">
-            <h3 class="font-black text-sm">الشبكة المحلية واقتران تطبيق الهاتف</h3>
-            <div class="text-xs text-slate-400">عنوان الخادم المحلي: <strong class="font-mono text-blue-500">http://${localIp}:8080</strong></div>
-            ${qrDataUrl ? `<img src="${qrDataUrl}" class="w-44 h-44 mx-auto rounded-xl border border-slate-200 p-2 bg-white">` : ''}
-            <p class="text-[11px] text-slate-400">امسح رمز الاستجابة السريعة لربط تطبيق الهاتف أو الكاشير الفرعي على نفس شبكة Wi-Fi</p>
-            <div class="text-[11px] text-slate-500 pt-2 border-t border-slate-200 dark:border-slate-700">
-              الطابعات المكتشفة على النظام: <strong>${printers.length} طابعة</strong>
-            </div>
-          </div>
+        <div class="flex flex-wrap gap-1.5 border-b border-slate-200 dark:border-slate-700 pb-2 text-xs font-bold">
+          ${tabsList
+            .map(
+              (t) =>
+                `<button onclick="App.switchSettingsTab('${t.id}')" class="px-3.5 py-2 rounded-xl ${
+                  tab === t.id
+                    ? 'bg-blue-600 text-white shadow'
+                    : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                }">${t.label}</button>`
+            )
+            .join('')}
         </div>
+
+        <div id="settingsTabContentBox" class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 text-xs"></div>
       </div>`;
+
+    const box = document.getElementById('settingsTabContentBox');
+    if (!box) return;
+
+    if (tab === 'general') {
+      box.innerHTML = `
+        <div class="space-y-4">
+          <h3 class="font-black text-sm">معلومات المتجر، الهوية الجبائية الجزائرية، وشعار المؤسسة</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div><label class="block font-bold mb-1">اسم المتجر / المؤسسة</label><input id="set-shop-name" value="${settings.shop_name || ''}" class="w-full px-3 py-2 rounded-xl font-bold"></div>
+            <div><label class="block font-bold mb-1">النشاط / الوصف</label><input id="set-shop-desc" value="${settings.shop_description || ''}" class="w-full px-3 py-2 rounded-xl"></div>
+            <div><label class="block font-bold mb-1">العنوان</label><input id="set-shop-addr" value="${settings.shop_address || ''}" class="w-full px-3 py-2 rounded-xl"></div>
+            <div><label class="block font-bold mb-1">رقم الهاتف</label><input id="set-shop-phone" value="${settings.shop_phone || ''}" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+            <div><label class="block font-bold mb-1">الفاكس</label><input id="set-shop-fax" value="${settings.shop_fax || ''}" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+            <div><label class="block font-bold mb-1">البريد الإلكتروني</label><input id="set-shop-email" value="${settings.shop_email || ''}" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+            <div><label class="block font-bold mb-1">السجل التجاري (RC)</label><input id="set-shop-rc" value="${settings.shop_rc || ''}" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+            <div><label class="block font-bold mb-1">الرقم الجبائي (NIF)</label><input id="set-shop-nif" value="${settings.shop_nif || ''}" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+            <div><label class="block font-bold mb-1">مادة الضريبة (AI)</label><input id="set-shop-ai" value="${settings.shop_ai || ''}" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+            <div><label class="block font-bold mb-1">الرقم الإحصائي (NIS)</label><input id="set-shop-nis" value="${settings.shop_nis || ''}" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+            <div class="md:col-span-2"><label class="block font-bold mb-1">حساب BaridiMob / RIP (لشاشة الزبون وعقود التقسيط)</label><input id="set-shop-rip" value="${settings.shop_baridimob_rip || ''}" placeholder="00799999000000000000" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+          </div>
+          <div class="pt-3 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-4">
+            <div>
+              <label class="block font-bold mb-1">شعار المتجر (يظهر على الفواتير والتذاكر):</label>
+              <input type="file" accept="image/*" onchange="App.handleShopLogoUpload(this)" class="text-xs">
+              <input id="set-shop-logo" type="hidden" value="${settings.shop_logo || ''}">
+            </div>
+            ${settings.shop_logo ? `<img id="settLogoPreview" src="${settings.shop_logo}" class="h-16 w-16 object-contain border rounded-xl p-1 bg-white">` : ''}
+          </div>
+          <button onclick="App.saveGeneralSettingsTab()" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold shadow">حفظ معلومات المتجر</button>
+        </div>`;
+    } else if (tab === 'invoices') {
+      box.innerHTML = `
+        <div class="space-y-4">
+          <h3 class="font-black text-sm">إعدادات قوالب الفواتير، الطابعات، وترقيم المستندات</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label class="block font-bold mb-1">قالب الفاتورة الافتراضي (A4 / A5)</label>
+              <select id="set-inv-tpl" class="w-full px-3 py-2 rounded-xl font-bold">
+                ${['template1', 'template2', 'template3', 'template4', 'template5', 'template6', 'template7', 'template8', 'template9', 'a5', 'detailed', 'thermal80']
+                  .map((k) => `<option value="${k}" ${settings.invoice_template === k ? 'selected' : ''}>${k}</option>`)
+                  .join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block font-bold mb-1">قالب التذكرة الحرارية (1..5)</label>
+              <select id="set-rcpt-tpl" class="w-full px-3 py-2 rounded-xl font-bold">
+                ${['receipt1', 'receipt2', 'receipt3', 'receipt4', 'receipt5']
+                  .map((k) => `<option value="${k}" ${settings.receipt_template === k ? 'selected' : ''}>${k}</option>`)
+                  .join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block font-bold mb-1">عرض ورق التذكرة الحرارية</label>
+              <select id="set-rcpt-width" class="w-full px-3 py-2 rounded-xl font-mono font-bold">
+                <option value="80" ${String(settings.receipt_paper_width_mm) !== '58' ? 'selected' : ''}>80mm (قياسي)</option>
+                <option value="58" ${String(settings.receipt_paper_width_mm) === '58' ? 'selected' : ''}>58mm (صغير)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-bold mb-1">مهلة السماح بتعديل الفاتورة (بالأيام)</label>
+              <select id="set-thermal-printer" class="w-full px-3 py-2 rounded-xl font-bold mb-2">
+                <option value="">الطابعة الحرارية الافتراضية للنظام</option>
+                ${printers.map((pr) => `<option value="${pr.name}" ${settings.thermal_printer_name === pr.name ? 'selected' : ''}>🖨️ حرارية: ${pr.name}</option>`).join('')}
+              </select>
+              <select id="set-a4-printer" class="w-full px-3 py-2 rounded-xl font-bold mb-2">
+                <option value="">طابعة A4 الافتراضية للنظام</option>
+                ${printers.map((pr) => `<option value="${pr.name}" ${settings.a4_printer_name === pr.name ? 'selected' : ''}>🖨️ A4: ${pr.name}</option>`).join('')}
+              </select>
+              <input id="set-edit-win" type="number" value="${settings.sale_edit_window_days || '30'}" class="w-full px-3 py-2 rounded-xl font-mono font-bold">
+            </div>
+            <label class="flex items-center gap-2 cursor-pointer pt-5">
+              <input id="set-silent-print" type="checkbox" ${String(settings.silent_print) === 'true' ? 'checked' : ''}>
+              <span class="font-bold">تفعيل الطباعة الصامتة المباشرة بدون نافذة</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer pt-5">
+              <input id="set-rcpt-bc" type="checkbox" ${String(settings.show_receipt_barcode) !== 'false' ? 'checked' : ''}>
+              <span class="font-bold">طباعة باركود الفاتورة أسفل الوصل الحراري</span>
+            </label>
+          </div>
+          <button onclick="App.saveInvoiceSettingsTab()" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold shadow">حفظ إعدادات الطباعة</button>
+
+          <div class="pt-4 border-t border-slate-200 dark:border-slate-700 space-y-2">
+            <h4 class="font-black text-xs">تخصيص عدادات وصيغ ترقيم المستندات (${new Date().getFullYear()})</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+              ${counters
+                .map(
+                  (c) => `
+                <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 flex items-center justify-between gap-2">
+                  <span class="font-mono font-bold w-28">${c.doc_type}</span>
+                  <input id="ctr-fmt-${c.doc_type}" type="text" value="${c.prefix_format || ''}" class="flex-1 px-2 py-1 rounded font-mono">
+                  <input id="ctr-num-${c.doc_type}" type="number" value="${c.last_number || 0}" class="w-20 px-2 py-1 rounded font-mono text-center">
+                  <button onclick="App.saveDocCounterRow('${c.doc_type}', ${c.year})" class="px-2.5 py-1 bg-emerald-600 text-white rounded font-bold">حفظ</button>
+                </div>`
+                )
+                .join('')}
+            </div>
+          </div>
+        </div>`;
+    } else if (tab === 'scale') {
+      box.innerHTML = `
+        <div class="space-y-4">
+          <h3 class="font-black text-sm">إعدادات الميزان الإلكتروني (USB / RS232) وباركود الميزان</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label class="block font-bold mb-1">منفذ الميزان التسلسلي (COM Port)</label>
+              <select id="set-scale-port" class="w-full px-3 py-2 rounded-xl font-mono">
+                <option value="">غير متصل</option>
+                ${comPorts.map((cp) => `<option value="${cp.path}" ${settings.usb_scale_port === cp.path ? 'selected' : ''}>${cp.path} (${cp.manufacturer || 'Serial'})</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block font-bold mb-1">سرعة الاتصال (Baud Rate)</label>
+              <select id="set-scale-baud" class="w-full px-3 py-2 rounded-xl font-mono">
+                ${['9600', '4800', '19200', '38400', '115200'].map((b) => `<option value="${b}" ${String(settings.usb_scale_baud || '9600') === b ? 'selected' : ''}>${b}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block font-bold mb-1">بادئة باركود الميزان (Prefix)</label>
+              <input id="set-scale-prefix" type="text" value="${settings.scale_barcode_prefix || '20'}" class="w-full px-3 py-2 rounded-xl font-mono font-bold">
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <div class="col-span-full grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
+            <label class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer">
+              <input id="set-open-drawer-cash" type="checkbox" ${String(settings.open_drawer_on_cash_sale) !== 'false' ? 'checked' : ''}>
+              <span class="font-bold">فتح درج النقود تلقائياً عند كل عملية بيع نقدي (ESC/POS)</span>
+            </label>
+            <label class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer">
+              <input id="set-scale-auto-add" type="checkbox" ${String(settings.usb_scale_auto_add) === 'true' ? 'checked' : ''}>
+              <span class="font-bold">إضافة المنتج الموزون تلقائياً للسلة فور استقرار الميزان</span>
+            </label>
+          </div>
+          <button onclick="App.saveScaleSettingsTab()" class="px-5 py-2 bg-blue-600 text-white rounded-xl font-bold">حفظ إعدادات الميزان</button>
+            <button onclick="App.testScaleConnection()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold">بدء الاتصال بالميزان</button>
+            <button onclick="window.api.scale.probe({}).then((r)=>showToast('نتيجة الفحص: '+JSON.stringify(r),'info'))" class="px-4 py-2 bg-indigo-600/15 text-indigo-600 rounded-xl font-bold">فحص البروتوكول التلقائي (Probe)</button>
+          </div>
+        </div>`;
+    } else if (tab === 'policies') {
+      box.innerHTML = `
+        <div class="space-y-4">
+          <h3 class="font-black text-sm">سياسات المخزون، التصنيع التلقائي، نقاط الولاء، وحاسبة الزكاة</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label class="flex items-center gap-2 p-3 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer">
+              <input id="set-allow-neg" type="checkbox" ${String(settings.allow_negative_stock) !== 'false' ? 'checked' : ''}>
+              <span class="font-bold">السماح بالبيع بالسالب عند نفاد المخزون (مع تسجيله في ديون المخزون)</span>
+            </label>
+            <label class="flex items-center gap-2 p-3 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer">
+              <input id="set-auto-bom" type="checkbox" ${String(settings.manufacturing_auto_on_sale) === 'true' ? 'checked' : ''}>
+              <span class="font-bold">تفعيل التصنيع التلقائي الفوري للمنتجات المركبة عند البيع</span>
+            </label>
+            <div>
+              <label class="block font-bold mb-1">نقاط الولاء المكتسبة لكل 100 د.ج مشتريات</label>
+              <input id="set-loyalty-pts" type="number" step="any" value="${settings.loyalty_points_per_100_dzd || '1'}" class="w-full px-3 py-2 rounded-xl font-mono font-bold">
+            </div>
+            <div>
+              <label class="block font-bold mb-1">سعر غرام الذهب عيار 24 (د.ج) لحساب نصاب الزكاة</label>
+              <input id="set-zakat-gold" type="number" step="any" value="${settings.zakat_gold_price_per_gram || '14500'}" class="w-full px-3 py-2 rounded-xl font-mono font-bold">
+            </div>
+          </div>
+          <button onclick="App.savePoliciesSettingsTab()" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold shadow">حفظ السياسات</button>
+        </div>`;
+    } else if (tab === 'network') {
+      box.innerHTML = `
+        <div class="space-y-4">
+          <h3 class="font-black text-sm">الشبكة المحلية (LAN Multi-POS) والمزامنة السحابية</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label class="block font-bold mb-1">وضع الجهاز في الشبكة المحلية</label>
+              <select id="set-net-mode" class="w-full px-3 py-2 rounded-xl font-bold">
+                <option value="server" ${settings.network_mode !== 'client' ? 'selected' : ''}>خادم رئيسي (Server Master)</option>
+                <option value="client" ${settings.network_mode === 'client' ? 'selected' : ''}>كاشير فرعي (LAN Client)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-bold mb-1">عنوان IP الخادم الرئيسي</label>
+              <input id="set-server-ip" type="text" value="${settings.server_ip || localIp}" class="w-full px-3 py-2 rounded-xl font-mono font-bold">
+            </div>
+            <div>
+              <label class="block font-bold mb-1">منفذ الشبكة (Port)</label>
+              <input id="set-server-port" type="number" value="${settings.server_port || '8080'}" class="w-full px-3 py-2 rounded-xl font-mono font-bold">
+            </div>
+          </div>
+          <button onclick="App.saveNetworkSettingsTab()" class="px-5 py-2 bg-blue-600 text-white rounded-xl font-bold">حفظ إعدادات الشبكة</button>
+
+          <div class="pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
+            <h4 class="font-black text-xs text-indigo-600">أدوات المزامنة السحابية وصيانة دفتر المخزون (Cloud & Stock Ledger Tools)</h4>
+            <div class="flex flex-wrap gap-2">
+              <button onclick="window.api.cloudSync.trigger().then(()=>showToast('تمت المزامنة الآنية','success'))" class="px-3.5 py-2 bg-indigo-600 text-white rounded-xl font-bold">مزامنة الآن (Trigger)</button>
+              <button onclick="window.api.cloudSync.snapshot().then(()=>showToast('تم رفع النسخة الكاملة','success'))" class="px-3.5 py-2 bg-blue-600/15 text-blue-600 rounded-xl font-bold">رفع نسخة كاملة (Snapshot)</button>
+              <button onclick="window.api.cloudSync.recomputeStock().then(()=>showToast('تم إعادة حساب أرصدة الدفعات','success'))" class="px-3.5 py-2 bg-emerald-600/15 text-emerald-600 rounded-xl font-bold">إعادة حساب المخزون</button>
+              <button onclick="window.api.cloudSync.repairLedger().then(()=>showToast('تم إصلاح دفتر حركات المخزون','success'))" class="px-3.5 py-2 bg-amber-500/15 text-amber-600 rounded-xl font-bold">إصلاح دفتر المخزون</button>
+              <button onclick="window.api.cloudSync.deepDiagnose().then((r)=>showToast('المشغلات النشطة: '+r.triggersCount,'info'))" class="px-3.5 py-2 bg-slate-200 dark:bg-slate-700 rounded-xl font-bold">فحص عميق (Deep Diagnose)</button>
+            </div>
+          </div>
+        </div>`;
+    } else if (tab === 'mobile') {
+      box.innerHTML = `
+        <div class="text-center space-y-4 py-4">
+          <h3 class="font-black text-base">ربط تطبيق الهاتف المحمول والكاشير اللاسلكي</h3>
+          <div class="text-xs text-slate-400">عنوان الخادم المحلي النشط: <strong class="font-mono text-blue-500">http://${localIp}:8080</strong></div>
+          ${qrDataUrl ? `<img src="${qrDataUrl}" class="w-48 h-48 mx-auto rounded-2xl border border-slate-200 p-2 bg-white shadow">` : ''}
+          <div class="flex justify-center gap-2">
+            <button onclick="window.api.cloudSync.issueMobilePairCode().then((r)=>showToast('كود اقتران الهاتف: '+r.code,'success'))" class="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold">إصدار كود اقتران سداسي للهاتف</button>
+          </div>
+        </div>`;
+    } else if (tab === 'backup') {
+      box.innerHTML = `
+        <div class="space-y-5">
+          <h3 class="font-black text-sm">النسخ الاحتياطي، استيراد قاموس المنتجات الجزائرية (613)، وإعادة ضبط المصنع</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <button onclick="window.api.exportDatabaseBackup()" class="p-4 rounded-2xl bg-emerald-600 text-white font-bold text-center">📦 تصدير نسخة احتياطية كاملة (ZIP)</button>
+            <button onclick="window.api.importDatabaseBackup()" class="p-4 rounded-2xl bg-amber-600 text-white font-bold text-center">📂 استعادة نسخة احتياطية (ZIP / DB)</button>
+            <button onclick="App.importDzDictionaryNow()" class="p-4 rounded-2xl bg-blue-600 text-white font-bold text-center">🇩🇿 استيراد قاموس 613 الضخم (حالي: ${dzStats.count || 31})</button>
+          </div>
+          <div class="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-between">
+            <div>
+              <div class="font-black text-rose-600">منطقة الخطر: إعادة ضبط المصنع (Reset System)</div>
+              <div class="text-slate-500">يمسح جميع المبيعات والمنتجات والديون مع الإبقاء على حساب المدير وإعدادات المتجر</div>
+            </div>
+            <button onclick="App.confirmFactoryReset()" class="px-5 py-2.5 bg-rose-600 text-white rounded-xl font-black">إعادة ضبط المصنع</button>
+          </div>
+        </div>`;
+    }
   },
 
-  async saveSettingsForm() {
+  handleShopLogoUpload(inputEl) {
+    const file = inputEl && inputEl.files && inputEl.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      document.getElementById('set-shop-logo').value = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  },
+
+  async saveGeneralSettingsTab() {
     const updated = {
       shop_name: document.getElementById('set-shop-name').value.trim(),
       shop_description: document.getElementById('set-shop-desc').value.trim(),
       shop_address: document.getElementById('set-shop-addr').value.trim(),
       shop_phone: document.getElementById('set-shop-phone').value.trim(),
+      shop_fax: document.getElementById('set-shop-fax').value.trim(),
+      shop_email: document.getElementById('set-shop-email').value.trim(),
       shop_rc: document.getElementById('set-shop-rc').value.trim(),
       shop_nif: document.getElementById('set-shop-nif').value.trim(),
       shop_ai: document.getElementById('set-shop-ai').value.trim(),
       shop_nis: document.getElementById('set-shop-nis').value.trim(),
       shop_baridimob_rip: document.getElementById('set-shop-rip').value.trim(),
-      invoice_template: document.getElementById('set-inv-tpl').value,
-      usb_scale_port: document.getElementById('set-scale-port').value,
-      network_mode: document.getElementById('set-net-mode').value
+      shop_logo: document.getElementById('set-shop-logo').value
     };
     await window.api.updateSettings(updated);
     AppState.settings = { ...AppState.settings, ...updated };
-    showToast('تم حفظ جميع إعدادات المتجر بنجاح', 'success');
+    await this.renderSettingsView();
+    showToast('تم حفظ معلومات المتجر والشعار بنجاح', 'success');
+  },
+
+  async saveInvoiceSettingsTab() {
+    const updated = {
+      invoice_template: document.getElementById('set-inv-tpl').value,
+      receipt_template: document.getElementById('set-rcpt-tpl').value,
+      receipt_paper_width_mm: document.getElementById('set-rcpt-width').value,
+      sale_edit_window_days: document.getElementById('set-edit-win').value,
+      thermal_printer_name: document.getElementById('set-thermal-printer')?.value || '',
+      a4_printer_name: document.getElementById('set-a4-printer')?.value || '',
+      silent_print: String(document.getElementById('set-silent-print').checked),
+      show_receipt_barcode: String(document.getElementById('set-rcpt-bc').checked)
+    };
+    await window.api.updateSettings(updated);
+    AppState.settings = { ...AppState.settings, ...updated };
+    showToast('تم حفظ إعدادات الفواتير والطباعة بنجاح', 'success');
+  },
+
+  async saveDocCounterRow(docType, year) {
+    const prefix_format = document.getElementById(`ctr-fmt-${docType}`)?.value?.trim();
+    const last_number = parseInt(document.getElementById(`ctr-num-${docType}`)?.value || '0', 10) || 0;
+    await window.api.updateDocCounter({ doc_type: docType, year, prefix_format, last_number });
+    showToast(`تم تحديث عداد (${docType}) بنجاح`, 'success');
+  },
+
+  async saveScaleSettingsTab() {
+    const updated = {
+      usb_scale_port: document.getElementById('set-scale-port').value,
+      usb_scale_baud: document.getElementById('set-scale-baud').value,
+      scale_barcode_prefix: document.getElementById('set-scale-prefix').value.trim() || '20',
+      open_drawer_on_cash_sale: String(Boolean(document.getElementById('set-open-drawer-cash')?.checked)),
+      usb_scale_auto_add: String(Boolean(document.getElementById('set-scale-auto-add')?.checked))
+    };
+    await window.api.updateSettings(updated);
+    AppState.settings = { ...AppState.settings, ...updated };
+    showToast('تم حفظ إعدادات الميزان الإلكتروني', 'success');
+  },
+
+  async savePoliciesSettingsTab() {
+    const updated = {
+      allow_negative_stock: String(document.getElementById('set-allow-neg').checked),
+      manufacturing_auto_on_sale: String(document.getElementById('set-auto-bom').checked),
+      loyalty_points_per_100_dzd: document.getElementById('set-loyalty-pts').value,
+      zakat_gold_price_per_gram: document.getElementById('set-zakat-gold').value
+    };
+    await window.api.updateSettings(updated);
+    AppState.settings = { ...AppState.settings, ...updated };
+    showToast('تم حفظ السياسات بنجاح', 'success');
+  },
+
+  async saveNetworkSettingsTab() {
+    const updated = {
+      network_mode: document.getElementById('set-net-mode').value,
+      server_ip: document.getElementById('set-server-ip').value.trim(),
+      server_port: document.getElementById('set-server-port').value.trim()
+    };
+    await window.api.updateSettings(updated);
+    AppState.settings = { ...AppState.settings, ...updated };
+    showToast('تم حفظ إعدادات الشبكة المحلية', 'success');
+  },
+
+  async confirmFactoryReset() {
+    if (!confirm('تحذير: هل أنت متأكد من مسح جميع المبيعات والمنتجات وإعادة ضبط المصنع؟')) return;
+    await window.api.resetSystem();
+    await this.refreshProducts();
+    showToast('تمت إعادة ضبط المصنع بنجاح', 'info');
   },
 
   async testScaleConnection() {

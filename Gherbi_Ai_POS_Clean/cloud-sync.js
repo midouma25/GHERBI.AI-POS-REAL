@@ -1,6 +1,6 @@
 /**
  * cloud-sync.js
- * محرك مزامنة طابور الأحداث الصادرة (sync_outbox) مع الخادم السحابي
+ * محرك مزامنة طابور الأحداث الصادرة (sync_outbox) ومزامنة المستخدمين مع الخادم السحابي
  */
 
 'use strict';
@@ -25,6 +25,14 @@ async function postSyncEvent(cloudUrl, cloudToken, instanceId, eventType, payloa
     }
   );
   return res.data;
+}
+
+async function syncUsersToCloud(db, cloudUrl, cloudToken, instanceId) {
+  const users = await db.dbAll(
+    "SELECT username, password, name, role, status FROM users WHERE status = 'Active' AND deleted_at IS NULL"
+  );
+  if (users.length === 0) return;
+  await postSyncEvent(cloudUrl, cloudToken, instanceId, 'users_sync', { users });
 }
 
 async function runCloudSync(db, options = {}) {
@@ -68,5 +76,6 @@ async function runCloudSync(db, options = {}) {
 
 module.exports = {
   postSyncEvent,
+  syncUsersToCloud,
   runCloudSync
 };

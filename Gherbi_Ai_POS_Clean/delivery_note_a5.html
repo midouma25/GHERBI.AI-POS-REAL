@@ -1,43 +1,133 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
-  <title>وصل تسليم وتوصيل بضاعة - {{DOC_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
-  <style>
-    @page { size: A5 portrait; margin: 10mm; }
-    body { font-family: 'Cairo', sans-serif; font-size: 12px; color: #0f172a; margin: 0; padding: 16px; }
-    .hdr { display: flex; justify-content: space-between; border-bottom: 3px solid #0f766e; padding-bottom: 12px; margin-bottom: 14px; }
-    .title { font-size: 20px; font-weight: 900; color: #0f766e; }
-    .info-grid { display: flex; justify-content: space-between; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-    th { background: #0f766e; color: #fff; padding: 8px; border: 1px solid #0f766e; }
-    td { padding: 7px; border: 1px solid #cbd5e1; text-align: center; }
-    .signs { display: flex; justify-content: space-between; margin-top: 32px; font-weight: 800; }
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>{{LBL_DELIVERY_TITLE}} - {{DELIVERY_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
+  <style data-purpose="page-size">
+    /* Compact half-page delivery note. A5 portrait = 148mm × 210mm. */
+    @page { size: A5; margin: 0; }
   </style>
+  <style data-purpose="typography">
+    body {
+      font-family: 'Cairo', sans-serif;
+      font-size: 9px;
+      color: #000;
+      background-color: #e5e7eb;
+    }
+  </style>
+  <style data-purpose="layout-and-borders">
+    .delivery-container {
+      width: 148mm;
+      min-height: 210mm;
+      margin: 16px auto;
+      padding: 10mm 9mm;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.12);
+    }
+
+    .rounded-box {
+      border: 1px solid #000;
+      border-radius: 8px;
+      padding: 7px 9px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th { padding: 3px 2px; font-weight: bold; }
+    .table-border td { padding: 3px 2px; }
+
+    @media print {
+      body { background-color: #fff; padding: 0; margin: 0; }
+      .delivery-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        box-sizing: border-box;
+        padding: 9mm 10mm;
+      }
+    }
+  </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="hdr">
-    <div>
-      <div class="title">{{COMPANY_NAME}}</div>
-      <div>{{COMPANY_ADDRESS}} | {{COMPANY_PHONE}}</div>
-    </div>
-    <div style="text-align:left;">
-      <div class="title">وصل تسليم وتوصيل بضاعة</div>
-      <div>N°: {{DOC_NUMBER}} | {{DATE}}</div>
-    </div>
-  </div>
-  <div class="info-grid">
-    <div><strong>الزبون المستلم:</strong> {{PARTY_NAME}} ({{PARTY_PHONE}})</div>
-    <div><strong>السائق / الموزع:</strong> {{DRIVER_NAME}} | <strong>ترقيم المركبة:</strong> {{VEHICLE_PLATE}}</div>
-  </div>
-  <table>
-    <thead><tr><th>#</th><th>{{LBL_REF}}</th><th>{{LBL_DESIGNATION}}</th><th>{{LBL_QTY}}</th><th>{{LBL_UNIT}}</th></tr></thead>
-    <tbody>{{ITEMS_ROWS}}</tbody>
-  </table>
-  <div class="signs">
-    <div>إمضاء المسلّم</div>
-    <div>إمضاء وختم المستلم</div>
-  </div>
+
+<body class="p-2">
+  <main class="delivery-container mx-auto bg-white" data-purpose="delivery-document">
+
+    <!-- Header -->
+    <header class="flex justify-between items-start mb-4 pb-2 border-b-2 border-black">
+      <div>
+        <h1 class="text-base font-bold mb-0.5">{{COMPANY_NAME}}</h1>
+        <p class="font-bold text-[8px]">{{COMPANY_DESCRIPTION}}</p>
+        <p class="font-bold text-[8px]">{{COMPANY_ADDRESS}}</p>
+        <p class="font-bold text-[8px]">{{LBL_TEL}} : {{COMPANY_PHONE}} — {{LBL_EMAIL}} : {{COMPANY_EMAIL}}</p>
+        <p class="font-bold text-[8px]">RC : {{COMPANY_RC}} — NIF : {{COMPANY_NIF}} — AI : {{COMPANY_AI}} — NIS : {{COMPANY_NIS}}</p>
+      </div>
+      {{#if COMPANY_LOGO}}
+      <img src="{{COMPANY_LOGO}}" alt="logo" style="max-height:48px;max-width:90px;object-fit:contain;" />
+      {{/if}}
+    </header>
+
+    <!-- Client + delivery meta -->
+    <section class="flex justify-between items-start mb-3 gap-3" data-purpose="info-block">
+      <div class="w-[58%] rounded-box text-[8px] font-bold leading-snug">
+        <p>{{LBL_CLIENT}} : {{PARTY_NAME}}</p>
+        <p>{{LBL_ADDRESS}} {{PARTY_ADDRESS}}</p>
+        <p>RC : {{PARTY_RC}} — NIF : {{PARTY_NIF}}</p>
+      </div>
+      <div class="w-[40%] text-left">
+        <h2 class="text-sm font-bold mb-1">{{LBL_DELIVERY_TITLE}} {{DELIVERY_NUMBER}}</h2>
+        <p class="text-[9px] font-bold">{{LBL_DATE}} {{DATE}}</p>
+        <p class="text-[8px] font-bold mt-0.5">{{LBL_ORDER_NUMBER}} {{ORDER_NUMBER}}</p>
+        <p class="text-[8px] font-bold mt-0.5">{{LBL_CARRIER}} : {{CARRIER_NAME}}</p>
+        <p class="text-[8px] font-bold mt-0.5">{{LBL_VEHICLE}} : {{VEHICLE_PLATE}}</p>
+      </div>
+    </section>
+
+    <!-- Items (no prices) -->
+    <section class="mb-3" data-purpose="items-table">
+      <table class="w-full table-border text-center text-[8px] font-bold">
+        <thead>
+          <tr class="bg-gray-100">
+            <th class="w-[6%]">{{LBL_N_INDEX}}</th>
+            <th class="w-[16%]">{{LBL_REF}}</th>
+            <th class="w-[34%]">{{LBL_DESIGNATION}}</th>
+            <th class="w-[10%]">{{LBL_UNIT}}</th>
+            <th class="w-[10%]">{{LBL_QTY}}</th>
+            <th class="w-[24%]">{{LBL_NOTES}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Signatures -->
+    <section class="flex justify-between items-start mt-6 gap-3" data-purpose="signature-section">
+      <div class="w-[45%]">
+        <p class="font-bold text-[8px] mb-6">{{LBL_SIGNATURE_SENDER}}</p>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[8px] font-bold">{{COMPANY_NAME}}</p>
+        </div>
+      </div>
+      <div class="w-[45%] text-left">
+        <p class="font-bold text-[8px] mb-6">{{LBL_SIGNATURE_CLIENT}}</p>
+        <div class="border-t border-black w-3/4 pt-1" style="margin-left:auto;">
+          <p class="text-[8px] font-bold">{{PARTY_NAME}}</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
 </body>
+
 </html>

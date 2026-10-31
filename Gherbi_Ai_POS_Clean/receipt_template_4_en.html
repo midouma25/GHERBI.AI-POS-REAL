@@ -1,74 +1,253 @@
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Receipt # {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Delivery Note - {{RECEIPT_NUMBER}}</title>
+  <link href="assets/css/fonts.css" rel="stylesheet">
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
     * { box-sizing: border-box; }
+
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
+      background: #f3f4f6;
       color: #000;
-      background: #fff;
+      margin: 0;
+      padding: 0;
+      font-family: 'Cairo', Arial, sans-serif;
+      font-size: 12px;
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 1px dashed #000; background:#000;color:#fff;padding:6px;border-radius:4px; }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: left; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+
+    .page {
+      width: 210mm;
+      min-height: 280mm;
+      background: #fff;
+      margin: 0 auto;
+      padding: 12mm 14mm;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .08);
+      display: flex;
+      flex-direction: column;
+    }
+
+    @page {
+      size: A4;
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .page {
+        width: 100%;
+        min-height: auto;
+        margin: 0;
+        box-shadow: none;
+      }
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 14mm;
+    }
+
+    .company-name {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      margin: 0;
+    }
+
+    .company-phone {
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      margin-top: 2px;
+    }
+
+    .logo-img {
+      width: 26mm;
+      height: 26mm;
+      object-fit: contain;
+      border-radius: 50%;
+    }
+
+    /* ── Title row + client box ─────────────────────────── */
+    .title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 4mm;
+    }
+
+    .doc-title {
+      font-size: 21px;
+      font-weight: 900;
+      margin: 0;
+    }
+
+    .client-box {
+      border: 1px solid #999;
+      border-radius: 2mm;
+      padding: 2mm 4mm;
+      min-width: 60mm;
+      font-size: 12px;
+    }
+
+    .client-box .client-name { font-weight: 800; }
+    .client-box .client-code { font-weight: 600; margin-top: 1mm; }
+
+    /* ── Tables ─────────────────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      border: 1px solid #000;
+      padding: 1.2mm 2mm;
+    }
+
+    th {
+      background: #d3d3d3;
+      font-weight: 800;
+      text-align: center;
+      font-size: 11.5px;
+    }
+
+    .info-table { margin-bottom: 6mm; }
+    .info-table td { text-align: center; font-weight: 700; }
+
+    /* Items: full outer frame + bordered header, open rows (no inner grid)
+       like the source document */
+    .items-table { margin-bottom: 8mm; border: 1.5px solid #000; }
+    .items-table th.start { text-align: start; }
+    .items-table th.end { text-align: end; }
+    .items-table td { border: none; font-size: 11.5px; padding: 1mm 2mm; }
+    .items-table td.code { font-family: monospace; font-size: 11px; white-space: nowrap; }
+    .items-table td.num { text-align: end; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .items-table td.qty { text-align: end; white-space: nowrap; }
+
+    /* ── Bottom: payment mode + totals ───────────────────── */
+    .bottom-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8mm;
+    }
+
+    .payment-mode {
+      border: 1px solid #000;
+      padding: 2mm 3mm 6mm;
+      font-weight: 700;
+      min-width: 70mm;
+      align-self: flex-start;
+    }
+
+    .totals-table { width: 75mm; }
+    .totals-table td { font-weight: 800; }
+    .totals-table td.lbl { width: 45%; }
+    .totals-table td.val { text-align: end; font-variant-numeric: tabular-nums; }
+    .totals-table tr.net td { font-weight: 900; font-size: 13px; border-width: 2px; }
+
+    .amount-words {
+      margin-top: 6mm;
+      font-size: 11.5px;
+      font-weight: 700;
+      border-top: 1px solid #ccc;
+      padding-top: 2.5mm;
+    }
+
+    .page-footer {
+      margin-top: auto;
+      text-align: right;
+      font-size: 10px;
+      color: #555;
+      padding-top: 6mm;
+    }
   </style>
 </head>
+
 <body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
+  <main class="page">
+    <!-- Header: company + logo -->
+    <header class="doc-header">
+      <div>
+        <h1 class="company-name">{{COMPANY_NAME}}</h1>
+        <div class="company-phone">{{COMPANY_PHONE}}</div>
+      </div>
+      {{#if COMPANY_LOGO}}<img class="logo-img" src="{{COMPANY_LOGO}}" alt="logo" />{{/if}}
+    </header>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>Receipt #:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>Customer:</strong> {{CLIENT_NAME}}</span><span><strong>Cashier:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+    <!-- Title + client box -->
+    <div class="title-row">
+      <h2 class="doc-title">DELIVERY NOTE</h2>
+      <div class="client-box">
+        <div class="client-name">{{CLIENT_NAME}}</div>
+        <div class="client-code">Client code : {{CLIENT_CODE}}</div>
+      </div>
+    </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:left;">Item</th>
-        <th>Qty</th>
-        <th>Price</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <!-- Info table -->
+    <table class="info-table">
+      <thead>
+        <tr>
+          <th>Delivery note N°</th>
+          <th>Date</th>
+          <th>Client code</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{{RECEIPT_NUMBER}}</td>
+          <td>{{DATE}}</td>
+          <td>{{CLIENT_CODE}}</td>
+        </tr>
+      </tbody>
+    </table>
 
-  <div class="totals">
-    <div class="t-row"><span>Subtotal:</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>Discount:</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>TOTAL DUE:</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>Paid:</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>Change:</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>Balance Due:</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+    <!-- Items table -->
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th class="start" style="width:18%">Code</th>
+          <th class="start">Description</th>
+          <th class="end" style="width:9%">Qty</th>
+          <th class="end" style="width:15%">Unit price</th>
+          <th class="end" style="width:17%">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ITEMS_ROWS}}
+      </tbody>
+    </table>
 
-  
-  <div class="footer">Thank you for shopping with us!</div>
+    <!-- Payment mode + totals -->
+    <div class="bottom-row">
+      <div class="payment-mode">Payment method : {{PAYMENT_MODE}}</div>
+      <table class="totals-table">
+        <tr>
+          <td class="lbl">Total</td>
+          <td class="val">{{SUBTOTAL}} DA</td>
+        </tr>
+        <tr class="net">
+          <td class="lbl">NET TO PAY</td>
+          <td class="val">{{TOTAL}} DA</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Amount in words -->
+    <p class="amount-words">This delivery note is established for the sum of : {{TOTAL_IN_WORDS}}</p>
+
+    <footer class="page-footer">1/1</footer>
+  </main>
 </body>
+
 </html>

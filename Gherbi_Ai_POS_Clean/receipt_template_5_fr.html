@@ -1,74 +1,86 @@
 <!DOCTYPE html>
 <html lang="fr" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Ticket N° {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reçu A5 - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
-      color: #000;
-      background: #fff;
+    @page { size: A5; margin: 0; }
+    body { background: #e5e7eb; color: #000; margin: 0; padding: 0; font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif; }
+    .paper {
+      width: 148mm; min-height: 210mm; background: #fff; margin: 14px auto;
+      padding: 12mm 11mm; box-shadow: 0 10px 30px rgba(0,0,0,.1);
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 1px dashed #000;  }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: left; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+    table.items { width: 100%; border-collapse: collapse; }
+    table.items thead th { background: #1e293b; color: #fff; padding: 6px 6px; font-size: 11px; font-weight: 800; }
+    @media print {
+      html, body { background: #fff; margin: 0; padding: 0; }
+      .paper { width: 100%; min-height: auto; margin: 0; padding: 8mm 8mm; box-shadow: none; }
+    }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
+  <main class="paper">
+    <header class="flex justify-between items-start border-b-2 border-black pb-3 mb-4">
+      <div>
+        <div class="text-xl font-black">{{COMPANY_NAME}}</div>
+        <div class="text-[11px] font-bold text-slate-700 mt-1">{{COMPANY_ADDRESS}}</div>
+        <div class="text-[11px] font-bold text-slate-700">Tél : {{COMPANY_PHONE}}</div>
+      </div>
+      {{#if COMPANY_LOGO}}<img src="{{COMPANY_LOGO}}" alt="logo" style="max-height:56px;max-width:110px;object-fit:contain;" />{{/if}}
+    </header>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>Ticket N°:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>Client:</strong> {{CLIENT_NAME}}</span><span><strong>Caissier:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+    <section class="flex justify-between items-start text-[12px] font-bold mb-4">
+      <div class="space-y-0.5">
+        <div class="text-base font-black">Reçu N° {{RECEIPT_NUMBER}}</div>
+        <div class="text-[11px]">Client : <span class="font-black">{{CLIENT_NAME}}</span></div>
+        <div class="text-[11px]">Vendeur : {{SELLER_NAME}}</div>
+      </div>
+      <div class="text-right text-[11px]">
+        <div>Date : {{DATE}}</div>
+        <div>Heure : {{TIME}}</div>
+      </div>
+    </section>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:left;">Article</th>
-        <th>Qté</th>
-        <th>P.U</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <section class="mb-4">
+      <table class="items text-[11px] font-bold">
+        <thead>
+          <tr>
+            <th class="w-[16%] text-center">Qté</th>
+            <th class="w-[46%] text-left px-2">Désignation</th>
+            <th class="w-[19%] text-center">P.U.</th>
+            <th class="w-[19%] text-center">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
 
-  <div class="totals">
-    <div class="t-row"><span>Sous-total :</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>Remise :</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>NET À PAYER :</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>Reçu :</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>Rendu :</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>Reste (Crédit) :</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+    <section class="flex justify-end mb-4">
+      <div class="w-[56%] text-[12px] font-bold space-y-1">
+        <div class="flex justify-between"><span>Sous-total :</span><span>{{SUBTOTAL}}</span></div>
+        <div class="flex justify-between"><span>Remise :</span><span>{{DISCOUNT}}</span></div>
+        <div class="flex justify-between text-[15px] font-black border-t-2 border-black pt-1 mt-1"><span>Total :</span><span>{{TOTAL}}</span></div>
+        <div class="flex justify-between text-[11px]"><span>Payé :</span><span>{{PAID}}</span></div>
+        <div class="flex justify-between text-[11px]"><span>Rendu :</span><span>{{CHANGE}}</span></div>
+        <div class="flex justify-between text-[11px] pt-1 mt-1 border-t border-dashed border-slate-300"><span>Solde antérieur :</span><span>{{OLD_BALANCE}}</span></div>
+        <div class="flex justify-between text-[11px]"><span>Reste à payer :</span><span>{{RECEIPT_REST}}</span></div>
+        <div class="flex justify-between text-[12px] font-black"><span>Solde dû total :</span><span class="underline">{{REST}}</span></div>
+      </div>
+    </section>
 
-  <div style="font-size:9.5px;margin-top:4px;text-align:center;">{{TOTAL_IN_WORDS}}</div>
-  <div class="footer">Merci de votre visite — À bientôt !</div>
+    <div class="text-[11px] font-bold border border-black rounded-md inline-block px-3 py-1">Mode de paiement : {{PAYMENT_MODE}}</div>
+
+    <footer class="text-center text-[11px] font-bold text-slate-600 mt-8 pt-3 border-t border-slate-200">
+      Merci de votre visite — {{COMPANY_NAME}}
+    </footer>
+  </main>
 </body>
+
 </html>

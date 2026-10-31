@@ -1,9 +1,10 @@
 /**
  * assets/css/material-symbols.css
- * تنسيق حاويات الأيقونات المتجهة (Vector SVG Icons) لنظام Gherbi.Ai POS
+ * تنسيق موحد لحاويات الأيقونات المتجهة (.material-symbols-rounded & .material-symbols-outlined)
  */
 
-.material-symbols-rounded {
+.material-symbols-rounded,
+.material-symbols-outlined {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -17,7 +18,8 @@
   overflow: hidden;
 }
 
-.material-symbols-rounded svg {
+.material-symbols-rounded svg,
+.material-symbols-outlined svg {
   width: 100%;
   height: 100%;
   fill: currentColor;

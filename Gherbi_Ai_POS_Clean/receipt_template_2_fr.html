@@ -1,74 +1,175 @@
 <!DOCTYPE html>
-<html lang="fr" dir="ltr">
+<html dir="ltr" lang="fr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Ticket N° {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <title>Reçu - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
+  <!-- بلا خطوط بعيدة: طلبُ شبكةٍ داخل نافذة الطباعة يؤخّر حدث load (حتى مهلة
+       الحارس على شبكة بطيئة)، والأسوأ أنه يجعل ارتفاع الوصل غير حتمي — نقيس
+       بخطٍّ احتياطي ثم يصل خطّ الويب فيقصُر المطبوع عن الصفحة المطلوبة ⇒ فراغ
+       في ذيل الورق «أحياناً». المكدّس أدناه محلّي بالكامل. -->
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
-      color: #000;
-      background: #fff;
+    :root {
+      /* عرض البكرة من إعداد receipt_paper_width_mm عبر PrintEngine؛ 80مم
+         افتراضاً حين لا يُحقن المتغيّر (معاينة/تصدير مباشر). */
+      --paper-width: var(--rcpt-paper-w, 80mm);
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 2px solid #000;  }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: left; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+
+    body {
+      background: #e4e4e7;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: #000;
+    }
+
+    .thermal-width {
+      width: 100%;
+      max-width: var(--paper-width);
+      margin: 0 auto;
+    }
+
+    .dashed-separator {
+      border-top: 1px dashed #000;
+    }
+
+    @page {
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        /* صندوق الصفحة هو مَن يحدّد العرض — لا رقم مثبّت هنا. */
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .thermal-width {
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm) !important;
+        box-shadow: none !important;
+        border: none !important;
+        max-width: none !important;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+
+      .shadow-xl {
+        box-shadow: none !important;
+      }
+    }
   </style>
 </head>
-<body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>Ticket N°:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>Client:</strong> {{CLIENT_NAME}}</span><span><strong>Caissier:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+<!-- py-8 و min-h-screen زينةُ معاينةٍ على الشاشة (تُوسّط الورقة على خلفية
+     رمادية). وقت الطباعة تصير 8.5مم ورقاً أبيض قبل الوصل وصفحةً تُملأ قسراً،
+     فتُطفأ بمتغيّر print: — قاعدة @media print العامة كانت تخسر أمام أصناف
+     Tailwind في الترجيح. -->
+<body class="min-h-screen flex flex-col items-center py-8 print:py-0 print:min-h-0">
+  <main class="thermal-width bg-white p-2 shadow-xl border-t-8 border-black">
+    <!-- Brand Header -->
+    <section class="text-center mb-3">
+      <h1 class="font-black text-2xl tracking-tighter leading-none mb-1"
+        style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;">
+        {{COMPANY_NAME}}
+      </h1>
+      <p class="text-[8px] font-bold text-zinc-600 mt-1">{{COMPANY_ADDRESS}}</p>
+      <p class="text-[8px] font-bold text-zinc-600">Tél: {{COMPANY_PHONE}}</p>
+    </section>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:left;">Article</th>
-        <th>Qté</th>
-        <th>P.U</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <div class="dashed-separator my-2"></div>
 
-  <div class="totals">
-    <div class="t-row"><span>Sous-total :</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>Remise :</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>NET À PAYER :</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>Reçu :</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>Rendu :</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>Reste (Crédit) :</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+    <!-- Meta -->
+    <section class="text-[8px] font-bold text-zinc-700 space-y-1 mb-2">
+      <div class="flex justify-between">
+        <span>Reçu N°</span>
+        <span class="font-black">{{RECEIPT_NUMBER}}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>{{DATE}}</span>
+        <span>{{TIME}}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Client</span>
+        <span class="font-black">{{CLIENT_NAME}}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Vendeur</span>
+        <span class="font-black">{{SELLER_NAME}}</span>
+      </div>
+    </section>
 
-  
-  <div class="footer">Merci de votre visite — À bientôt !</div>
+    <div class="dashed-separator my-2"></div>
+
+    <!-- Table Headers -->
+    <section class="mb-2">
+      <div class="grid grid-cols-12 gap-x-0.5 text-[6px] font-black border-b border-black pb-1 mb-1">
+        <div class="col-span-3">RÉF</div>
+        <div class="col-span-4">DÉSIGNATION</div>
+        <div class="col-span-1 text-center">QTE</div>
+        <div class="col-span-2 text-right">PRIX</div>
+        <div class="col-span-2 text-right">TOTAL</div>
+      </div>
+
+      <!-- Rows -->
+      <div class="space-y-2">
+        {{ITEMS_ROWS}}
+      </div>
+    </section>
+
+    <div class="dashed-separator my-2"></div>
+
+    <!-- Financial Summary -->
+    <section class="grid grid-cols-2 gap-x-4">
+      <!-- Left Column -->
+      <div class="space-y-1">
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">Nombre d'articles</span>
+          <span class="text-[9px] font-bold">{{ITEMS_COUNT}}</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">Remise</span>
+          <span class="text-[9px] font-bold">{{DISCOUNT}} DZD</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">ANCIEN SOLDE</span>
+          <span class="text-[9px] font-bold">{{OLD_BALANCE}} DZD</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">RESTE À PAYER</span>
+          <span class="text-[9px] font-bold">{{RECEIPT_REST}} DZD</span>
+        </div>
+      </div>
+
+      <!-- Right Column -->
+      <div class="space-y-1 text-right">
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">Total</span>
+          <span class="text-[9px] font-bold">{{TOTAL}}</span>
+        </div>
+        <div class="flex flex-col p-1 border border-black">
+          <span class="text-[7px] font-black uppercase">NET À PAYER</span>
+          <span class="text-xs font-black">{{TOTAL}} DZD</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">Versement</span>
+          <span class="text-[9px] font-bold">{{PAID}} DZD</span>
+        </div>
+      </div>
+    </section>
+    <div class="dashed-separator my-2"></div>
+    <div class="text-center font-black text-xs">DETTE TOTALE: {{REST}} DZD</div>
+
+    <div class="mt-4 text-center text-[8px] font-bold text-zinc-600">
+      Merci pour votre visite.
+    </div>
+  </main>
 </body>
+
 </html>

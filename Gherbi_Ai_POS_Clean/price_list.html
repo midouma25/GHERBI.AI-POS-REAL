@@ -1,328 +1,239 @@
 <!DOCTYPE html>
+<!-- قائمة أسعار المنتجات — قالب واحد يخدم اللغات الثلاث.
+     محايد اللغة: renderer.js يعيد كتابة <html lang/dir> ويستبدل
+     مفاتيح LBL_* حسب لغة الفاتورة المضبوطة، تماماً كقوالب A5/الحرارية.
+
+     ⚠ قاعدة التصميم هنا: **لا يعتمد شيء على طباعة الخلفيات للقراءة.**
+     مسار الطباعة غير الصامتة يمرّ بـwindow.print()، و«رسوم الخلفية» مُطفأة
+     افتراضياً في Chromium — فرأس جدول أسود بنصّ أبيض كان يخرج أبيضَ على أبيض.
+     لذلك كل نصّ داكن على خلفية فاتحة، والفصل البصري بالخطوط لا بالكتل، مع
+     print-color-adjust:exact كطبقة ثانية حين تُطبع الخلفيات فعلاً. -->
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
-  <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
-  <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>{{LBL_TITLE}} - {{COMPANY_NAME}}</title>
+  <style data-purpose="page-size">
+    @page { size: A4; margin: 12mm 10mm; }
+  </style>
+  <style data-purpose="typography">
+    :root {
+      --ink: #0f172a;
+      --ink-soft: #334155;
+      --muted: #64748b;
+      --hair: #e2e8f0;
+      --hair-soft: #eef1f5;
+      --tint: #f1f5f9;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
+      font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+      font-size: 11px;
+      line-height: 1.35;
+      color: var(--ink);
+      background-color: #e5e7eb;
+      padding: 16px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
-    .doc-container {
-      max-width: 210mm;
+    .doc {
+      width: 190mm;
       margin: 0 auto;
-    }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #1d4ed8;
-      
-    }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #1d4ed8;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #eff6ff;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #eff6ff;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #1d4ed8;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #1d4ed8;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
-      font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
-    }
-    .party-card {
-      background: #eff6ff;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #1d4ed8;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-    }
-    table.items-table th {
-      background: #1d4ed8;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #1d4ed8;
-      text-align: center;
-    }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
-    }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #eff6ff;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #1d4ed8;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #1d4ed8;
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 900;
-      padding: 8px 12px;
-    }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+      background: #fff;
+      padding: 10mm;
+      box-shadow: 0 0 12px rgba(0, 0, 0, .12);
     }
   </style>
+  <style data-purpose="header">
+    /* الترويسة: الهوية على البداية، والمعرّفات القانونية في بطاقة على النهاية.
+       الحقول الفارغة تختفي كلياً بشرط «if» بدل طبع شرطات بلا معنى. */
+    .brand {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--ink);
+    }
+    .logo-box {
+      width: 64px; height: 64px; flex: none;
+      border: 1px solid var(--hair); border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; background: #fff;
+    }
+    .logo-box img { max-width: 58px; max-height: 58px; object-fit: contain; }
+
+    .brand-main { flex: 1 1 auto; min-width: 0; }
+    .brand-main h1 {
+      margin: 0 0 1px;
+      font-size: 20px; font-weight: 900; letter-spacing: -.2px;
+      line-height: 1.15;
+    }
+    .tagline { margin: 0 0 3px; font-size: 10px; font-weight: 700; color: var(--ink-soft); }
+    .contact {
+      display: flex; flex-wrap: wrap; gap: 1px 14px;
+      font-size: 9.5px; font-weight: 600; color: var(--ink-soft);
+    }
+    .contact span { white-space: nowrap; }
+    .contact b { font-weight: 800; color: var(--muted); }
+    .contact .addr { white-space: normal; }
+
+    /* بطاقة المعرّفات — شبكة عمودين تبقى مصطفّة مهما طال الرقم */
+    .legal {
+      flex: none; max-width: 62mm;
+      display: grid; grid-template-columns: auto auto; gap: 2px 9px;
+      border: 1px solid var(--hair); border-radius: 8px;
+      padding: 6px 9px; background: var(--tint);
+      font-size: 9px;
+    }
+    .legal .k { font-weight: 800; color: var(--muted); }
+    .legal .v {
+      font-weight: 800; color: var(--ink);
+      font-variant-numeric: tabular-nums; text-align: end;
+      word-break: break-all;
+    }
+
+    /* شريط العنوان: علامة رأسية + العنوان، مقابل ختم التاريخ والعدد */
+    .sheet-title {
+      display: flex; align-items: flex-end; justify-content: space-between;
+      gap: 12px; margin: 9px 0 7px;
+    }
+    .sheet-title h2 {
+      margin: 0; font-size: 17px; font-weight: 900; letter-spacing: -.2px;
+      display: flex; align-items: center; gap: 7px;
+    }
+    .sheet-title h2::before {
+      content: ''; display: block; width: 4px; height: 16px;
+      background: var(--ink); border-radius: 2px; flex: none;
+    }
+    .stamp { font-size: 9.5px; font-weight: 700; color: var(--muted); text-align: end; line-height: 1.5; }
+    .stamp b { color: var(--ink); font-weight: 900; font-variant-numeric: tabular-nums; }
+
+    .scope {
+      background: var(--tint); border: 1px solid var(--hair); border-radius: 6px;
+      padding: 5px 9px; margin-bottom: 8px;
+      font-size: 9.5px; font-weight: 700; color: var(--ink-soft);
+    }
+    .scope b { color: var(--muted); font-weight: 800; }
+  </style>
+  <style data-purpose="table">
+    /* جدول القائمة: خطوط أفقية فقط. الشبكة الكاملة تُثقل قائمةً طويلة بصرياً،
+       والخطّ الرأسي يبقى حيث يفيد وحده: الفصل بين مجموعات الأعمدة. */
+    table.items { width: 100%; border-collapse: collapse; font-size: 10px; }
+
+    table.items th {
+      padding: 6px;
+      font-size: 9px; font-weight: 800; letter-spacing: .2px;
+      color: var(--ink); background: var(--tint);
+      border-top: 1.2px solid var(--ink);
+      border-bottom: 1.2px solid var(--ink);
+      white-space: nowrap;
+    }
+    /* الرؤوس تُحاذى كأعمدتها: الاسم من البداية والسعر من النهاية */
+    th.h-name { text-align: start; }
+    th.h-code { text-align: start; }
+    th.h-price { text-align: end; }
+
+    table.items td {
+      padding: 4.5px 6px;
+      border-bottom: .6px solid var(--hair-soft);
+      vertical-align: middle;
+    }
+    table.items tbody tr:nth-child(even) td { background: #fafbfd; }
+
+    .c-name { font-weight: 700; }
+    .c-code {
+      font-family: ui-monospace, 'Courier New', monospace;
+      font-size: 8.5px; color: var(--muted);
+      white-space: nowrap; width: 1%;
+    }
+    /* الأرقام الجدولية تُصفّ الفواصل العشرية عمودياً فيُقرأ العمود دفعة واحدة */
+    .c-price {
+      font-weight: 900; text-align: end; white-space: nowrap;
+      font-variant-numeric: tabular-nums; width: 1%;
+    }
+    /* خانات الحشو في آخر صفّ: تختفي بلا خطّ ولا ظلّ */
+    .c-empty { background: transparent !important; border-bottom-color: transparent !important; }
+
+    /* الفاصل بين مجموعات الأعمدة حين تُطبع القائمة على عمودين أو ثلاثة */
+    .grp-start {
+      border-inline-start: 1.2px solid #cbd5e1 !important;
+      padding-inline-start: 10px !important;
+    }
+
+    /* عنوان التصنيف — فاتح بنصّ داكن كي يبقى مقروءاً بلا خلفيات مطبوعة */
+    tr.cat td {
+      background: #e8edf3 !important;
+      color: var(--ink); font-weight: 900; font-size: 10.5px; letter-spacing: .2px;
+      padding: 6px 9px;
+      border-top: 1px solid var(--ink);
+      border-bottom: 1px solid #cbd5e1;
+    }
+    /* لا يُترك عنوان تصنيف يتيماً في ذيل الصفحة وبنوده في التالية */
+    tr.cat { break-after: avoid; page-break-after: avoid; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+
+    .foot {
+      margin-top: 9px; padding-top: 6px;
+      border-top: 1px solid var(--hair);
+      font-size: 9px; font-weight: 700; color: var(--muted); text-align: center;
+    }
+  </style>
+  <style data-purpose="print">
+    @media print {
+      body { background: #fff; padding: 0; }
+      .doc { width: 100%; padding: 0; box-shadow: none; margin: 0; }
+      /* رأس الجدول يتكرّر في كل صفحة من صفحات القائمة */
+      thead { display: table-header-group; }
+      tfoot { display: table-footer-group; }
+    }
+  </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
-        {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
-        </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
+  <main class="doc">
+
+    <header class="brand">
+      {{#if COMPANY_LOGO}}<div class="logo-box"><img src="{{{COMPANY_LOGO}}}" alt="logo"></div>{{/if}}
+
+      <div class="brand-main">
+        <h1>{{COMPANY_NAME}}</h1>
+        {{#if COMPANY_DESCRIPTION}}<p class="tagline">{{COMPANY_DESCRIPTION}}</p>{{/if}}
+        <div class="contact">
+          {{#if COMPANY_ADDRESS}}<span class="addr"><b>{{LBL_ADDRESS}}</b> {{COMPANY_ADDRESS}}</span>{{/if}}
+          {{#if COMPANY_PHONE}}<span><b>{{LBL_TEL}}:</b> {{COMPANY_PHONE}}</span>{{/if}}
+          {{#if COMPANY_FAX}}<span><b>{{LBL_FAX}}:</b> {{COMPANY_FAX}}</span>{{/if}}
+          {{#if COMPANY_EMAIL}}<span><b>{{LBL_EMAIL}}:</b> {{COMPANY_EMAIL}}</span>{{/if}}
         </div>
       </div>
 
-      <div class="doc-badge">
-        <div class="doc-type">قائمة أسعار المنتجات (CATALOGUE DES PRIX)</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
+      <!-- بطاقة المعرّفات القانونية يبنيها renderer صفوفاً جاهزة: محرّك القوالب
+           لا يدعم شرط «if» متداخلاً، فلو غُلّفت أربعة شروط بشرط خامس لالتقط
+           التعبير النمطي أوّل وسم إغلاق وأفسد الترويسة. بلا أي معرّف تختفي
+           البطاقة كلها بدل إطار فارغ معلّق. -->
+      {{#if LEGAL_ROWS}}<div class="legal">{{{LEGAL_ROWS}}}</div>{{/if}}
+    </header>
 
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
-        </div>
+    <section class="sheet-title">
+      <h2>{{LBL_TITLE}}</h2>
+      <div class="stamp">
+        <div>{{LBL_DATE}} : <b>{{DATE}}</b></div>
+        <div>{{LBL_ITEMS_COUNT}} : <b>{{ITEMS_COUNT}}</b></div>
       </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
-      </div>
-    </div>
+    </section>
 
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
+    <section class="scope"><b>{{LBL_SCOPE}}</b> : {{SCOPE_LABEL}}</section>
+
+    <table class="items">
+      <thead>{{{TABLE_HEAD}}}</thead>
+      <tbody>{{{ITEMS_ROWS}}}</tbody>
     </table>
 
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
-      </div>
+    <p class="foot">{{LBL_FOOTER}}</p>
 
-      <div class="totals-box">
-        <div class="totals-row">
-          <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
-        </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
-        </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
-          <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
-        </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
-        </div>
-        {{/if}}
-        <div class="totals-row net-row">
-          <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
-        </div>
-        
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
-        </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
-        </div>
-        {{/if}}
-      </div>
-    </div>
-
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+  </main>
 </body>
+
 </html>

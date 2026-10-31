@@ -208,6 +208,7 @@ async function openCustomerFacingWindow() {
 
   const shopName = await getSetting('shop_name', 'Gherbi.Ai POS');
   const rip = await getSetting('shop_baridimob_rip', '00799999000000000000');
+  const ripQrImg = rip ? await QRCode.toDataURL(String(rip), { margin: 1, width: 130 }).catch(() => '') : '';
 
   const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -244,6 +245,7 @@ async function openCustomerFacingWindow() {
       <div class="rip-box">
         <div style="font-weight:800;margin-bottom:4px;">الدفع الإلكتروني BaridiMob / CCP</div>
         <div style="font-family:monospace;font-size:12px;word-break:break-all;">${rip}</div>
+        ${ripQrImg ? `<img src="${ripQrImg}" style="width:110px;height:110px;margin:8px auto 0;border-radius:10px;background:#fff;padding:4px;display:block;">` : ''}
       </div>
     </div>
   </div>
@@ -1437,6 +1439,15 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('save-purchase', async (_e, data = {}) => {
+    if (data.editInvoiceId || data.edit_invoice_id) {
+      const oldId = Number(data.editInvoiceId || data.edit_invoice_id);
+      const oldItems = await dbAll('SELECT batch_id FROM purchase_items WHERE invoice_id = ? AND deleted_at IS NULL', [oldId]);
+      const oldBatchIds = oldItems.map((x) => x.batch_id).filter(Boolean);
+      if (oldBatchIds.length > 0) await batchAlloc.voidBatches(db, oldBatchIds);
+      await dbRun('DELETE FROM invoice_payments WHERE invoice_id = ?', [oldId]);
+      await dbRun('DELETE FROM purchase_items WHERE invoice_id = ?', [oldId]);
+      await dbRun('DELETE FROM purchase_invoices WHERE id = ?', [oldId]);
+    }
     if (await isLanClientMode()) return lanClient.savePurchase(data);
     const items = Array.isArray(data.items) ? data.items : [];
     const supplierId = data.supplier_id || data.supplierId ? Number(data.supplier_id || data.supplierId) : null;
@@ -2360,6 +2371,7 @@ function registerIpcHandlers() {
     return await analyticsQueries.getSegmentProducts(db, params);
   });
   ipcMain.handle('get-ai-copilot-insights', async () => {
+    if (await isLanClientMode()) return lanClient.getAiCopilotInsights();
     return await analyticsQueries.getAiCopilotInsights(db);
   });
 
@@ -2474,21 +2486,163 @@ function registerIpcHandlers() {
   });
 
   // 10. الميزات الـ 6 الحصرية للسوق الجزائري (القاموس 613، الأقساط، الرقابة، شاشة الزبون)
+  
+  // ============================================================================
+  // [FINAL 100% UPGRADE HANDLERS]: Warranty IMEI, DZ 613 CSV, Supplier Ledger, Doc Counters
+  // ============================================================================
+  ipcMain.handle('lookup-warranty-serial', async (_e, rawSerial) => {
+    if (await isLanClientMode()) return lanClient.lookupWarrantySerial(rawSerial);
+    const serial = String(rawSerial || '').trim();
+    if (!serial) return null;
+
+    const item = await dbGet(
+      `SELECT
+         si.*,
+         COALESCE(p.name, si.custom_product_name, 'منتج') AS product_name,
+         p.barcode AS product_barcode,
+         p.warranty_months AS default_warranty_months,
+         s.doc_number,
+         s.sale_date,
+         s.total AS sale_total,
+         c.name AS customer_name,
+         c.phone AS customer_phone
+       FROM sale_items si
+       INNER JOIN sales s ON s.id = si.sale_id AND s.deleted_at IS NULL
+       LEFT JOIN products p ON p.id = si.product_id
+       LEFT JOIN customers c ON c.id = s.customer_id
+       WHERE si.serial_number = ? COLLATE NOCASE AND si.deleted_at IS NULL
+       ORDER BY si.id DESC LIMIT 1`,
+      [serial]
+    );
+
+    if (!item) return { found: false, serial };
+
+    const months = Number(item.warranty_months || item.default_warranty_months || 12);
+    const startDate = new Date(item.sale_date || Date.now());
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + months);
+    const daysLeft = Math.ceil((endDate.getTime() - Date.now()) / 86400000);
+
+    return {
+      found: true,
+      serial,
+      sale_id: item.sale_id,
+      doc_number: item.doc_number || ('#' + item.sale_id),
+      sale_date: String(item.sale_date || '').slice(0, 10),
+      product_name: item.product_name,
+      product_barcode: item.product_barcode || '',
+      price: item.price,
+      customer_name: item.customer_name || 'زبون عابر',
+      customer_phone: item.customer_phone || '',
+      warranty_months: months,
+      warranty_end_date: endDate.toISOString().slice(0, 10),
+      days_remaining: daysLeft,
+      is_valid: daysLeft >= 0
+    };
+  });
+
+  ipcMain.handle('get-dz-dictionary-stats', async () => {
+    if (await isLanClientMode()) return lanClient.getDzDictionaryStats();
+    const row = await dbGet('SELECT COUNT(*) AS count FROM dz_product_dictionary');
+    return { count: Number((row && row.count) || 0) };
+  });
+
+  ipcMain.handle('import-dz-dictionary-csv', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: 'استيراد قاموس المنتجات الجزائرية (CSV / Excel)',
+      properties: ['openFile'],
+      filters: [{ name: 'CSV / Excel', extensions: ['csv', 'xlsx', 'xls'] }]
+    });
+    if (canceled || !filePaths || filePaths.length === 0) return { canceled: true };
+
+    const wb = XLSX.readFile(filePaths[0], { raw: false });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    let imported = 0;
+
+    await db.withTransaction(async () => {
+      const stmt = db._rawPrepare(
+        'INSERT OR REPLACE INTO dz_product_dictionary (barcode, name, category, brand, unit, suggested_price) VALUES (?, ?, ?, ?, ?, ?)'
+      );
+      for (const r of rows) {
+        const bc = String(r.barcode || r.code || r['الباركود'] || '').trim();
+        const name = String(r.name || r.product_name || r['الاسم'] || '').trim();
+        if (!bc || !name) continue;
+        const cat = String(r.category || r['الفئة'] || 'مواد غذائية').trim().slice(0, 50);
+        const brand = String(r.supplier || r.brand || r['الماركة'] || '').trim().slice(0, 50);
+        const unit = String(r.unit || r['الوحدة'] || 'قطعة').trim();
+        const price = Number(r.selling_price || r.suggested_price || 0) || 0;
+        stmt.run(bc, name.slice(0, 120), cat, brand, unit, price);
+        imported += 1;
+      }
+      stmt.finalize();
+    });
+
+    return { success: true, imported };
+  });
+
+  ipcMain.handle('get-supplier-ledger', async (_e, supplierId) => {
+    if (await isLanClientMode()) return lanClient.getSupplierLedger(supplierId);
+    const sid = Number(supplierId);
+    const supplier = await dbGet('SELECT * FROM suppliers WHERE id = ? AND deleted_at IS NULL', [sid]);
+    const purchases = await dbAll(
+      'SELECT * FROM purchase_invoices WHERE supplier_id = ? AND deleted_at IS NULL ORDER BY id DESC',
+      [sid]
+    );
+    const payments = await dbAll(
+      `SELECT ip.*, pi.invoice_number
+       FROM invoice_payments ip
+       LEFT JOIN purchase_invoices pi ON pi.id = ip.invoice_id
+       WHERE (ip.supplier_id = ? OR pi.supplier_id = ?) AND ip.deleted_at IS NULL
+       ORDER BY ip.id DESC`,
+      [sid, sid]
+    );
+    const returns = await dbAll(
+      'SELECT * FROM supplier_returns WHERE supplier_id = ? AND deleted_at IS NULL ORDER BY id DESC',
+      [sid]
+    );
+    return { supplier, purchases, payments, returns };
+  });
+
+  ipcMain.handle('get-doc-counters', async () => {
+    if (await isLanClientMode()) return lanClient.getDocCounters();
+    return await dbAll('SELECT * FROM document_counters ORDER BY doc_type ASC');
+  });
+
+  ipcMain.handle('update-doc-counter', async (_e, payload = {}) => {
+    if (await isLanClientMode()) return lanClient.updateDocCounter(payload);
+    const docType = String(payload.doc_type || 'invoice').trim();
+    const year = Number(payload.year || new Date().getFullYear());
+    const lastNum = Math.max(0, parseInt(payload.last_number ?? 0, 10) || 0);
+    const prefixFmt = String(payload.prefix_format || 'FAC-{YYYY}-{0000}').trim();
+
+    await dbRun(
+      `INSERT INTO document_counters (doc_type, year, last_number, prefix_format)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(doc_type, year) DO UPDATE SET last_number = excluded.last_number, prefix_format = excluded.prefix_format`,
+      [docType, year, lastNum, prefixFmt]
+    );
+    return { success: true };
+  });
+
   ipcMain.handle('lookup-dz-barcode', async (_e, barcode) => {
+    if (await isLanClientMode()) return lanClient.lookupDzBarcode(barcode);
     const clean = String(barcode || '').trim();
     if (!clean) return null;
     return await dbGet('SELECT * FROM dz_product_dictionary WHERE barcode = ? LIMIT 1', [clean]);
   });
 
   ipcMain.handle('get-audit-logs', async () => {
+    if (await isLanClientMode()) return lanClient.getAuditLogs();
     return await dbAll('SELECT * FROM audit_logs WHERE deleted_at IS NULL ORDER BY id DESC LIMIT 300');
   });
 
   ipcMain.handle('add-audit-log', async (_e, payload = {}) => {
+    if (await isLanClientMode()) return lanClient.addAuditLog(payload);
     return await recordAuditLog(payload);
   });
 
   ipcMain.handle('get-installment-plans', async (_e, filters = {}) => {
+    if (await isLanClientMode()) return lanClient.getInstallmentPlans(filters);
     const conds = ['ip.deleted_at IS NULL'];
     const params = [];
     if (filters && (filters.customerId || filters.customer_id)) {
@@ -2513,10 +2667,12 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('create-installment-plan', async (_e, payload = {}) => {
+    if (await isLanClientMode()) return lanClient.createInstallmentPlan(payload);
     return await createInstallmentPlanRecord(payload);
   });
 
   ipcMain.handle('pay-installment-schedule', async (_e, scheduleId, amount) => {
+    if (await isLanClientMode()) return lanClient.payInstallmentSchedule(scheduleId, amount);
     const sid = Number(scheduleId);
     const sched = await dbGet('SELECT * FROM installment_schedules WHERE id = ?', [sid]);
     if (!sched) throw new Error('القسط المطلوب غير موجود');
@@ -2638,6 +2794,13 @@ function registerIpcHandlers() {
     } catch (_) {
       return null;
     }
+  });
+
+  
+  ipcMain.handle('rip-qr-dataurl', async (_e, customText) => {
+    const rip = customText || (await getSetting('shop_baridimob_rip', '')) || (await getSetting('shop_ccp', '')) || '00799999000000000000';
+    if (!rip) return '';
+    return await QRCode.toDataURL(String(rip), { margin: 1, width: 180 });
   });
 
   ipcMain.handle('pairing-qr-dataurl', async () => {
@@ -3015,6 +3178,282 @@ function registerIpcHandlers() {
     return { success: true };
   });
 
+  
+  ipcMain.handle('get-algerian-fiscal-report', async (_e, params = {}) => {
+    const dateFrom = params.dateFrom ? String(params.dateFrom).slice(0, 10) : null;
+    const dateTo = params.dateTo ? String(params.dateTo).slice(0, 10) : null;
+
+    const sConds = ['s.deleted_at IS NULL', 's.total > 0'];
+    const sParams = [];
+    if (dateFrom) { sConds.push('date(s.sale_date) >= date(?)'); sParams.push(dateFrom); }
+    if (dateTo) { sConds.push('date(s.sale_date) <= date(?)'); sParams.push(dateTo); }
+
+    const etat104Rows = await dbAll(
+      `SELECT
+        c.id,
+        c.name,
+        c.phone,
+        c.address,
+        COALESCE(c.rc, '') AS rc,
+        COALESCE(c.nif, '') AS nif,
+        COALESCE(c.ai, '') AS ai,
+        COALESCE(c.nis, '') AS nis,
+        COUNT(s.id) AS invoices_count,
+        ROUND(COALESCE(SUM(s.total - s.stamp_amount - CASE WHEN s.tax_percentage > 0 THEN (s.total * s.tax_percentage / (100.0 + s.tax_percentage)) ELSE 0 END), 0), 2) AS total_ht,
+        ROUND(COALESCE(SUM(CASE WHEN s.tax_percentage > 0 THEN (s.total * s.tax_percentage / (100.0 + s.tax_percentage)) ELSE 0 END), 0), 2) AS total_tva,
+        ROUND(COALESCE(SUM(s.stamp_amount), 0), 2) AS total_stamp,
+        ROUND(COALESCE(SUM(s.total), 0), 2) AS total_ttc
+      FROM customers c
+      INNER JOIN sales s ON s.customer_id = c.id AND ${sConds.join(' AND ')}
+      WHERE c.deleted_at IS NULL
+      GROUP BY c.id
+      ORDER BY total_ttc DESC`,
+      sParams
+    );
+
+    const g50Sales = (await dbGet(
+      `SELECT
+        ROUND(COALESCE(SUM(s.total - s.stamp_amount - CASE WHEN s.tax_percentage > 0 THEN (s.total * s.tax_percentage / (100.0 + s.tax_percentage)) ELSE 0 END), 0), 2) AS ca_ht,
+        ROUND(COALESCE(SUM(CASE WHEN s.tax_percentage > 0 THEN (s.total * s.tax_percentage / (100.0 + s.tax_percentage)) ELSE 0 END), 0), 2) AS tva_collectee,
+        ROUND(COALESCE(SUM(s.stamp_amount), 0), 2) AS droit_timbre,
+        ROUND(COALESCE(SUM(s.total), 0), 2) AS ca_ttc
+      FROM sales s
+      WHERE ${sConds.join(' AND ')}`,
+      sParams
+    )) || {};
+
+    const pConds = ['pi.deleted_at IS NULL'];
+    const pParams = [];
+    if (dateFrom) { pConds.push('date(pi.date) >= date(?)'); pParams.push(dateFrom); }
+    if (dateTo) { pConds.push('date(pi.date) <= date(?)'); pParams.push(dateTo); }
+
+    const g50Purchases = (await dbGet(
+      `SELECT
+        ROUND(COALESCE(SUM(pi.subtotal), 0), 2) AS achats_ht,
+        ROUND(COALESCE(SUM(pi.subtotal * pi.tax_percentage / 100.0), 0), 2) AS tva_deductible,
+        ROUND(COALESCE(SUM(pi.total), 0), 2) AS achats_ttc
+      FROM purchase_invoices pi
+      WHERE ${pConds.join(' AND ')}`,
+      pParams
+    )) || {};
+
+    const tvaCollectee = Number(g50Sales.tva_collectee || 0);
+    const tvaDeductible = Number(g50Purchases.tva_deductible || 0);
+    const timbre = Number(g50Sales.droit_timbre || 0);
+    const tapRate = 0; // TAP ألغيت في قانون المالية الجزائري الحديث، وتبقى TVA + الطابع
+    const tvaAPayer = Math.max(0, Number((tvaCollectee - tvaDeductible).toFixed(2)));
+    const totalG50 = Number((tvaAPayer + timbre).toFixed(2));
+
+    return {
+      etat104: etat104Rows,
+      g50: {
+        ca_ht: Number(g50Sales.ca_ht || 0),
+        ca_ttc: Number(g50Sales.ca_ttc || 0),
+        tva_collectee: tvaCollectee,
+        achats_ht: Number(g50Purchases.achats_ht || 0),
+        tva_deductible: tvaDeductible,
+        tva_a_payer: tvaAPayer,
+        droit_timbre: timbre,
+        tap_rate: tapRate,
+        total_a_payer: totalG50
+      }
+    };
+  });
+
+  ipcMain.handle('export-etat104-excel', async (_e, rows = []) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: 'تصدير كشف الزبائن الجبائي (État 104)',
+      defaultPath: `Etat_104_Algérie_${new Date().getFullYear()}.xlsx`,
+      filters: [{ name: 'Excel', extensions: ['xlsx'] }]
+    });
+    if (canceled || !filePath) return { canceled: true };
+
+    const formatted = (rows || []).map((r, i) => ({
+      'N°': i + 1,
+      'الزبون / المؤسسة (Raison Sociale)': r.name,
+      'العنوان (Adresse)': r.address || '',
+      'رقم التعريف الجبائي (NIF)': r.nif || '',
+      'السجل التجاري (RC)': r.rc || '',
+      'المادة الجبائية (AI)': r.ai || '',
+      'الرقم الإحصائي (NIS)': r.nis || '',
+      'رقم الأعمال خارج الرسم (CA HT)': r.total_ht,
+      'مبلغ الضريبة (TVA 19%)': r.total_tva,
+      'حقوق الطابع (Timbre)': r.total_stamp,
+      'الإجمالي بكل الرسوم (Total TTC)': r.total_ttc
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(formatted);
+    XLSX.utils.book_append_sheet(wb, ws, 'Etat_104_Clients');
+    XLSX.writeFile(wb, filePath);
+    return { success: true, filePath };
+  });
+
+  
+  ipcMain.handle('get-cheques-portfolio', async (_e, filters = {}) => {
+    const conds = ['deleted_at IS NULL'];
+    const params = [];
+    if (filters.status) { conds.push('status = ?'); params.push(filters.status); }
+    if (filters.direction) { conds.push('direction = ?'); params.push(filters.direction); }
+    return await dbAll(`SELECT * FROM cheques_portfolio WHERE ${conds.join(' AND ')} ORDER BY due_date ASC, id DESC`, params);
+  });
+
+  ipcMain.handle('save-cheque-record', async (_e, payload = {}) => {
+    if (payload.id) {
+      await dbRun(
+        'UPDATE cheques_portfolio SET direction=?, party_name=?, cheque_number=?, bank_name=?, amount=?, due_date=?, status=?, notes=? WHERE id=?',
+        [
+          payload.direction || 'in',
+          payload.party_name || '',
+          payload.cheque_number || '',
+          payload.bank_name || 'BNA',
+          Number(payload.amount || 0),
+          payload.due_date || new Date().toISOString().slice(0, 10),
+          payload.status || 'pending',
+          payload.notes || '',
+          Number(payload.id)
+        ]
+      );
+      return { success: true, id: Number(payload.id) };
+    }
+    const ins = await dbRun(
+      'INSERT INTO cheques_portfolio (direction, party_name, cheque_number, bank_name, amount, issue_date, due_date, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        payload.direction || 'in',
+        payload.party_name || '',
+        payload.cheque_number || '',
+        payload.bank_name || 'BNA',
+        Number(payload.amount || 0),
+        new Date().toISOString().slice(0, 10),
+        payload.due_date || new Date().toISOString().slice(0, 10),
+        payload.status || 'pending',
+        payload.notes || ''
+      ]
+    );
+    return { success: true, id: ins.lastID };
+  });
+
+  ipcMain.handle('update-cheque-status', async (_e, id, status) => {
+    await dbRun('UPDATE cheques_portfolio SET status = ? WHERE id = ?', [String(status), Number(id)]);
+    return { success: true };
+  });
+
+  ipcMain.handle('delete-cheque-record', async (_e, id) => {
+    await dbRun('DELETE FROM cheques_portfolio WHERE id = ?', [Number(id)]);
+    return { success: true };
+  });
+
+  
+  // مستورد تدفقي فائق السرعة لملفات المنتجات الجزائرية الضخمة (Lumina_DZ_Products.csv / Lumina_Ultimate_Products.csv)
+  ipcMain.removeHandler('import-dz-master-csv');
+  ipcMain.handle('import-dz-master-csv', async (_e, autoPath = null) => {
+    let targetFile = autoPath;
+    if (!targetFile || !fs.existsSync(targetFile)) {
+      // البحث التلقائي عن ملفات CSV الجزائرية في المجلدات المجاورة أولاً
+      const autoCandidates = [
+        path.join(__dirname, 'Lumina_DZ_Products.csv'),
+        path.join(__dirname, 'Lumina_Ultimate_Products.csv'),
+        path.join(__dirname, '..', 'Lumina_DZ_Products.csv'),
+        path.join(__dirname, '..', 'Lumina_Ultimate_Products.csv'),
+        path.join(__dirname, '..', '..', 'codebreaker', 'Lumina_DZ_Products.csv'),
+        path.join(__dirname, '..', '..', 'codebreaker', 'Lumina_Ultimate_Products.csv')
+      ];
+      const foundAuto = autoCandidates.find((p) => fs.existsSync(p));
+      if (foundAuto && autoPath === 'auto') {
+        targetFile = foundAuto;
+      } else {
+        const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+          title: 'استيراد قاعدة البيانات الوطنية للمنتجات الجزائرية (CSV / Excel)',
+          defaultPath: foundAuto ? path.dirname(foundAuto) : undefined,
+          filters: [{ name: 'CSV / Excel', extensions: ['csv', 'xlsx', 'xls'] }],
+          properties: ['openFile']
+        });
+        if (canceled || !filePaths || !filePaths[0]) return { canceled: true };
+        targetFile = filePaths[0];
+      }
+    }
+
+    const readline = require('readline');
+    const ext = path.extname(targetFile).toLowerCase();
+    let imported = 0;
+
+    if (ext === '.csv') {
+      const fileStream = fs.createReadStream(targetFile, { encoding: 'utf8' });
+      const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
+      let headers = null;
+      let batchRows = [];
+
+      const flushBatch = async (rowsToFlush) => {
+        if (rowsToFlush.length === 0) return;
+        await db.withTransaction(async (tx) => {
+          for (const item of rowsToFlush) {
+            await tx.run(
+              'INSERT OR REPLACE INTO dz_product_dictionary (barcode, name, category, brand, unit, suggested_price) VALUES (?, ?, ?, ?, ?, ?)',
+              item
+            );
+          }
+        });
+      };
+
+      for await (const line of rl) {
+        if (!line || !line.trim()) continue;
+        const cols = line.split(',').map((c) => c.replace(/^"|"$/g, '').trim());
+        if (!headers) {
+          headers = cols.map((h) => h.toLowerCase());
+          continue;
+        }
+        const bcIdx = headers.indexOf('barcode') !== -1 ? headers.indexOf('barcode') : 0;
+        const nameIdx = headers.indexOf('name') !== -1 ? headers.indexOf('name') : 1;
+        const catIdx = headers.indexOf('category') !== -1 ? headers.indexOf('category') : 2;
+        const supIdx = headers.indexOf('supplier') !== -1 ? headers.indexOf('supplier') : 3;
+        const prcIdx = headers.indexOf('selling_price') !== -1 ? headers.indexOf('selling_price') : 4;
+
+        const bc = String(cols[bcIdx] || '').trim();
+        const name = String(cols[nameIdx] || '').trim();
+        if (!bc || !name || bc.length < 6) continue;
+
+        batchRows.push([
+          bc,
+          name.slice(0, 120),
+          String(cols[catIdx] || 'عام').slice(0, 60),
+          String(cols[supIdx] || '').slice(0, 60),
+          'قطعة',
+          Number(cols[prcIdx] || 0) || 0
+        ]);
+        imported++;
+
+        if (batchRows.length >= 1500) {
+          await flushBatch(batchRows);
+          batchRows = [];
+        }
+      }
+      if (batchRows.length > 0) {
+        await flushBatch(batchRows);
+      }
+    } else {
+      const wb = XLSX.readFile(targetFile);
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      await db.withTransaction(async (tx) => {
+        for (const r of rows) {
+          const bc = String(r.barcode || r.Barcode || r['الباركود'] || r.code || '').trim();
+          const name = String(r.name || r.Name || r['الاسم'] || r.product_name || '').trim();
+          if (!bc || !name) continue;
+          const cat = String(r.category || r.Category || r['الفئة'] || 'عام').trim();
+          const brand = String(r.supplier || r.brand || r.Brand || r['العلامة'] || '').trim();
+          const price = Number(r.selling_price || r.price || r['السعر'] || 0);
+          await tx.run(
+            'INSERT OR REPLACE INTO dz_product_dictionary (barcode, name, category, brand, unit, suggested_price) VALUES (?, ?, ?, ?, ?, ?)',
+            [bc, name, cat, brand, 'قطعة', price]
+          );
+          imported++;
+        }
+      });
+    }
+
+    return { success: true, imported, filePath: targetFile };
+  });
+
   ipcMain.handle('reset-system', async () => {
     const tablesToReset = db.SYNCED_TABLES.filter((t) => t !== 'users' && t !== 'shop_info');
     await stockLedger.withSkipStockLedger(db, async () => {
@@ -3100,7 +3539,62 @@ function registerIpcHandlers() {
   ipcMain.handle('get-performance-metrics', () => db._writeQueue.getStats());
 }
 
+
+async function autoSeedDzCsvIfFound() {
+  try {
+    const countRow = await dbGet('SELECT COUNT(*) AS c FROM dz_product_dictionary');
+    if (Number((countRow && countRow.c) || 0) > 500) return;
+
+    const candidatePaths = [
+      path.join(__dirname, 'Lumina_DZ_Products.csv'),
+      path.join(__dirname, 'Lumina_Ultimate_Products.csv'),
+      path.join(__dirname, 'Inventory_products.xlsx'),
+      path.join(__dirname, '..', 'Lumina_DZ_Products.csv'),
+      path.join(__dirname, '..', 'Lumina_Ultimate_Products.csv'),
+      path.join(__dirname, '..', 'Inventory_products.xlsx'),
+      path.join(__dirname, '..', 'GHERBI.AI POS', 'Inventory_products.xlsx'),
+      path.join(__dirname, '..', '..', 'codebreaker', 'Lumina_DZ_Products.csv'),
+      path.join(__dirname, '..', '..', 'codebreaker', 'Lumina_Ultimate_Products.csv'),
+      path.join(__dirname, '..', '..', 'Lumina_DZ_Products.csv'),
+      path.join(__dirname, '..', '..', 'Lumina_Ultimate_Products.csv')
+    ];
+
+    const foundCsv = candidatePaths.find((p) => fs.existsSync(p));
+    if (!foundCsv) return;
+
+    console.log('[DZ Dictionary] Auto-importing Algerian products from:', foundCsv);
+    const wb = XLSX.readFile(foundCsv, { raw: false });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    await db.withTransaction(async () => {
+      const stmt = db._rawPrepare(
+        'INSERT OR IGNORE INTO dz_product_dictionary (barcode, name, category, brand, unit, suggested_price) VALUES (?, ?, ?, ?, ?, ?)'
+      );
+      let count = 0;
+      for (const r of rows) {
+        const bc = String(r.barcode || r.code || '').trim();
+        const name = String(r.name || r.product_name || '').trim();
+        if (!bc || !name) continue;
+        stmt.run(
+          bc,
+          name.slice(0, 120),
+          String(r.category || 'مواد غذائية').trim().slice(0, 50),
+          String(r.supplier || r.brand || '').trim().slice(0, 50),
+          'قطعة',
+          Number(r.selling_price || 0) || 0
+        );
+        count++;
+        if (count >= 25000) break;
+      }
+      stmt.finalize();
+      console.log(`[DZ Dictionary] Successfully seeded ${count} products!`);
+    });
+  } catch (err) {
+    console.warn('[DZ Dictionary] Auto-seed skipped:', err.message);
+  }
+}
+
 app.whenReady().then(async () => {
+  await autoSeedDzCsvIfFound();
   await dbRun("DELETE FROM settings WHERE value IN ('undefined', 'null')");
   await stockLedger.seedStartupMovements(db);
 
