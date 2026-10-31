@@ -1,311 +1,210 @@
 /**
  * styles.css
  * ملف التنسيقات الرئيسي (Master Stylesheet) لنظام Gherbi.Ai POS
- * يعتمد على Tailwind CSS ويدعم الوضع الليلي، الطباعة، واللغات (RTL/LTR)
  */
 
-/* ==========================================================================
-   1. المتغيرات الجذرية (CSS Variables & Theming)
-   ========================================================================== */
-   :root {
-    --color-primary: #1d4ed8; /* أزرق داكن احترافي */
-    --color-primary-hover: #1e40af;
-    --color-secondary: #0f172a; /* لون القائمة الجانبية (Slate 900) */
-    --color-accent: #f59e0b; /* برتقالي للميزات والتحذيرات */
-    --color-success: #10b981;
-    --color-danger: #ef4444;
-    
-    --bg-main: #f8fafc;
-    --bg-surface: #ffffff;
-    --text-main: #1e293b;
-    --text-muted: #64748b;
-
-    --border-color: #e2e8f0;
-    
-    --sidebar-width: 260px;
-    --sidebar-collapsed-width: 70px;
-    --header-height: 64px;
-
-    --font-primary: 'Cairo', 'Tajawal', system-ui, sans-serif;
-    --font-numbers: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+:root {
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-secondary: #0f172a;
+  --bg-main: #f1f5f9;
+  --bg-surface: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --sidebar-width: 255px;
+  --sidebar-collapsed-width: 72px;
+  --header-height: 64px;
+  --font-primary: 'Cairo', 'Tajawal', system-ui, -apple-system, sans-serif;
+  --font-numbers: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-/* دعم الوضع الليلي (Dark Mode) - يُفعل بإضافة كلاس .dark على <html> */
 html.dark {
-    --color-primary: #3b82f6;
-    --color-primary-hover: #60a5fa;
-    --color-secondary: #020617;
-    --bg-main: #0f172a;
-    --bg-surface: #1e293b;
-    --text-main: #f1f5f9;
-    --text-muted: #94a3b8;
-    --border-color: #334155;
+  --color-primary: #3b82f6;
+  --color-primary-hover: #60a5fa;
+  --color-secondary: #020617;
+  --bg-main: #0f172a;
+  --bg-surface: #1e293b;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --border-color: #334155;
 }
 
-/* ==========================================================================
-   2. الإعدادات الأساسية (Base Resets)
-   ========================================================================== */
 html, body {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100vh;
-    overflow: hidden; /* نمنع التمرير العام، التمرير يكون داخل الأقسام فقط */
-    font-family: var(--font-primary);
-    background-color: var(--bg-main);
-    color: var(--text-main);
-    transition: background-color 0.3s ease, color 0.3s ease;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  font-family: var(--font-primary);
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
 }
 
-/* تخصيص الأرقام لتكون أوضح في الحسابات المالية */
 .financial-number, .price-tag, .font-mono {
-    font-family: var(--font-numbers);
-    letter-spacing: 0.5px;
+  font-family: var(--font-numbers);
+  letter-spacing: 0.3px;
 }
 
-/* ==========================================================================
-   3. تخصيص شريط التمرير (Custom Scrollbars)
-   ========================================================================== */
 ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-    background: transparent;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-    background-color: var(--border-color);
-    border-radius: 10px;
+  background-color: #cbd5e1;
+  border-radius: 9999px;
 }
-::-webkit-scrollbar-thumb:hover {
-    background-color: var(--text-muted);
-}
-.dark ::-webkit-scrollbar-thumb {
-    background-color: #475569;
+html.dark ::-webkit-scrollbar-thumb {
+  background-color: #475569;
 }
 
-/* ==========================================================================
-   4. الهيكلة العامة للتطبيق (Layout)
-   ========================================================================== */
 #app-container {
-    display: flex;
-    height: 100vh;
-    width: 100vw;
+  display: flex;
+  height: 100vh;
+  width: 100vw;
 }
 
 #sidebar {
-    width: var(--sidebar-width);
-    background-color: var(--color-secondary);
-    color: white;
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    display: flex;
-    flex-direction: column;
-    z-index: 40;
+  width: var(--sidebar-width);
+  background: linear-gradient(180deg, #0f172a 0%, #020617 100%);
+  color: #ffffff;
+  transition: width 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  z-index: 40;
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.12);
 }
 
 #sidebar.collapsed {
-    width: var(--sidebar-collapsed-width);
+  width: var(--sidebar-collapsed-width);
+}
+#sidebar.collapsed .sidebar-label {
+  display: none;
 }
 
 #main-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    background-color: var(--bg-main);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background-color: var(--bg-main);
 }
 
 #top-header {
-    height: var(--header-height);
-    background-color: var(--bg-surface);
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 1.5rem;
-    z-index: 30;
+  height: var(--header-height);
+  background-color: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 1.25rem;
+  z-index: 30;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
 }
 
 .view-section {
-    display: none;
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding: 1.5rem;
+  display: none;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1.25rem;
 }
 .view-section.active {
-    display: flex;
-    flex-direction: column;
-    animation: fadeIn 0.4s ease forwards;
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn 0.2s ease forwards;
 }
 
-/* ==========================================================================
-   5. شاشة المبيعات والكاشير (POS Grid System)
-   ========================================================================== */
 .pos-layout {
-    display: grid;
-    grid-template-columns: 1fr 400px;
-    gap: 1rem;
-    height: calc(100vh - var(--header-height) - 3rem);
-}
-
-/* عندما تكون الشاشة باللغة الفرنسية/الإنجليزية، نعكس اتجاه الشبكة */
-html[dir="ltr"] .pos-layout {
-    grid-template-columns: 400px 1fr;
+  display: grid;
+  grid-template-columns: 1fr 410px;
+  gap: 1rem;
+  height: calc(100vh - var(--header-height) - 2.5rem);
 }
 
 .products-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 1rem;
-    align-content: start;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 0.85rem;
+  align-content: start;
 }
 
 .product-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: 0.75rem;
-    padding: 0.75rem;
-    cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-    user-select: none;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 0.85rem;
+  padding: 0.85rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 .product-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-    border-color: var(--color-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px -5px rgba(37, 99, 235, 0.15);
+  border-color: var(--color-primary);
 }
 
 .cart-container {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: 0.75rem;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
 }
 
 .cart-items {
-    flex: 1;
-    overflow-y: auto;
+  flex: 1;
+  overflow-y: auto;
 }
 
-/* ==========================================================================
-   6. النوافذ المنبثقة والحركات (Modals & Animations)
-   ========================================================================== */
 .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background-color: rgba(15, 23, 42, 0.6);
-    backdrop-filter: blur(4px);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-    opacity: 0;
-    transition: opacity 0.2s ease;
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
 }
-
 .modal-overlay.active {
-    display: flex;
-    opacity: 1;
+  display: flex;
 }
-
 .modal-content {
-    background-color: var(--bg-surface);
-    border-radius: 1rem;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-    max-width: 90vw;
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-    transform: scale(0.95) translateY(10px);
-    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  background-color: var(--bg-surface);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  border-radius: 1.25rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  max-width: 92vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
 }
 
-.modal-overlay.active .modal-content {
-    transform: scale(1) translateY(0);
-}
-
-/* Animations */
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-@keyframes slideDown {
-    from { opacity: 0; transform: translateY(-20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes pulse-fast {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
-
-/* ==========================================================================
-   7. إعدادات الطباعة (Print Media Queries)
-   ========================================================================== */
-@media print {
-    /* إخفاء الواجهة الأمامية بالكامل عند الطباعة المباشرة */
-    body * {
-        visibility: hidden;
-    }
-    
-    /* إذا أردنا طباعة منطقة معينة فقط */
-    #print-area, #print-area * {
-        visibility: visible;
-    }
-    #print-area {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-        margin: 0;
-        padding: 0;
-        box-shadow: none;
-    }
-
-    /* إزالة خلفيات النوافذ والتنسيقات غير الضرورية على الورق */
-    .no-print {
-        display: none !important;
-    }
-}
-
-/* ==========================================================================
-   8. تحسينات الأزرار والإدخال (Forms & Buttons)
-   ========================================================================== */
-input, select, textarea {
-    background-color: var(--bg-main);
-    color: var(--text-main);
-    border: 1px solid var(--border-color);
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+select,
+textarea {
+  background-color: var(--bg-surface);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 input:focus, select:focus, textarea:focus {
-    outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.2);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
-button {
-    transition: all 0.15s ease;
-}
-button:active {
-    transform: scale(0.97);
-}
-
-/* تخصيص أزرار الأوراق النقدية الجزائرية (DZD Banknotes) في نافذة الدفع */
-.btn-dzd {
-    background-size: cover;
-    background-position: center;
-    background-blend-mode: multiply;
-    color: white;
-    text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
-    font-weight: 900;
-    border: 2px solid transparent;
-}
-.btn-dzd:hover {
-    filter: brightness(1.1);
-    border-color: var(--color-primary);
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }

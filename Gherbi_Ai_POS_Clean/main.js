@@ -1,12 +1,15 @@
 /**
  * main.js
- * العملية الرئيسية (Electron Main Process) لنظام Gherbi.Ai POS
- * تدير النوافذ، قاعدة البيانات، الطباعة الصامتة، تصدير PDF/Excel، النسخ الاحتياطي، وجميع قنوات IPC
+ * العملية الرئيسية الشاملة (Electron Main Process) لنظام Gherbi.Ai POS
+ * تدير النوافذ، شاشة عرض الزبون الثانية، قاعدة البيانات، الطباعة الصامتة،
+ * استيراد وتصدير Excel الكامل، النسخ الاحتياطي، القاموس الجزائري 613، الأقساط، وسجل الرقابة الأمنية
  */
 
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
+
+const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -31,7 +34,6 @@ const lanClient = require('./api-client');
 const scaleBridge = require('./scale-bridge');
 const licenseManager = require('./licenseManager');
 const deviceAuth = require('./device-auth');
-const cloudSyncMod = require('./cloud-sync');
 const cloudDbSyncMod = require('./cloud-db-sync');
 const cloudDiagnostics = require('./cloud-diagnostics');
 const {
@@ -39,19 +41,21 @@ const {
   generateNextDocNumber,
   enrichProductsFull,
   getProductFullDetails,
-  executeSaleTransaction
+  getPaymentDetailsFull,
+  executeSaleTransaction,
+  recordAuditLog,
+  createInstallmentPlanRecord,
+  buildProductsQueryOrder
 } = require('./server');
 
 const productWriter = productWriterMod.createProductWriter(db);
 
 let mainWindow = null;
+let customerDisplayWindow = null;
 let localServerHandle = null;
 let cloudDbSync = null;
 let activeServerPort = 8080;
 
-// ============================================================================
-// دوال مساعدة لقاعدة البيانات والإعدادات والشبكة
-// ============================================================================
 const dbGet = (sql, params = []) => db.dbGet(sql, params);
 const dbAll = (sql, params = []) => db.dbAll(sql, params);
 const dbRun = (sql, params = []) => db.dbRun(sql, params);
@@ -80,8 +84,11 @@ async function getAllSettingsObject() {
   );
   if (shopRow) {
     if (shopRow.name && !obj.shop_name) obj.shop_name = shopRow.name;
+    if (shopRow.description && !obj.shop_description) obj.shop_description = shopRow.description;
     if (shopRow.address && !obj.shop_address) obj.shop_address = shopRow.address;
     if (shopRow.phone && !obj.shop_phone) obj.shop_phone = shopRow.phone;
+    if (shopRow.fax && !obj.shop_fax) obj.shop_fax = shopRow.fax;
+    if (shopRow.email && !obj.shop_email) obj.shop_email = shopRow.email;
     if (shopRow.rc && !obj.shop_rc) obj.shop_rc = shopRow.rc;
     if (shopRow.nif && !obj.shop_nif) obj.shop_nif = shopRow.nif;
     if (shopRow.ai && !obj.shop_ai) obj.shop_ai = shopRow.ai;
@@ -138,12 +145,12 @@ async function ensureSupplierByName(supplierName) {
 }
 
 // ============================================================================
-// إنشاء النافذة الرئيسية وربط الأحداث الحية
+// إنشاء النافذة الرئيسية وشاشة عرض الزبون الثانية (Customer Facing Display)
 // ============================================================================
 function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 880,
+    width: 1420,
+    height: 890,
     minWidth: 1024,
     minHeight: 700,
     title: 'Gherbi.Ai POS',
@@ -165,7 +172,110 @@ function createMainWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    if (customerDisplayWindow && !customerDisplayWindow.isDestroyed()) {
+      customerDisplayWindow.close();
+    }
   });
+}
+
+async function openCustomerFacingWindow() {
+  if (customerDisplayWindow && !customerDisplayWindow.isDestroyed()) {
+    customerDisplayWindow.focus();
+    return { success: true, alreadyOpen: true };
+  }
+
+  const displays = screen.getAllDisplays();
+  const externalDisplay = displays.find((d) => d.bounds.x !== 0 || d.bounds.y !== 0);
+
+  const winOpts = {
+    width: 900,
+    height: 620,
+    title: 'شاشة الزبون — Gherbi.Ai POS',
+    backgroundColor: '#020617',
+    autoHideMenuBar: true,
+    webPreferences: {
+      contextIsolation: false,
+      nodeIntegration: true
+    }
+  };
+
+  if (externalDisplay) {
+    winOpts.x = externalDisplay.bounds.x + 40;
+    winOpts.y = externalDisplay.bounds.y + 40;
+  }
+
+  customerDisplayWindow = new BrowserWindow(winOpts);
+
+  const shopName = await getSetting('shop_name', 'Gherbi.Ai POS');
+  const rip = await getSetting('shop_baridimob_rip', '00799999000000000000');
+
+  const html = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>شاشة الزبون</title>
+  <style>
+    body { margin:0; padding:24px; font-family:'Cairo','Segoe UI',sans-serif; background:#020617; color:#f8fafc; display:flex; flex-direction:column; height:100vh; box-sizing:border-box; }
+    .hdr { display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #1e293b; padding-bottom:14px; }
+    .brand { font-size:26px; font-weight:900; color:#38bdf8; }
+    .main { flex:1; display:grid; grid-template-columns:1fr 320px; gap:20px; margin-top:18px; min-height:0; }
+    .items-box { background:#0f172a; border:1px solid #1e293b; border-radius:16px; padding:16px; overflow-y:auto; }
+    .item-row { display:flex; justify-content:space-between; padding:10px 12px; border-bottom:1px solid #1e293b; font-size:18px; font-weight:700; }
+    .total-card { background:linear-gradient(135deg,#1d4ed8,#0284c7); border-radius:20px; padding:24px; display:flex; flex-direction:column; justify-content:space-between; text-align:center; }
+    .total-val { font-size:44px; font-weight:900; font-family:monospace; color:#ffffff; margin:12px 0; }
+    .rip-box { background:rgba(255,255,255,0.12); padding:12px; border-radius:12px; font-size:13px; }
+  </style>
+</head>
+<body>
+  <div class="hdr">
+    <div class="brand">${shopName} — مرحباً بكم</div>
+    <div id="clock" style="font-family:monospace;font-size:18px;color:#94a3b8;"></div>
+  </div>
+  <div class="main">
+    <div class="items-box" id="itemsList">
+      <div style="text-align:center;color:#64748b;margin-top:120px;font-size:22px;font-weight:700;">مرحباً بكم في متجرنا</div>
+    </div>
+    <div class="total-card">
+      <div>
+        <div style="font-size:18px;opacity:0.9;font-weight:700;">الإجمالي المطلوب للدفع</div>
+        <div id="grandTotal" class="total-val">0.00 د.ج</div>
+        <div id="discountLine" style="font-size:15px;color:#fde047;font-weight:700;"></div>
+      </div>
+      <div class="rip-box">
+        <div style="font-weight:800;margin-bottom:4px;">الدفع الإلكتروني BaridiMob / CCP</div>
+        <div style="font-family:monospace;font-size:12px;word-break:break-all;">${rip}</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const { ipcRenderer } = require('electron');
+    setInterval(() => { document.getElementById('clock').textContent = new Date().toLocaleTimeString('ar-DZ'); }, 1000);
+    ipcRenderer.on('customer-display:update', (_e, state) => {
+      const items = (state && state.items) || [];
+      const list = document.getElementById('itemsList');
+      if (items.length === 0) {
+        list.innerHTML = '<div style="text-align:center;color:#64748b;margin-top:120px;font-size:22px;font-weight:700;">شكراً لزيارتكم — مرحباً بكم</div>';
+      } else {
+        list.innerHTML = items.map((it) => \`
+          <div class="item-row">
+            <span>\${it.name} × \${it.quantity}</span>
+            <span style="font-family:monospace;color:#38bdf8;">\${Number(it.subtotal || 0).toFixed(2)} د.ج</span>
+          </div>\`).join('');
+      }
+      document.getElementById('grandTotal').textContent = Number((state && state.total) || 0).toFixed(2) + ' د.ج';
+      const disc = Number((state && state.discount) || 0);
+      document.getElementById('discountLine').textContent = disc > 0 ? ('التخفيض: -' + disc.toFixed(2) + ' د.ج') : '';
+    });
+  </script>
+</body>
+</html>`;
+
+  customerDisplayWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  customerDisplayWindow.on('closed', () => {
+    customerDisplayWindow = null;
+  });
+
+  return { success: true };
 }
 
 // بث قراءات الميزان الحية إلى الواجهة الأمامية
@@ -191,7 +301,6 @@ scaleBridge.on('raw', (rawItem) => {
 // تسجيل جميع قنوات الاتصال (IPC Handlers)
 // ============================================================================
 function registerIpcHandlers() {
-  // معالج متزامن لمعرف الجهاز HWID
   ipcMain.on('get-hwid-sync', (event) => {
     event.returnValue = licenseManager.getHWID();
   });
@@ -234,15 +343,14 @@ function registerIpcHandlers() {
     return { success: true };
   });
 
-  // 2. المستخدمون والمصادقة (خالية تماماً من أخطاء UNIQUE constraint)
+  // 2. المستخدمون والمصادقة
   ipcMain.handle('check-first-run', async () => {
     if (await isLanClientMode()) return lanClient.checkFirstRun();
     await dbRun(
       "UPDATE users SET username = username || '~del~' || id WHERE deleted_at IS NOT NULL AND username NOT LIKE '%~del~%'"
     );
     const row = await dbGet('SELECT COUNT(*) AS count FROM users WHERE deleted_at IS NULL');
-    const isFirst = Number((row && row.count) || 0) === 0;
-    return isFirst;
+    return Number((row && row.count) || 0) === 0;
   });
 
   ipcMain.handle('setup-first-admin', async (_e, arg1, arg2, arg3) => {
@@ -295,7 +403,7 @@ function registerIpcHandlers() {
     if (await isLanClientMode()) return lanClient.loginUser(username, password);
 
     const user = await dbGet(
-      'SELECT id, name, username, password, role, status FROM users WHERE username = ? COLLATE NOCASE AND deleted_at IS NULL LIMIT 1',
+      'SELECT id, name, username, password, role, permissions_json, status FROM users WHERE username = ? COLLATE NOCASE AND deleted_at IS NULL LIMIT 1',
       [username]
     );
     if (!user) return { success: false, error: 'invalid_creds' };
@@ -317,13 +425,22 @@ function registerIpcHandlers() {
       }
     }
 
-    if (!valid) return { success: false, error: 'invalid_creds' };
+    if (!valid) {
+      await recordAuditLog({
+        user_name: username,
+        action_type: 'login_failed',
+        severity: 'warning',
+        details: { attempted_username: username }
+      });
+      return { success: false, error: 'invalid_creds' };
+    }
 
     const safeUser = {
       id: user.id,
       name: user.name,
       username: user.username,
       role: user.role || 'Admin',
+      permissions_json: user.permissions_json || null,
       status: user.status || 'Active'
     };
     return { success: true, ok: true, ...safeUser, user: safeUser };
@@ -332,7 +449,7 @@ function registerIpcHandlers() {
   ipcMain.handle('get-users', async () => {
     if (await isLanClientMode()) return lanClient.getUsers();
     return await dbAll(
-      'SELECT id, name, username, role, status, created_at FROM users WHERE deleted_at IS NULL ORDER BY id ASC'
+      'SELECT id, name, username, role, permissions_json, status, created_at FROM users WHERE deleted_at IS NULL ORDER BY id ASC'
     );
   });
 
@@ -342,6 +459,11 @@ function registerIpcHandlers() {
     const username = String(u.username || '').trim();
     const hashed = bcrypt.hashSync(String(u.password || '1234'), 10);
     const role = u.role || 'Cashier';
+    const perms = u.permissions_json
+      ? typeof u.permissions_json === 'string'
+        ? u.permissions_json
+        : JSON.stringify(u.permissions_json)
+      : null;
     const status = u.status || 'Active';
 
     await dbRun(
@@ -352,18 +474,15 @@ function registerIpcHandlers() {
       [username]
     );
     if (existing) {
-      await dbRun('UPDATE users SET name = ?, password = ?, role = ?, status = ? WHERE id = ?', [
-        name,
-        hashed,
-        role,
-        status,
-        existing.id
-      ]);
+      await dbRun(
+        'UPDATE users SET name = ?, password = ?, role = ?, permissions_json = ?, status = ? WHERE id = ?',
+        [name, hashed, role, perms, status, existing.id]
+      );
       return { success: true, id: existing.id };
     }
     const ins = await dbRun(
-      'INSERT INTO users (name, username, password, role, status) VALUES (?, ?, ?, ?, ?)',
-      [name, username, hashed, role, status]
+      'INSERT INTO users (name, username, password, role, permissions_json, status) VALUES (?, ?, ?, ?, ?, ?)',
+      [name, username, hashed, role, perms, status]
     );
     return { success: true, id: ins.lastID };
   });
@@ -373,20 +492,24 @@ function registerIpcHandlers() {
     const u = typeof arg1 === 'object' ? arg1 : arg2 || {};
     if (await isLanClientMode()) return lanClient.updateUser(id, u);
 
+    const perms =
+      u.permissions_json !== undefined
+        ? typeof u.permissions_json === 'string'
+          ? u.permissions_json
+          : JSON.stringify(u.permissions_json)
+        : null;
+
     if (u.password && String(u.password).trim() !== '') {
       const hashed = bcrypt.hashSync(String(u.password), 10);
       await dbRun(
-        'UPDATE users SET name = ?, username = ?, password = ?, role = ?, status = ? WHERE id = ?',
-        [u.name, u.username, hashed, u.role || 'Cashier', u.status || 'Active', id]
+        'UPDATE users SET name = ?, username = ?, password = ?, role = ?, permissions_json = COALESCE(?, permissions_json), status = ? WHERE id = ?',
+        [u.name, u.username, hashed, u.role || 'Cashier', perms, u.status || 'Active', id]
       );
     } else {
-      await dbRun('UPDATE users SET name = ?, username = ?, role = ?, status = ? WHERE id = ?', [
-        u.name,
-        u.username,
-        u.role || 'Cashier',
-        u.status || 'Active',
-        id
-      ]);
+      await dbRun(
+        'UPDATE users SET name = ?, username = ?, role = ?, permissions_json = COALESCE(?, permissions_json), status = ? WHERE id = ?',
+        [u.name, u.username, u.role || 'Cashier', perms, u.status || 'Active', id]
+      );
     }
     return { success: true, id };
   });
@@ -422,7 +545,7 @@ function registerIpcHandlers() {
     return { success: true };
   });
 
-  // 3. المنتجات، الفئات، الدفعات، والمتغيرات
+  // 3. المنتجات، الفئات، الدفعات، المتغيرات، والأرقام التسلسلية
   ipcMain.handle('get-categories', async () => {
     if (await isLanClientMode()) return lanClient.getCategories();
     const rows = await dbAll(
@@ -470,8 +593,9 @@ function registerIpcHandlers() {
       params.push(q, q, q, q);
     }
 
+    const { stockJoinSql, orderBySql } = buildProductsQueryOrder(filters && filters.sort);
     const rows = await dbAll(
-      `SELECT p.* FROM products p WHERE ${conds.join(' AND ')} ORDER BY p.id DESC`,
+      `SELECT p.* FROM products p ${stockJoinSql} WHERE ${conds.join(' AND ')} ${orderBySql}`,
       params
     );
     return await enrichProductsFull(rows);
@@ -528,8 +652,8 @@ function registerIpcHandlers() {
         `INSERT INTO products (
           barcode, name, category, family, supplier, description, min_stock,
           image, unit, color, weight_volume, wholesale_unit, wholesale_qty,
-          plu_code, has_variants, is_featured, material_role, track_serial, hide_from_pos
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          plu_code, has_variants, is_featured, material_role, track_serial, warranty_months, hide_from_pos
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           barcode,
           String(p.name || 'منتج جديد').trim(),
@@ -549,6 +673,7 @@ function registerIpcHandlers() {
           p.is_featured ? 1 : 0,
           p.material_role || null,
           p.track_serial ? 1 : 0,
+          Number(p.warranty_months ?? 0),
           p.hide_from_pos ? 1 : 0
         ]
       );
@@ -608,7 +733,8 @@ function registerIpcHandlers() {
              description = ?, min_stock = ?, image = COALESCE(?, image),
              unit = ?, color = ?, weight_volume = ?, wholesale_unit = ?,
              wholesale_qty = ?, plu_code = ?, is_featured = COALESCE(?, is_featured),
-             material_role = COALESCE(?, material_role), hide_from_pos = COALESCE(?, hide_from_pos)
+             material_role = COALESCE(?, material_role), track_serial = COALESCE(?, track_serial),
+             warranty_months = COALESCE(?, warranty_months), hide_from_pos = COALESCE(?, hide_from_pos)
          WHERE id = ?`,
         [
           barcode,
@@ -627,6 +753,8 @@ function registerIpcHandlers() {
           p.plu_code || null,
           p.is_featured !== undefined ? (p.is_featured ? 1 : 0) : null,
           p.material_role !== undefined ? p.material_role : null,
+          p.track_serial !== undefined ? (p.track_serial ? 1 : 0) : null,
+          p.warranty_months !== undefined ? Number(p.warranty_months) : null,
           p.hide_from_pos !== undefined ? (p.hide_from_pos ? 1 : 0) : null,
           productId
         ]
@@ -746,7 +874,30 @@ function registerIpcHandlers() {
     return { success: true };
   });
 
-  // 4. المبيعات، الزبائن، وإشعارات الدائن
+  ipcMain.handle('get-product-serials', async (_e, productId) => {
+    return await dbAll(
+      'SELECT * FROM product_serials WHERE product_id = ? AND deleted_at IS NULL ORDER BY id DESC',
+      [Number(productId)]
+    );
+  });
+
+  ipcMain.handle('add-product-serial', async (_e, payload = {}) => {
+    const ins = await dbRun(
+      `INSERT INTO product_serials (product_id, variant_id, batch_id, serial_number, status, warranty_months, notes)
+       VALUES (?, ?, ?, ?, 'in_stock', ?, ?)`,
+      [
+        Number(payload.product_id || payload.productId),
+        payload.variant_id || null,
+        payload.batch_id || null,
+        String(payload.serial_number || '').trim(),
+        Number(payload.warranty_months ?? 12),
+        payload.notes || null
+      ]
+    );
+    return { success: true, id: ins.lastID };
+  });
+
+  // 4. المبيعات، الزبائن، والائتمان
   ipcMain.handle('process-sale', async (_e, saleData) => {
     if (await isLanClientMode()) return lanClient.processSale(saleData);
     return await executeSaleTransaction(saleData);
@@ -890,7 +1041,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('get-customers', async (_e, filters = {}) => {
     if (await isLanClientMode()) return lanClient.getCustomers(filters);
-    const rows = await dbAll(
+    return await dbAll(
       `SELECT
          c.*,
          COALESCE(SUM(s.total), 0) AS total_sales,
@@ -902,7 +1053,6 @@ function registerIpcHandlers() {
        GROUP BY c.id
        ORDER BY c.id DESC`
     );
-    return rows;
   });
 
   ipcMain.handle('get-customers-debt', async () => {
@@ -1072,38 +1222,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('get-payment-details', async (_e, paymentId, type = 'sale') => {
     if (await isLanClientMode()) return lanClient.getPaymentDetails(paymentId, type);
-    const isSale = type !== 'invoice' && type !== 'purchase';
-    const table = isSale ? 'sale_payments' : 'invoice_payments';
-    const partyTable = isSale ? 'customers' : 'suppliers';
-    const partyFk = isSale ? 'customer_id' : 'supplier_id';
-    const docTable = isSale ? 'sales' : 'purchase_invoices';
-
-    const payment = await dbGet(`SELECT * FROM ${table} WHERE id = ?`, [Number(paymentId)]);
-    if (!payment) return null;
-
-    const party = payment[partyFk]
-      ? await dbGet(`SELECT * FROM ${partyTable} WHERE id = ?`, [payment[partyFk]])
-      : null;
-
-    let currentDebt = 0;
-    if (party) {
-      const docsRow = await dbGet(
-        `SELECT COALESCE(SUM(total - paid_amount), 0) AS d FROM ${docTable} WHERE ${partyFk} = ? AND deleted_at IS NULL`,
-        [party.id]
-      );
-      const initRem = Math.max(0, Number(party.initial_debt || 0) - Number(party.initial_debt_paid || 0));
-      currentDebt = Number((initRem + Number((docsRow && docsRow.d) || 0)).toFixed(2));
-    }
-
-    const amt = Number(payment.amount || 0);
-    return {
-      ...payment,
-      party_name: party ? party.name : '',
-      party_phone: party ? party.phone : '',
-      party,
-      debt_after: currentDebt,
-      debt_before: Number((currentDebt + amt).toFixed(2))
-    };
+    return await getPaymentDetailsFull(paymentId, type);
   });
 
   ipcMain.handle('next-doc-number', async (_e, docType) => {
@@ -1142,23 +1261,32 @@ function registerIpcHandlers() {
   ipcMain.handle('get-customer-sales-aggregated', async (_e, payload = {}) => {
     if (await isLanClientMode()) return lanClient.getCustomerSalesAggregated(payload);
     const cid = Number(payload.customerId || payload.customer_id);
+    const dateFrom = payload.dateFrom || payload.date_from || null;
+    const dateTo = payload.dateTo || payload.date_to || null;
+
+    const conds = ['s.customer_id = ?', 's.deleted_at IS NULL'];
+    const params = [cid];
+    if (dateFrom) { conds.push('date(s.sale_date) >= date(?)'); params.push(String(dateFrom).slice(0, 10)); }
+    if (dateTo) { conds.push('date(s.sale_date) <= date(?)'); params.push(String(dateTo).slice(0, 10)); }
+
     const sales = await dbAll(
-      'SELECT * FROM sales WHERE customer_id = ? AND deleted_at IS NULL ORDER BY sale_date ASC',
-      [cid]
+      `SELECT * FROM sales s WHERE ${conds.join(' AND ')} ORDER BY s.sale_date ASC`,
+      params
     );
     const items = await dbAll(
       `SELECT
          COALESCE(p.name, si.custom_product_name, 'منتج') AS product_name,
+         p.barcode AS product_barcode,
          p.unit,
          SUM(si.quantity) AS total_qty,
          AVG(si.price) AS avg_price,
          SUM(si.subtotal) AS total_subtotal
        FROM sale_items si
-       INNER JOIN sales s ON s.id = si.sale_id AND s.deleted_at IS NULL
+       INNER JOIN sales s ON s.id = si.sale_id
        LEFT JOIN products p ON p.id = si.product_id
-       WHERE s.customer_id = ? AND si.deleted_at IS NULL
+       WHERE ${conds.join(' AND ')} AND si.deleted_at IS NULL
        GROUP BY COALESCE(si.product_id, si.custom_product_name)`,
-      [cid]
+      params
     );
     return { sales, items };
   });
@@ -1320,6 +1448,9 @@ function registerIpcHandlers() {
     const invDate = data.date || new Date().toISOString().slice(0, 10);
     const invNumber = data.invoice_number || `ACH-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
 
+    const totalUnits = items.reduce((sum, it) => sum + Math.max(0, Number(it.quantity || 0)), 0);
+    const extraCostPerUnit = totalUnits > 0 ? additionalCosts / totalUnits : 0;
+
     return await db.withTransaction(async () => {
       const ins = await dbRun(
         `INSERT INTO purchase_invoices (
@@ -1339,8 +1470,10 @@ function registerIpcHandlers() {
       for (const it of items) {
         const pid = Number(it.product_id || it.productId);
         const qty = Number(it.quantity ?? 1);
-        const costPrice = Number(it.cost_price ?? 0);
+        const baseCost = Number(it.cost_price ?? 0);
+        const effectiveCostPrice = Number((baseCost + extraCostPerUnit).toFixed(2));
         const sellPrice = Number(it.selling_price ?? 0);
+
         const batchIns = await dbRun(
           `INSERT INTO inventory_batches (
             product_id, variant_id, stock, cost_price, selling_price, wholesale_price, expiry_date, location, supplier_id
@@ -1349,7 +1482,7 @@ function registerIpcHandlers() {
             pid,
             it.variant_id || null,
             qty,
-            costPrice,
+            effectiveCostPrice,
             sellPrice,
             it.wholesale_price || null,
             it.expiry_date || null,
@@ -1362,7 +1495,16 @@ function registerIpcHandlers() {
           `INSERT INTO purchase_items (
             invoice_id, product_id, batch_id, variant_id, quantity, cost_price, selling_price, total_cost
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [invoiceId, pid, batchIns.lastID, it.variant_id || null, qty, costPrice, sellPrice, Number((qty * costPrice).toFixed(2))]
+          [
+            invoiceId,
+            pid,
+            batchIns.lastID,
+            it.variant_id || null,
+            qty,
+            effectiveCostPrice,
+            sellPrice,
+            Number((qty * effectiveCostPrice).toFixed(2))
+          ]
         );
 
         await batchAlloc.reconcileStockDebt(db, pid, batchIns.lastID);
@@ -1376,7 +1518,8 @@ function registerIpcHandlers() {
     if (await isLanClientMode()) return lanClient.getInvoiceDetails(invoiceId);
     const id = Number(invoiceId);
     const inv = await dbGet(
-      `SELECT pi.*, sup.name AS supplier_name, sup.phone AS supplier_phone, sup.address AS supplier_address
+      `SELECT pi.*, sup.name AS supplier_name, sup.phone AS supplier_phone, sup.address AS supplier_address,
+              sup.rc AS supplier_rc, sup.nif AS supplier_nif, sup.ai AS supplier_ai, sup.nis AS supplier_nis
        FROM purchase_invoices pi
        LEFT JOIN suppliers sup ON sup.id = pi.supplier_id
        WHERE pi.id = ? AND pi.deleted_at IS NULL`,
@@ -1503,7 +1646,13 @@ function registerIpcHandlers() {
   ipcMain.handle('get-supplier-return-details', async (_e, returnId) => {
     if (await isLanClientMode()) return lanClient.getSupplierReturnDetails(returnId);
     const id = Number(returnId);
-    const head = await dbGet('SELECT * FROM supplier_returns WHERE id = ? AND deleted_at IS NULL', [id]);
+    const head = await dbGet(
+      `SELECT sr.*, sup.name AS supplier_name, sup.phone AS supplier_phone
+       FROM supplier_returns sr
+       LEFT JOIN suppliers sup ON sup.id = sr.supplier_id
+       WHERE sr.id = ? AND sr.deleted_at IS NULL`,
+      [id]
+    );
     if (!head) return null;
     head.items = await dbAll(
       `SELECT sri.*, p.name AS product_name, p.barcode
@@ -1580,7 +1729,7 @@ function registerIpcHandlers() {
     const id = Number(proformaId);
     const pf = await dbGet(
       `SELECT pf.*, c.name AS customer_name, c.phone AS customer_phone, c.address AS customer_address,
-              c.rc AS customer_rc, c.nif AS customer_nif
+              c.rc AS customer_rc, c.nif AS customer_nif, c.ai AS customer_ai, c.nis AS customer_nis
        FROM proforma_invoices pf
        LEFT JOIN customers c ON c.id = pf.customer_id
        WHERE pf.id = ? AND pf.deleted_at IS NULL`,
@@ -1634,6 +1783,58 @@ function registerIpcHandlers() {
     return { success: true };
   });
 
+  ipcMain.handle('check-proforma-stock', async (_e, proformaId) => {
+    const pid = Number(proformaId);
+    const items = await dbAll(
+      `SELECT pi.product_id, pi.variant_id, pi.quantity, pi.custom_product_name, p.name AS product_name
+       FROM proforma_items pi
+       LEFT JOIN products p ON p.id = pi.product_id
+       WHERE pi.proforma_id = ? AND pi.deleted_at IS NULL`,
+      [pid]
+    );
+    const shortages = [];
+    for (const it of items) {
+      if (!it.product_id) continue;
+      const row = await dbGet(
+        'SELECT COALESCE(SUM(stock), 0) AS available FROM inventory_batches WHERE product_id = ? AND deleted_at IS NULL',
+        [it.product_id]
+      );
+      const avail = Number((row && row.available) || 0);
+      if (avail < Number(it.quantity || 0)) {
+        shortages.push({
+          product_id: it.product_id,
+          product_name: it.product_name || it.custom_product_name || 'منتج',
+          requested: Number(it.quantity || 0),
+          available: avail,
+          shortage: Number((Number(it.quantity || 0) - avail).toFixed(3))
+        });
+      }
+    }
+    return { ok: shortages.length === 0, shortages };
+  });
+
+  ipcMain.handle('convert-proforma-to-sale', async (_e, proformaId, extra = {}) => {
+    const pid = Number(proformaId);
+    const head = await dbGet('SELECT * FROM proforma_invoices WHERE id = ? AND deleted_at IS NULL', [pid]);
+    if (!head) throw new Error('الفاتورة الشكلية غير موجودة');
+    const items = await dbAll('SELECT * FROM proforma_items WHERE proforma_id = ? AND deleted_at IS NULL', [pid]);
+    const saleOut = await executeSaleTransaction({
+      customer_id: head.customer_id,
+      subtotal: head.subtotal,
+      tax_percentage: head.tax_percentage,
+      discount: head.discount,
+      total: head.total,
+      paid_amount: extra.paid_amount !== undefined ? Number(extra.paid_amount) : head.total,
+      payment_method: extra.payment_method || 'cash',
+      items
+    });
+    await dbRun(
+      "UPDATE proforma_invoices SET status = 'converted', converted_to_sale_id = ? WHERE id = ?",
+      [saleOut.saleId, pid]
+    );
+    return { success: true, saleId: saleOut.saleId, docNumber: saleOut.docNumber };
+  });
+
   ipcMain.handle('create-order', async (_e, d = {}) => {
     if (await isLanClientMode()) return lanClient.createOrder(d);
     const docNum = d.doc_number || (await generateNextDocNumber('order'));
@@ -1676,6 +1877,12 @@ function registerIpcHandlers() {
             it.custom_product_name || it.name || null
           ]
         );
+        if (d.reserves_stock !== false && it.product_id) {
+          await dbRun(
+            'INSERT INTO inventory_reservations (order_id, batch_id, product_id, quantity) VALUES (?, ?, ?, ?)',
+            [oid, it.batch_id || null, Number(it.product_id), Number(it.quantity ?? 1)]
+          );
+        }
       }
 
       if (deposit > 0) {
@@ -1706,7 +1913,8 @@ function registerIpcHandlers() {
     if (await isLanClientMode()) return lanClient.getOrderDetails(orderId);
     const id = Number(orderId);
     const ord = await dbGet(
-      `SELECT co.*, c.name AS customer_name, c.phone AS customer_phone, c.address AS customer_address
+      `SELECT co.*, c.name AS customer_name, c.phone AS customer_phone, c.address AS customer_address,
+              c.rc AS customer_rc, c.nif AS customer_nif
        FROM customer_orders co
        LEFT JOIN customers c ON c.id = co.customer_id
        WHERE co.id = ? AND co.deleted_at IS NULL`,
@@ -1734,14 +1942,18 @@ function registerIpcHandlers() {
 
   ipcMain.handle('delete-order', async (_e, id) => {
     if (await isLanClientMode()) return lanClient.deleteOrder(id);
-    await dbRun('DELETE FROM customer_order_items WHERE order_id = ?', [Number(id)]);
-    await dbRun('DELETE FROM customer_orders WHERE id = ?', [Number(id)]);
+    const oid = Number(id);
+    await dbRun('UPDATE inventory_reservations SET released = 1, released_at = CURRENT_TIMESTAMP WHERE order_id = ?', [oid]);
+    await dbRun('DELETE FROM customer_order_items WHERE order_id = ?', [oid]);
+    await dbRun('DELETE FROM customer_orders WHERE id = ?', [oid]);
     return { success: true };
   });
 
   ipcMain.handle('cancel-order', async (_e, id) => {
     if (await isLanClientMode()) return lanClient.cancelOrder(id);
-    await dbRun("UPDATE customer_orders SET status = 'cancelled' WHERE id = ?", [Number(id)]);
+    const oid = Number(id);
+    await dbRun('UPDATE inventory_reservations SET released = 1, released_at = CURRENT_TIMESTAMP WHERE order_id = ?', [oid]);
+    await dbRun("UPDATE customer_orders SET status = 'cancelled' WHERE id = ?", [oid]);
     return { success: true };
   });
 
@@ -1752,9 +1964,11 @@ function registerIpcHandlers() {
 
   ipcMain.handle('mark-order-delivered', async (_e, id, saleId) => {
     if (await isLanClientMode()) return lanClient.markOrderDelivered(id, saleId);
+    const oid = Number(id);
+    await dbRun('UPDATE inventory_reservations SET released = 1, released_at = CURRENT_TIMESTAMP WHERE order_id = ?', [oid]);
     await dbRun("UPDATE customer_orders SET status = 'delivered', converted_to_sale_id = ? WHERE id = ?", [
       Number(saleId),
-      Number(id)
+      oid
     ]);
     return { success: true };
   });
@@ -2152,7 +2366,7 @@ function registerIpcHandlers() {
   ipcMain.handle('get-notifications', async () => {
     if (await isLanClientMode()) return lanClient.getNotifications();
     const lowStock = await dbAll(
-      `SELECT p.id, p.name, p.min_stock, COALESCE(SUM(ib.stock), 0) AS stock
+      `SELECT p.id, p.name, p.min_stock, p.unit, COALESCE(SUM(ib.stock), 0) AS stock
        FROM products p
        LEFT JOIN inventory_batches ib ON ib.product_id = p.id AND ib.deleted_at IS NULL
        WHERE p.deleted_at IS NULL
@@ -2161,7 +2375,7 @@ function registerIpcHandlers() {
        LIMIT 50`
     );
     const expiring = await dbAll(
-      `SELECT ib.id, p.name, ib.stock, ib.expiry_date
+      `SELECT ib.id, p.id AS product_id, p.name, ib.stock, ib.expiry_date
        FROM inventory_batches ib
        INNER JOIN products p ON p.id = ib.product_id AND p.deleted_at IS NULL
        WHERE ib.deleted_at IS NULL AND ib.stock > 0
@@ -2169,7 +2383,16 @@ function registerIpcHandlers() {
          AND date(ib.expiry_date) <= date('now', '+30 days')
        ORDER BY date(ib.expiry_date) ASC LIMIT 50`
     );
-    return { lowStock, expiring };
+    const dueInstallments = await dbAll(
+      `SELECT s.*, p.customer_id, c.name AS customer_name, c.phone AS customer_phone
+       FROM installment_schedules s
+       INNER JOIN installment_plans p ON p.id = s.plan_id AND p.deleted_at IS NULL
+       LEFT JOIN customers c ON c.id = p.customer_id
+       WHERE s.deleted_at IS NULL AND s.status <> 'paid'
+         AND date(s.due_date) <= date('now', '+7 days')
+       ORDER BY date(s.due_date) ASC LIMIT 50`
+    );
+    return { lowStock, expiring, dueInstallments };
   });
 
   ipcMain.handle('get-stock-debt', async () => {
@@ -2250,7 +2473,90 @@ function registerIpcHandlers() {
     return { success: true };
   });
 
-  // 10. الطباعة الصامتة، PDF، الباركود، QR، الإكسل، والنسخ الاحتياطي
+  // 10. الميزات الـ 6 الحصرية للسوق الجزائري (القاموس 613، الأقساط، الرقابة، شاشة الزبون)
+  ipcMain.handle('lookup-dz-barcode', async (_e, barcode) => {
+    const clean = String(barcode || '').trim();
+    if (!clean) return null;
+    return await dbGet('SELECT * FROM dz_product_dictionary WHERE barcode = ? LIMIT 1', [clean]);
+  });
+
+  ipcMain.handle('get-audit-logs', async () => {
+    return await dbAll('SELECT * FROM audit_logs WHERE deleted_at IS NULL ORDER BY id DESC LIMIT 300');
+  });
+
+  ipcMain.handle('add-audit-log', async (_e, payload = {}) => {
+    return await recordAuditLog(payload);
+  });
+
+  ipcMain.handle('get-installment-plans', async (_e, filters = {}) => {
+    const conds = ['ip.deleted_at IS NULL'];
+    const params = [];
+    if (filters && (filters.customerId || filters.customer_id)) {
+      conds.push('ip.customer_id = ?');
+      params.push(Number(filters.customerId || filters.customer_id));
+    }
+    const plans = await dbAll(
+      `SELECT ip.*, c.name AS customer_name, c.phone AS customer_phone
+       FROM installment_plans ip
+       LEFT JOIN customers c ON c.id = ip.customer_id
+       WHERE ${conds.join(' AND ')}
+       ORDER BY ip.id DESC`,
+      params
+    );
+    for (const p of plans) {
+      p.schedules = await dbAll(
+        'SELECT * FROM installment_schedules WHERE plan_id = ? AND deleted_at IS NULL ORDER BY installment_num ASC',
+        [p.id]
+      );
+    }
+    return plans;
+  });
+
+  ipcMain.handle('create-installment-plan', async (_e, payload = {}) => {
+    return await createInstallmentPlanRecord(payload);
+  });
+
+  ipcMain.handle('pay-installment-schedule', async (_e, scheduleId, amount) => {
+    const sid = Number(scheduleId);
+    const sched = await dbGet('SELECT * FROM installment_schedules WHERE id = ?', [sid]);
+    if (!sched) throw new Error('القسط المطلوب غير موجود');
+    const payAmt = amount !== undefined ? Number(amount) : Number(sched.amount) - Number(sched.paid_amount || 0);
+    const newPaid = Number((Number(sched.paid_amount || 0) + payAmt).toFixed(2));
+    const newStatus = newPaid >= Number(sched.amount) - 0.01 ? 'paid' : 'partial';
+    const nowIso = new Date().toISOString();
+
+    return await db.withTransaction(async () => {
+      await dbRun(
+        'UPDATE installment_schedules SET paid_amount = ?, status = ?, paid_at = ? WHERE id = ?',
+        [newPaid, newStatus, nowIso, sid]
+      );
+      await dbRun(
+        'UPDATE installment_plans SET remaining_amount = MAX(0, COALESCE(remaining_amount, 0) - ?) WHERE id = ?',
+        [payAmt, sched.plan_id]
+      );
+      const pendingRow = await dbGet(
+        "SELECT COUNT(*) AS c FROM installment_schedules WHERE plan_id = ? AND status <> 'paid' AND deleted_at IS NULL",
+        [sched.plan_id]
+      );
+      if (Number((pendingRow && pendingRow.c) || 0) === 0) {
+        await dbRun("UPDATE installment_plans SET status = 'completed' WHERE id = ?", [sched.plan_id]);
+      }
+      return { success: true, scheduleId: sid, status: newStatus };
+    });
+  });
+
+  ipcMain.handle('open-customer-display', async () => {
+    return await openCustomerFacingWindow();
+  });
+
+  ipcMain.handle('update-customer-display', (_e, cartState = {}) => {
+    if (customerDisplayWindow && !customerDisplayWindow.isDestroyed()) {
+      customerDisplayWindow.webContents.send('customer-display:update', cartState);
+    }
+    return { ok: true };
+  });
+
+  // 11. الطباعة الصامتة، PDF، الباركود، QR، النسخ الاحتياطي، وملفات Excel الكاملة
   ipcMain.handle('get-printers', async () => {
     if (!mainWindow || mainWindow.isDestroyed()) return [];
     try {
@@ -2329,7 +2635,7 @@ function registerIpcHandlers() {
         includetext: Boolean(opts.includetext ?? false)
       });
       return `data:image/png;base64,${png.toString('base64')}`;
-    } catch (err) {
+    } catch (_) {
       return null;
     }
   });
@@ -2431,18 +2737,21 @@ function registerIpcHandlers() {
 
     await db.withTransaction(async () => {
       for (const r of rows) {
-        const name = String(r.name || r['الاسم'] || r['اسم المنتج'] || '').trim();
+        const name = String(r.name || r['الاسم'] || r['اسم المنتج'] || r.Designation || '').trim();
         if (!name) continue;
-        const barcode = String(r.barcode || r['الباركود'] || '').trim() || null;
+        const barcode = String(r.barcode || r['الباركود'] || r.Code || '').trim() || null;
         if (barcode) await productWriter.freeTombstonedProductBarcode(barcode);
+        const supplier = String(r.supplier || r['المورد'] || '').trim() || null;
+        if (supplier) await ensureSupplierByName(supplier);
 
         const ins = await dbRun(
-          'INSERT INTO products (barcode, name, category, supplier, unit, min_stock) VALUES (?, ?, ?, ?, ?, ?)',
+          'INSERT INTO products (barcode, name, category, family, supplier, unit, min_stock) VALUES (?, ?, ?, ?, ?, ?, ?)',
           [
             barcode,
             name,
             String(r.category || r['الفئة'] || 'عام').trim(),
-            String(r.supplier || r['المورد'] || '').trim() || null,
+            String(r.family || r['العائلة'] || '').trim() || null,
+            supplier,
             String(r.unit || r['الوحدة'] || 'قطعة').trim(),
             Number(r.min_stock ?? 5)
           ]
@@ -2473,16 +2782,18 @@ function registerIpcHandlers() {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet([
       {
-        barcode: '6130000000012',
-        name: 'منتج تجريبي',
+        barcode: '6130001000012',
+        name: 'زيت مائدة إيليو 5 لتر',
         category: 'مواد غذائية',
-        supplier: 'مورد عام',
-        cost_price: 100,
-        selling_price: 150,
-        wholesale_price: 135,
-        stock: 50,
-        min_stock: 5,
-        unit: 'قطعة'
+        family: 'زيوت',
+        supplier: 'Cevital',
+        cost_price: 590,
+        selling_price: 650,
+        wholesale_price: 630,
+        stock: 48,
+        min_stock: 10,
+        unit: 'قارورة',
+        expiry_date: '2027-12-31'
       }
     ]);
     XLSX.utils.book_append_sheet(wb, ws, 'Template');
@@ -2491,7 +2802,13 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('export-sales-excel', async () => {
-    const rows = await dbAll('SELECT * FROM sales WHERE deleted_at IS NULL ORDER BY id DESC');
+    const rows = await dbAll(
+      `SELECT s.id, s.doc_number, s.sale_date, COALESCE(c.name, 'زبون عابر') AS customer_name,
+              s.subtotal, s.discount, s.tax_percentage, s.stamp_amount, s.total, s.paid_amount, s.payment_method
+       FROM sales s
+       LEFT JOIN customers c ON c.id = s.customer_id
+       WHERE s.deleted_at IS NULL ORDER BY s.id DESC`
+    );
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
       defaultPath: `Gherbi_Sales_${new Date().toISOString().slice(0, 10)}.xlsx`,
       filters: [{ name: 'Excel', extensions: ['xlsx'] }]
@@ -2504,7 +2821,9 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('export-customers-excel', async () => {
-    const rows = await dbAll('SELECT * FROM customers WHERE deleted_at IS NULL ORDER BY id DESC');
+    const rows = await dbAll(
+      'SELECT name, phone, address, rc, nif, ai, nis, initial_debt, credit_limit, loyalty_points, price_tier FROM customers WHERE deleted_at IS NULL ORDER BY id DESC'
+    );
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
       defaultPath: 'Gherbi_Customers.xlsx',
       filters: [{ name: 'Excel', extensions: ['xlsx'] }]
@@ -2516,8 +2835,73 @@ function registerIpcHandlers() {
     return { success: true, filePath };
   });
 
+  ipcMain.handle('import-customers-excel', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      filters: [{ name: 'Excel / CSV', extensions: ['xlsx', 'xls', 'csv'] }]
+    });
+    if (canceled || !filePaths || filePaths.length === 0) return { canceled: true };
+
+    const wb = XLSX.readFile(filePaths[0]);
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    let imported = 0;
+
+    await db.withTransaction(async () => {
+      for (const r of rows) {
+        const name = String(r.name || r['الاسم'] || r['اسم الزبون'] || r.Nom || '').trim();
+        if (!name) continue;
+        await dbRun(
+          `INSERT INTO customers (name, phone, address, rc, nif, ai, nis, initial_debt, credit_limit, price_tier)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            name,
+            String(r.phone || r['الهاتف'] || '').trim() || null,
+            String(r.address || r['العنوان'] || '').trim() || null,
+            String(r.rc || '').trim() || null,
+            String(r.nif || '').trim() || null,
+            String(r.ai || '').trim() || null,
+            String(r.nis || '').trim() || null,
+            Number(r.initial_debt ?? r['الدين الأولي'] ?? 0),
+            Number(r.credit_limit ?? r['سقف الدين'] ?? 0),
+            String(r.price_tier || '').trim() || null
+          ]
+        );
+        imported += 1;
+      }
+    });
+    return { success: true, imported };
+  });
+
+  ipcMain.handle('download-customers-template', async () => {
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: 'Gherbi_Customers_Template.xlsx',
+      filters: [{ name: 'Excel', extensions: ['xlsx'] }]
+    });
+    if (canceled || !filePath) return { canceled: true };
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet([
+      {
+        name: 'مؤسسة الأمل للتجارة',
+        phone: '0550123456',
+        address: 'الجزائر العاصمة',
+        rc: '16/00-1234567B19',
+        nif: '001916123456789',
+        ai: '16001234567',
+        nis: '0999160012345',
+        initial_debt: 0,
+        credit_limit: 50000,
+        price_tier: 'wholesale'
+      }
+    ]);
+    XLSX.utils.book_append_sheet(wb, ws, 'CustomersTemplate');
+    XLSX.writeFile(wb, filePath);
+    return { success: true, filePath };
+  });
+
   ipcMain.handle('export-suppliers-excel', async () => {
-    const rows = await dbAll('SELECT * FROM suppliers WHERE deleted_at IS NULL ORDER BY id DESC');
+    const rows = await dbAll(
+      'SELECT name, phone, address, rc, nif, ai, nis, initial_debt FROM suppliers WHERE deleted_at IS NULL ORDER BY id DESC'
+    );
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
       defaultPath: 'Gherbi_Suppliers.xlsx',
       filters: [{ name: 'Excel', extensions: ['xlsx'] }]
@@ -2529,10 +2913,107 @@ function registerIpcHandlers() {
     return { success: true, filePath };
   });
 
-  ipcMain.handle('import-customers-excel', async () => ({ success: true }));
-  ipcMain.handle('import-suppliers-excel', async () => ({ success: true }));
-  ipcMain.handle('download-customers-template', async () => ({ success: true }));
-  ipcMain.handle('download-suppliers-template', async () => ({ success: true }));
+  ipcMain.handle('import-suppliers-excel', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      filters: [{ name: 'Excel / CSV', extensions: ['xlsx', 'xls', 'csv'] }]
+    });
+    if (canceled || !filePaths || filePaths.length === 0) return { canceled: true };
+
+    const wb = XLSX.readFile(filePaths[0]);
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    let imported = 0;
+
+    await db.withTransaction(async () => {
+      for (const r of rows) {
+        const name = String(r.name || r['الاسم'] || r['اسم المورد'] || r.Nom || '').trim();
+        if (!name) continue;
+        await dbRun(
+          `INSERT INTO suppliers (name, phone, address, rc, nif, ai, nis, initial_debt)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            name,
+            String(r.phone || r['الهاتف'] || '').trim() || null,
+            String(r.address || r['العنوان'] || '').trim() || null,
+            String(r.rc || '').trim() || null,
+            String(r.nif || '').trim() || null,
+            String(r.ai || '').trim() || null,
+            String(r.nis || '').trim() || null,
+            Number(r.initial_debt ?? r['الدين الأولي'] ?? 0)
+          ]
+        );
+        imported += 1;
+      }
+    });
+    return { success: true, imported };
+  });
+
+  ipcMain.handle('download-suppliers-template', async () => {
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: 'Gherbi_Suppliers_Template.xlsx',
+      filters: [{ name: 'Excel', extensions: ['xlsx'] }]
+    });
+    if (canceled || !filePath) return { canceled: true };
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet([
+      {
+        name: 'مجمع التوزيع الغذائي',
+        phone: '0560987654',
+        address: 'المنطقة الصناعية رويبة',
+        rc: '16/00-9876543B18',
+        nif: '001816987654321',
+        ai: '16009876543',
+        nis: '0998160098765',
+        initial_debt: 0
+      }
+    ]);
+    XLSX.utils.book_append_sheet(wb, ws, 'SuppliersTemplate');
+    XLSX.writeFile(wb, filePath);
+    return { success: true, filePath };
+  });
+
+  ipcMain.handle('seed-demo-data', async () => {
+    const sampleProducts = [
+      { barcode: '6130001000012', name: 'زيت مائدة إيليو 5 لتر (Elio)', category: 'مواد غذائية', supplier: 'مجمع سيفيتال', unit: 'قارورة', cost_price: 590, selling_price: 650, wholesale_price: 630, stock: 45, min_stock: 8 },
+      { barcode: '6130002000035', name: 'حليب مجفف لويا 500غ (Loya)', category: 'أجبان وألبان', supplier: 'مؤسسة التوزيع الغذائي', unit: 'علبة', cost_price: 430, selling_price: 510, wholesale_price: 485, stock: 60, min_stock: 10 },
+      { barcode: '6130006000017', name: 'قهوة مطحونة بونال 250غ (Bonal)', category: 'مشروبات وقهوة', supplier: 'مؤسسة التوزيع الغذائي', unit: 'علبة', cost_price: 260, selling_price: 320, wholesale_price: 300, stock: 80, min_stock: 15 },
+      { barcode: '6130001000043', name: 'سكر أبيض سيفيتال 1 كغ (Scor)', category: 'مواد غذائية', supplier: 'مجمع سيفيتال', unit: 'كيس', cost_price: 85, selling_price: 105, wholesale_price: 98, stock: 120, min_stock: 20 },
+      { barcode: '6130005000032', name: 'عصير رويبة ممتاز 1 لتر (Rouiba)', category: 'مشروبات وقهوة', supplier: 'مؤسسة المشروبات', unit: 'علبة', cost_price: 115, selling_price: 160, wholesale_price: 145, stock: 75, min_stock: 12 },
+      { barcode: '6130008000022', name: 'كسكس ماما رقيق 1 كغ (Mama)', category: 'مواد غذائية', supplier: 'مطاحن الشرق', unit: 'كيس', cost_price: 125, selling_price: 160, wholesale_price: 148, stock: 90, min_stock: 15 },
+      { barcode: '6130003000034', name: 'جبن طري شيدر الصومام 16 قطعة', category: 'أجبان وألبان', supplier: 'مؤسسة الألبان', unit: 'علبة', cost_price: 170, selling_price: 210, wholesale_price: 195, stock: 65, min_stock: 10 },
+      { barcode: '6130005000018', name: 'ماء معدني إيفري 1.5 لتر (Ifri)', category: 'مشروبات وقهوة', supplier: 'مؤسسة المشروبات', unit: 'قارورة', cost_price: 30, selling_price: 45, wholesale_price: 38, stock: 200, min_stock: 24 },
+      { barcode: '00105', plu_code: '00105', name: 'لوز مقشر ممتاز (ميزان)', category: 'مكسرات وحلويات', supplier: 'مؤسسة التوزيع الغذائي', unit: 'كغ', cost_price: 1900, selling_price: 2400, wholesale_price: 2200, stock: 25, min_stock: 5 }
+    ];
+
+    await db.withTransaction(async () => {
+      for (const p of sampleProducts) {
+        const ex = await dbGet('SELECT id FROM products WHERE barcode = ? AND deleted_at IS NULL', [p.barcode]);
+        if (ex) continue;
+        await ensureSupplierByName(p.supplier);
+        const ins = await dbRun(
+          'INSERT INTO products (barcode, name, category, supplier, unit, min_stock, plu_code) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [p.barcode, p.name, p.category, p.supplier, p.unit, p.min_stock, p.plu_code || null]
+        );
+        await dbRun(
+          'INSERT INTO inventory_batches (product_id, stock, cost_price, selling_price, wholesale_price) VALUES (?, ?, ?, ?, ?)',
+          [ins.lastID, p.stock, p.cost_price, p.selling_price, p.wholesale_price]
+        );
+      }
+
+      const custCount = await dbGet('SELECT COUNT(*) AS c FROM customers WHERE deleted_at IS NULL');
+      if (Number(custCount.c || 0) === 0) {
+        await dbRun(
+          'INSERT INTO customers (name, phone, address, initial_debt, credit_limit, loyalty_points, price_tier) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          ['سوبرماركت النور (زبون جملة)', '0550112233', 'قسنطينة', 4500, 50000, 45, 'wholesale']
+        );
+        await dbRun(
+          'INSERT INTO customers (name, phone, address, initial_debt, credit_limit, loyalty_points, price_tier) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          ['محمد أمين بن علي', '0661223344', 'الجزائر الوسطى', 0, 20000, 12, 'retail']
+        );
+      }
+    });
+    return { success: true };
+  });
 
   ipcMain.handle('reset-system', async () => {
     const tablesToReset = db.SYNCED_TABLES.filter((t) => t !== 'users' && t !== 'shop_info');
@@ -2545,7 +3026,7 @@ function registerIpcHandlers() {
     return { success: true };
   });
 
-  // 11. الميزان، الشبكة، المزامنة السحابية، والتراخيص
+  // 12. الميزان، الشبكة، المزامنة السحابية، والتراخيص
   ipcMain.handle('list-com-ports', () => scaleBridge.listPorts());
   ipcMain.handle('scale:list-ports', () => scaleBridge.listPorts());
   ipcMain.handle('scale:start', (_e, cfg) => scaleBridge.start(cfg));
@@ -2619,9 +3100,6 @@ function registerIpcHandlers() {
   ipcMain.handle('get-performance-metrics', () => db._writeQueue.getStats());
 }
 
-// ============================================================================
-// دورة حياة تطبيق Electron
-// ============================================================================
 app.whenReady().then(async () => {
   await dbRun("DELETE FROM settings WHERE value IN ('undefined', 'null')");
   await stockLedger.seedStartupMovements(db);

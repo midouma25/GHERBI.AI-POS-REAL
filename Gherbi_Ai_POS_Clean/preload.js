@@ -1,7 +1,7 @@
 /**
  * preload.js
  * جسر الربط الآمن والنظيف 100% (ContextBridge) بين العملية الرئيسية والواجهة الأمامية
- * خالٍ تماماً من أي تشويش، ويدعم جميع استدعاءات النظام والوحدات الفرعية
+ * يضم كافة دوال النظام + دوال القاموس الجزائري 613 + الأقساط + سجل الرقابة + شاشة الزبون الثانية
  */
 
 'use strict';
@@ -30,6 +30,7 @@ const api = {
   getSettings: () => invoke('get-settings'),
   updateSettings: (settingsObj) => invoke('update-settings', settingsObj),
   resetSystem: () => invoke('reset-system'),
+  seedDemoData: () => invoke('seed-demo-data'),
   getPerformanceMetrics: () => invoke('get-performance-metrics'),
 
   // 2. المستخدمون والحسابات
@@ -42,7 +43,7 @@ const api = {
   deleteUser: (id) => invoke('delete-user', id),
   updateAccount: (...args) => invoke('update-account', ...args),
 
-  // 3. المنتجات، الدفعات، الباركودات، والمتغيرات
+  // 3. المنتجات، الدفعات، الباركودات، المتغيرات، والأرقام التسلسلية
   getCategories: () => invoke('get-categories'),
   getFamilies: () => invoke('get-families'),
   getProductSuppliers: () => invoke('get-product-suppliers'),
@@ -63,6 +64,8 @@ const api = {
     invoke('add-product-barcode', productId, barcode, priceLabel),
   addVariantQuick: (payload) => invoke('add-variant-quick', payload),
   toggleFeatured: (productId) => invoke('toggle-featured', productId),
+  getProductSerials: (productId) => invoke('get-product-serials', productId),
+  addProductSerial: (payload) => invoke('add-product-serial', payload),
 
   // 4. المبيعات، الزبائن، والائتمان
   processSale: (saleData) => invoke('process-sale', saleData),
@@ -118,6 +121,8 @@ const api = {
   cancelProforma: (id) => invoke('cancel-proforma', id),
   proformaToSalePayload: (id) => invoke('proforma-to-sale-payload', id),
   markProformaConverted: (id, saleId) => invoke('mark-proforma-converted', id, saleId),
+  checkProformaStock: (id) => invoke('check-proforma-stock', id),
+  convertProformaToSale: (id, payload) => invoke('convert-proforma-to-sale', id, payload),
   createOrder: (data) => invoke('create-order', data),
   getOrders: (filters) => invoke('get-orders', filters),
   getOrderDetails: (id) => invoke('get-order-details', id),
@@ -182,7 +187,18 @@ const api = {
   saveCustomTemplate: (data) => invoke('save-custom-template', data),
   deleteCustomTemplate: (id) => invoke('delete-custom-template', id),
 
-  // 10. الطباعة، الباركود، النسخ الاحتياطي، والإكسل
+  // 10. الميزات الـ 6 الحصرية للسوق الجزائري (القاموس 613، الأقساط، الرقابة، وشاشة الزبون)
+  lookupDzBarcode: (barcode) => invoke('lookup-dz-barcode', barcode),
+  getAuditLogs: (filters) => invoke('get-audit-logs', filters),
+  addAuditLog: (payload) => invoke('add-audit-log', payload),
+  getInstallmentPlans: (filters) => invoke('get-installment-plans', filters),
+  createInstallmentPlan: (payload) => invoke('create-installment-plan', payload),
+  payInstallmentSchedule: (scheduleId, amount) =>
+    invoke('pay-installment-schedule', scheduleId, amount),
+  openCustomerDisplay: () => invoke('open-customer-display'),
+  updateCustomerDisplay: (cartState) => invoke('update-customer-display', cartState),
+
+  // 11. الطباعة، الباركود، النسخ الاحتياطي، والإكسل
   getPrinters: () => invoke('get-printers'),
   printSilent: (options) => invoke('print-silent', options),
   exportPDF: (options) => invoke('export-pdf', options),
@@ -202,7 +218,7 @@ const api = {
   downloadCustomersTemplate: () => invoke('download-customers-template'),
   downloadSuppliersTemplate: () => invoke('download-suppliers-template'),
 
-  // 11. الشبكة، الميزان، السحابة، والتراخيص
+  // 12. الشبكة، الميزان، السحابة، والتراخيص
   getLocalIp: () => invoke('get-local-ip'),
   getLocalIps: () => invoke('get-local-ips'),
   getConnectedClients: () => invoke('get-connected-clients'),

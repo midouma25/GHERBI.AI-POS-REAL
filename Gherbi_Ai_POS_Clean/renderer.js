@@ -1,7 +1,7 @@
 /**
- * renderer.js
- * المحرك الرئيسي للواجهة الأمامية ونقطة البيع (Master Frontend & POS Controller) لنظام Gherbi.Ai POS
- * يدير الأقسام الـ 18، تعدد السلات، تفكيك باركود الميزان، الاختصارات، الصوت، الإحصائيات، والزكاة
+ * renderer.js — [الشطر الأول 1/3]
+ * المحرك الرئيسي الشامل للواجهة الأمامية ونقطة البيع (Enterprise Frontend & POS Controller)
+ * لنظام Gherbi.Ai POS — يعمل بالكامل عبر النوافذ المنبثقة التفاعلية (Zero window.prompt)
  */
 
 'use strict';
@@ -14,23 +14,68 @@ const AppState = {
   settings: {},
   products: [],
   categories: [],
+  families: [],
+  productSuppliers: [],
   customers: [],
   suppliers: [],
   activeSession: null,
+  notifications: { lowStock: [], expiring: [], dueInstallments: [] },
+
+  // حالة شاشة الكاشير (POS State & Pagination)
   selectedCategory: 'all',
   searchQuery: '',
+  posFilterFamily: '',
+  posFilterSupplier: '',
+  posFilterOnlyAvailable: false,
+  posPage: 1,
+  posPageSize: 24,
+  posCardSize: 'medium',
+  posShowImages: true,
   isReturnMode: false,
   priceTier: 'retail',
+
+  // السلات المتعددة والمسودات
   carts: [{ id: 1, label: 'سلة #1', items: [], customerId: '', discount: 0 }],
   activeCartIndex: 0,
   draftCarts: [],
-  lastRevision: 0
+
+  // حالة النوافذ المؤقتة (Modals Temp State)
+  lastFocusedInput: null,
+  liveScaleWeight: 0,
+  tempExtraPrices: [],
+  tempExtraBarcodes: [],
+  tempVariantsMatrix: [],
+  tempPurchaseItems: [],
+  analyticsTab: 'summary',
+  analyticsDateFrom: '',
+  analyticsDateTo: '',
+  analyticsData: null,
+  segmentData: null,
+  charts: {},
+  printStudioTab: 'labels',
+  labelStudioConfig: {
+    source: 'products',
+    selectedId: '',
+    priceOnlyMode: false,
+    widthMm: 40,
+    heightMm: 25,
+    barcodeHeightMm: 11,
+    copies: 1,
+    showShop: false,
+    showName: true,
+    showPrice: true,
+    showPriceType: false,
+    showBarcodeText: true,
+    showVariants: false,
+    showDiscount: false,
+    showPlu: false
+  }
 };
 
 window.AppState = AppState;
 
 // ============================================================================
-// 1. المؤثرات الصوتية الذاتية (Web Audio Synthesizer) والإشعارات
+// 1. المؤثرات الصوتية الذاتية، الإشعارات، وسجل الرقابة الأمنية (Audit Log)
 // ============================================================================
 function playBeep(success = true) {
   try {
@@ -39,12 +84,12 @@ function playBeep(success = true) {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = success ? 'sine' : 'sawtooth';
-    osc.frequency.value = success ? 1050 : 280;
-    gain.gain.value = 0.12;
+    osc.frequency.value = success ? 1080 : 260;
+    gain.gain.value = Math.min(1, Math.max(0.05, Number(AppState.settings.scan_alert_volume || 0.2)));
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
-    osc.stop(ctx.currentTime + (success ? 0.08 : 0.22));
+    osc.stop(ctx.currentTime + (success ? 0.07 : 0.22));
   } catch (_) {}
 }
 
@@ -58,57 +103,95 @@ function showToast(message, type = 'info') {
     info: 'bg-slate-900 text-white'
   };
   const el = document.createElement('div');
-  el.className = `px-4 py-3 rounded-xl shadow-xl text-xs font-bold flex items-center gap-2 ${colors[type] || colors.info}`;
+  el.className = `px-4 py-3 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-2 ${colors[type] || colors.info}`;
   el.innerHTML = `<span class="material-symbols-rounded icon-sm">notifications</span><span>${message}</span>`;
   box.appendChild(el);
+  if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(el);
   setTimeout(() => {
     if (el.parentNode) el.parentNode.removeChild(el);
-  }, 3200);
+  }, 3400);
 }
 
 window.showToast = showToast;
 
+async function logSecurityAudit(actionType, details = {}, severity = 'info', targetType = null, targetId = null) {
+  try {
+    if (!window.api || !window.api.addAuditLog) return;
+    await window.api.addAuditLog({
+      user_id: AppState.currentUser ? AppState.currentUser.id : 1,
+      user_name: AppState.currentUser ? AppState.currentUser.name : 'Cashier',
+      action_type: actionType,
+      target_type: targetType,
+      target_id: targetId,
+      severity,
+      details
+    });
+  } catch (_) {}
+}
+
 // ============================================================================
-// 2. التهيئة الأولية وتحميل البيانات من النواة الخلفية
+// 2. الكائن الرئيسي للنظام (App Master Controller)
 // ============================================================================
 const App = {
   async init() {
     if (!window.api) return;
 
-    const [settings, products, categories, customers, suppliers, activeSession] = await Promise.all([
-      window.api.getSettings().catch(() => ({})),
-      window.api.getPosStock().catch(() => []),
-      window.api.getCategories().catch(() => []),
-      window.api.getCustomers().catch(() => []),
-      window.api.getSuppliers().catch(() => []),
-      window.api.getActiveSession(1).catch(() => null)
-    ]);
+    const [settings, products, categories, families, prodSuppliers, customers, suppliers, activeSession] =
+      await Promise.all([
+        window.api.getSettings().catch(() => ({})),
+        window.api.getPosStock().catch(() => []),
+        window.api.getCategories().catch(() => []),
+        window.api.getFamilies().catch(() => []),
+        window.api.getProductSuppliers().catch(() => []),
+        window.api.getCustomers().catch(() => []),
+        window.api.getSuppliers().catch(() => []),
+        window.api.getActiveSession(1).catch(() => null)
+      ]);
 
     AppState.settings = settings || {};
     AppState.products = Array.isArray(products) ? products : [];
     AppState.categories = Array.isArray(categories) ? categories : [];
+    AppState.families = Array.isArray(families) ? families : [];
+    AppState.productSuppliers = Array.isArray(prodSuppliers) ? prodSuppliers : [];
     AppState.customers = Array.isArray(customers) ? customers : [];
     AppState.suppliers = Array.isArray(suppliers) ? suppliers : [];
     AppState.activeSession = activeSession;
 
-    // التحقق من وجود مستخدم أو إنشاء المدير الافتراضي تلقائياً بشكل سلس
+    AppState.posPageSize = Math.max(6, parseInt(AppState.settings.pos_page_size || '24', 10) || 24);
+    AppState.posCardSize = AppState.settings.pos_card_size || 'medium';
+    AppState.posShowImages = String(AppState.settings.pos_show_images) !== 'false';
+
     const isFirst = await window.api.checkFirstRun().catch(() => false);
     if (isFirst === true || (isFirst && isFirst.isFirstRun === true)) {
       const adminRes = await window.api.setupFirstAdmin('المدير العام', 'admin', '1234').catch(() => null);
       if (adminRes && adminRes.user) AppState.currentUser = adminRes.user;
     } else {
       const users = await window.api.getUsers().catch(() => []);
-      if (users && users.length > 0) {
-        AppState.currentUser = users[0];
-      }
+      if (users && users.length > 0) AppState.currentUser = users[0];
     }
 
     this.updateUserBadge();
     this.updateShiftHeaderBadge();
     this.setLanguage(AppState.settings.app_lang || 'ar', false);
-    this.renderPosView();
+    this.initVirtualKeyboard();
     this.bindKeyboardShortcuts();
     this.bindLiveEvents();
+    this.renderPosView();
+    await this.refreshHeaderNotifications();
+    await this.refreshLanClientsBadge();
+  },
+
+  openModal(id) {
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.add('active');
+      if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(el);
+    }
+  },
+
+  closeModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('active');
   },
 
   updateUserBadge() {
@@ -132,6 +215,170 @@ const App = {
     }
   },
 
+  async refreshHeaderNotifications() {
+    if (!window.api || !window.api.getNotifications) return;
+    const notif = (await window.api.getNotifications().catch(() => ({}))) || {};
+    AppState.notifications = {
+      lowStock: notif.lowStock || [],
+      expiring: notif.expiring || [],
+      dueInstallments: notif.dueInstallments || []
+    };
+    const totalCount =
+      AppState.notifications.lowStock.length +
+      AppState.notifications.expiring.length +
+      AppState.notifications.dueInstallments.length;
+
+    const badge = document.getElementById('notifCountBadge');
+    if (badge) {
+      if (totalCount > 0) {
+        badge.textContent = totalCount > 99 ? '99+' : String(totalCount);
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+  },
+
+  toggleNotificationsPopover() {
+    const pop = document.getElementById('notificationsPopover');
+    if (!pop) return;
+    pop.classList.toggle('hidden');
+    if (!pop.classList.contains('hidden')) {
+      const { lowStock, expiring, dueInstallments } = AppState.notifications;
+      if (lowStock.length === 0 && expiring.length === 0 && dueInstallments.length === 0) {
+        pop.innerHTML = `<div class="py-6 text-center text-slate-400 font-bold">لا توجد تنبيهات عاجلة حالياً</div>`;
+        return;
+      }
+      pop.innerHTML = `
+        <div class="font-black text-slate-700 dark:text-slate-200 border-b border-slate-200 dark:border-slate-700 pb-1.5">مركز التنبيهات الذكي</div>
+        ${
+          dueInstallments.length > 0
+            ? `<div class="space-y-1">
+                <div class="text-[11px] font-black text-indigo-600">📅 أقساط زبائن مستحقة (${dueInstallments.length})</div>
+                ${dueInstallments
+                  .slice(0, 5)
+                  .map(
+                    (ins) =>
+                      `<div onclick="App.openInstallmentsManagerModal()" class="p-1.5 rounded-lg bg-indigo-500/10 flex justify-between cursor-pointer">
+                        <span>${ins.customer_name || 'زبون'}</span>
+                        <span class="font-mono font-bold text-indigo-600">${Number(ins.amount - ins.paid_amount).toFixed(0)} د.ج</span>
+                      </div>`
+                  )
+                  .join('')}
+              </div>`
+            : ''
+        }
+        ${
+          lowStock.length > 0
+            ? `<div class="space-y-1">
+                <div class="text-[11px] font-black text-amber-600">⚠️ مخزون منخفض (${lowStock.length})</div>
+                ${lowStock
+                  .slice(0, 6)
+                  .map(
+                    (p) =>
+                      `<div onclick="App.switchView('inventory')" class="p-1.5 rounded-lg bg-amber-500/10 flex justify-between cursor-pointer">
+                        <span class="truncate">${p.name}</span>
+                        <span class="font-mono font-bold text-amber-600">${p.stock} ${p.unit || ''}</span>
+                      </div>`
+                  )
+                  .join('')}
+              </div>`
+            : ''
+        }
+        ${
+          expiring.length > 0
+            ? `<div class="space-y-1">
+                <div class="text-[11px] font-black text-rose-500">⏰ دفعات قريبة الانتهاء (${expiring.length})</div>
+                ${expiring
+                  .slice(0, 6)
+                  .map(
+                    (b) =>
+                      `<div onclick="App.switchView('inventory')" class="p-1.5 rounded-lg bg-rose-500/10 flex justify-between cursor-pointer">
+                        <span class="truncate">${b.name}</span>
+                        <span class="font-mono text-rose-500">${b.expiry_date}</span>
+                      </div>`
+                  )
+                  .join('')}
+              </div>`
+            : ''
+        }
+      `;
+    }
+  },
+
+  async refreshLanClientsBadge() {
+    if (!window.api || !window.api.getConnectedClients) return;
+    const clients = (await window.api.getConnectedClients().catch(() => [])) || [];
+    const ip = (await window.api.getLocalIp().catch(() => '127.0.0.1')) || '127.0.0.1';
+    const txt = document.getElementById('lanClientsCountText');
+    if (txt) {
+      txt.textContent = `${ip}:8080 (${clients.length})`;
+    }
+  },
+
+  async openCustomerDisplayWindow() {
+    if (!window.api || !window.api.openCustomerDisplay) return;
+    await window.api.openCustomerDisplay();
+    this.syncCustomerDisplay();
+    showToast('تم فتح شاشة عرض الزبون الثانية بنجاح', 'success');
+  },
+
+  syncCustomerDisplay() {
+    if (!window.api || !window.api.updateCustomerDisplay) return;
+    const cart = this.currentCart;
+    const subtotal = cart.items.reduce((s, it) => s + Number(it.subtotal || 0), 0);
+    const discount = Number(cart.discount || 0);
+    const total = Math.max(0, Number((subtotal - discount).toFixed(2)));
+    window.api.updateCustomerDisplay({
+      items: cart.items,
+      subtotal,
+      discount,
+      total
+    });
+  },
+
+  initVirtualKeyboard() {
+    document.addEventListener('focusin', (e) => {
+      if (
+        e.target &&
+        (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') &&
+        e.target.id !== 'barcodeInput'
+      ) {
+        AppState.lastFocusedInput = e.target;
+      }
+    });
+
+    const keysBox = document.getElementById('virtualKeyboardKeys');
+    if (!keysBox) return;
+    const keys = [
+      '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
+      'ض', 'ص', 'ث', 'ق', 'ف', 'غ', 'ع', 'ه', 'خ', 'ح',
+      'ش', 'س', 'ي', 'ب', 'ل', 'ا', 'ت', 'ن', 'م', 'ك',
+      'ط', 'ئ', 'ء', 'ؤ', 'ر', 'ى', 'ة', 'و', 'ز', 'ظ',
+      'A', 'B', 'C', 'D', 'E', 'F', '.', '-', 'مسافة', 'مسح'
+    ];
+    keysBox.innerHTML = keys
+      .map(
+        (k) =>
+          `<button onclick="App.pressVirtualKey('${k}')" class="py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 hover:text-white font-bold">${k}</button>`
+      )
+      .join('');
+  },
+
+  pressVirtualKey(key) {
+    const inp = AppState.lastFocusedInput || document.getElementById('globalPosSearch');
+    if (!inp) return;
+    if (key === 'مسح') {
+      inp.value = String(inp.value || '').slice(0, -1);
+    } else if (key === 'مسافة') {
+      inp.value = String(inp.value || '') + ' ';
+    } else {
+      inp.value = String(inp.value || '') + key;
+    }
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    inp.focus();
+  },
+
   bindKeyboardShortcuts() {
     window.addEventListener('keydown', (e) => {
       if (e.key === 'F1') {
@@ -152,7 +399,10 @@ const App = {
       } else if (e.key === 'F10') {
         e.preventDefault();
         if (window.api && window.api.openCashDrawer) window.api.openCashDrawer();
-        showToast('تم إرسال نبضة فتح درج النقود', 'info');
+        logSecurityAudit('open_cash_drawer_manual', { source: 'F10_shortcut' }, 'warning');
+        showToast('تم إرسال نبضة فتح درج النقود (مسجل في الرقابة)', 'info');
+      } else if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay.active').forEach((m) => m.classList.remove('active'));
       }
     });
   },
@@ -160,18 +410,18 @@ const App = {
   bindLiveEvents() {
     if (window.api && window.api.scale && window.api.scale.onReading) {
       window.api.scale.onReading((reading) => {
-        const box = document.getElementById('liveScaleBox');
+        if (!reading) return;
+        AppState.liveScaleWeight = Number(reading.weight || 0);
         const txt = document.getElementById('liveScaleWeight');
-        if (box) box.classList.remove('hidden');
-        if (txt && reading) {
-          txt.textContent = `${Number(reading.weight || 0).toFixed(3)} ${reading.unit || 'kg'}`;
-        }
+        if (txt) txt.textContent = `${AppState.liveScaleWeight.toFixed(3)} ${reading.unit || 'kg'}`;
+        const modalDisp = document.getElementById('scaleModalWeightDisplay');
+        if (modalDisp) modalDisp.textContent = `${AppState.liveScaleWeight.toFixed(3)} ${reading.unit || 'kg'}`;
       });
     }
   },
 
   // ==========================================================================
-  // 3. التنقل بين الأقسام الـ 18 واللغات والوضع الليلي
+  // 3. التنقل بين الأقسام الـ 18، اللغات، والوضع الليلي
   // ==========================================================================
   toggleSidebar() {
     const sb = document.getElementById('sidebar');
@@ -283,36 +533,56 @@ const App = {
   },
 
   async refreshProducts() {
-    AppState.products = (await window.api.getPosStock().catch(() => [])) || [];
-    AppState.categories = (await window.api.getCategories().catch(() => [])) || [];
-    AppState.customers = (await window.api.getCustomers().catch(() => [])) || [];
+    const [products, categories, families, prodSuppliers, customers, suppliers] = await Promise.all([
+      window.api.getPosStock().catch(() => []),
+      window.api.getCategories().catch(() => []),
+      window.api.getFamilies().catch(() => []),
+      window.api.getProductSuppliers().catch(() => []),
+      window.api.getCustomers().catch(() => []),
+      window.api.getSuppliers().catch(() => [])
+    ]);
+    AppState.products = Array.isArray(products) ? products : [];
+    AppState.categories = Array.isArray(categories) ? categories : [];
+    AppState.families = Array.isArray(families) ? families : [];
+    AppState.productSuppliers = Array.isArray(prodSuppliers) ? prodSuppliers : [];
+    AppState.customers = Array.isArray(customers) ? customers : [];
+    AppState.suppliers = Array.isArray(suppliers) ? suppliers : [];
+    await this.refreshHeaderNotifications();
   },
 
   // ==========================================================================
-  // 4. شاشة المبيعات والكاشير (POS Engine & Scale Barcode Parser)
+  // 4. محرك شاشة المبيعات المتقدم (POS View, Pagination, Scale, Pickers)
   // ==========================================================================
   get currentCart() {
     return AppState.carts[AppState.activeCartIndex] || AppState.carts[0];
   },
 
+  async seedSampleStoreData() {
+    if (!window.api || !window.api.seedDemoData) return;
+    await window.api.seedDemoData();
+    await this.refreshProducts();
+    this.renderPosView();
+    showToast('تم تحميل المنتجات والزبائن والموردين النموذجيين بنجاح!', 'success');
+  },
+
   renderPosView() {
-    // الفئات
     const pillsBox = document.getElementById('posCategoryPills');
     if (pillsBox) {
-      const cats = ['all', ...AppState.categories];
+      const cats = ['all', 'featured', ...AppState.categories];
       pillsBox.innerHTML = cats
         .map((c) => {
           const active = AppState.selectedCategory === c;
-          const label = c === 'all' ? 'جميع الفئات' : c;
+          const label = c === 'all' ? 'جميع الفئات' : c === 'featured' ? '⭐ المفضلة' : c;
           return `<button onclick="App.selectPosCategory('${c}')"
             class="px-3 py-1.5 rounded-xl text-xs font-bold ${
-              active ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+              active
+                ? 'bg-blue-600 text-white shadow'
+                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
             }">${label}</button>`;
         })
         .join('');
     }
 
-    // الزبائن
     const custSelect = document.getElementById('posCustomerSelect');
     if (custSelect) {
       custSelect.innerHTML =
@@ -326,7 +596,12 @@ const App = {
           )
           .join('');
       custSelect.onchange = (e) => {
-        this.currentCart.customerId = e.target.value ? Number(e.target.value) : '';
+        const cid = e.target.value ? Number(e.target.value) : '';
+        this.currentCart.customerId = cid;
+        const foundCust = AppState.customers.find((x) => Number(x.id) === Number(cid));
+        if (foundCust && foundCust.price_tier) {
+          this.setCartPriceTier(foundCust.price_tier);
+        }
       };
     }
 
@@ -337,11 +612,46 @@ const App = {
 
   selectPosCategory(cat) {
     AppState.selectedCategory = cat;
+    AppState.posPage = 1;
     this.renderPosView();
   },
 
   onPosSearchInput(query) {
     AppState.searchQuery = String(query || '').trim().toLowerCase();
+    AppState.posPage = 1;
+    this.renderPosProductsGrid();
+  },
+
+  getFilteredPosProducts() {
+    return AppState.products.filter((p) => {
+      if (AppState.selectedCategory === 'featured' && Number(p.is_featured) !== 1) return false;
+      if (
+        AppState.selectedCategory !== 'all' &&
+        AppState.selectedCategory !== 'featured' &&
+        p.category !== AppState.selectedCategory
+      ) {
+        return false;
+      }
+      if (AppState.posFilterFamily && p.family !== AppState.posFilterFamily) return false;
+      if (AppState.posFilterSupplier && p.supplier !== AppState.posFilterSupplier) return false;
+      if (AppState.posFilterOnlyAvailable && Number(p.stock || 0) <= 0) return false;
+
+      if (AppState.searchQuery) {
+        const q = AppState.searchQuery;
+        const matchName = String(p.name || '').toLowerCase().includes(q);
+        const matchBc = String(p.barcode || '').toLowerCase().includes(q);
+        const matchPlu = String(p.plu_code || '').toLowerCase().includes(q);
+        const matchCat = String(p.category || '').toLowerCase().includes(q);
+        return matchName || matchBc || matchPlu || matchCat;
+      }
+      return true;
+    });
+  },
+
+  changePosPage(delta) {
+    const filtered = this.getFilteredPosProducts();
+    const totalPages = Math.max(1, Math.ceil(filtered.length / AppState.posPageSize));
+    AppState.posPage = Math.min(totalPages, Math.max(1, AppState.posPage + delta));
     this.renderPosProductsGrid();
   },
 
@@ -349,30 +659,36 @@ const App = {
     const grid = document.getElementById('posProductsGrid');
     if (!grid) return;
 
-    const filtered = AppState.products.filter((p) => {
-      if (AppState.selectedCategory !== 'all' && p.category !== AppState.selectedCategory) {
-        return false;
-      }
-      if (AppState.searchQuery) {
-        const q = AppState.searchQuery;
-        const matchName = String(p.name || '').toLowerCase().includes(q);
-        const matchBc = String(p.barcode || '').toLowerCase().includes(q);
-        const matchPlu = String(p.plu_code || '').toLowerCase().includes(q);
-        return matchName || matchBc || matchPlu;
-      }
-      return true;
-    });
+    const minWidthMap = { small: '125px', medium: '155px', large: '190px' };
+    grid.style.gridTemplateColumns = `repeat(auto-fill, minmax(${minWidthMap[AppState.posCardSize] || '155px'}, 1fr))`;
+
+    const filtered = this.getFilteredPosProducts();
+    const totalPages = Math.max(1, Math.ceil(filtered.length / AppState.posPageSize));
+    if (AppState.posPage > totalPages) AppState.posPage = totalPages;
+
+    const pageInfo = document.getElementById('posPageInfoText');
+    if (pageInfo) {
+      pageInfo.textContent = `صفحة ${AppState.posPage} من ${totalPages} (${filtered.length} منتج)`;
+    }
 
     if (filtered.length === 0) {
       grid.innerHTML = `
         <div class="col-span-full py-16 text-center text-slate-400 space-y-2">
           <span class="material-symbols-rounded icon-xl">inventory_2</span>
-          <div class="text-sm font-bold">لا توجد منتجات مطابقة للبحث</div>
+          <div class="text-sm font-bold">لا توجد منتجات مطابقة للبحث أو المخزون فارغ</div>
+          <div class="pt-2">
+            <button onclick="App.seedSampleStoreData()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow">
+              + تحميل بيانات متجر جزائري نموذجي للتجربة الفورية
+            </button>
+          </div>
         </div>`;
       return;
     }
 
-    grid.innerHTML = filtered
+    const startIdx = (AppState.posPage - 1) * AppState.posPageSize;
+    const pageItems = filtered.slice(startIdx, startIdx + AppState.posPageSize);
+
+    grid.innerHTML = pageItems
       .map((p) => {
         const price =
           AppState.priceTier === 'wholesale' && Number(p.wholesale_price) > 0
@@ -386,13 +702,25 @@ const App = {
               ? 'bg-amber-500/15 text-amber-600'
               : 'bg-emerald-500/15 text-emerald-600';
 
+        const imgHtml =
+          AppState.posShowImages && p.image
+            ? `<img src="${p.image}" class="w-full h-20 object-contain rounded-lg bg-slate-50 dark:bg-slate-900 mb-1">`
+            : '';
+
         return `
-          <div onclick="App.addProductToCart(${p.id})" class="product-card flex flex-col justify-between gap-2">
-            <div class="flex items-center justify-between">
-              <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${stockBadgeClass}">${stock} ${p.unit || ''}</span>
-              ${p.active_promotion ? '<span class="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[9px] font-bold">عرض</span>' : ''}
+          <div onclick="App.onPosProductCardClick(${p.id})" class="product-card flex flex-col justify-between gap-1.5">
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${stockBadgeClass}">${stock} ${p.unit || ''}</span>
+                <div class="flex items-center gap-1">
+                  ${Number(p.has_variants) === 1 ? '<span class="px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[9px] font-bold">متغيرات</span>' : ''}
+                  ${Number(p.track_serial) === 1 ? '<span class="px-1.5 py-0.5 rounded bg-slate-800 text-white text-[9px] font-bold">IMEI</span>' : ''}
+                  ${p.active_promotion ? '<span class="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[9px] font-bold">عرض</span>' : ''}
+                </div>
+              </div>
+              ${imgHtml}
+              <div class="font-bold text-xs line-clamp-2 min-h-[2rem]">${p.name}</div>
             </div>
-            <div class="font-bold text-xs line-clamp-2 min-h-[2rem]">${p.name}</div>
             <div class="pt-1 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
               <span class="font-mono font-black text-sm text-blue-600 dark:text-blue-400">${price.toFixed(2)}</span>
               <span class="text-[10px] text-slate-400">د.ج</span>
@@ -402,13 +730,212 @@ const App = {
       .join('');
   },
 
-  handleBarcodeScan(rawCode) {
+  savePosCustomization() {
+    AppState.posCardSize = document.getElementById('posCardSizeSelect').value || 'medium';
+    AppState.posPageSize = parseInt(document.getElementById('posPageSizeSelect').value || '24', 10) || 24;
+    AppState.posShowImages = document.getElementById('posShowImagesCheckbox').checked;
+    AppState.posPage = 1;
+
+    if (window.api) {
+      window.api.updateSettings({
+        pos_card_size: AppState.posCardSize,
+        pos_page_size: String(AppState.posPageSize),
+        pos_show_images: String(AppState.posShowImages)
+      });
+    }
+    this.closeModal('posCustomizeModal');
+    this.renderPosProductsGrid();
+  },
+
+  openPosAdvancedFilterModal() {
+    const famSel = document.getElementById('posFilterFamilySelect');
+    const supSel = document.getElementById('posFilterSupplierSelect');
+    if (famSel) {
+      famSel.innerHTML =
+        `<option value="">جميع العائلات</option>` +
+        AppState.families.map((f) => `<option value="${f}" ${AppState.posFilterFamily === f ? 'selected' : ''}>${f}</option>`).join('');
+    }
+    if (supSel) {
+      supSel.innerHTML =
+        `<option value="">جميع الموردين</option>` +
+        AppState.productSuppliers.map((s) => `<option value="${s}" ${AppState.posFilterSupplier === s ? 'selected' : ''}>${s}</option>`).join('');
+    }
+    document.getElementById('posFilterOnlyAvailable').checked = AppState.posFilterOnlyAvailable;
+    this.openModal('posAdvancedFilterModal');
+  },
+
+  applyPosAdvancedFilter() {
+    AppState.posFilterFamily = document.getElementById('posFilterFamilySelect').value || '';
+    AppState.posFilterSupplier = document.getElementById('posFilterSupplierSelect').value || '';
+    AppState.posFilterOnlyAvailable = document.getElementById('posFilterOnlyAvailable').checked;
+    AppState.posPage = 1;
+    this.closeModal('posAdvancedFilterModal');
+    this.renderPosProductsGrid();
+  },
+
+  resetPosAdvancedFilter() {
+    AppState.posFilterFamily = '';
+    AppState.posFilterSupplier = '';
+    AppState.posFilterOnlyAvailable = false;
+    AppState.posPage = 1;
+    this.closeModal('posAdvancedFilterModal');
+    this.renderPosProductsGrid();
+  },
+
+  openPosScaleModal() {
+    const sel = document.getElementById('scaleModalProductSelect');
+    if (sel) {
+      sel.innerHTML = AppState.products
+        .map((p) => `<option value="${p.id}">${p.name} (${Number(p.selling_price || 0).toFixed(2)} د.ج / ${p.unit || 'كغ'})</option>`)
+        .join('');
+    }
+    this.openModal('posScaleModal');
+  },
+
+  addWeightedProductFromScaleModal() {
+    const pid = Number(document.getElementById('scaleModalProductSelect').value);
+    const weight = AppState.liveScaleWeight > 0 ? AppState.liveScaleWeight : 1;
+    if (pid) {
+      this.addProductToCart(pid, weight);
+      this.closeModal('posScaleModal');
+    }
+  },
+
+  async openPosQuickProduceModal() {
+    const recipes = (await window.api.getBomRecipes({ activeOnly: true }).catch(() => [])) || [];
+    if (recipes.length === 0) {
+      showToast('لا توجد وصفات تصنيع مسجلة بعد. أنشئ وصفة من قسم التصنيع أولاً.', 'warning');
+      return;
+    }
+    const sel = document.getElementById('posQuickRecipeSelect');
+    if (sel) {
+      sel.innerHTML = recipes
+        .map((r) => `<option value="${r.id}">${r.name} (ينتج: ${r.output_qty} ${r.product_unit || ''})</option>`)
+        .join('');
+    }
+    document.getElementById('posQuickProduceQty').value = '1';
+    this.openModal('posQuickProduceModal');
+  },
+
+  async confirmPosQuickProduce() {
+    const recipeId = Number(document.getElementById('posQuickRecipeSelect').value);
+    const qty = parseFloat(document.getElementById('posQuickProduceQty').value) || 1;
+    if (!recipeId || qty <= 0) return;
+    try {
+      await window.api.createProductionOrder({
+        recipe_id: recipeId,
+        planned_qty: qty,
+        produced_qty: qty,
+        confirmImmediately: true
+      });
+      this.closeModal('posQuickProduceModal');
+      await this.refreshProducts();
+      this.renderPosView();
+      showToast('تم التصنيع الفوري وإضافة المنتج النهائي للمخزون بنجاح', 'success');
+    } catch (err) {
+      showToast(err.message || 'تعذر تنفيذ التصنيع الفوري', 'error');
+    }
+  },
+
+  onPosProductCardClick(productId) {
+    const prod = AppState.products.find((p) => Number(p.id) === Number(productId));
+    if (!prod) return;
+
+    const hasMultipleVariants = Array.isArray(prod.variants) && prod.variants.length > 0;
+    const positiveBatches = (prod.batches || []).filter((b) => Number(b.stock) > 0);
+    const hasDistinctBatchPrices =
+      positiveBatches.length > 1 &&
+      new Set(positiveBatches.map((b) => Number(b.selling_price))).size > 1;
+    const needsSerial = Number(prod.track_serial) === 1;
+
+    if (hasMultipleVariants || hasDistinctBatchPrices || needsSerial) {
+      this.openVariantBatchSerialPicker(prod);
+      return;
+    }
+
+    this.addProductToCart(prod.id, 1);
+  },
+
+  openVariantBatchSerialPicker(prod) {
+    document.getElementById('pickerModalProductName').textContent = prod.name;
+    const body = document.getElementById('pickerModalBody');
+    const batches = prod.batches || [];
+    const variants = prod.variants || [];
+
+    body.innerHTML = `
+      ${
+        variants.length > 0
+          ? `<div>
+              <label class="block font-bold mb-1">اختر المتغير (المقاس / اللون):</label>
+              <select id="pickerVariantSelect" class="w-full px-3 py-2 rounded-xl font-bold">
+                ${variants.map((v) => `<option value="${v.id}">${v.sku || v.barcode || 'متغير #' + v.id}</option>`).join('')}
+              </select>
+            </div>`
+          : '<input id="pickerVariantSelect" type="hidden" value="">'
+      }
+      ${
+        batches.length > 1
+          ? `<div>
+              <label class="block font-bold mb-1">اختر الدفعة (Batch):</label>
+              <select id="pickerBatchSelect" class="w-full px-3 py-2 rounded-xl font-mono font-bold">
+                ${batches
+                  .map(
+                    (b) =>
+                      `<option value="${b.id}" data-price="${b.selling_price}">دفعة #${b.id} | الرصيد: ${b.stock} | السعر: ${b.selling_price} د.ج ${b.expiry_date ? '| صلاحية: ' + b.expiry_date : ''}</option>`
+                  )
+                  .join('')}
+              </select>
+            </div>`
+          : `<input id="pickerBatchSelect" type="hidden" value="${batches[0]?.id || ''}">`
+      }
+      ${
+        Number(prod.track_serial) === 1
+          ? `<div>
+              <label class="block font-bold mb-1 text-blue-600">الرقم التسلسلي للجهاز (IMEI / Serial Number) *:</label>
+              <input id="pickerSerialInput" type="text" placeholder="امسح أو أدخل رقم IMEI / S/N..." class="w-full px-3 py-2 rounded-xl font-mono font-bold">
+            </div>`
+          : '<input id="pickerSerialInput" type="hidden" value="">'
+      }
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block font-bold mb-1">الكمية</label>
+          <input id="pickerQtyInput" type="number" step="any" value="1" class="w-full px-3 py-2 rounded-xl font-mono font-bold">
+        </div>
+        <div>
+          <label class="block font-bold mb-1">مدة الضمان (بالأشهر)</label>
+          <input id="pickerWarrantyInput" type="number" value="${prod.warranty_months || 0}" class="w-full px-3 py-2 rounded-xl font-mono">
+        </div>
+      </div>
+      <button onclick="App.confirmPickerSelection(${prod.id})" class="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold">إضافة إلى السلة</button>
+    `;
+
+    this.openModal('posVariantBatchPickerModal');
+  },
+
+  confirmPickerSelection(productId) {
+    const variantId = document.getElementById('pickerVariantSelect')?.value || null;
+    const batchEl = document.getElementById('pickerBatchSelect');
+    const batchId = batchEl?.value || null;
+    const serialNumber = document.getElementById('pickerSerialInput')?.value?.trim() || null;
+    const qty = parseFloat(document.getElementById('pickerQtyInput')?.value) || 1;
+    const warrantyMonths = parseInt(document.getElementById('pickerWarrantyInput')?.value || '0', 10) || 0;
+
+    this.addProductToCart(productId, qty, {
+      variantId: variantId ? Number(variantId) : null,
+      batchId: batchId ? Number(batchId) : null,
+      serialNumber,
+      warrantyMonths
+    });
+    this.closeModal('posVariantBatchPickerModal');
+  },
+
+  async handleBarcodeScan(rawCode) {
     const code = String(rawCode || '').trim();
     const input = document.getElementById('barcodeInput');
     if (input) input.value = '';
     if (!code) return;
 
-    // 1. فحص باركود الميزان (يبدأ بـ 20 إلى 29 وطوله 13 رقماً)
+    // 1. فحص باركود الميزان الإلكتروني (يبدأ بـ 20 إلى 29 وطوله 13 رقماً)
     if (/^2[0-9]\d{11}$/.test(code)) {
       const plu = code.slice(2, 7);
       const pluNum = String(parseInt(plu, 10));
@@ -423,35 +950,66 @@ const App = {
       }
     }
 
-    // 2. البحث بالباركود الأساسي أو الباركودات الإضافية
-    const found = AppState.products.find(
-      (p) =>
-        String(p.barcode) === code ||
-        (Array.isArray(p.barcodes) && p.barcodes.includes(code))
-    );
-
-    if (found) {
-      this.addProductToCart(found.id, 1);
-      playBeep(true);
-    } else {
-      playBeep(false);
-      showToast(`لم يتم العثور على منتج بالباركود: ${code}`, 'warning');
+    // 2. البحث بالباركود الأساسي أو الباركودات الفرعية (مع دعم تسعيرة الباركود الفرعي)
+    for (const p of AppState.products) {
+      if (String(p.barcode) === code) {
+        this.addProductToCart(p.id, 1);
+        playBeep(true);
+        return;
+      }
+      if (Array.isArray(p.extra_barcodes)) {
+        const subBc = p.extra_barcodes.find((b) => String(b.barcode) === code);
+        if (subBc) {
+          let customPrice = null;
+          if (subBc.price_label && Array.isArray(p.extra_prices)) {
+            const matchedPrice = p.extra_prices.find((ep) => ep.label === subBc.price_label);
+            if (matchedPrice) customPrice = Number(matchedPrice.price);
+          }
+          this.addProductToCart(p.id, 1, { overridePrice: customPrice });
+          playBeep(true);
+          return;
+        }
+      }
     }
+
+    // 3. إذا كان الباركود جزائرياً (613) وغير مسجل، نبحث في القاموس الوطني ونفتح نافذة إضافته فوراً!
+    if (code.startsWith('613') && window.api && window.api.lookupDzBarcode) {
+      const dictItem = await window.api.lookupDzBarcode(code).catch(() => null);
+      if (dictItem) {
+        playBeep(true);
+        showToast(`تم التعرف على المنتج الجزائري: ${dictItem.name}`, 'info');
+        this.openProductModal({
+          barcode: dictItem.barcode,
+          name: dictItem.name,
+          category: dictItem.category || 'مواد غذائية',
+          supplier: dictItem.brand || '',
+          unit: dictItem.unit || 'قطعة',
+          selling_price: dictItem.suggested_price || 0,
+          stock: 10
+        });
+        return;
+      }
+    }
+
+    playBeep(false);
+    showToast(`الباركود (${code}) غير مسجل في المخزون`, 'warning');
   },
 
-  addProductToCart(productId, customQty = 1) {
+  addProductToCart(productId, customQty = 1, options = {}) {
     const prod = AppState.products.find((p) => Number(p.id) === Number(productId));
     if (!prod) return;
 
     const sign = AppState.isReturnMode ? -1 : 1;
-    const qtyToAdd = Number(customQty || 1) * sign;
+    let qtyToAdd = Number(customQty || 1) * sign;
 
     let unitPrice =
-      AppState.priceTier === 'wholesale' && Number(prod.wholesale_price) > 0
-        ? Number(prod.wholesale_price)
-        : Number(prod.selling_price || 0);
+      options.overridePrice !== undefined && options.overridePrice !== null
+        ? Number(options.overridePrice)
+        : AppState.priceTier === 'wholesale' && Number(prod.wholesale_price) > 0
+          ? Number(prod.wholesale_price)
+          : Number(prod.selling_price || 0);
 
-    if (prod.active_promotion) {
+    if (prod.active_promotion && !options.overridePrice) {
       const prm = prod.active_promotion;
       if (prm.discount_type === 'percentage') {
         unitPrice = Number((unitPrice * (1 - Number(prm.discount_value || 0) / 100)).toFixed(2));
@@ -461,7 +1019,13 @@ const App = {
     }
 
     const cart = this.currentCart;
-    const existing = cart.items.find((it) => Number(it.product_id) === Number(prod.id));
+    const existing = cart.items.find(
+      (it) =>
+        Number(it.product_id) === Number(prod.id) &&
+        it.variant_id === (options.variantId || null) &&
+        it.batch_id === (options.batchId || null) &&
+        !options.serialNumber
+    );
 
     if (existing) {
       existing.quantity = Number((existing.quantity + qtyToAdd).toFixed(4));
@@ -469,17 +1033,41 @@ const App = {
     } else {
       cart.items.push({
         product_id: prod.id,
+        variant_id: options.variantId || null,
+        batch_id: options.batchId || null,
         name: prod.name,
         barcode: prod.barcode,
         unit: prod.unit || 'قطعة',
+        wholesale_unit: prod.wholesale_unit || null,
+        wholesale_qty: Number(prod.wholesale_qty || 0),
+        wholesale_price: Number(prod.wholesale_price || 0),
+        retail_price: Number(prod.selling_price || 0),
+        extra_prices: prod.extra_prices || [],
         quantity: qtyToAdd,
         price: unitPrice,
         cost_price: Number(prod.cost_price || 0),
         subtotal: Number((qtyToAdd * unitPrice).toFixed(2)),
+        serial_number: options.serialNumber || null,
+        warranty_months: options.warrantyMonths ?? Number(prod.warranty_months || 0),
         applied_promotion_id: prod.active_promotion ? prod.active_promotion.id : null
       });
     }
 
+    this.renderCartItems();
+  },
+
+  toggleCartItemWholesaleUnit(idx) {
+    const it = this.currentCart.items[idx];
+    if (!it || !it.wholesale_qty || it.wholesale_qty <= 1) return;
+    it._isWholesaleBox = !it._isWholesaleBox;
+    if (it._isWholesaleBox) {
+      it.quantity = it.wholesale_qty;
+      if (it.wholesale_price > 0) it.price = it.wholesale_price;
+    } else {
+      it.quantity = 1;
+      it.price = it.retail_price || it.price;
+    }
+    it.subtotal = Number((it.quantity * it.price).toFixed(2));
     this.renderCartItems();
   },
 
@@ -521,6 +1109,9 @@ const App = {
     if (!box) return;
     const cart = this.currentCart;
 
+    const countEl = document.getElementById('cartItemsCountText');
+    if (countEl) countEl.textContent = String(cart.items.length);
+
     if (cart.items.length === 0) {
       box.innerHTML = `
         <div class="h-full flex flex-col items-center justify-center text-slate-400 py-12">
@@ -528,35 +1119,48 @@ const App = {
           <p class="text-xs font-bold mt-2">السلة فارغة — اختر منتجاً أو امسح باركود</p>
         </div>`;
       this.recalcCart();
+      this.syncCustomerDisplay();
       return;
     }
 
     box.innerHTML = cart.items
-      .map(
-        (it, idx) => `
+      .map((it, idx) => {
+        const hasBoxToggle = it.wholesale_qty && it.wholesale_qty > 1;
+        return `
         <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 flex items-center justify-between gap-2 text-xs">
           <div class="flex-1 min-w-0">
             <div class="font-bold truncate">${it.name}</div>
-            <div class="text-[11px] text-slate-400 font-mono">${it.price.toFixed(2)} د.ج / ${it.unit || 'وحدة'}</div>
+            <div class="text-[11px] text-slate-400 font-mono flex items-center gap-1.5">
+              <span>${it.price.toFixed(2)} د.ج / ${it.unit || 'وحدة'}</span>
+              ${it.serial_number ? `<span class="text-blue-500">[S/N: ${it.serial_number}]</span>` : ''}
+              ${
+                hasBoxToggle
+                  ? `<button onclick="App.toggleCartItemWholesaleUnit(${idx})" class="px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-600 font-bold text-[10px]">${
+                      it._isWholesaleBox ? it.wholesale_unit || 'كرتونة' : 'تحويل لكرتونة'
+                    }</button>`
+                  : ''
+              }
+            </div>
           </div>
           <div class="flex items-center gap-1">
             <input type="number" step="any" value="${it.quantity}"
-              oninput="App.updateCartItemQty(${idx}, this.value)"
+              onchange="App.updateCartItemQty(${idx}, this.value)"
               class="w-16 px-1.5 py-1 rounded-lg text-center font-mono font-bold">
             <input type="number" step="any" value="${it.price}"
-              oninput="App.updateCartItemPrice(${idx}, this.value)"
+              onchange="App.updateCartItemPrice(${idx}, this.value)"
               class="w-20 px-1.5 py-1 rounded-lg text-center font-mono font-bold text-blue-600">
           </div>
           <div class="w-20 text-left font-mono font-black">${it.subtotal.toFixed(2)}</div>
           <button onclick="App.removeCartItem(${idx})" class="text-rose-500 hover:bg-rose-500/10 p-1 rounded-lg">
             <span class="material-symbols-rounded icon-sm">delete</span>
           </button>
-        </div>`
-      )
+        </div>`;
+      })
       .join('');
 
     this.recalcCart();
     this.renderCartTabs();
+    this.syncCustomerDisplay();
   },
 
   updateCartItemQty(idx, val) {
@@ -564,18 +1168,39 @@ const App = {
     if (!it) return;
     it.quantity = parseFloat(val) || 0;
     it.subtotal = Number((it.quantity * it.price).toFixed(2));
-    this.recalcCart();
+    this.renderCartItems();
   },
 
   updateCartItemPrice(idx, val) {
     const it = this.currentCart.items[idx];
     if (!it) return;
-    it.price = parseFloat(val) || 0;
+    const oldPrice = it.price;
+    const newPrice = parseFloat(val) || 0;
+    if (newPrice < oldPrice) {
+      logSecurityAudit(
+        'price_reduced_in_cart',
+        { product: it.name, old_price: oldPrice, new_price: newPrice },
+        'warning',
+        'product',
+        it.product_id
+      );
+    }
+    it.price = newPrice;
     it.subtotal = Number((it.quantity * it.price).toFixed(2));
-    this.recalcCart();
+    this.renderCartItems();
   },
 
   removeCartItem(idx) {
+    const removed = this.currentCart.items[idx];
+    if (removed) {
+      logSecurityAudit(
+        'cart_line_deleted',
+        { product: removed.name, qty: removed.quantity, subtotal: removed.subtotal },
+        'warning',
+        'product',
+        removed.product_id
+      );
+    }
     this.currentCart.items.splice(idx, 1);
     this.renderCartItems();
   },
@@ -596,6 +1221,13 @@ const App = {
   },
 
   clearCurrentCart() {
+    if (this.currentCart.items.length > 0) {
+      logSecurityAudit(
+        'cart_cleared',
+        { items_count: this.currentCart.items.length },
+        'warning'
+      );
+    }
     this.currentCart.items = [];
     const discInput = document.getElementById('cartDiscountInput');
     if (discInput) discInput.value = '0';
@@ -604,20 +1236,108 @@ const App = {
 
   holdCurrentCart() {
     if (this.currentCart.items.length === 0) return;
-    AppState.draftCarts.push(JSON.parse(JSON.stringify(this.currentCart)));
-    this.clearCurrentCart();
+    AppState.draftCarts.push({
+      ...JSON.parse(JSON.stringify(this.currentCart)),
+      heldAt: new Date().toLocaleTimeString('ar-DZ')
+    });
+    this.currentCart.items = [];
+    this.renderCartItems();
     showToast('تم تعليق الفاتورة في المسودات (F3)', 'info');
   },
 
   openDraftsModal() {
+    const body = document.getElementById('draftsModalBody');
+    if (!body) return;
     if (AppState.draftCarts.length === 0) {
-      showToast('لا توجد فواتير معلقة في المسودات حالياً', 'info');
-      return;
+      body.innerHTML = `<div class="py-10 text-center text-slate-400 font-bold">لا توجد فواتير معلقة في المسودات حالياً</div>`;
+    } else {
+      body.innerHTML = `
+        <table class="w-full text-xs text-right">
+          <thead>
+            <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+              <th class="py-2">#</th>
+              <th class="py-2">الوقت</th>
+              <th class="py-2">عدد الأصناف</th>
+              <th class="py-2">الإجمالي</th>
+              <th class="py-2">إجراءات</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+            ${AppState.draftCarts
+              .map((d, i) => {
+                const tot = d.items.reduce((s, it) => s + Number(it.subtotal || 0), 0) - Number(d.discount || 0);
+                return `
+                  <tr>
+                    <td class="py-2 font-mono">#${i + 1}</td>
+                    <td class="py-2 font-mono">${d.heldAt || ''}</td>
+                    <td class="py-2 font-bold">${d.items.length} أصناف</td>
+                    <td class="py-2 font-mono font-bold text-blue-600">${tot.toFixed(2)} د.ج</td>
+                    <td class="py-2 flex gap-1.5">
+                      <button onclick="App.restoreDraftCart(${i})" class="px-3 py-1 bg-emerald-600 text-white rounded-lg font-bold">استرجاع</button>
+                      <button onclick="App.deleteDraftCart(${i})" class="px-2.5 py-1 bg-rose-500/15 text-rose-500 rounded-lg font-bold">حذف</button>
+                    </td>
+                  </tr>`;
+              })
+              .join('')}
+          </tbody>
+        </table>`;
     }
-    const restored = AppState.draftCarts.pop();
-    AppState.carts[AppState.activeCartIndex] = restored;
-    this.renderPosView();
-    showToast('تم استرجاع الفاتورة المعلقة إلى السلة', 'success');
+    this.openModal('draftsModal');
+  },
+
+  restoreDraftCart(idx) {
+    const restored = AppState.draftCarts.splice(idx, 1)[0];
+    if (restored) {
+      AppState.carts[AppState.activeCartIndex] = restored;
+      this.closeModal('draftsModal');
+      this.renderPosView();
+      showToast('تم استرجاع الفاتورة المعلقة إلى السلة', 'success');
+    }
+  },
+
+  deleteDraftCart(idx) {
+    AppState.draftCarts.splice(idx, 1);
+    this.openDraftsModal();
+    this.renderCartTabs();
+  },
+
+  async openRecentSalesModal() {
+    const sales = (await window.api.getSales({}).catch(() => [])) || [];
+    const recent = sales.slice(0, 15);
+    const body = document.getElementById('recentSalesModalBody');
+    if (body) {
+      body.innerHTML = `
+        <table class="w-full text-xs text-right">
+          <thead>
+            <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+              <th class="py-2">رقم الفاتورة</th>
+              <th class="py-2">التاريخ</th>
+              <th class="py-2">الزبون</th>
+              <th class="py-2">الإجمالي</th>
+              <th class="py-2">إجراءات سريعة</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+            ${recent
+              .map(
+                (s) => `
+              <tr>
+                <td class="py-2 font-mono font-bold">${s.doc_number || '#' + s.id}</td>
+                <td class="py-2 font-mono">${String(s.sale_date || '').slice(0, 16)}</td>
+                <td class="py-2 font-bold">${s.customer_name || 'زبون عابر'}</td>
+                <td class="py-2 font-mono font-bold text-blue-600">${Number(s.total || 0).toFixed(2)} د.ج</td>
+                <td class="py-2 flex gap-1.5">
+                  <button onclick="App.reprintSale(${s.id}, 'receipt')" class="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold">تذكرة</button>
+                  <button onclick="App.reprintSale(${s.id}, 'a4')" class="px-2.5 py-1 bg-blue-600 text-white rounded-lg font-bold">A4</button>
+                  <button onclick="App.openDeliveryNoteModal(${s.id})" class="px-2.5 py-1 bg-teal-600 text-white rounded-lg font-bold">وصل توصيل</button>
+                </td>
+              </tr>`
+              )
+              .join('')}
+          </tbody>
+        </table>`;
+    }
+    this.openModal('recentSalesModal');
   },
 
   toggleReturnMode() {
@@ -625,19 +1345,21 @@ const App = {
     const btn = document.getElementById('btnReturnMode');
     if (btn) {
       btn.className = AppState.isReturnMode
-        ? 'px-3 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-bold flex items-center gap-1'
-        : 'px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-xs font-bold flex items-center gap-1';
+        ? 'px-2.5 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-bold flex items-center gap-1'
+        : 'px-2.5 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-xs font-bold flex items-center gap-1';
     }
     showToast(AppState.isReturnMode ? 'تم تفعيل وضع مرتجع المبيعات' : 'تم العودة لوضع البيع العادي', 'info');
   },
 
   setCartPriceTier(tier) {
     AppState.priceTier = tier;
+    const sel = document.getElementById('posPriceTierSelect');
+    if (sel) sel.value = tier;
     this.renderPosProductsGrid();
   },
 
   // ==========================================================================
-  // 5. نافذة التسديد والدفع (Checkout Modal) ومراقب سقف الدين
+  // 5. نافذة الدفع الشاملة (Checkout + Split Payment + Installments)
   // ==========================================================================
   async openCheckoutModal() {
     if (this.currentCart.items.length === 0) {
@@ -650,6 +1372,8 @@ const App = {
     document.getElementById('chkApplyStamp').checked = false;
     document.getElementById('chkPaymentMethod').value = 'cash';
     document.getElementById('chkPaidAmount').value = total.toFixed(2);
+    document.getElementById('chkSplitPaymentBox').classList.add('hidden');
+    document.getElementById('chkInstallmentBox').classList.add('hidden');
 
     const alertBox = document.getElementById('creditLimitAlertBox');
     if (alertBox) alertBox.classList.add('hidden');
@@ -663,7 +1387,39 @@ const App = {
     }
 
     this.recalcCheckoutModal();
-    document.getElementById('checkoutModal').classList.add('active');
+    this.openModal('checkoutModal');
+  },
+
+  onCheckoutMethodChange(method) {
+    const splitBox = document.getElementById('chkSplitPaymentBox');
+    const instBox = document.getElementById('chkInstallmentBox');
+    splitBox.classList.toggle('hidden', method !== 'split');
+    instBox.classList.toggle('hidden', method !== 'installment');
+
+    if (method === 'split') {
+      const { total } = this.recalcCart();
+      document.getElementById('splitCashInput').value = (total / 2).toFixed(2);
+      document.getElementById('splitCardInput').value = (total / 2).toFixed(2);
+      document.getElementById('splitCreditInput').value = '0.00';
+    }
+    this.recalcCheckoutModal();
+  },
+
+  recalcSplitTotals() {
+    const { subtotal, discount } = this.recalcCart();
+    const applyTva = document.getElementById('chkApplyTva').checked;
+    const applyStamp = document.getElementById('chkApplyStamp').checked;
+    const afterDisc = subtotal - discount;
+    const tvaAmount = applyTva ? afterDisc * 0.19 : 0;
+    const stampAmount = applyStamp ? (afterDisc + tvaAmount) * 0.01 : 0;
+    const finalTotal = Number((afterDisc + tvaAmount + stampAmount).toFixed(2));
+
+    const cash = parseFloat(document.getElementById('splitCashInput').value) || 0;
+    const card = parseFloat(document.getElementById('splitCardInput').value) || 0;
+    const credit = Math.max(0, Number((finalTotal - cash - card).toFixed(2)));
+    document.getElementById('splitCreditInput').value = credit.toFixed(2);
+    document.getElementById('chkPaidAmount').value = (cash + card).toFixed(2);
+    this.recalcCheckoutModal();
   },
 
   recalcCheckoutModal() {
@@ -682,12 +1438,47 @@ const App = {
     const paidInput = document.getElementById('chkPaidAmount');
     if (method === 'credit' && document.activeElement !== paidInput) {
       paidInput.value = '0';
+    } else if (method === 'installment') {
+      const down = parseFloat(document.getElementById('instDownPayment').value) || 0;
+      const months = Math.max(1, parseInt(document.getElementById('instMonthsCount').value || '6', 10));
+      const monthly = Math.max(0, (finalTotal - down) / months);
+      document.getElementById('instMonthlyVal').value = `${monthly.toFixed(2)} د.ج / شهر`;
+      paidInput.value = down.toFixed(2);
     }
+
     const paid = parseFloat(paidInput.value) || 0;
     const change = Math.max(0, Number((paid - finalTotal).toFixed(2)));
     document.getElementById('chkChangeAmount').textContent = `${change.toFixed(2)} د.ج`;
 
-    return { subtotal, discount, tax_percentage: applyTva ? 19 : 0, stamp_amount: Number(stampAmount.toFixed(2)), total: finalTotal, paid_amount: Math.min(paid, finalTotal), payment_method: method };
+    let splitPayments = null;
+    if (method === 'split') {
+      const cash = parseFloat(document.getElementById('splitCashInput').value) || 0;
+      const card = parseFloat(document.getElementById('splitCardInput').value) || 0;
+      splitPayments = [];
+      if (cash > 0) splitPayments.push({ method: 'cash', amount: cash });
+      if (card > 0) splitPayments.push({ method: 'cib', amount: card });
+    }
+
+    let installmentPlan = null;
+    if (method === 'installment') {
+      installmentPlan = {
+        down_payment: parseFloat(document.getElementById('instDownPayment').value) || 0,
+        months_count: Math.max(1, parseInt(document.getElementById('instMonthsCount').value || '6', 10))
+      };
+    }
+
+    return {
+      subtotal,
+      discount,
+      tax_percentage: applyTva ? 19 : 0,
+      stamp_amount: Number(stampAmount.toFixed(2)),
+      total: finalTotal,
+      paid_amount: Math.min(paid, finalTotal),
+      payment_method: method,
+      due_date: document.getElementById('chkDueDate')?.value || null,
+      split_payments: splitPayments,
+      installment_plan: installmentPlan
+    };
   },
 
   addCashDenom(denom) {
@@ -707,8 +1498,13 @@ const App = {
     const calc = this.recalcCheckoutModal();
     const cart = this.currentCart;
 
-    if (calc.payment_method === 'credit' && !cart.customerId) {
-      showToast('يرجى اختيار الزبون عند البيع الآجل (بالدين)', 'error');
+    if (
+      (calc.payment_method === 'credit' ||
+        calc.payment_method === 'installment' ||
+        calc.paid_amount < calc.total - 0.01) &&
+      !cart.customerId
+    ) {
+      showToast('يرجى اختيار الزبون عند البيع الآجل أو بالتقسيط أو الدفع الجزئي', 'error');
       return;
     }
 
@@ -722,6 +1518,9 @@ const App = {
       total: calc.total,
       paid_amount: calc.paid_amount,
       payment_method: calc.payment_method,
+      due_date: calc.due_date,
+      split_payments: calc.split_payments,
+      installment_plan: calc.installment_plan,
       items: cart.items
     };
 
@@ -741,7 +1540,9 @@ const App = {
         });
       }
 
-      this.clearCurrentCart();
+      this.currentCart.items = [];
+      const discInput = document.getElementById('cartDiscountInput');
+      if (discInput) discInput.value = '0';
       await this.refreshProducts();
       this.renderPosView();
     } catch (err) {
@@ -750,7 +1551,10 @@ const App = {
   },
 
   async saveCartAsProforma() {
-    if (this.currentCart.items.length === 0) return;
+    if (this.currentCart.items.length === 0) {
+      showToast('السلة فارغة!', 'warning');
+      return;
+    }
     const { subtotal, discount, total } = this.recalcCart();
     const res = await window.api.createProforma({
       customer_id: this.currentCart.customerId || null,
@@ -759,39 +1563,834 @@ const App = {
       total,
       items: this.currentCart.items
     });
-    this.clearCurrentCart();
+    this.currentCart.items = [];
+    this.renderCartItems();
     showToast(`تم حفظ الفاتورة الشكلية (${res.doc_number})`, 'success');
+    if (window.PrintEngine) {
+      const fullPf = await window.api.getProformaDetails(res.id);
+      const html = await window.PrintEngine.renderProformaHtml(fullPf, AppState.settings, AppState.lang);
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  },
+
+  openOrderModalFromCart() {
+    if (this.currentCart.items.length === 0) {
+      showToast('السلة فارغة!', 'warning');
+      return;
+    }
+    document.getElementById('orderDepositInput').value = '0';
+    document.getElementById('orderDeliveryDateInput').value = new Date(Date.now() + 86400000)
+      .toISOString()
+      .slice(0, 10);
+    document.getElementById('orderNotesInput').value = '';
+    document.getElementById('orderReserveStockCheckbox').checked = true;
+    this.openModal('orderModal');
+  },
+
+  async confirmSaveCartAsOrder() {
+    const { subtotal, discount, total } = this.recalcCart();
+    const deposit = parseFloat(document.getElementById('orderDepositInput').value) || 0;
+    const expectedDate = document.getElementById('orderDeliveryDateInput').value || null;
+    const notes = document.getElementById('orderNotesInput').value.trim();
+    const reservesStock = document.getElementById('orderReserveStockCheckbox').checked;
+
+    const res = await window.api.createOrder({
+      customer_id: this.currentCart.customerId || null,
+      user_id: AppState.currentUser ? AppState.currentUser.id : 1,
+      subtotal,
+      discount,
+      total,
+      deposit_amount: deposit,
+      expected_delivery_date: expectedDate,
+      notes,
+      reserves_stock: reservesStock,
+      items: this.currentCart.items
+    });
+
+    this.closeModal('orderModal');
+    this.currentCart.items = [];
+    this.renderCartItems();
+    showToast(`تم حفظ طلبية الزبون (${res.doc_number})`, 'success');
+
+    if (window.PrintEngine) {
+      const fullOrd = await window.api.getOrderDetails(res.id);
+      const html = await window.PrintEngine.renderOrderReceiptHtml(fullOrd, AppState.settings, AppState.lang);
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  },
+  // ==========================================================================
+  // 6. النوافذ السريعة (المنتج الحر F8، وصفة التصنيع BOM، والمصادقة) — [الشطر الثاني 2/3]
+  // ==========================================================================
+  openFreeItemModal() {
+    document.getElementById('freeItemName').value = 'منتج متنوع';
+    document.getElementById('freeItemPrice').value = '100';
+    document.getElementById('freeItemQty').value = '1';
+    this.openModal('freeItemModal');
+  },
+
+  confirmFreeItem() {
+    const name = document.getElementById('freeItemName').value.trim() || 'منتج حر';
+    const price = parseFloat(document.getElementById('freeItemPrice').value) || 0;
+    const qty = parseFloat(document.getElementById('freeItemQty').value) || 1;
+    this.currentCart.items.push({
+      product_id: null,
+      name,
+      custom_product_name: name,
+      unit: 'وحدة',
+      quantity: qty,
+      price,
+      subtotal: Number((qty * price).toFixed(2))
+    });
+    this.closeModal('freeItemModal');
+    this.renderCartItems();
+  },
+
+  async saveBomRecipeFromModal() {
+    const name = document.getElementById('bomRecipeName').value.trim() || 'وصفة تصنيع';
+    const productId = Number(document.getElementById('bomTargetProduct').value);
+    const compId = Number(document.getElementById('bomComponentSelect').value);
+    const compQty = parseFloat(document.getElementById('bomComponentQty').value) || 1;
+    const outputQty = parseFloat(document.getElementById('bomOutputQty').value) || 1;
+    const autoOnSale = document.getElementById('bomAutoOnSale').checked ? 1 : 0;
+
+    if (!productId || !compId) {
+      showToast('يرجى اختيار المنتج النهائي والمكون الأولي', 'warning');
+      return;
+    }
+    await window.api.saveBomRecipe({
+      name,
+      product_id: productId,
+      output_qty: outputQty,
+      auto_on_sale: autoOnSale,
+      components: [{ component_product_id: compId, quantity: compQty }]
+    });
+    this.closeModal('bom-recipe-modal');
+    if (window.ManufacturingUI) await window.ManufacturingUI.renderManufacturingView();
+    showToast('تم حفظ وصفة التصنيع بنجاح', 'success');
+  },
+
+  openLoginModal() {
+    document.getElementById('authErrorBox').textContent = '';
+    this.openModal('authModal');
+  },
+
+  async submitAuthModal() {
+    const u = document.getElementById('authUsernameInput').value.trim();
+    const p = document.getElementById('authPasswordInput').value;
+    const res = await window.api.loginUser(u, p);
+    if (res && res.success) {
+      AppState.currentUser = res.user || res;
+      this.updateUserBadge();
+      this.closeModal('authModal');
+      showToast(`مرحباً بك، ${AppState.currentUser.name}`, 'success');
+    } else {
+      document.getElementById('authErrorBox').textContent = 'بيانات الدخول غير صحيحة';
+    }
   },
 
   // ==========================================================================
-  // 6. النوافذ المنبثقة (المنتج، الزبون، المنتج الحر، الوصفة، تسجيل الدخول)
+  // 7. سجل المبيعات، تفاصيل الفاتورة، إشعارات الدائن (Avoir)، وصل التوصيل، وشهادة الضمان
   // ==========================================================================
-  closeModal(id) {
-    const el = document.getElementById(id);
-    if (el) el.classList.remove('active');
+  async renderSalesHistoryView(filters = {}) {
+    const root = document.getElementById('sales-view-root');
+    if (!root) return;
+    const sales = (await window.api.getSales(filters).catch(() => [])) || [];
+
+    root.innerHTML = `
+      <div class="space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-2xl font-black">سجل المبيعات والفواتير وإشعارات الدائن (${sales.length})</h2>
+            <p class="text-xs text-slate-500">معاينة الفواتير، طباعة وصولات التوصيل، إصدار إشعارات الدائن (Facture d'Avoir)، وشهادات الضمان</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="salesFilterFrom" type="date" value="${filters.dateFrom || ''}" class="px-3 py-2 rounded-xl text-xs font-mono">
+            <input id="salesFilterTo" type="date" value="${filters.dateTo || ''}" class="px-3 py-2 rounded-xl text-xs font-mono">
+            <button onclick="App.filterSalesHistory()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">تصفية</button>
+            <button onclick="window.api.exportSalesToExcel()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-1">
+              <span class="material-symbols-rounded icon-sm">download</span>
+              <span>تصدير Excel</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 overflow-x-auto">
+          <table class="w-full text-xs text-right">
+            <thead>
+              <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                <th class="py-2.5 px-2">رقم الفاتورة</th>
+                <th class="py-2.5 px-2">التاريخ</th>
+                <th class="py-2.5 px-2">الزبون</th>
+                <th class="py-2.5 px-2">البائع</th>
+                <th class="py-2.5 px-2">الإجمالي</th>
+                <th class="py-2.5 px-2">المدفوع</th>
+                <th class="py-2.5 px-2">الباقي</th>
+                <th class="py-2.5 px-2">إشعار دائن</th>
+                <th class="py-2.5 px-2">إجراءات المستندات</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+              ${
+                sales.length === 0
+                  ? '<tr><td colspan="9" class="py-10 text-center text-slate-400 font-bold">لا توجد فواتير مبيعات مسجلة في هذه الفترة</td></tr>'
+                  : sales
+                      .map((s) => {
+                        const rem = Math.max(0, Number(s.total || 0) - Number(s.paid_amount || 0));
+                        return `
+                        <tr>
+                          <td class="py-2.5 px-2 font-mono font-bold text-blue-600">${s.doc_number || '#' + s.id}</td>
+                          <td class="py-2.5 px-2 font-mono">${String(s.sale_date || '').slice(0, 16)}</td>
+                          <td class="py-2.5 px-2 font-bold">${s.customer_name || 'زبون عابر'}</td>
+                          <td class="py-2.5 px-2 text-slate-500">${s.seller_name || 'المدير'}</td>
+                          <td class="py-2.5 px-2 font-mono font-black">${Number(s.total || 0).toFixed(2)} د.ج</td>
+                          <td class="py-2.5 px-2 font-mono text-emerald-600 font-bold">${Number(s.paid_amount || 0).toFixed(2)}</td>
+                          <td class="py-2.5 px-2 font-mono ${rem > 0 ? 'text-rose-500 font-black' : 'text-slate-400'}">${rem.toFixed(2)}</td>
+                          <td class="py-2.5 px-2 font-mono text-rose-600 font-bold">${s.credit_note_number || '-'}</td>
+                          <td class="py-2.5 px-2 flex flex-wrap items-center gap-1">
+                            <button onclick="App.openSaleDetailsModal(${s.id})" class="px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded-lg font-bold" title="التفاصيل والضمان">تفاصيل</button>
+                            <button onclick="App.reprintSale(${s.id}, 'a4')" class="px-2 py-1 bg-blue-600/10 text-blue-600 rounded-lg font-bold">فاتورة A4</button>
+                            <button onclick="App.reprintSale(${s.id}, 'receipt')" class="px-2 py-1 bg-emerald-600/10 text-emerald-600 rounded-lg font-bold">تذكرة</button>
+                            <button onclick="App.openDeliveryNoteModal(${s.id})" class="px-2 py-1 bg-teal-600/10 text-teal-600 rounded-lg font-bold">توصيل BL</button>
+                            <button onclick="App.openCreditNoteModal(${s.id})" class="px-2 py-1 bg-amber-500/15 text-amber-600 rounded-lg font-bold">إشعار دائن</button>
+                            <button onclick="App.deleteSaleRecord(${s.id})" class="text-rose-500 p-1"><span class="material-symbols-rounded icon-sm">delete</span></button>
+                          </td>
+                        </tr>`;
+                      })
+                      .join('')
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  },
+
+  async filterSalesHistory() {
+    const dateFrom = document.getElementById('salesFilterFrom')?.value || '';
+    const dateTo = document.getElementById('salesFilterTo')?.value || '';
+    await this.renderSalesHistoryView({ dateFrom, dateTo });
+  },
+
+  async openSaleDetailsModal(saleId) {
+    const fullSale = await window.api.getSaleDetails(saleId);
+    if (!fullSale) return;
+    document.getElementById('saleDetailsModalTitle').textContent = `تفاصيل الفاتورة (${fullSale.doc_number || '#' + fullSale.id})`;
+    const body = document.getElementById('saleDetailsModalBody');
+    const items = fullSale.items || [];
+
+    body.innerHTML = `
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70">
+        <div><span class="text-slate-400">الزبون:</span> <strong>${fullSale.customer_name || 'زبون عابر'}</strong></div>
+        <div><span class="text-slate-400">التاريخ:</span> <strong class="font-mono">${String(fullSale.sale_date || '').slice(0, 16)}</strong></div>
+        <div><span class="text-slate-400">الإجمالي:</span> <strong class="font-mono text-blue-600">${Number(fullSale.total || 0).toFixed(2)} د.ج</strong></div>
+        <div><span class="text-slate-400">المدفوع:</span> <strong class="font-mono text-emerald-600">${Number(fullSale.paid_amount || 0).toFixed(2)} د.ج</strong></div>
+      </div>
+
+      <table class="w-full text-xs text-right">
+        <thead>
+          <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+            <th class="py-2">المنتج</th>
+            <th class="py-2">الكمية</th>
+            <th class="py-2">السعر</th>
+            <th class="py-2">المجموع</th>
+            <th class="py-2">السيريال / الضمان</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+          ${items
+            .map(
+              (it, idx) => `
+            <tr>
+              <td class="py-2 font-bold">${it.product_name}</td>
+              <td class="py-2 font-mono">${it.quantity}</td>
+              <td class="py-2 font-mono">${Number(it.price || 0).toFixed(2)}</td>
+              <td class="py-2 font-mono font-bold">${Number(it.subtotal || 0).toFixed(2)} د.ج</td>
+              <td class="py-2">
+                <button onclick="App.printSaleItemWarranty(${fullSale.id}, ${idx})" class="px-2.5 py-1 bg-indigo-600 text-white rounded-lg font-bold text-[11px]">
+                  طباعة شهادة ضمان ${it.serial_number ? '(' + it.serial_number + ')' : ''}
+                </button>
+              </td>
+            </tr>`
+            )
+            .join('')}
+        </tbody>
+      </table>
+    `;
+    this.openModal('saleDetailsModal');
+  },
+
+  async printSaleItemWarranty(saleId, itemIndex) {
+    const fullSale = await window.api.getSaleDetails(saleId);
+    if (!fullSale || !fullSale.items || !fullSale.items[itemIndex]) return;
+    const item = fullSale.items[itemIndex];
+    if (window.PrintEngine && window.PrintEngine.renderWarrantyCertificateHtml) {
+      const html = window.PrintEngine.renderWarrantyCertificateHtml(item, fullSale, AppState.settings);
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  },
+
+  openCreditNoteModal(saleId) {
+    document.getElementById('creditNoteSaleId').value = String(saleId);
+    document.getElementById('creditNoteReasonInput').value = 'إرجاع بضاعة / تصحيح فاتورة بيع';
+    this.openModal('creditNoteModal');
+  },
+
+  async confirmIssueCreditNote() {
+    const saleId = Number(document.getElementById('creditNoteSaleId').value);
+    const reason = document.getElementById('creditNoteReasonInput').value.trim() || 'إرجاع بضاعة';
+    if (!saleId) return;
+
+    const res = await window.api.issueCreditNote({ saleId, reason });
+    this.closeModal('creditNoteModal');
+    const fullSale = await window.api.getSaleDetails(saleId);
+    if (fullSale && window.PrintEngine) {
+      fullSale.credit_note_number = res.credit_note_number;
+      fullSale.credit_note_reason = reason;
+      const html = await window.PrintEngine.renderCreditNoteHtml(fullSale, AppState.settings, AppState.lang);
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+    await this.renderSalesHistoryView();
+    showToast(`تم إصدار إشعار الدائن (${res.credit_note_number}) بنجاح`, 'success');
+  },
+
+  openDeliveryNoteModal(saleId) {
+    document.getElementById('deliveryNoteSaleId').value = String(saleId);
+    document.getElementById('delivDriverInput').value = '';
+    document.getElementById('delivVehicleInput').value = '';
+    this.openModal('deliveryNoteModal');
+  },
+
+  async confirmPrintDeliveryNote() {
+    const saleId = Number(document.getElementById('deliveryNoteSaleId').value);
+    const driverName = document.getElementById('delivDriverInput').value.trim();
+    const vehiclePlate = document.getElementById('delivVehicleInput').value.trim();
+    const fmt = document.getElementById('delivFormatSelect').value || 'ar';
+
+    const fullSale = await window.api.getSaleDetails(saleId);
+    if (!fullSale || !window.PrintEngine) return;
+
+    this.closeModal('deliveryNoteModal');
+    const html = await window.PrintEngine.renderDeliveryNoteHtml(
+      {
+        ...fullSale,
+        driver_name: driverName,
+        carrier_name: driverName,
+        vehicle_plate: vehiclePlate
+      },
+      AppState.settings,
+      fmt
+    );
+    await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  },
+
+  async reprintSale(saleId, mode = 'a4') {
+    const fullSale = await window.api.getSaleDetails(saleId);
+    if (!fullSale || !window.PrintEngine) return;
+    const html =
+      mode === 'a4'
+        ? await window.PrintEngine.renderInvoiceHtml(fullSale, AppState.settings)
+        : await window.PrintEngine.renderReceiptHtml(fullSale, AppState.settings);
+    await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  },
+
+  async deleteSaleRecord(saleId) {
+    if (!confirm('هل تريد حذف هذه الفاتورة واسترجاع مخزونها بالكامل؟')) return;
+    await window.api.deleteSale(saleId);
+    await logSecurityAudit('sale_deleted', { sale_id: saleId }, 'danger', 'sale', saleId);
+    await this.renderSalesHistoryView();
+    showToast('تم حذف الفاتورة واسترجاع المخزون', 'info');
+  },
+
+  // ==========================================================================
+  // 8. إدارة الصندوق والمناوبات (Caisse & Shifts — بدون أي prompt)
+  // ==========================================================================
+  async renderCaisseView() {
+    const root = document.getElementById('caisse-view-root');
+    if (!root) return;
+    const [active, sessions, txLog] = await Promise.all([
+      window.api.getActiveSession(AppState.currentUser.id).catch(() => null),
+      window.api.getCaisseSessions().catch(() => []),
+      window.api.getCaisseTransactionsLog().catch(() => [])
+    ]);
+    AppState.activeSession = active;
+    this.updateShiftHeaderBadge();
+
+    const curBal = active && active.summary ? Number(active.summary.currentBalance || 0) : 0;
+
+    root.innerHTML = `
+      <div class="space-y-6">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-2xl font-black">إدارة الصندوق والمناوبات (Caisse & Shifts)</h2>
+            <p class="text-xs text-slate-500">فتح وإغلاق الورديات، الإيداع والسحب النقدي، وتقارير Z-Report</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            ${
+              !active
+                ? `<button onclick="App.openNewShiftModal()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow">فتح مناوبة صندوق جديدة</button>`
+                : `
+                  <button onclick="App.openCaisseTxModal('cash_in')" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold">+ إيداع نقدي</button>
+                  <button onclick="App.openCaisseTxModal('cash_out')" class="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold">- سحب نقدي</button>
+                  <button onclick="App.openCloseShiftModal(${active.session.id}, ${curBal})" class="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold">إغلاق المناوبة (Z-Report)</button>
+                `
+            }
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            <div class="text-xs text-slate-400 font-bold">الرصيد الافتتاحي</div>
+            <div class="text-xl font-black font-mono mt-1">${active ? Number(active.summary.openingBalance).toFixed(2) : '0.00'} د.ج</div>
+          </div>
+          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            <div class="text-xs text-slate-400 font-bold">مبيعات وتسديدات النقد</div>
+            <div class="text-xl font-black font-mono text-emerald-600 mt-1">${active ? Number(active.summary.totalSalesCash).toFixed(2) : '0.00'} د.ج</div>
+          </div>
+          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            <div class="text-xs text-slate-400 font-bold">المصاريف والمسحوبات</div>
+            <div class="text-xl font-black font-mono text-rose-500 mt-1">${active ? Number(active.summary.totalExpenses + active.summary.totalCashOut).toFixed(2) : '0.00'} د.ج</div>
+          </div>
+          <div class="p-4 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/25">
+            <div class="text-xs opacity-80 font-bold">الرصيد المتوقع في الدرج</div>
+            <div class="text-2xl font-black font-mono mt-1">${curBal.toFixed(2)} د.ج</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
+            <h3 class="font-black text-sm mb-3">سجل المناوبات (${sessions.length})</h3>
+            <div class="overflow-x-auto max-h-80">
+              <table class="w-full text-xs text-right">
+                <thead>
+                  <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                    <th class="py-2">#</th>
+                    <th class="py-2">المستخدم</th>
+                    <th class="py-2">الافتتاح</th>
+                    <th class="py-2">الافتتاحي</th>
+                    <th class="py-2">الختامي</th>
+                    <th class="py-2">الفارق</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+                  ${sessions
+                    .map(
+                      (s) => `
+                    <tr>
+                      <td class="py-2 font-mono">#${s.id}</td>
+                      <td class="py-2 font-bold">${s.user_name || 'المدير'}</td>
+                      <td class="py-2 font-mono">${String(s.opened_at || '').slice(0, 16)}</td>
+                      <td class="py-2 font-mono">${Number(s.opening_balance || 0).toFixed(2)}</td>
+                      <td class="py-2 font-mono">${s.closing_balance !== null ? Number(s.closing_balance).toFixed(2) : '-'}</td>
+                      <td class="py-2 font-mono ${Number(s.difference || 0) < 0 ? 'text-rose-500 font-bold' : 'text-emerald-600'}">${s.difference !== null ? Number(s.difference).toFixed(2) : s.status === 'open' ? 'مفتوحة' : '-'}</td>
+                    </tr>`
+                    )
+                    .join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
+            <h3 class="font-black text-sm mb-3">حركات الخزينة المباشرة (${txLog.length})</h3>
+            <div class="overflow-x-auto max-h-80">
+              <table class="w-full text-xs text-right">
+                <thead>
+                  <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                    <th class="py-2">النوع</th>
+                    <th class="py-2">البيان</th>
+                    <th class="py-2">المبلغ</th>
+                    <th class="py-2">التوقيت</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+                  ${txLog
+                    .slice(0, 40)
+                    .map(
+                      (t) => `
+                    <tr>
+                      <td class="py-2 font-bold ${t.type === 'cash_in' || t.type === 'order_deposit' ? 'text-emerald-600' : 'text-rose-500'}">${t.type}</td>
+                      <td class="py-2">${t.description || t.category || '-'}</td>
+                      <td class="py-2 font-mono font-bold">${Number(t.amount || 0).toFixed(2)} د.ج</td>
+                      <td class="py-2 font-mono text-slate-400">${String(t.created_at || '').slice(0, 16)}</td>
+                    </tr>`
+                    )
+                    .join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  openNewShiftModal() {
+    document.getElementById('openShiftBalanceInput').value = '0';
+    this.openModal('openShiftModal');
+  },
+
+  async confirmOpenShift() {
+    const val = parseFloat(document.getElementById('openShiftBalanceInput').value) || 0;
+    await window.api.openCaisseSession({
+      userId: AppState.currentUser ? AppState.currentUser.id : 1,
+      openingBalance: val
+    });
+    this.closeModal('openShiftModal');
+    await this.renderCaisseView();
+    showToast('تم فتح مناوبة الصندوق بنجاح', 'success');
+  },
+
+  openCaisseTxModal(type = 'cash_in') {
+    document.getElementById('caisseTxTypeInput').value = type;
+    document.getElementById('caisseTxModalTitle').textContent =
+      type === 'cash_in' ? 'إيداع نقدي في الصندوق' : 'سحب نقدي من الصندوق';
+    document.getElementById('caisseTxAmountInput').value = '1000';
+    document.getElementById('caisseTxDescInput').value = '';
+    this.openModal('caisseTxModal');
+  },
+
+  async confirmCaisseTx() {
+    const type = document.getElementById('caisseTxTypeInput').value || 'cash_in';
+    const amt = parseFloat(document.getElementById('caisseTxAmountInput').value) || 0;
+    const desc =
+      document.getElementById('caisseTxDescInput').value.trim() ||
+      (type === 'cash_in' ? 'إيداع نقدي' : 'سحب نقدي');
+    if (amt <= 0) return;
+
+    await window.api.addCaisseTransaction({
+      type,
+      amount: amt,
+      description: desc,
+      user_id: AppState.currentUser ? AppState.currentUser.id : 1
+    });
+    this.closeModal('caisseTxModal');
+    await this.renderCaisseView();
+    showToast('تم تسجيل الحركة النقدية في الصندوق', 'success');
+  },
+
+  openCloseShiftModal(sessionId, expectedBalance = 0) {
+    document.getElementById('closeShiftSessionId').value = String(sessionId);
+    document.getElementById('closeShiftExpectedText').textContent = `${Number(expectedBalance).toFixed(2)} د.ج`;
+    document.getElementById('closeShiftCountedInput').value = Number(expectedBalance).toFixed(2);
+    document.getElementById('closeShiftNoteInput').value = '';
+    this.openModal('closeShiftModal');
+  },
+
+  async confirmCloseShift() {
+    const sessionId = Number(document.getElementById('closeShiftSessionId').value);
+    const counted = parseFloat(document.getElementById('closeShiftCountedInput').value) || 0;
+    const note = document.getElementById('closeShiftNoteInput').value.trim();
+
+    await window.api.closeCaisseSession({
+      sessionId,
+      closingBalance: counted,
+      closeNote: note
+    });
+    this.closeModal('closeShiftModal');
+    await this.renderCaisseView();
+    showToast('تم إغلاق المناوبة وحفظ تقرير Z-Report بنجاح', 'success');
+  },
+
+  // ==========================================================================
+  // 9. إدارة المخزون، نافذة الـ 5 تبويبات، القاموس الجزائري 613، الدفعات، وديون المخزون
+  // ==========================================================================
+  async renderInventoryView(filters = {}) {
+    const root = document.getElementById('inventory-view-root');
+    if (!root) return;
+    const [products, debtSum] = await Promise.all([
+      window.api.getProducts(filters).catch(() => []),
+      window.api.getStockDebtSummary().catch(() => ({ count: 0, total_qty: 0 }))
+    ]);
+    AppState.products = products;
+
+    const lowStockCount = products.filter((p) => Number(p.stock) <= Number(p.min_stock || 5)).length;
+    const expiredCount = products.filter((p) => Number(p.expired_qty || 0) > 0).length;
+
+    root.innerHTML = `
+      <div class="space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-2xl font-black">إدارة المخزون، الدفعات، والمتغيرات (${products.length} منتج)</h2>
+            <p class="text-xs text-slate-500">تتبع الأرصدة، الصلاحية، الباركودات المتعددة، والقاموس الجزائري الذكي لباركود 613</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="App.openStockDebtModal()" class="px-3.5 py-2 bg-rose-500/15 text-rose-600 rounded-xl text-xs font-bold">
+              ديون المخزون (${debtSum.count || 0})
+            </button>
+            <button onclick="window.api.downloadInventoryTemplate()" class="px-3 py-2 bg-slate-200 dark:bg-slate-700 rounded-xl text-xs font-bold">قالب Excel</button>
+            <button onclick="window.api.importProductsFromExcel().then(() => App.renderInventoryView())" class="px-3.5 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold">استيراد Excel</button>
+            <button onclick="window.api.exportProductsToExcel()" class="px-3.5 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold">تصدير Excel</button>
+            <button onclick="App.openProductModal()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold shadow">+ منتج جديد</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            <div class="text-xs text-slate-400 font-bold">إجمالي الأصناف</div>
+            <div class="text-2xl font-black font-mono mt-1">${products.length}</div>
+          </div>
+          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            <div class="text-xs text-slate-400 font-bold">منخفضة المخزون</div>
+            <div class="text-2xl font-black font-mono text-amber-500 mt-1">${lowStockCount}</div>
+          </div>
+          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            <div class="text-xs text-slate-400 font-bold">دفعات منتهية الصلاحية</div>
+            <div class="text-2xl font-black font-mono text-rose-500 mt-1">${expiredCount}</div>
+          </div>
+          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            <div class="text-xs text-slate-400 font-bold">مباعة بالسالب (Stock Debt)</div>
+            <div class="text-2xl font-black font-mono text-indigo-600 mt-1">${debtSum.total_qty || 0}</div>
+          </div>
+        </div>
+
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <input id="invSearchInput" type="text" placeholder="ابحث بالاسم أو الباركود..."
+              onkeydown="if(event.key==='Enter') App.renderInventoryView({ search: this.value })"
+              class="w-72 px-3 py-2 rounded-xl text-xs font-bold">
+            <select onchange="App.renderInventoryView({ sort: this.value })" class="px-3 py-2 rounded-xl text-xs font-bold">
+              <option value="newest">الأحدث إضافة</option>
+              <option value="name_asc">الاسم (أ - ي)</option>
+              <option value="stock_asc">الأقل رصيداً</option>
+              <option value="stock_desc">الأكثر رصيداً</option>
+              <option value="expiry_asc">الأقرب انتهاءً للصلاحية</option>
+            </select>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-right">
+              <thead>
+                <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                  <th class="py-2.5 px-2">الباركود</th>
+                  <th class="py-2.5 px-2">المنتج</th>
+                  <th class="py-2.5 px-2">الفئة</th>
+                  <th class="py-2.5 px-2">سعر الشراء</th>
+                  <th class="py-2.5 px-2">سعر البيع</th>
+                  <th class="py-2.5 px-2">سعر الجملة</th>
+                  <th class="py-2.5 px-2">الرصيد الكلي</th>
+                  <th class="py-2.5 px-2">أقرب صلاحية</th>
+                  <th class="py-2.5 px-2">إجراءات</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+                ${products
+                  .map(
+                    (p) => `
+                  <tr>
+                    <td class="py-2 px-2 font-mono text-slate-500">${p.barcode || '-'}</td>
+                    <td class="py-2 px-2 font-bold">${p.name}</td>
+                    <td class="py-2 px-2">${p.category || 'عام'}</td>
+                    <td class="py-2 px-2 font-mono">${Number(p.cost_price || 0).toFixed(2)}</td>
+                    <td class="py-2 px-2 font-mono font-bold text-blue-600">${Number(p.selling_price || 0).toFixed(2)}</td>
+                    <td class="py-2 px-2 font-mono">${p.wholesale_price ? Number(p.wholesale_price).toFixed(2) : '-'}</td>
+                    <td class="py-2 px-2 font-mono font-bold">${p.stock} ${p.unit || ''}</td>
+                    <td class="py-2 px-2 font-mono text-slate-500">${p.next_expiry || p.expiry_date || '-'}</td>
+                    <td class="py-2 px-2 flex flex-wrap items-center gap-1">
+                      <button onclick="App.editProductById(${p.id})" class="px-2 py-1 bg-blue-500/10 text-blue-600 rounded-lg font-bold">تعديل</button>
+                      <button onclick="App.openBatchesModal(${p.id})" class="px-2 py-1 bg-emerald-500/10 text-emerald-600 rounded-lg font-bold">الدفعات (${(p.batches || []).length})</button>
+                      <button onclick="App.openProductAnalyticsModal(${p.id})" class="px-2 py-1 bg-indigo-500/10 text-indigo-600 rounded-lg font-bold">ربحية</button>
+                      <button onclick="window.api.deleteProduct(${p.id}).then(() => App.renderInventoryView())" class="text-rose-500 p-1"><span class="material-symbols-rounded icon-sm">delete</span></button>
+                    </td>
+                  </tr>`
+                  )
+                  .join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  },
+
+  switchProductModalTab(tabKey = 'basic') {
+    ['basic', 'pricing', 'barcodes', 'variants', 'bom'].forEach((k) => {
+      const btn = document.getElementById(`prodTabBtn-${k}`);
+      const content = document.getElementById(`prodTabContent-${k}`);
+      if (btn) {
+        btn.className =
+          k === tabKey
+            ? 'px-3 py-1.5 rounded-xl bg-blue-600 text-white'
+            : 'px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800';
+      }
+      if (content) content.classList.toggle('hidden', k !== tabKey);
+    });
+  },
+
+  async editProductById(productId) {
+    const fullProd = await window.api.getProductFull(productId);
+    if (fullProd) this.openProductModal(fullProd);
   },
 
   openProductModal(prod = null) {
-    document.getElementById('prodIdInput').value = prod ? prod.id : '';
-    document.getElementById('prodNameInput').value = prod ? prod.name : '';
+    this.switchProductModalTab('basic');
+    document.getElementById('prodIdInput').value = prod && prod.id ? prod.id : '';
+    document.getElementById('prodNameInput').value = prod ? prod.name || '' : '';
     document.getElementById('prodBarcodeInput').value = prod ? prod.barcode || '' : '';
     document.getElementById('prodCategoryInput').value = prod ? prod.category || 'عام' : 'عام';
-    document.getElementById('prodSupplierInput').value = prod ? prod.supplier || '' : '';
+    document.getElementById('prodFamilyInput').value = prod && prod.family ? prod.family : '';
+    document.getElementById('prodSupplierInput').value = prod && prod.supplier ? prod.supplier : '';
     document.getElementById('prodUnitInput').value = prod ? prod.unit || 'قطعة' : 'قطعة';
-    document.getElementById('prodCostInput').value = prod ? prod.cost_price || 0 : 0;
-    document.getElementById('prodPriceInput').value = prod ? prod.selling_price || 0 : 0;
-    document.getElementById('prodWholesaleInput').value = prod && prod.wholesale_price ? prod.wholesale_price : '';
-    document.getElementById('prodStockInput').value = prod ? prod.stock || 0 : 0;
-    document.getElementById('prodMinStockInput').value = prod ? prod.min_stock || 5 : 5;
+    document.getElementById('prodStockInput').value = prod ? prod.stock ?? 0 : 0;
+    document.getElementById('prodMinStockInput').value = prod ? prod.min_stock ?? 5 : 5;
     document.getElementById('prodExpiryInput').value = prod && prod.expiry_date ? prod.expiry_date : '';
+    document.getElementById('prodLocationInput').value = prod && prod.location ? prod.location : '';
     document.getElementById('prodPluInput').value = prod && prod.plu_code ? prod.plu_code : '';
+    document.getElementById('prodImageDataInput').value = prod && prod.image ? prod.image : '';
+    document.getElementById('prodFeaturedCheckbox').checked = Boolean(prod && Number(prod.is_featured) === 1);
+
+    document.getElementById('prodCostInput').value = prod ? prod.cost_price ?? 0 : 0;
+    document.getElementById('prodPriceInput').value = prod ? prod.selling_price ?? 0 : 0;
+    document.getElementById('prodWholesaleInput').value = prod && prod.wholesale_price ? prod.wholesale_price : '';
+    document.getElementById('prodWholesaleUnitInput').value = prod && prod.wholesale_unit ? prod.wholesale_unit : '';
+    document.getElementById('prodWholesaleQtyInput').value = prod && prod.wholesale_qty ? prod.wholesale_qty : '';
+
     document.getElementById('prodMaterialRoleInput').value = prod && prod.material_role ? prod.material_role : '';
-    document.getElementById('productModal').classList.add('active');
+    document.getElementById('prodWarrantyMonthsInput').value = prod && prod.warranty_months ? prod.warranty_months : 0;
+    document.getElementById('prodTrackSerialCheckbox').checked = Boolean(prod && Number(prod.track_serial) === 1);
+    document.getElementById('prodHideFromPosCheckbox').checked = Boolean(prod && Number(prod.hide_from_pos) === 1);
+    document.getElementById('prodHasVariantsCheckbox').checked = Boolean(prod && Number(prod.has_variants) === 1);
+
+    AppState.tempExtraPrices = prod && Array.isArray(prod.extra_prices) ? [...prod.extra_prices] : [];
+    AppState.tempExtraBarcodes = prod && Array.isArray(prod.extra_barcodes) ? [...prod.extra_barcodes] : [];
+    AppState.tempVariantsMatrix = prod && Array.isArray(prod.variants) ? [...prod.variants] : [];
+
+    this.renderExtraPricesInModal();
+    this.renderExtraBarcodesInModal();
+    this.renderVariantsMatrixInModal();
+
+    this.openModal('productModal');
+  },
+
+  async autoFillFromDzDictionary(barcode) {
+    const clean = String(barcode || '').trim();
+    if (!clean || !clean.startsWith('613') || !window.api || !window.api.lookupDzBarcode) return;
+    const item = await window.api.lookupDzBarcode(clean).catch(() => null);
+    if (item) {
+      const nameInput = document.getElementById('prodNameInput');
+      if (nameInput && !nameInput.value.trim()) nameInput.value = item.name;
+      document.getElementById('prodCategoryInput').value = item.category || 'مواد غذائية';
+      document.getElementById('prodSupplierInput').value = item.brand || '';
+      document.getElementById('prodUnitInput').value = item.unit || 'قطعة';
+      if (item.suggested_price) {
+        document.getElementById('prodPriceInput').value = item.suggested_price;
+      }
+      showToast(`تم التعبئة التلقائية من القاموس الجزائري: ${item.name}`, 'success');
+    }
   },
 
   generateRandomBarcode() {
     const rnd = '613' + String(Math.floor(1000000000 + Math.random() * 9000000000)).slice(0, 10);
     document.getElementById('prodBarcodeInput').value = rnd;
+  },
+
+  handleProductImageUpload(inputEl) {
+    const file = inputEl && inputEl.files && inputEl.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      document.getElementById('prodImageDataInput').value = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  },
+
+  addExtraPriceRow() {
+    AppState.tempExtraPrices.push({ label: 'نصف جملة', price: 0 });
+    this.renderExtraPricesInModal();
+  },
+
+  renderExtraPricesInModal() {
+    const box = document.getElementById('prodExtraPricesContainer');
+    if (!box) return;
+    box.innerHTML = AppState.tempExtraPrices
+      .map(
+        (ep, i) => `
+      <div class="flex gap-2 items-center">
+        <input type="text" value="${ep.label || ''}" placeholder="التسمية (نصف جملة / VIP)"
+          oninput="AppState.tempExtraPrices[${i}].label = this.value" class="flex-1 px-2.5 py-1.5 rounded-lg">
+        <input type="number" step="any" value="${ep.price || 0}" placeholder="السعر"
+          oninput="AppState.tempExtraPrices[${i}].price = parseFloat(this.value) || 0" class="w-32 px-2.5 py-1.5 rounded-lg font-mono font-bold">
+        <button onclick="AppState.tempExtraPrices.splice(${i},1); App.renderExtraPricesInModal()" class="text-rose-500">✕</button>
+      </div>`
+      )
+      .join('');
+  },
+
+  addExtraBarcodeRow() {
+    AppState.tempExtraBarcodes.push({ barcode: '', price_label: '' });
+    this.renderExtraBarcodesInModal();
+  },
+
+  renderExtraBarcodesInModal() {
+    const box = document.getElementById('prodExtraBarcodesContainer');
+    if (!box) return;
+    box.innerHTML = AppState.tempExtraBarcodes
+      .map(
+        (eb, i) => `
+      <div class="flex gap-2 items-center">
+        <input type="text" value="${eb.barcode || ''}" placeholder="الباركود الإضافي..."
+          oninput="AppState.tempExtraBarcodes[${i}].barcode = this.value" class="flex-1 px-2.5 py-1.5 rounded-lg font-mono">
+        <input type="text" value="${eb.price_label || ''}" placeholder="مرتبط بتسعيرة (اختياري)"
+          oninput="AppState.tempExtraBarcodes[${i}].price_label = this.value" class="w-44 px-2.5 py-1.5 rounded-lg">
+        <button onclick="AppState.tempExtraBarcodes.splice(${i},1); App.renderExtraBarcodesInModal()" class="text-rose-500">✕</button>
+      </div>`
+      )
+      .join('');
+  },
+
+  applyVariantTemplate(type) {
+    document.getElementById('prodHasVariantsCheckbox').checked = true;
+    const baseName = document.getElementById('prodNameInput').value.trim() || 'منتج';
+    const price = parseFloat(document.getElementById('prodPriceInput').value) || 0;
+    const cost = parseFloat(document.getElementById('prodCostInput').value) || 0;
+
+    if (type === 'clothing') {
+      AppState.tempVariantsMatrix = ['S', 'M', 'L', 'XL', 'XXL'].map((sz) => ({
+        sku: `${baseName} - ${sz}`,
+        barcode: '',
+        stock: 5,
+        cost_price: cost,
+        selling_price: price
+      }));
+    } else {
+      AppState.tempVariantsMatrix = ['39', '40', '41', '42', '43'].map((sz) => ({
+        sku: `${baseName} - مقاس ${sz}`,
+        barcode: '',
+        stock: 4,
+        cost_price: cost,
+        selling_price: price
+      }));
+    }
+    this.renderVariantsMatrixInModal();
+  },
+
+  addVariantRowInModal() {
+    document.getElementById('prodHasVariantsCheckbox').checked = true;
+    AppState.tempVariantsMatrix.push({
+      sku: 'متغير جديد',
+      barcode: '',
+      stock: 5,
+      cost_price: parseFloat(document.getElementById('prodCostInput').value) || 0,
+      selling_price: parseFloat(document.getElementById('prodPriceInput').value) || 0
+    });
+    this.renderVariantsMatrixInModal();
+  },
+
+  renderVariantsMatrixInModal() {
+    const box = document.getElementById('prodVariantsMatrixContainer');
+    if (!box) return;
+    box.innerHTML = AppState.tempVariantsMatrix
+      .map(
+        (v, i) => `
+      <div class="grid grid-cols-5 gap-1.5 items-center">
+        <input type="text" value="${v.sku || ''}" placeholder="المتغير (مثال: XL - أسود)"
+          oninput="AppState.tempVariantsMatrix[${i}].sku = this.value" class="col-span-2 px-2 py-1.5 rounded-lg font-bold">
+        <input type="text" value="${v.barcode || ''}" placeholder="الباركود"
+          oninput="AppState.tempVariantsMatrix[${i}].barcode = this.value" class="px-2 py-1.5 rounded-lg font-mono">
+        <input type="number" step="any" value="${v.stock ?? 0}" placeholder="الرصيد"
+          oninput="AppState.tempVariantsMatrix[${i}].stock = parseFloat(this.value) || 0" class="px-2 py-1.5 rounded-lg font-mono">
+        <button onclick="AppState.tempVariantsMatrix.splice(${i},1); App.renderVariantsMatrixInModal()" class="text-rose-500">حذف</button>
+      </div>`
+      )
+      .join('');
   },
 
   async saveProductFromModal() {
@@ -800,16 +2399,29 @@ const App = {
       name: document.getElementById('prodNameInput').value.trim(),
       barcode: document.getElementById('prodBarcodeInput').value.trim() || null,
       category: document.getElementById('prodCategoryInput').value.trim() || 'عام',
+      family: document.getElementById('prodFamilyInput').value.trim() || null,
       supplier: document.getElementById('prodSupplierInput').value.trim() || null,
       unit: document.getElementById('prodUnitInput').value.trim() || 'قطعة',
       cost_price: parseFloat(document.getElementById('prodCostInput').value) || 0,
       selling_price: parseFloat(document.getElementById('prodPriceInput').value) || 0,
       wholesale_price: document.getElementById('prodWholesaleInput').value || null,
+      wholesale_unit: document.getElementById('prodWholesaleUnitInput').value.trim() || null,
+      wholesale_qty: parseInt(document.getElementById('prodWholesaleQtyInput').value || '0', 10) || null,
       stock: parseFloat(document.getElementById('prodStockInput').value) || 0,
       min_stock: parseInt(document.getElementById('prodMinStockInput').value, 10) || 5,
       expiry_date: document.getElementById('prodExpiryInput').value || null,
+      location: document.getElementById('prodLocationInput').value.trim() || null,
       plu_code: document.getElementById('prodPluInput').value.trim() || null,
-      material_role: document.getElementById('prodMaterialRoleInput').value || null
+      image: document.getElementById('prodImageDataInput').value || null,
+      is_featured: document.getElementById('prodFeaturedCheckbox').checked ? 1 : 0,
+      material_role: document.getElementById('prodMaterialRoleInput').value || null,
+      warranty_months: parseInt(document.getElementById('prodWarrantyMonthsInput').value || '0', 10) || 0,
+      track_serial: document.getElementById('prodTrackSerialCheckbox').checked ? 1 : 0,
+      hide_from_pos: document.getElementById('prodHideFromPosCheckbox').checked ? 1 : 0,
+      has_variants: document.getElementById('prodHasVariantsCheckbox').checked ? 1 : 0,
+      extra_prices: AppState.tempExtraPrices,
+      extra_barcodes: AppState.tempExtraBarcodes,
+      variants: AppState.tempVariantsMatrix
     };
 
     if (!payload.name) {
@@ -830,339 +2442,125 @@ const App = {
     showToast('تم حفظ بيانات المنتج بنجاح', 'success');
   },
 
-  openCustomerModal() {
-    document.getElementById('custIdInput').value = '';
-    document.getElementById('custNameInput').value = '';
-    document.getElementById('custPhoneInput').value = '';
-    document.getElementById('custAddressInput').value = '';
-    document.getElementById('custInitDebtInput').value = '0';
-    document.getElementById('custCreditLimitInput').value = '0';
-    document.getElementById('customerModal').classList.add('active');
+  async openBatchesModal(productId) {
+    const fullProd = await window.api.getProductFull(productId);
+    if (!fullProd) return;
+    document.getElementById('batchesModalProductId').value = String(productId);
+    document.getElementById('batchesModalTitle').textContent = `دفعات المنتج: ${fullProd.name}`;
+    document.getElementById('newBatchStock').value = '10';
+    document.getElementById('newBatchCost').value = String(fullProd.cost_price || 0);
+    document.getElementById('newBatchSell').value = String(fullProd.selling_price || 0);
+    document.getElementById('newBatchWholesale').value = fullProd.wholesale_price ? String(fullProd.wholesale_price) : '';
+    document.getElementById('newBatchExpiry').value = '';
+
+    const batches = fullProd.batches || [];
+    const body = document.getElementById('batchesModalTableBody');
+    body.innerHTML = `
+      <table class="w-full text-xs text-right">
+        <thead>
+          <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+            <th class="py-2">#</th>
+            <th class="py-2">الرصيد</th>
+            <th class="py-2">سعر الشراء</th>
+            <th class="py-2">سعر البيع</th>
+            <th class="py-2">سعر الجملة</th>
+            <th class="py-2">تاريخ الصلاحية</th>
+            <th class="py-2">إجراء</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+          ${batches
+            .map(
+              (b) => `
+            <tr>
+              <td class="py-2 font-mono">#${b.id}</td>
+              <td class="py-2"><input id="bt-stk-${b.id}" type="number" step="any" value="${b.stock}" class="w-20 px-2 py-1 rounded font-mono font-bold"></td>
+              <td class="py-2"><input id="bt-cst-${b.id}" type="number" step="any" value="${b.cost_price}" class="w-20 px-2 py-1 rounded font-mono"></td>
+              <td class="py-2"><input id="bt-sel-${b.id}" type="number" step="any" value="${b.selling_price}" class="w-20 px-2 py-1 rounded font-mono font-bold text-blue-600"></td>
+              <td class="py-2"><input id="bt-whl-${b.id}" type="number" step="any" value="${b.wholesale_price || ''}" class="w-20 px-2 py-1 rounded font-mono"></td>
+              <td class="py-2"><input id="bt-exp-${b.id}" type="date" value="${b.expiry_date || ''}" class="px-2 py-1 rounded font-mono"></td>
+              <td class="py-2 flex gap-1">
+                <button onclick="App.updateBatchRowInModal(${b.id}, ${productId})" class="px-2.5 py-1 bg-blue-600 text-white rounded font-bold">حفظ</button>
+                <button onclick="App.deleteBatchInModal(${b.id}, ${productId})" class="px-2 py-1 bg-rose-500/15 text-rose-500 rounded font-bold">حذف</button>
+              </td>
+            </tr>`
+            )
+            .join('')}
+        </tbody>
+      </table>`;
+    this.openModal('batchesModal');
   },
 
-  async saveCustomerFromModal() {
-    const name = document.getElementById('custNameInput').value.trim();
-    if (!name) return;
-    await window.api.addCustomer({
-      name,
-      phone: document.getElementById('custPhoneInput').value.trim(),
-      address: document.getElementById('custAddressInput').value.trim(),
-      initial_debt: parseFloat(document.getElementById('custInitDebtInput').value) || 0,
-      credit_limit: parseFloat(document.getElementById('custCreditLimitInput').value) || 0
-    });
-    this.closeModal('customerModal');
-    await this.refreshProducts();
-    if (AppState.currentView === 'customers') await this.renderCustomersView();
-    else this.renderPosView();
-    showToast('تم حفظ الزبون بنجاح', 'success');
-  },
+  async submitNewBatchFromModal() {
+    const productId = Number(document.getElementById('batchesModalProductId').value);
+    const stock = parseFloat(document.getElementById('newBatchStock').value) || 0;
+    const cost_price = parseFloat(document.getElementById('newBatchCost').value) || 0;
+    const selling_price = parseFloat(document.getElementById('newBatchSell').value) || 0;
+    const wholesale_price = document.getElementById('newBatchWholesale').value || null;
+    const expiry_date = document.getElementById('newBatchExpiry').value || null;
 
-  openFreeItemModal() {
-    document.getElementById('freeItemModal').classList.add('active');
-  },
-
-  confirmFreeItem() {
-    const name = document.getElementById('freeItemName').value.trim() || 'منتج حر';
-    const price = parseFloat(document.getElementById('freeItemPrice').value) || 0;
-    const qty = parseFloat(document.getElementById('freeItemQty').value) || 1;
-    this.currentCart.items.push({
-      product_id: null,
-      name,
-      custom_product_name: name,
-      quantity: qty,
-      price,
-      subtotal: Number((qty * price).toFixed(2))
-    });
-    this.closeModal('freeItemModal');
-    this.renderCartItems();
-  },
-
-  async saveBomRecipeFromModal() {
-    const name = document.getElementById('bomRecipeName').value.trim() || 'وصفة تصنيع';
-    const productId = Number(document.getElementById('bomTargetProduct').value);
-    const compId = Number(document.getElementById('bomComponentSelect').value);
-    const compQty = parseFloat(document.getElementById('bomComponentQty').value) || 1;
-    const outputQty = parseFloat(document.getElementById('bomOutputQty').value) || 1;
-    const autoOnSale = document.getElementById('bomAutoOnSale').checked ? 1 : 0;
-
-    if (!productId || !compId) return;
-    await window.api.saveBomRecipe({
-      name,
-      product_id: productId,
-      output_qty: outputQty,
-      auto_on_sale: autoOnSale,
-      components: [{ component_product_id: compId, quantity: compQty }]
-    });
-    this.closeModal('bom-recipe-modal');
-    if (window.ManufacturingUI) await window.ManufacturingUI.renderManufacturingView();
-    showToast('تم حفظ وصفة التصنيع بنجاح', 'success');
-  },
-
-  openLoginModal() {
-    document.getElementById('authModal').classList.add('active');
-  },
-
-  async submitAuthModal() {
-    const u = document.getElementById('authUsernameInput').value.trim();
-    const p = document.getElementById('authPasswordInput').value;
-    const res = await window.api.loginUser(u, p);
-    if (res && res.success) {
-      AppState.currentUser = res.user || res;
-      this.updateUserBadge();
-      this.closeModal('authModal');
-      showToast(`مرحباً بك، ${AppState.currentUser.name}`, 'success');
-    } else {
-      document.getElementById('authErrorBox').textContent = 'بيانات الدخول غير صحيحة';
-    }
-  },
-
-  // ==========================================================================
-  // 7. عرض بقية الأقسام الـ 17 بالكامل
-  // ==========================================================================
-  async renderSalesHistoryView() {
-    const root = document.getElementById('sales-view-root');
-    const sales = (await window.api.getSales({}).catch(() => [])) || [];
-    root.innerHTML = `
-      <div class="space-y-4">
-        <div class="flex items-center justify-between">
-          <h2 class="text-2xl font-black">سجل المبيعات والفواتير (${sales.length})</h2>
-          <button onclick="window.api.exportSalesToExcel()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold">تصدير Excel</button>
-        </div>
-        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 overflow-x-auto">
-          <table class="w-full text-xs text-right">
-            <thead>
-              <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
-                <th class="py-2.5 px-2">رقم الفاتورة</th>
-                <th class="py-2.5 px-2">التاريخ</th>
-                <th class="py-2.5 px-2">الزبون</th>
-                <th class="py-2.5 px-2">الإجمالي</th>
-                <th class="py-2.5 px-2">المدفوع</th>
-                <th class="py-2.5 px-2">الباقي</th>
-                <th class="py-2.5 px-2">إجراءات الطباعة</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
-              ${sales
-                .map((s) => {
-                  const rem = Math.max(0, Number(s.total || 0) - Number(s.paid_amount || 0));
-                  return `
-                  <tr>
-                    <td class="py-2.5 px-2 font-mono font-bold">${s.doc_number || '#' + s.id}</td>
-                    <td class="py-2.5 px-2 font-mono">${String(s.sale_date || '').slice(0, 16)}</td>
-                    <td class="py-2.5 px-2 font-bold">${s.customer_name || 'زبون عابر'}</td>
-                    <td class="py-2.5 px-2 font-mono font-bold">${Number(s.total || 0).toFixed(2)} د.ج</td>
-                    <td class="py-2.5 px-2 font-mono text-emerald-600">${Number(s.paid_amount || 0).toFixed(2)}</td>
-                    <td class="py-2.5 px-2 font-mono ${rem > 0 ? 'text-rose-500 font-bold' : 'text-slate-400'}">${rem.toFixed(2)}</td>
-                    <td class="py-2.5 px-2 flex items-center gap-1.5">
-                      <button onclick="App.reprintSale(${s.id}, 'a4')" class="px-2.5 py-1 bg-blue-600/10 text-blue-600 rounded-lg font-bold">فاتورة A4</button>
-                      <button onclick="App.reprintSale(${s.id}, 'receipt')" class="px-2.5 py-1 bg-emerald-600/10 text-emerald-600 rounded-lg font-bold">تذكرة</button>
-                      <button onclick="App.deleteSaleRecord(${s.id})" class="text-rose-500 p-1"><span class="material-symbols-rounded icon-sm">delete</span></button>
-                    </td>
-                  </tr>`;
-                })
-                .join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>`;
-  },
-
-  async reprintSale(saleId, mode = 'a4') {
-    const fullSale = await window.api.getSaleDetails(saleId);
-    if (!fullSale || !window.PrintEngine) return;
-    const html =
-      mode === 'a4'
-        ? await window.PrintEngine.renderInvoiceHtml(fullSale, AppState.settings)
-        : await window.PrintEngine.renderReceiptHtml(fullSale, AppState.settings);
-    await window.PrintEngine.printHtmlDocument(html, { silent: false });
-  },
-
-  async deleteSaleRecord(saleId) {
-    if (!confirm('هل تريد حذف هذه الفاتورة واسترجاع مخزونها؟')) return;
-    await window.api.deleteSale(saleId);
-    await this.renderSalesHistoryView();
-    showToast('تم حذف الفاتورة واسترجاع المخزون', 'info');
-  },
-
-  async renderCaisseView() {
-    const root = document.getElementById('caisse-view-root');
-    const [active, sessions] = await Promise.all([
-      window.api.getActiveSession(AppState.currentUser.id).catch(() => null),
-      window.api.getCaisseSessions().catch(() => [])
-    ]);
-    AppState.activeSession = active;
-    this.updateShiftHeaderBadge();
-
-    const curBal = active && active.summary ? Number(active.summary.currentBalance || 0) : 0;
-
-    root.innerHTML = `
-      <div class="space-y-6">
-        <div class="flex items-center justify-between">
-          <div>
-            <h2 class="text-2xl font-black">إدارة الصندوق والمناوبات (Caisse & Shifts)</h2>
-            <p class="text-xs text-slate-500">فتح وإغلاق الورديات وتتبع الإيداعات والمسحوبات النقدية لحظياً</p>
-          </div>
-          <div class="flex gap-2">
-            ${
-              !active
-                ? `<button onclick="App.openNewShiftPrompt()" class="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold">فتح مناوبة جديدة</button>`
-                : `
-                  <button onclick="App.caisseTxPrompt('cash_in')" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold">+ إيداع نقدي</button>
-                  <button onclick="App.caisseTxPrompt('cash_out')" class="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold">- سحب نقدي</button>
-                  <button onclick="App.closeShiftPrompt(${active.session.id})" class="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold">إغلاق المناوبة الحالية</button>
-                `
-            }
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <div class="text-xs text-slate-400 font-bold">الرصيد الافتتاحي</div>
-            <div class="text-xl font-black font-mono mt-1">${active ? Number(active.summary.openingBalance).toFixed(2) : '0.00'} د.ج</div>
-          </div>
-          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <div class="text-xs text-slate-400 font-bold">مبيعات وتسديدات النقد</div>
-            <div class="text-xl font-black font-mono text-emerald-600 mt-1">${active ? Number(active.summary.totalSalesCash).toFixed(2) : '0.00'} د.ج</div>
-          </div>
-          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <div class="text-xs text-slate-400 font-bold">المصاريف والمسحوبات</div>
-            <div class="text-xl font-black font-mono text-rose-500 mt-1">${active ? Number(active.summary.totalExpenses + active.summary.totalCashOut).toFixed(2) : '0.00'} د.ج</div>
-          </div>
-          <div class="p-4 rounded-2xl bg-blue-600 text-white">
-            <div class="text-xs opacity-80 font-bold">الرصيد المتوقع في الدرج</div>
-            <div class="text-2xl font-black font-mono mt-1">${curBal.toFixed(2)} د.ج</div>
-          </div>
-        </div>
-
-        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
-          <h3 class="font-black text-sm mb-3">سجل المناوبات (${sessions.length})</h3>
-          <table class="w-full text-xs text-right">
-            <thead>
-              <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
-                <th class="py-2">#</th>
-                <th class="py-2">المستخدم</th>
-                <th class="py-2">الافتتاح</th>
-                <th class="py-2">الرصيد الافتتاحي</th>
-                <th class="py-2">الرصيد الختامي</th>
-                <th class="py-2">الحالة</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
-              ${sessions
-                .map(
-                  (s) => `
-                <tr>
-                  <td class="py-2 font-mono">#${s.id}</td>
-                  <td class="py-2 font-bold">${s.user_name || 'المدير'}</td>
-                  <td class="py-2 font-mono">${String(s.opened_at || '').slice(0, 16)}</td>
-                  <td class="py-2 font-mono">${Number(s.opening_balance || 0).toFixed(2)}</td>
-                  <td class="py-2 font-mono">${s.closing_balance !== null ? Number(s.closing_balance).toFixed(2) : '-'}</td>
-                  <td class="py-2">${s.status === 'open' ? '<span class="text-emerald-600 font-bold">مفتوحة</span>' : 'مغلقة'}</td>
-                </tr>`
-                )
-                .join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>`;
-  },
-
-  async openNewShiftPrompt() {
-    const val = prompt('أدخل الرصيد الافتتاحي للصندوق (د.ج):', '0');
-    if (val === null) return;
-    await window.api.openCaisseSession({ userId: AppState.currentUser.id, openingBalance: parseFloat(val) || 0 });
-    await this.renderCaisseView();
-    showToast('تم فتح مناوبة الصندوق بنجاح', 'success');
-  },
-
-  async caisseTxPrompt(type) {
-    const amt = parseFloat(prompt('أدخل المبلغ (د.ج):', '1000'));
-    if (!amt || amt <= 0) return;
-    const desc = prompt('السبب / البيان:', type === 'cash_in' ? 'إيداع نقدي' : 'سحب نقدي') || '';
-    await window.api.addCaisseTransaction({ type, amount: amt, description: desc });
-    await this.renderCaisseView();
-  },
-
-  async closeShiftPrompt(sessionId) {
-    const counted = parseFloat(prompt('أدخل المبلغ الفعلي المعدود في الدرج عند الإغلاق:', '0'));
-    if (isNaN(counted)) return;
-    await window.api.closeCaisseSession({ sessionId, closingBalance: counted });
-    await this.renderCaisseView();
-    showToast('تم إغلاق المناوبة وحفظ التقرير', 'info');
-  },
-
-  async renderInventoryView() {
-    const root = document.getElementById('inventory-view-root');
-    const products = (await window.api.getProducts({}).catch(() => [])) || [];
-    AppState.products = products;
-
-    root.innerHTML = `
-      <div class="space-y-5">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 class="text-2xl font-black">إدارة المخزون والدفعات (${products.length} منتج)</h2>
-            <p class="text-xs text-slate-500">تتبع الأرصدة، الصلاحية، الأسعار، واستيراد/تصدير ملفات Excel</p>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <button onclick="window.api.importProductsFromExcel().then(() => App.renderInventoryView())" class="px-3.5 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold">استيراد Excel</button>
-            <button onclick="window.api.exportProductsToExcel()" class="px-3.5 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold">تصدير Excel</button>
-            <button onclick="App.openProductModal()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">+ إضافة منتج جديد</button>
-          </div>
-        </div>
-
-        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 overflow-x-auto">
-          <table class="w-full text-xs text-right">
-            <thead>
-              <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
-                <th class="py-2.5 px-2">الباركود</th>
-                <th class="py-2.5 px-2">المنتج</th>
-                <th class="py-2.5 px-2">الفئة</th>
-                <th class="py-2.5 px-2">سعر الشراء</th>
-                <th class="py-2.5 px-2">سعر البيع</th>
-                <th class="py-2.5 px-2">الرصيد الكلي</th>
-                <th class="py-2.5 px-2">إجراءات</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
-              ${products
-                .map(
-                  (p) => `
-                <tr>
-                  <td class="py-2 px-2 font-mono text-slate-500">${p.barcode || '-'}</td>
-                  <td class="py-2 px-2 font-bold">${p.name}</td>
-                  <td class="py-2 px-2">${p.category || 'عام'}</td>
-                  <td class="py-2 px-2 font-mono">${Number(p.cost_price || 0).toFixed(2)}</td>
-                  <td class="py-2 px-2 font-mono font-bold text-blue-600">${Number(p.selling_price || 0).toFixed(2)}</td>
-                  <td class="py-2 px-2 font-mono font-bold">${p.stock} ${p.unit || ''}</td>
-                  <td class="py-2 px-2 flex items-center gap-1.5">
-                    <button onclick='App.openProductModal(${JSON.stringify(p).replace(/'/g, "&apos;")})' class="px-2 py-1 bg-blue-500/10 text-blue-600 rounded-lg font-bold">تعديل</button>
-                    <button onclick="App.quickAddBatchPrompt(${p.id})" class="px-2 py-1 bg-emerald-500/10 text-emerald-600 rounded-lg font-bold">+ دفعة</button>
-                    <button onclick="window.api.deleteProduct(${p.id}).then(() => App.renderInventoryView())" class="text-rose-500 p-1"><span class="material-symbols-rounded icon-sm">delete</span></button>
-                  </td>
-                </tr>`
-                )
-                .join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>`;
-  },
-
-  async quickAddBatchPrompt(productId) {
-    const qty = parseFloat(prompt('أدخل كمية الدفعة الجديدة المراد إضافتها للمخزون:', '10'));
-    if (!qty || qty <= 0) return;
-    const prod = AppState.products.find((p) => Number(p.id) === Number(productId));
-    await window.api.addBatch(productId, {
-      stock: qty,
-      cost_price: prod ? prod.cost_price : 0,
-      selling_price: prod ? prod.selling_price : 0
-    });
+    await window.api.addBatch(productId, { stock, cost_price, selling_price, wholesale_price, expiry_date });
+    await this.openBatchesModal(productId);
     await this.renderInventoryView();
-    showToast('تمت إضافة الدفعة الجديدة وتسوية أي ديون مخزون معلقة', 'success');
+    showToast('تمت إضافة الدفعة الجديدة وتسوية ديون المخزون بنجاح', 'success');
   },
 
+  async updateBatchRowInModal(batchId, productId) {
+    await window.api.updateBatch(batchId, {
+      stock: parseFloat(document.getElementById(`bt-stk-${batchId}`).value) || 0,
+      cost_price: parseFloat(document.getElementById(`bt-cst-${batchId}`).value) || 0,
+      selling_price: parseFloat(document.getElementById(`bt-sel-${batchId}`).value) || 0,
+      wholesale_price: document.getElementById(`bt-whl-${batchId}`).value || null,
+      expiry_date: document.getElementById(`bt-exp-${batchId}`).value || null
+    });
+    await this.openBatchesModal(productId);
+    await this.renderInventoryView();
+    showToast('تم تحديث بيانات الدفعة', 'success');
+  },
+
+  async deleteBatchInModal(batchId, productId) {
+    await window.api.deleteBatch(batchId);
+    await this.openBatchesModal(productId);
+    await this.renderInventoryView();
+  },
+
+  async openProductAnalyticsModal(productId) {
+    const st = await window.api.getProductAnalytics(productId);
+    const body = document.getElementById('productAnalyticsModalBody');
+    if (body && st) {
+      body.innerHTML = `
+        <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex justify-between"><span>إجمالي الكمية المباعة:</span><strong class="font-mono">${st.total_sold_qty}</strong></div>
+        <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex justify-between"><span>إجمالي الإيرادات:</span><strong class="font-mono text-blue-600">${Number(st.total_revenue).toFixed(2)} د.ج</strong></div>
+        <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex justify-between"><span>التكلفة الإجمالية:</span><strong class="font-mono">${Number(st.total_cost).toFixed(2)} د.ج</strong></div>
+        <div class="p-3 rounded-xl bg-emerald-500/15 text-emerald-600 flex justify-between"><span>صافي الربح المحقق:</span><strong class="font-mono font-black">${Number(st.total_profit).toFixed(2)} د.ج</strong></div>
+      `;
+    }
+    this.openModal('productAnalyticsModal');
+  },
+
+  async openStockDebtModal() {
+    const debts = (await window.api.getStockDebt().catch(() => [])) || [];
+    const body = document.getElementById('stockDebtModalBody');
+    if (body) {
+      body.innerHTML =
+        debts.length === 0
+          ? `<div class="py-10 text-center text-slate-400 font-bold">لا توجد أي ديون مخزون مفتوحة حالياً</div>`
+          : `<table class="w-full text-xs text-right">
+              <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-2">المنتج</th><th class="py-2">الباركود</th><th class="py-2">الكمية المباعة بالسالب</th><th class="py-2">التاريخ</th></tr></thead>
+              <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+                ${debts.map((d) => `<tr><td class="py-2 font-bold">${d.product_name}</td><td class="py-2 font-mono">${d.barcode || '-'}</td><td class="py-2 font-mono font-bold text-rose-500">${d.quantity} ${d.unit || ''}</td><td class="py-2 font-mono">${String(d.created_at || '').slice(0, 16)}</td></tr>`).join('')}
+              </tbody>
+            </table>`;
+    }
+    this.openModal('stockDebtModal');
+  },
+
+  // ==========================================================================
+  // 10. الحزم الترويجية (Bundles) والعروض (Promotions — بدون أي prompt)
+  // ==========================================================================
   async renderBundlesAndPromosView() {
     const root = document.getElementById('bundles-view-root');
+    if (!root) return;
     const [bundles, promos] = await Promise.all([
       window.api.getBundles().catch(() => []),
       window.api.getPromotions().catch(() => [])
@@ -1170,93 +2568,157 @@ const App = {
 
     root.innerHTML = `
       <div class="space-y-6">
-        <div class="flex items-center justify-between">
-          <h2 class="text-2xl font-black">الحزم (Packs) والعروض الترويجية</h2>
-          <button onclick="App.createPromoPrompt()" class="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold">+ إضافة عرض تخفيض</button>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
-            <h3 class="font-black text-sm mb-3">العروض الترويجية النشطة (${promos.length})</h3>
-            <div class="space-y-2 text-xs">
-              ${promos.map((pr) => `<div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 flex justify-between"><span>${pr.product_name || ''}</span><span class="font-bold text-rose-500">خصم: ${pr.discount_value} ${pr.discount_type === 'percentage' ? '%' : 'د.ج'}</span></div>`).join('')}
-            </div>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-2xl font-black">الحزم الترويجية (Packs) والعروض الخاصة</h2>
+            <p class="text-xs text-slate-500">إنشاء باقات مجمعة وتخفيضات موقوتة تطبق تلقائياً في شاشة المبيعات</p>
           </div>
+          <div class="flex gap-2">
+            <button onclick="App.openBundleModal()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">+ إنشاء حزمة (Pack)</button>
+            <button onclick="App.openPromoModal()" class="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold">+ إضافة عرض تخفيض</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
             <h3 class="font-black text-sm mb-3">الحزم والباقات (${bundles.length})</h3>
             <div class="space-y-2 text-xs">
-              ${bundles.map((b) => `<div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 flex justify-between"><span class="font-bold">${b.name}</span><span class="font-mono font-bold text-blue-600">${b.selling_price} د.ج</span></div>`).join('')}
+              ${
+                bundles.length === 0
+                  ? '<div class="py-8 text-center text-slate-400">لا توجد حزم مسجلة</div>'
+                  : bundles
+                      .map(
+                        (b) => `
+                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 flex items-center justify-between">
+                      <div>
+                        <div class="font-bold">${b.name}</div>
+                        <div class="text-[10px] text-slate-400">المكونات: ${(b.items || []).length} أصناف</div>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <span class="font-mono font-bold text-blue-600">${Number(b.selling_price || 0).toFixed(2)} د.ج</span>
+                        <button onclick="window.api.deleteBundle(${b.id}).then(() => App.renderBundlesAndPromosView())" class="text-rose-500">✕</button>
+                      </div>
+                    </div>`
+                      )
+                      .join('')
+              }
+            </div>
+          </div>
+
+          <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
+            <h3 class="font-black text-sm mb-3">العروض الترويجية النشطة (${promos.length})</h3>
+            <div class="space-y-2 text-xs">
+              ${
+                promos.length === 0
+                  ? '<div class="py-8 text-center text-slate-400">لا توجد عروض ترويجية نشطة</div>'
+                  : promos
+                      .map(
+                        (pr) => `
+                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 flex items-center justify-between">
+                      <div>
+                        <div class="font-bold">${pr.product_name || 'منتج'}</div>
+                        <div class="text-[10px] text-slate-400">${pr.start_date || ''} ${pr.end_date ? '-> ' + pr.end_date : ''}</div>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <span class="font-bold text-rose-500">خصم: ${pr.discount_value} ${pr.discount_type === 'percentage' ? '%' : 'د.ج'}</span>
+                        <button onclick="window.api.deletePromotion(${pr.id}).then(() => App.renderBundlesAndPromosView())" class="text-rose-500">✕</button>
+                      </div>
+                    </div>`
+                      )
+                      .join('')
+              }
             </div>
           </div>
         </div>
       </div>`;
   },
 
-  async createPromoPrompt() {
-    if (AppState.products.length === 0) return;
-    const val = parseFloat(prompt('أدخل نسبة الخصم المئوية (%) لأول منتج:', '10'));
-    if (!val) return;
-    await window.api.savePromotion({
-      product_id: AppState.products[0].id,
-      discount_type: 'percentage',
-      discount_value: val,
-      start_date: new Date().toISOString().slice(0, 10)
-    });
-    await this.renderBundlesAndPromosView();
-  },
-
-  async renderPrintStudioView() {
-    const root = document.getElementById('print-view-root');
-    root.innerHTML = `
-      <div class="space-y-6">
-        <div class="flex items-center justify-between">
-          <div>
-            <h2 class="text-2xl font-black">مركز الطباعة، ملصقات الباركود، ومصمم القوالب</h2>
-            <p class="text-xs text-slate-500">طباعة ملصقات الباركود وأسعار الرفوف وتخصيص قوالب الفواتير</p>
-          </div>
-          <button onclick="App.printSampleLabel()" class="px-4 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5">
-            <span class="material-symbols-rounded icon-sm">qr_code_2</span>
-            <span>طباعة ملصق باركود سريع</span>
-          </button>
-        </div>
-        <div id="template-designer-root"></div>
-      </div>`;
-    if (window.TemplateBuilder) {
-      await window.TemplateBuilder.initTemplateBuilder('template-designer-root');
+  openBundleModal() {
+    document.getElementById('bundleNameInput').value = '';
+    document.getElementById('bundleBarcodeInput').value = '';
+    document.getElementById('bundlePriceInput').value = '0';
+    document.getElementById('bundleCostInput').value = '0';
+    const sel = document.getElementById('bundleProductSelect');
+    if (sel) {
+      sel.innerHTML = AppState.products.map((p) => `<option value="${p.id}">${p.name}</option>`).join('');
     }
+    this.openModal('bundleModal');
   },
 
-  async printSampleLabel() {
-    const prod = AppState.products[0] || { name: 'منتج تجريبي', barcode: '613000001234', selling_price: 250 };
-    if (!window.PrintEngine) return;
-    const html = await window.PrintEngine.renderBarcodeLabelHtml(
-      {
-        name: prod.name,
-        barcode: prod.barcode || '613000123',
-        price: prod.selling_price,
-        showPrice: true,
-        showName: true,
-        showBarcodeText: true
-      },
-      AppState.settings
-    );
-    await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  async saveBundleFromModal() {
+    const name = document.getElementById('bundleNameInput').value.trim();
+    if (!name) return;
+    const pid = Number(document.getElementById('bundleProductSelect').value);
+    const qty = parseFloat(document.getElementById('bundleProductQty').value) || 1;
+    await window.api.saveBundle({
+      name,
+      barcode: document.getElementById('bundleBarcodeInput').value.trim() || null,
+      selling_price: parseFloat(document.getElementById('bundlePriceInput').value) || 0,
+      cost_price: parseFloat(document.getElementById('bundleCostInput').value) || 0,
+      items: pid ? [{ product_id: pid, quantity: qty }] : []
+    });
+    this.closeModal('bundleModal');
+    await this.renderBundlesAndPromosView();
+    showToast('تم حفظ الحزمة الترويجية بنجاح', 'success');
   },
 
+  openPromoModal() {
+    const sel = document.getElementById('promoProductSelect');
+    if (sel) {
+      sel.innerHTML = AppState.products.map((p) => `<option value="${p.id}">${p.name}</option>`).join('');
+    }
+    document.getElementById('promoValueInput').value = '10';
+    document.getElementById('promoStartInput').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('promoEndInput').value = '';
+    this.openModal('promotionModal');
+  },
+
+  async savePromoFromModal() {
+    const product_id = Number(document.getElementById('promoProductSelect').value);
+    if (!product_id) return;
+    await window.api.savePromotion({
+      product_id,
+      discount_type: document.getElementById('promoTypeSelect').value || 'percentage',
+      discount_value: parseFloat(document.getElementById('promoValueInput').value) || 10,
+      start_date: document.getElementById('promoStartInput').value || new Date().toISOString().slice(0, 10),
+      end_date: document.getElementById('promoEndInput').value || null
+    });
+    this.closeModal('promotionModal');
+    await this.renderBundlesAndPromosView();
+    showToast('تم حفظ وتفعيل العرض الترويجي بنجاح', 'success');
+  },
+
+  // ==========================================================================
+  // 11. إدارة الموردين، فواتير المشتريات، ومرتجعات الموردين (بدون أي prompt)
+  // ==========================================================================
   async renderSuppliersView() {
     const root = document.getElementById('suppliers-view-root');
+    if (!root) return;
     const suppliers = (await window.api.getSuppliers().catch(() => [])) || [];
+    AppState.suppliers = suppliers;
+
     root.innerHTML = `
       <div class="space-y-4">
-        <div class="flex items-center justify-between">
-          <h2 class="text-2xl font-black">إدارة الموردين وديونهم (${suppliers.length})</h2>
-          <button onclick="App.addSupplierPrompt()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">+ إضافة مورد</button>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-2xl font-black">إدارة الموردين وديونهم (${suppliers.length})</h2>
+            <p class="text-xs text-slate-500">متابعة الحسابات، البيانات الجبائية، وتسديد دفعات الموردين</p>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="window.api.downloadSuppliersTemplate()" class="px-3 py-2 bg-slate-200 dark:bg-slate-700 rounded-xl text-xs font-bold">قالب Excel</button>
+            <button onclick="window.api.importSuppliersFromExcel().then(() => App.renderSuppliersView())" class="px-3.5 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold">استيراد Excel</button>
+            <button onclick="window.api.exportSuppliersToExcel()" class="px-3.5 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold">تصدير Excel</button>
+            <button onclick="App.openSupplierModal()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">+ إضافة مورد</button>
+          </div>
         </div>
-        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 overflow-x-auto">
           <table class="w-full text-xs text-right">
             <thead>
               <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
                 <th class="py-2">اسم المورد</th>
                 <th class="py-2">الهاتف</th>
+                <th class="py-2">العنوان</th>
                 <th class="py-2">إجمالي المشتريات</th>
                 <th class="py-2">الدين المتبقي للمورد</th>
                 <th class="py-2">إجراءات</th>
@@ -1269,10 +2731,13 @@ const App = {
                 <tr>
                   <td class="py-2.5 font-bold">${s.name}</td>
                   <td class="py-2.5 font-mono">${s.phone || '-'}</td>
+                  <td class="py-2.5">${s.address || '-'}</td>
                   <td class="py-2.5 font-mono">${Number(s.total_purchases || 0).toFixed(2)} د.ج</td>
                   <td class="py-2.5 font-mono font-bold text-rose-500">${Number(s.total_debt || 0).toFixed(2)} د.ج</td>
-                  <td class="py-2.5">
-                    <button onclick="App.paySupplierPrompt(${s.id})" class="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold">تسديد دفعة</button>
+                  <td class="py-2.5 flex items-center gap-1.5">
+                    <button onclick="App.openSupplierPaymentModal(${s.id}, '${s.name.replace(/'/g, '')}', ${Number(s.total_debt || 0)})" class="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold">تسديد دفعة</button>
+                    <button onclick='App.openSupplierModal(${JSON.stringify(s).replace(/'/g, "&apos;")})' class="px-2.5 py-1 bg-blue-500/10 text-blue-600 rounded-lg font-bold">تعديل</button>
+                    <button onclick="window.api.deleteSupplier(${s.id}).then(() => App.renderSuppliersView())" class="text-rose-500 p-1"><span class="material-symbols-rounded icon-sm">delete</span></button>
                   </td>
                 </tr>`
                 )
@@ -1281,41 +2746,109 @@ const App = {
           </table>
         </div>
       </div>`;
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
   },
 
-  async addSupplierPrompt() {
-    const name = prompt('اسم المورد الجديد:');
-    if (!name) return;
-    const phone = prompt('رقم الهاتف:', '') || '';
-    await window.api.addSupplier({ name, phone });
+  openSupplierModal(sup = null) {
+    document.getElementById('supIdInput').value = sup ? sup.id : '';
+    document.getElementById('supNameInput').value = sup ? sup.name || '' : '';
+    document.getElementById('supPhoneInput').value = sup ? sup.phone || '' : '';
+    document.getElementById('supInitDebtInput').value = sup ? sup.initial_debt || 0 : 0;
+    document.getElementById('supAddressInput').value = sup ? sup.address || '' : '';
+    document.getElementById('supRcInput').value = sup ? sup.rc || '' : '';
+    document.getElementById('supNifInput').value = sup ? sup.nif || '' : '';
+    document.getElementById('supAiInput').value = sup ? sup.ai || '' : '';
+    document.getElementById('supNisInput').value = sup ? sup.nis || '' : '';
+    this.openModal('supplierModal');
+  },
+
+  async saveSupplierFromModal() {
+    const id = document.getElementById('supIdInput').value;
+    const payload = {
+      name: document.getElementById('supNameInput').value.trim(),
+      phone: document.getElementById('supPhoneInput').value.trim() || null,
+      initial_debt: parseFloat(document.getElementById('supInitDebtInput').value) || 0,
+      address: document.getElementById('supAddressInput').value.trim() || null,
+      rc: document.getElementById('supRcInput').value.trim() || null,
+      nif: document.getElementById('supNifInput').value.trim() || null,
+      ai: document.getElementById('supAiInput').value.trim() || null,
+      nis: document.getElementById('supNisInput').value.trim() || null
+    };
+    if (!payload.name) return;
+
+    if (id) await window.api.updateSupplier(Number(id), payload);
+    else await window.api.addSupplier(payload);
+
+    this.closeModal('supplierModal');
     await this.renderSuppliersView();
+    showToast('تم حفظ بيانات المورد بنجاح', 'success');
   },
 
-  async paySupplierPrompt(supplierId) {
-    const amt = parseFloat(prompt('أدخل مبلغ الدفعة للمورد (د.ج):', '0'));
-    if (!amt || amt <= 0) return;
-    await window.api.addSupplierPayment(supplierId, amt);
+  openSupplierPaymentModal(supplierId, name, currentDebt = 0) {
+    document.getElementById('supPaySupplierId').value = String(supplierId);
+    document.getElementById('supPayModalTitle').textContent = `تسديد دفعة للمورد: ${name}`;
+    document.getElementById('supPayAmountInput').value = currentDebt > 0 ? currentDebt.toFixed(2) : '1000';
+    document.getElementById('supPayNotesInput').value = '';
+    this.openModal('supplierPaymentModal');
+  },
+
+  async submitSupplierPaymentModal(printReceipt = true) {
+    const supplierId = Number(document.getElementById('supPaySupplierId').value);
+    const amt = parseFloat(document.getElementById('supPayAmountInput').value) || 0;
+    const method = document.getElementById('supPayMethodSelect').value || 'cash';
+    const notes = document.getElementById('supPayNotesInput').value.trim();
+    if (!supplierId || amt <= 0) return;
+
+    const res = await window.api.addSupplierPayment(supplierId, amt, new Date().toISOString(), {
+      payment_method: method,
+      notes
+    });
+    this.closeModal('supplierPaymentModal');
     await this.renderSuppliersView();
     showToast('تم تسجيل دفعة المورد بنجاح', 'success');
+
+    if (printReceipt && res && res.paymentId && window.PrintEngine) {
+      const details = await window.api.getPaymentDetails(res.paymentId, 'purchase');
+      if (details) {
+        const html = await window.PrintEngine.renderPaymentReceiptHtml(details, AppState.settings, AppState.lang);
+        await window.PrintEngine.printHtmlDocument(html, { silent: false });
+      }
+    }
   },
 
   async renderPurchasesView() {
     const root = document.getElementById('purchases-view-root');
-    const purchases = (await window.api.getPurchases().catch(() => [])) || [];
+    if (!root) return;
+    const [purchases, returnsList] = await Promise.all([
+      window.api.getPurchases().catch(() => []),
+      window.api.getSupplierReturns().catch(() => [])
+    ]);
+
     root.innerHTML = `
-      <div class="space-y-4">
-        <div class="flex items-center justify-between">
-          <h2 class="text-2xl font-black">فواتير المشتريات والتموين (${purchases.length})</h2>
+      <div class="space-y-6">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-2xl font-black">فواتير المشتريات والتموين ومرتجعات الموردين</h2>
+            <p class="text-xs text-slate-500">إدخال فواتير الشراء مع توزيع مصاريف النقل، طباعة وصولات الاستلام (Bon de Réception)، وإرجاع البضاعة</p>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="App.openSupplierReturnModal()" class="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold">مرتجع للمورد</button>
+            <button onclick="App.openPurchaseInvoiceModal()" class="px-5 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold shadow">+ فاتورة شراء جديدة</button>
+          </div>
         </div>
-        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 overflow-x-auto">
+          <h3 class="font-black text-sm mb-3">فواتير الشراء (${purchases.length})</h3>
           <table class="w-full text-xs text-right">
             <thead>
               <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
                 <th class="py-2">رقم الفاتورة</th>
                 <th class="py-2">المورد</th>
                 <th class="py-2">التاريخ</th>
+                <th class="py-2">مصاريف إضافية</th>
                 <th class="py-2">الإجمالي</th>
                 <th class="py-2">المدفوع</th>
+                <th class="py-2">إجراءات</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
@@ -1323,11 +2856,45 @@ const App = {
                 .map(
                   (p) => `
                 <tr>
-                  <td class="py-2.5 font-mono font-bold">${p.invoice_number || '#' + p.id}</td>
+                  <td class="py-2.5 font-mono font-bold text-blue-600">${p.invoice_number || '#' + p.id}</td>
                   <td class="py-2.5 font-bold">${p.supplier_name || 'مورد عام'}</td>
                   <td class="py-2.5 font-mono">${p.date || ''}</td>
+                  <td class="py-2.5 font-mono">${Number(p.additional_costs || 0).toFixed(2)}</td>
                   <td class="py-2.5 font-mono font-bold">${Number(p.total || 0).toFixed(2)} د.ج</td>
                   <td class="py-2.5 font-mono text-emerald-600">${Number(p.paid_amount || 0).toFixed(2)} د.ج</td>
+                  <td class="py-2.5 flex items-center gap-1.5">
+                    <button onclick="App.printReceptionNote(${p.id})" class="px-2.5 py-1 bg-emerald-600/15 text-emerald-600 rounded-lg font-bold">وصل استلام BR</button>
+                    <button onclick="window.api.deletePurchase(${p.id}).then(() => App.renderPurchasesView())" class="text-rose-500 p-1"><span class="material-symbols-rounded icon-sm">delete</span></button>
+                  </td>
+                </tr>`
+                )
+                .join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 overflow-x-auto">
+          <h3 class="font-black text-sm mb-3">مرتجعات الموردين (${returnsList.length})</h3>
+          <table class="w-full text-xs text-right">
+            <thead>
+              <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                <th class="py-2">رقم المرتجع</th>
+                <th class="py-2">المورد</th>
+                <th class="py-2">التاريخ</th>
+                <th class="py-2">القيمة</th>
+                <th class="py-2">السبب</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+              ${returnsList
+                .map(
+                  (r) => `
+                <tr>
+                  <td class="py-2 font-mono font-bold text-rose-500">${r.return_number || '#' + r.id}</td>
+                  <td class="py-2 font-bold">${r.supplier_name || 'مورد'}</td>
+                  <td class="py-2 font-mono">${r.date || ''}</td>
+                  <td class="py-2 font-mono font-bold">${Number(r.total || 0).toFixed(2)} د.ج</td>
+                  <td class="py-2 text-slate-500">${r.reason || '-'}</td>
                 </tr>`
                 )
                 .join('')}
@@ -1335,29 +2902,206 @@ const App = {
           </table>
         </div>
       </div>`;
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
   },
 
+  openPurchaseInvoiceModal() {
+    AppState.tempPurchaseItems = [];
+    const supSel = document.getElementById('purchSupplierSelect');
+    if (supSel) {
+      supSel.innerHTML = AppState.suppliers.map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+    }
+    const prodSel = document.getElementById('purchItemProductSelect');
+    if (prodSel) {
+      prodSel.innerHTML = AppState.products
+        .map((p) => `<option value="${p.id}" data-cost="${p.cost_price}" data-sell="${p.selling_price}">${p.name}</option>`)
+        .join('');
+      prodSel.onchange = () => {
+        const opt = prodSel.options[prodSel.selectedIndex];
+        if (opt) {
+          document.getElementById('purchItemCost').value = opt.getAttribute('data-cost') || '0';
+          document.getElementById('purchItemSell').value = opt.getAttribute('data-sell') || '0';
+        }
+      };
+      if (prodSel.options.length > 0) prodSel.onchange();
+    }
+    document.getElementById('purchNumberInput').value = `ACH-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
+    document.getElementById('purchDateInput').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('purchExtraCostInput').value = '0';
+    document.getElementById('purchPaidInput').value = '0';
+    this.recalcPurchaseModal();
+    this.openModal('purchaseInvoiceModal');
+  },
+
+  addPurchaseItemRow() {
+    const prodSel = document.getElementById('purchItemProductSelect');
+    const pid = Number(prodSel.value);
+    const prod = AppState.products.find((p) => Number(p.id) === pid);
+    if (!prod) return;
+
+    const qty = parseFloat(document.getElementById('purchItemQty').value) || 1;
+    const cost_price = parseFloat(document.getElementById('purchItemCost').value) || 0;
+    const selling_price = parseFloat(document.getElementById('purchItemSell').value) || 0;
+
+    AppState.tempPurchaseItems.push({
+      product_id: pid,
+      name: prod.name,
+      quantity: qty,
+      cost_price,
+      selling_price,
+      subtotal: Number((qty * cost_price).toFixed(2))
+    });
+    this.recalcPurchaseModal();
+  },
+
+  recalcPurchaseModal() {
+    const itemsBox = document.getElementById('purchItemsTableBody');
+    const subtotal = AppState.tempPurchaseItems.reduce((s, it) => s + Number(it.subtotal || 0), 0);
+    const extra = parseFloat(document.getElementById('purchExtraCostInput').value) || 0;
+    const total = Number((subtotal + extra).toFixed(2));
+
+    document.getElementById('purchTotalText').textContent = `${total.toFixed(2)} د.ج`;
+    document.getElementById('purchPaidInput').value = total.toFixed(2);
+
+    if (itemsBox) {
+      itemsBox.innerHTML = AppState.tempPurchaseItems
+        .map(
+          (it, i) => `
+        <div class="flex items-center justify-between p-2 border-b border-slate-100 dark:border-slate-700">
+          <span class="font-bold flex-1">${it.name}</span>
+          <span class="font-mono w-24">${it.quantity} × ${it.cost_price}</span>
+          <span class="font-mono font-bold w-24 text-blue-600">${it.subtotal.toFixed(2)} د.ج</span>
+          <button onclick="AppState.tempPurchaseItems.splice(${i},1); App.recalcPurchaseModal()" class="text-rose-500">✕</button>
+        </div>`
+        )
+        .join('');
+    }
+    return { subtotal, extra, total };
+  },
+
+  async submitPurchaseInvoice() {
+    if (AppState.tempPurchaseItems.length === 0) {
+      showToast('يرجى إدراج صنف واحد على الأقل في فاتورة الشراء', 'warning');
+      return;
+    }
+    const { subtotal, extra, total } = this.recalcPurchaseModal();
+    const supplier_id = Number(document.getElementById('purchSupplierSelect').value) || null;
+    const invoice_number = document.getElementById('purchNumberInput').value.trim();
+    const date = document.getElementById('purchDateInput').value;
+    const paid_amount = parseFloat(document.getElementById('purchPaidInput').value) || 0;
+
+    await window.api.savePurchase({
+      supplier_id,
+      invoice_number,
+      date,
+      subtotal,
+      additional_costs: extra,
+      total,
+      paid_amount,
+      items: AppState.tempPurchaseItems
+    });
+
+    this.closeModal('purchaseInvoiceModal');
+    await this.refreshProducts();
+    await this.renderPurchasesView();
+    showToast('تم حفظ فاتورة الشراء وتغذية المخزون بنجاح', 'success');
+  },
+
+  async printReceptionNote(invoiceId) {
+    const inv = await window.api.getInvoiceDetails(invoiceId);
+    if (!inv || !window.PrintEngine) return;
+    const html = await window.PrintEngine.renderReceptionNoteHtml(inv, AppState.settings, AppState.lang);
+    await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  },
+
+  openSupplierReturnModal() {
+    const supSel = document.getElementById('supRetSupplierSelect');
+    if (supSel) {
+      supSel.innerHTML = AppState.suppliers.map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+    }
+    const prodSel = document.getElementById('supRetProductSelect');
+    if (prodSel) {
+      prodSel.innerHTML = AppState.products
+        .map((p) => `<option value="${p.id}" data-cost="${p.cost_price}" data-batch="${p.batches?.[0]?.id || ''}">${p.name} (الرصيد: ${p.stock})</option>`)
+        .join('');
+      prodSel.onchange = () => {
+        const opt = prodSel.options[prodSel.selectedIndex];
+        if (opt) document.getElementById('supRetCostInput').value = opt.getAttribute('data-cost') || '0';
+      };
+      if (prodSel.options.length > 0) prodSel.onchange();
+    }
+    this.openModal('supplierReturnModal');
+  },
+
+  async submitSupplierReturnFromModal() {
+    const supplier_id = Number(document.getElementById('supRetSupplierSelect').value);
+    const prodSel = document.getElementById('supRetProductSelect');
+    const product_id = Number(prodSel.value);
+    const opt = prodSel.options[prodSel.selectedIndex];
+    const batch_id = opt && opt.getAttribute('data-batch') ? Number(opt.getAttribute('data-batch')) : null;
+    const quantity = parseFloat(document.getElementById('supRetQtyInput').value) || 1;
+    const cost_price = parseFloat(document.getElementById('supRetCostInput').value) || 0;
+    const reason = document.getElementById('supRetReasonInput').value.trim();
+
+    const total = Number((quantity * cost_price).toFixed(2));
+    await window.api.saveSupplierReturn({
+      supplier_id,
+      total,
+      credit_applied: total,
+      reason,
+      items: [{ product_id, batch_id, quantity, cost_price }]
+    });
+
+    this.closeModal('supplierReturnModal');
+    await this.refreshProducts();
+    await this.renderPurchasesView();
+    showToast('تم تسجيل مرتجع المورد وخصم الكمية من المخزون', 'success');
+  },
+  // ==========================================================================
+  // 12. الزبائن، كشف الحساب، الفاتورة المجمعة، وعقود التقسيط — [الشطر الثالث والأخير 3/3]
+  // ==========================================================================
   async renderCustomersView() {
     const root = document.getElementById('customers-view-root');
-    const customers = (await window.api.getCustomers().catch(() => [])) || [];
+    if (!root) return;
+    const [customers, installments] = await Promise.all([
+      window.api.getCustomers().catch(() => []),
+      window.api.getInstallmentPlans({}).catch(() => [])
+    ]);
     AppState.customers = customers;
 
+    const activePlansCount = installments.filter((p) => p.status === 'active').length;
+
     root.innerHTML = `
-      <div class="space-y-4">
-        <div class="flex items-center justify-between">
-          <h2 class="text-2xl font-black">إدارة الزبائن، نقاط الولاء، والديون (${customers.length})</h2>
-          <button onclick="App.openCustomerModal()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">+ زبون جديد</button>
+      <div class="space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-2xl font-black">إدارة الزبائن، الديون، نقاط الولاء، والأقساط (${customers.length})</h2>
+            <p class="text-xs text-slate-500">كشف حساب تفصيلي، توزيع التسديدات بـ FIFO، الفواتير المجمعة، وعقود البيع بالتقسيط</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="App.openInstallmentsManagerModal()" class="px-4 py-2 bg-amber-500 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow">
+              <span class="material-symbols-rounded icon-sm">calendar_month</span>
+              <span>عقود التقسيط (${activePlansCount})</span>
+            </button>
+            <button onclick="window.api.downloadCustomersTemplate()" class="px-3 py-2 bg-slate-200 dark:bg-slate-700 rounded-xl text-xs font-bold">قالب Excel</button>
+            <button onclick="window.api.importCustomersFromExcel().then(() => App.renderCustomersView())" class="px-3.5 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold">استيراد Excel</button>
+            <button onclick="window.api.exportCustomersToExcel()" class="px-3.5 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold">تصدير Excel</button>
+            <button onclick="App.openCustomerModal()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold shadow">+ زبون جديد</button>
+          </div>
         </div>
+
         <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 overflow-x-auto">
           <table class="w-full text-xs text-right">
             <thead>
               <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
-                <th class="py-2">الزبون</th>
-                <th class="py-2">الهاتف</th>
-                <th class="py-2">نقاط الولاء</th>
-                <th class="py-2">إجمالي المشتريات</th>
-                <th class="py-2">الدين الحالي</th>
-                <th class="py-2">إجراءات</th>
+                <th class="py-2.5 px-2">الزبون</th>
+                <th class="py-2.5 px-2">الهاتف</th>
+                <th class="py-2.5 px-2">التسعيرة</th>
+                <th class="py-2.5 px-2">نقاط الولاء</th>
+                <th class="py-2.5 px-2">سقف الدين</th>
+                <th class="py-2.5 px-2">إجمالي المشتريات</th>
+                <th class="py-2.5 px-2">الدين الحالي</th>
+                <th class="py-2.5 px-2">إجراءات</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
@@ -1365,14 +3109,20 @@ const App = {
                 .map(
                   (c) => `
                 <tr>
-                  <td class="py-2.5 font-bold">${c.name}</td>
-                  <td class="py-2.5 font-mono">${c.phone || '-'}</td>
-                  <td class="py-2.5 font-mono text-amber-500 font-bold">⭐ ${c.loyalty_points || 0}</td>
-                  <td class="py-2.5 font-mono">${Number(c.total_sales || 0).toFixed(2)} د.ج</td>
-                  <td class="py-2.5 font-mono font-bold text-rose-500">${Number(c.total_debt || 0).toFixed(2)} د.ج</td>
-                  <td class="py-2.5 flex items-center gap-1.5">
-                    <button onclick="App.payCustomerDebtPrompt(${c.id})" class="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold">تسديد دين</button>
-                    <button onclick="App.sendWhatsAppReminder('${c.phone || ''}', '${c.name}', ${Number(c.total_debt || 0)})" class="px-2.5 py-1 bg-green-600/15 text-green-600 rounded-lg font-bold">WhatsApp</button>
+                  <td class="py-2.5 px-2 font-bold">${c.name}</td>
+                  <td class="py-2.5 px-2 font-mono">${c.phone || '-'}</td>
+                  <td class="py-2.5 px-2">${c.price_tier === 'wholesale' ? '<span class="px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-600 font-bold">جملة</span>' : 'تجزئة'}</td>
+                  <td class="py-2.5 px-2 font-mono text-amber-500 font-bold">⭐ ${c.loyalty_points || 0}</td>
+                  <td class="py-2.5 px-2 font-mono">${Number(c.credit_limit || 0) > 0 ? Number(c.credit_limit).toFixed(0) : 'مفتوح'}</td>
+                  <td class="py-2.5 px-2 font-mono">${Number(c.total_sales || 0).toFixed(2)} د.ج</td>
+                  <td class="py-2.5 px-2 font-mono font-black ${Number(c.total_debt || 0) > 0 ? 'text-rose-500' : 'text-emerald-600'}">${Number(c.total_debt || 0).toFixed(2)} د.ج</td>
+                  <td class="py-2.5 px-2 flex flex-wrap items-center gap-1">
+                    <button onclick="App.openCustomerPaymentModal(${c.id}, '${c.name.replace(/'/g, '')}', ${Number(c.total_debt || 0)})" class="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold">تسديد دين</button>
+                    <button onclick="App.openCustomerLedgerModal(${c.id})" class="px-2.5 py-1 bg-blue-600/10 text-blue-600 rounded-lg font-bold">كشف حساب</button>
+                    <button onclick="App.printCustomerRecapInvoice(${c.id})" class="px-2.5 py-1 bg-indigo-600/10 text-indigo-600 rounded-lg font-bold">فاتورة مجمعة</button>
+                    <button onclick="App.sendWhatsAppReminder('${c.phone || ''}', '${c.name.replace(/'/g, '')}', ${Number(c.total_debt || 0)})" class="px-2 py-1 bg-green-600/15 text-green-600 rounded-lg font-bold">WhatsApp</button>
+                    <button onclick='App.openCustomerModal(${JSON.stringify(c).replace(/'/g, "&apos;")})' class="px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded-lg font-bold">تعديل</button>
+                    <button onclick="window.api.deleteCustomer(${c.id}).then(() => App.renderCustomersView())" class="text-rose-500 p-1"><span class="material-symbols-rounded icon-sm">delete</span></button>
                   </td>
                 </tr>`
                 )
@@ -1381,14 +3131,139 @@ const App = {
           </table>
         </div>
       </div>`;
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
   },
 
-  async payCustomerDebtPrompt(customerId) {
-    const amt = parseFloat(prompt('أدخل المبلغ المستلم من الزبون لتسديد دينه (د.ج):', '0'));
-    if (!amt || amt <= 0) return;
-    await window.api.addCustomerPayment(customerId, amt);
+  openCustomerModal(cust = null) {
+    document.getElementById('custIdInput').value = cust ? cust.id : '';
+    document.getElementById('custNameInput').value = cust ? cust.name || '' : '';
+    document.getElementById('custPhoneInput').value = cust ? cust.phone || '' : '';
+    document.getElementById('custPriceTierInput').value = cust && cust.price_tier ? cust.price_tier : 'retail';
+    document.getElementById('custInitDebtInput').value = cust ? cust.initial_debt || 0 : 0;
+    document.getElementById('custCreditLimitInput').value = cust ? cust.credit_limit || 0 : 0;
+    document.getElementById('custAddressInput').value = cust ? cust.address || '' : '';
+    document.getElementById('custRcInput').value = cust ? cust.rc || '' : '';
+    document.getElementById('custNifInput').value = cust ? cust.nif || '' : '';
+    document.getElementById('custAiInput').value = cust ? cust.ai || '' : '';
+    document.getElementById('custNisInput').value = cust ? cust.nis || '' : '';
+    this.openModal('customerModal');
+  },
+
+  async saveCustomerFromModal() {
+    const id = document.getElementById('custIdInput').value;
+    const payload = {
+      name: document.getElementById('custNameInput').value.trim(),
+      phone: document.getElementById('custPhoneInput').value.trim() || null,
+      price_tier: document.getElementById('custPriceTierInput').value || 'retail',
+      initial_debt: parseFloat(document.getElementById('custInitDebtInput').value) || 0,
+      credit_limit: parseFloat(document.getElementById('custCreditLimitInput').value) || 0,
+      address: document.getElementById('custAddressInput').value.trim() || null,
+      rc: document.getElementById('custRcInput').value.trim() || null,
+      nif: document.getElementById('custNifInput').value.trim() || null,
+      ai: document.getElementById('custAiInput').value.trim() || null,
+      nis: document.getElementById('custNisInput').value.trim() || null
+    };
+    if (!payload.name) {
+      showToast('يرجى إدخال اسم الزبون', 'error');
+      return;
+    }
+
+    if (id) await window.api.updateCustomer(Number(id), payload);
+    else await window.api.addCustomer(payload);
+
+    this.closeModal('customerModal');
+    await this.refreshProducts();
+    if (AppState.currentView === 'customers') await this.renderCustomersView();
+    else this.renderPosView();
+    showToast('تم حفظ ملف الزبون بنجاح', 'success');
+  },
+
+  openCustomerPaymentModal(customerId, name, currentDebt = 0) {
+    document.getElementById('custPayCustomerId').value = String(customerId);
+    document.getElementById('custPayModalTitle').textContent = `تسديد دين الزبون: ${name}`;
+    document.getElementById('custPayAmountInput').value = currentDebt > 0 ? currentDebt.toFixed(2) : '1000';
+    document.getElementById('custPayNotesInput').value = '';
+    this.openModal('customerPaymentModal');
+  },
+
+  async submitCustomerPaymentModal(printReceipt = true) {
+    const customerId = Number(document.getElementById('custPayCustomerId').value);
+    const amt = parseFloat(document.getElementById('custPayAmountInput').value) || 0;
+    const method = document.getElementById('custPayMethodSelect').value || 'cash';
+    const notes = document.getElementById('custPayNotesInput').value.trim();
+    if (!customerId || amt <= 0) return;
+
+    const res = await window.api.addCustomerPayment(customerId, amt, new Date().toISOString(), {
+      payment_method: method,
+      notes,
+      userId: AppState.currentUser ? AppState.currentUser.id : 1
+    });
+    this.closeModal('customerPaymentModal');
     await this.renderCustomersView();
-    showToast('تم تسديد دفعة الزبون وتوزيعها بـ FIFO بنجاح', 'success');
+    showToast('تم تسجيل الدفعة وتوزيعها على فواتير الزبون بـ FIFO بنجاح', 'success');
+
+    if (printReceipt && res && res.paymentId && window.PrintEngine) {
+      const details = await window.api.getPaymentDetails(res.paymentId, 'sale');
+      if (details) {
+        const html = await window.PrintEngine.renderPaymentReceiptHtml(details, AppState.settings, AppState.lang);
+        await window.PrintEngine.printHtmlDocument(html, { silent: false });
+      }
+    }
+  },
+
+  async openCustomerLedgerModal(customerId) {
+    const cust = AppState.customers.find((c) => Number(c.id) === Number(customerId));
+    const sales = (await window.api.getCustomerSales(customerId).catch(() => [])) || [];
+    document.getElementById('custLedgerTitle').textContent = `كشف حساب الزبون: ${cust ? cust.name : '#' + customerId}`;
+    const body = document.getElementById('customerLedgerBody');
+
+    body.innerHTML = `
+      <div class="grid grid-cols-3 gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800">
+        <div>إجمالي الفواتير: <strong class="font-mono">${sales.length}</strong></div>
+        <div>إجمالي المسحوبات: <strong class="font-mono text-blue-600">${Number(cust?.total_sales || 0).toFixed(2)} د.ج</strong></div>
+        <div>الدين المتبقي: <strong class="font-mono text-rose-500">${Number(cust?.total_debt || 0).toFixed(2)} د.ج</strong></div>
+      </div>
+      <table class="w-full text-xs text-right">
+        <thead>
+          <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+            <th class="py-2">رقم الفاتورة</th>
+            <th class="py-2">التاريخ</th>
+            <th class="py-2">الإجمالي</th>
+            <th class="py-2">المدفوع</th>
+            <th class="py-2">الباقي</th>
+            <th class="py-2">طباعة</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+          ${sales
+            .map((s) => {
+              const rem = Math.max(0, Number(s.total || 0) - Number(s.paid_amount || 0));
+              return `
+              <tr>
+                <td class="py-2 font-mono font-bold">${s.doc_number || '#' + s.id}</td>
+                <td class="py-2 font-mono">${String(s.sale_date || '').slice(0, 16)}</td>
+                <td class="py-2 font-mono font-bold">${Number(s.total || 0).toFixed(2)}</td>
+                <td class="py-2 font-mono text-emerald-600">${Number(s.paid_amount || 0).toFixed(2)}</td>
+                <td class="py-2 font-mono text-rose-500 font-bold">${rem.toFixed(2)}</td>
+                <td class="py-2"><button onclick="App.reprintSale(${s.id}, 'a4')" class="px-2 py-1 bg-blue-600 text-white rounded font-bold">طباعة</button></td>
+              </tr>`;
+            })
+            .join('')}
+        </tbody>
+      </table>`;
+    this.openModal('customerLedgerModal');
+  },
+
+  async printCustomerRecapInvoice(customerId) {
+    const cust = AppState.customers.find((c) => Number(c.id) === Number(customerId));
+    const agg = await window.api.getCustomerSalesAggregated({ customerId });
+    if (!agg || !window.PrintEngine) return;
+    const html = await window.PrintEngine.renderRecapInvoiceHtml(
+      { ...agg, customer: cust },
+      AppState.settings,
+      AppState.lang
+    );
+    await window.PrintEngine.printHtmlDocument(html, { silent: false });
   },
 
   sendWhatsAppReminder(phone, name, debt) {
@@ -1396,62 +3271,230 @@ const App = {
       showToast('لا يوجد رقم هاتف مسجل لهذا الزبون', 'warning');
       return;
     }
-    const cleanPhone = phone.replace(/^0/, '213').replace(/\D/g, '');
-    const text = encodeURIComponent(`مرحباً سيد ${name}، نذكركم بأن رصيدكم المستحق لدى ${AppState.settings.shop_name || 'Gherbi.Ai POS'} هو ${debt.toFixed(2)} د.ج. شكراً لتعاملكم معنا.`);
+    const cleanPhone = String(phone).replace(/^0/, '213').replace(/\D/g, '');
+    const text = encodeURIComponent(
+      `مرحباً سيد ${name}، نذكركم بأن رصيدكم المستحق لدى ${AppState.settings.shop_name || 'Gherbi.Ai POS'} هو ${Number(debt || 0).toFixed(2)} د.ج. شكراً لتعاملكم معنا.`
+    );
     window.api.openExternalLink(`https://wa.me/${cleanPhone}?text=${text}`);
   },
 
+  async openInstallmentsManagerModal() {
+    const plans = (await window.api.getInstallmentPlans({}).catch(() => [])) || [];
+    const body = document.getElementById('installmentPlanModalBody');
+    if (body) {
+      body.innerHTML =
+        plans.length === 0
+          ? `<div class="py-10 text-center text-slate-400 font-bold">لا توجد عقود بيع بالتقسيط مسجلة حالياً. يمكنك إنشاء عقد تقسيط مباشرة من نافذة تسديد الفاتورة (F1).</div>`
+          : plans
+              .map(
+                (p) => `
+              <div class="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 mb-3 space-y-2">
+                <div class="flex flex-wrap justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
+                  <div>
+                    <span class="font-black text-sm">${p.customer_name || 'زبون'}</span>
+                    <span class="text-slate-400 font-mono mr-2">(${p.customer_phone || ''})</span>
+                  </div>
+                  <div class="flex gap-3 font-mono text-xs">
+                    <span>الإجمالي: <strong>${Number(p.total_amount).toFixed(2)}</strong></span>
+                    <span class="text-rose-500">المتبقي: <strong>${Number(p.remaining_amount).toFixed(2)} د.ج</strong></span>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  ${(p.schedules || [])
+                    .map(
+                      (s) => `
+                    <div class="p-2 rounded-xl border ${s.status === 'paid' ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700'}">
+                      <div class="flex justify-between font-bold"><span>قسط #${s.installment_num}</span><span class="font-mono">${s.due_date}</span></div>
+                      <div class="font-mono font-black text-blue-600 my-1">${Number(s.amount).toFixed(2)} د.ج</div>
+                      ${
+                        s.status === 'paid'
+                          ? '<span class="text-emerald-600 font-bold text-[11px]">✓ مسدد بالكامل</span>'
+                          : `<div class="flex gap-1 mt-1">
+                              <button onclick="App.payInstallmentRow(${s.id}, ${Number(s.amount - s.paid_amount)})" class="flex-1 py-1 bg-emerald-600 text-white rounded font-bold text-[10px]">تسديد القسط</button>
+                              <button onclick="App.sendWhatsAppReminder('${p.customer_phone || ''}', '${(p.customer_name || '').replace(/'/g, '')}', ${Number(s.amount - s.paid_amount)})" class="px-2 py-1 bg-green-600/20 text-green-600 rounded font-bold text-[10px]">WA</button>
+                            </div>`
+                      }
+                    </div>`
+                    )
+                    .join('')}
+                </div>
+              </div>`
+              )
+              .join('');
+    }
+    this.openModal('installmentPlanModal');
+  },
+
+  async payInstallmentRow(scheduleId, dueAmt) {
+    await window.api.payInstallmentSchedule(scheduleId, dueAmt);
+    await this.openInstallmentsManagerModal();
+    await this.refreshHeaderNotifications();
+    showToast('تم تسديد القسط الشهري بنجاح', 'success');
+  },
+
+  // ==========================================================================
+  // 13. الفواتير الشكلية (Proformas) وطلبيات الزبائن (Customer Orders)
+  // ==========================================================================
   async renderProformasView() {
     const root = document.getElementById('proformas-view-root');
+    if (!root) return;
     const list = (await window.api.getProformas().catch(() => [])) || [];
+
     root.innerHTML = `
       <div class="space-y-4">
-        <h2 class="text-2xl font-black">الفواتير الشكلية / المبدئية (${list.length})</h2>
-        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-2xl font-black">الفواتير الشكلية / المبدئية (Factures Proforma) (${list.length})</h2>
+            <p class="text-xs text-slate-500">عروض الأسعار الرسمية، فحص توفر المخزون الفوري، والتحويل بضغطة واحدة إلى فاتورة بيع</p>
+          </div>
+        </div>
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 overflow-x-auto">
           <table class="w-full text-xs text-right">
             <thead>
               <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
-                <th class="py-2">الرقم</th>
+                <th class="py-2">رقم المستند</th>
+                <th class="py-2">التاريخ</th>
                 <th class="py-2">الزبون</th>
                 <th class="py-2">الإجمالي</th>
                 <th class="py-2">الحالة</th>
+                <th class="py-2">إجراءات</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
-              ${list.map((pf) => `<tr><td class="py-2 font-mono font-bold">${pf.doc_number}</td><td class="py-2">${pf.customer_name || 'زبون عابر'}</td><td class="py-2 font-mono font-bold">${Number(pf.total || 0).toFixed(2)} د.ج</td><td class="py-2">${pf.status}</td></tr>`).join('')}
+              ${list
+                .map(
+                  (pf) => `
+                <tr>
+                  <td class="py-2.5 font-mono font-bold text-indigo-600">${pf.doc_number}</td>
+                  <td class="py-2.5 font-mono">${String(pf.created_at || '').slice(0, 10)}</td>
+                  <td class="py-2.5 font-bold">${pf.customer_name || 'زبون عابر'}</td>
+                  <td class="py-2.5 font-mono font-black">${Number(pf.total || 0).toFixed(2)} د.ج</td>
+                  <td class="py-2.5 font-bold">${pf.status === 'converted' ? '<span class="text-emerald-600">محولة لفاتورة</span>' : pf.status === 'cancelled' ? '<span class="text-rose-500">ملغاة</span>' : 'معلقة'}</td>
+                  <td class="py-2.5 flex items-center gap-1.5">
+                    <button onclick="App.printProformaById(${pf.id})" class="px-2.5 py-1 bg-indigo-600/15 text-indigo-600 rounded-lg font-bold">طباعة</button>
+                    <button onclick="App.openProformaStockCheck(${pf.id})" class="px-2.5 py-1 bg-amber-500/15 text-amber-600 rounded-lg font-bold">فحص المخزون</button>
+                    ${
+                      pf.status === 'pending'
+                        ? `<button onclick="App.convertProformaNow(${pf.id})" class="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold">تحويل لمبيعة</button>`
+                        : ''
+                    }
+                    <button onclick="window.api.deleteProforma(${pf.id}).then(() => App.renderProformasView())" class="text-rose-500 p-1"><span class="material-symbols-rounded icon-sm">delete</span></button>
+                  </td>
+                </tr>`
+                )
+                .join('')}
             </tbody>
           </table>
         </div>
       </div>`;
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  },
+
+  async printProformaById(proformaId) {
+    const fullPf = await window.api.getProformaDetails(proformaId);
+    if (!fullPf || !window.PrintEngine) return;
+    const html = await window.PrintEngine.renderProformaHtml(fullPf, AppState.settings, AppState.lang);
+    await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  },
+
+  async openProformaStockCheck(proformaId) {
+    const res = await window.api.checkProformaStock(proformaId);
+    if (res && res.ok) {
+      showToast('جميع أصناف الفاتورة الشكلية متوفرة بالكامل في المخزون!', 'success');
+    } else if (res && Array.isArray(res.shortages)) {
+      const msg = res.shortages.map((s) => `${s.product_name}: مطلوب ${s.requested} | متوفر ${s.available}`).join(' ، ');
+      showToast(`نقص مخزني في: ${msg}`, 'warning');
+    }
+  },
+
+  async convertProformaNow(proformaId) {
+    const res = await window.api.convertProformaToSale(proformaId, { payment_method: 'cash' });
+    await this.renderProformasView();
+    showToast(`تم تحويل الفاتورة الشكلية إلى فاتورة بيع (${res.docNumber})`, 'success');
   },
 
   async renderOrdersView() {
     const root = document.getElementById('orders-view-root');
+    if (!root) return;
     const orders = (await window.api.getOrders().catch(() => [])) || [];
+
     root.innerHTML = `
       <div class="space-y-4">
         <h2 class="text-2xl font-black">طلبيات الزبائن (Bons de Commande) (${orders.length})</h2>
-        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 overflow-x-auto">
           <table class="w-full text-xs text-right">
             <thead>
               <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
-                <th class="py-2">الرقم</th>
+                <th class="py-2">رقم الطلبية</th>
                 <th class="py-2">الزبون</th>
+                <th class="py-2">تاريخ التسليم</th>
                 <th class="py-2">الإجمالي</th>
                 <th class="py-2">العربون المدفوع</th>
                 <th class="py-2">الحالة</th>
+                <th class="py-2">إجراءات</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
-              ${orders.map((o) => `<tr><td class="py-2 font-mono font-bold">${o.doc_number}</td><td class="py-2">${o.customer_name || 'زبون'}</td><td class="py-2 font-mono">${Number(o.total || 0).toFixed(2)}</td><td class="py-2 font-mono text-emerald-600">${Number(o.deposit_amount || 0).toFixed(2)}</td><td class="py-2">${o.status}</td></tr>`).join('')}
+              ${orders
+                .map(
+                  (o) => `
+                <tr>
+                  <td class="py-2.5 font-mono font-bold text-teal-600">${o.doc_number}</td>
+                  <td class="py-2.5 font-bold">${o.customer_name || 'زبون'}</td>
+                  <td class="py-2.5 font-mono">${o.expected_delivery_date || '-'}</td>
+                  <td class="py-2.5 font-mono font-black">${Number(o.total || 0).toFixed(2)} د.ج</td>
+                  <td class="py-2.5 font-mono text-emerald-600 font-bold">${Number(o.deposit_amount || 0).toFixed(2)} د.ج</td>
+                  <td class="py-2.5 font-bold">${o.status === 'delivered' ? '<span class="text-emerald-600">مسلّمة</span>' : 'قيد التجهيز'}</td>
+                  <td class="py-2.5 flex items-center gap-1.5">
+                    <button onclick="App.printOrderById(${o.id})" class="px-2.5 py-1 bg-teal-600/15 text-teal-600 rounded-lg font-bold">طباعة BC</button>
+                    ${
+                      o.status === 'pending'
+                        ? `<button onclick="App.convertOrderToSaleNow(${o.id})" class="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold">تسليم وتحويل لمبيعة</button>`
+                        : ''
+                    }
+                    <button onclick="window.api.deleteOrder(${o.id}).then(() => App.renderOrdersView())" class="text-rose-500 p-1"><span class="material-symbols-rounded icon-sm">delete</span></button>
+                  </td>
+                </tr>`
+                )
+                .join('')}
             </tbody>
           </table>
         </div>
       </div>`;
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
   },
 
+  async printOrderById(orderId) {
+    const fullOrd = await window.api.getOrderDetails(orderId);
+    if (!fullOrd || !window.PrintEngine) return;
+    const html = await window.PrintEngine.renderOrderReceiptHtml(fullOrd, AppState.settings, AppState.lang);
+    await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  },
+
+  async convertOrderToSaleNow(orderId) {
+    const fullOrd = await window.api.getOrderDetails(orderId);
+    if (!fullOrd) return;
+    const saleRes = await window.api.processSale({
+      customer_id: fullOrd.customer_id,
+      subtotal: fullOrd.subtotal,
+      discount: fullOrd.discount,
+      tax_percentage: fullOrd.tax_percentage,
+      total: fullOrd.total,
+      paid_amount: fullOrd.total,
+      payment_method: 'cash',
+      items: fullOrd.items || []
+    });
+    await window.api.markOrderDelivered(orderId, saleRes.saleId);
+    await this.renderOrdersView();
+    showToast(`تم تسليم الطلبية وتحويلها إلى فاتورة بيع (${saleRes.docNumber})`, 'success');
+  },
+
+  // ==========================================================================
+  // 14. المصاريف التشغيلية وإيداعات رأس المال (بدون أي prompt)
+  // ==========================================================================
   async renderExpensesAndCapitalView() {
     const root = document.getElementById('expenses-view-root');
+    if (!root) return;
     const [expenses, capital] = await Promise.all([
       window.api.getExpenses().catch(() => []),
       window.api.getCapital().catch(() => [])
@@ -1460,58 +3503,321 @@ const App = {
     root.innerHTML = `
       <div class="space-y-6">
         <div class="flex items-center justify-between">
-          <h2 class="text-2xl font-black">المصاريف التشغيلية وإيداعات رأس المال</h2>
+          <div>
+            <h2 class="text-2xl font-black">المصاريف التشغيلية وحركات رأس المال</h2>
+            <p class="text-xs text-slate-500">توثيق مصاريف المتجر وإيداعات/مسحوبات الشركاء</p>
+          </div>
           <div class="flex gap-2">
-            <button onclick="App.addExpensePrompt()" class="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold">+ تسجيل مصروف</button>
-            <button onclick="App.addCapitalPrompt()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold">+ إيداع رأس مال</button>
+            <button onclick="App.openExpenseModal()" class="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold">+ تسجيل مصروف</button>
+            <button onclick="App.openCapitalModal()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold">+ حركة رأس مال</button>
           </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
             <h3 class="font-black text-sm mb-3">سجل المصاريف (${expenses.length})</h3>
-            <div class="space-y-2 text-xs">
-              ${expenses.map((e) => `<div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 flex justify-between"><span>${e.category} — ${e.description || ''}</span><span class="font-mono font-bold text-rose-500">${Number(e.amount).toFixed(2)} د.ج</span></div>`).join('')}
+            <div class="space-y-2 text-xs max-h-96 overflow-y-auto">
+              ${expenses
+                .map(
+                  (e) => `
+                <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 flex items-center justify-between">
+                  <div><div class="font-bold">${e.category}</div><div class="text-[10px] text-slate-400">${e.date} — ${e.description || ''}</div></div>
+                  <div class="flex items-center gap-2">
+                    <span class="font-mono font-bold text-rose-500">${Number(e.amount).toFixed(2)} د.ج</span>
+                    <button onclick="window.api.deleteExpense(${e.id}).then(() => App.renderExpensesAndCapitalView())" class="text-rose-500">✕</button>
+                  </div>
+                </div>`
+                )
+                .join('')}
             </div>
           </div>
           <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
             <h3 class="font-black text-sm mb-3">حركات رأس المال (${capital.length})</h3>
-            <div class="space-y-2 text-xs">
-              ${capital.map((c) => `<div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 flex justify-between"><span>${c.category} — ${c.description || ''}</span><span class="font-mono font-bold text-emerald-600">${Number(c.amount).toFixed(2)} د.ج</span></div>`).join('')}
+            <div class="space-y-2 text-xs max-h-96 overflow-y-auto">
+              ${capital
+                .map(
+                  (c) => `
+                <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 flex items-center justify-between">
+                  <div><div class="font-bold">${c.category}</div><div class="text-[10px] text-slate-400">${c.date} — ${c.description || ''}</div></div>
+                  <div class="flex items-center gap-2">
+                    <span class="font-mono font-bold text-emerald-600">${Number(c.amount).toFixed(2)} د.ج</span>
+                    <button onclick="window.api.deleteCapital(${c.id}).then(() => App.renderExpensesAndCapitalView())" class="text-rose-500">✕</button>
+                  </div>
+                </div>`
+                )
+                .join('')}
             </div>
           </div>
         </div>
       </div>`;
   },
 
-  async addExpensePrompt() {
-    const amt = parseFloat(prompt('أدخل قيمة المصروف (د.ج):', '0'));
-    if (!amt || amt <= 0) return;
-    const cat = prompt('فئة المصروف (كراء، كهرباء، رواتب، نقل...):', 'عام') || 'عام';
-    await window.api.addExpense({ category: cat, amount: amt, deductFromCaisse: true });
-    await this.renderExpensesAndCapitalView();
+  openExpenseModal() {
+    document.getElementById('expAmountInput').value = '0';
+    document.getElementById('expDescInput').value = '';
+    document.getElementById('expDeductCaisseCheckbox').checked = true;
+    this.openModal('expenseModal');
   },
 
-  async addCapitalPrompt() {
-    const amt = parseFloat(prompt('أدخل مبلغ رأس المال المودع (د.ج):', '0'));
-    if (!amt || amt <= 0) return;
-    await window.api.addCapital({ category: 'إيداع شريك', amount: amt });
+  async confirmSaveExpense() {
+    const amt = parseFloat(document.getElementById('expAmountInput').value) || 0;
+    if (amt <= 0) return;
+    await window.api.addExpense({
+      category: document.getElementById('expCategoryInput').value || 'عام',
+      amount: amt,
+      description: document.getElementById('expDescInput').value.trim(),
+      deductFromCaisse: document.getElementById('expDeductCaisseCheckbox').checked,
+      user_id: AppState.currentUser ? AppState.currentUser.id : 1
+    });
+    this.closeModal('expenseModal');
     await this.renderExpensesAndCapitalView();
+    showToast('تم حفظ المصروف التشغيلي بنجاح', 'success');
   },
 
-  async renderAnalyticsView() {
-    const root = document.getElementById('analytics-view-root');
-    const data = (await window.api.getAnalytics({}).catch(() => ({}))) || {};
+  openCapitalModal() {
+    document.getElementById('capAmountInput').value = '0';
+    document.getElementById('capDescInput').value = '';
+    this.openModal('capitalModal');
+  },
+
+  async confirmSaveCapital() {
+    const amt = parseFloat(document.getElementById('capAmountInput').value) || 0;
+    if (amt <= 0) return;
+    await window.api.addCapital({
+      category: document.getElementById('capCategoryInput').value || 'إيداع رأس مال',
+      amount: amt,
+      description: document.getElementById('capDescInput').value.trim()
+    });
+    this.closeModal('capitalModal');
+    await this.renderExpensesAndCapitalView();
+    showToast('تم تسجيل حركة رأس المال بنجاح', 'success');
+  },
+
+  // ==========================================================================
+  // 15. مركز الطباعة التفاعلي: استوديو ملصقات الباركود وأسعار الرفوف + مصمم القوالب + الكتالوج
+  // ==========================================================================
+  async renderPrintStudioView() {
+    const root = document.getElementById('print-view-root');
+    if (!root) return;
+    const cfg = AppState.labelStudioConfig;
+    if (!cfg.selectedId && AppState.products.length > 0) {
+      cfg.selectedId = AppState.products[0].id;
+    }
 
     root.innerHTML = `
-      <div class="space-y-6">
-        <div>
-          <h2 class="text-2xl font-black">مركز القيادة، التحليلات المالية، وحاسبة الزكاة الشرعية</h2>
-          <p class="text-xs text-slate-500">تحليل الإيرادات، تكلفة البضاعة المباعة (COGS)، صافي الربح، وأعمار الديون</p>
+      <div class="space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-2xl font-black">مركز الطباعة، استوديو ملصقات الباركود وأسعار الرفوف، ومصمم القوالب</h2>
+            <p class="text-xs text-slate-500">طباعة ملصقات المنتجات، بطاقات الزبائن، ملصقات الأسعار العريضة، وتخصيص الفواتير</p>
+          </div>
+          <div class="flex gap-2 text-xs font-bold">
+            <button onclick="App.switchPrintStudioTab('labels')" class="px-4 py-2 rounded-xl ${AppState.printStudioTab === 'labels' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800'}">1. استوديو ملصقات الباركود والأسعار</button>
+            <button onclick="App.switchPrintStudioTab('designer')" class="px-4 py-2 rounded-xl ${AppState.printStudioTab === 'designer' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800'}">2. مصمم قوالب الفواتير المرئي</button>
+            <button onclick="App.printFullCatalogue()" class="px-4 py-2 rounded-xl bg-emerald-600 text-white">3. طباعة قائمة الأسعار (Catalogue)</button>
+          </div>
         </div>
 
+        ${
+          AppState.printStudioTab === 'designer'
+            ? `<div id="template-designer-root"></div>`
+            : `
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <!-- إعدادات الملصق التفاعلية -->
+              <div class="lg:col-span-5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-4 text-xs">
+                <h3 class="font-black text-sm">إعدادات ملصق الباركود / ملصق سعر الرفوف</h3>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block font-bold mb-1">مصدر البيانات</label>
+                    <select onchange="App.updateLabelStudioProp('source', this.value)" class="w-full px-3 py-2 rounded-xl font-bold">
+                      <option value="products" ${cfg.source === 'products' ? 'selected' : ''}>المنتجات</option>
+                      <option value="customers" ${cfg.source === 'customers' ? 'selected' : ''}>بطاقات الزبائن</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block font-bold mb-1">وضع الملصق</label>
+                    <select onchange="App.updateLabelStudioProp('priceOnlyMode', this.value === 'price')" class="w-full px-3 py-2 rounded-xl font-bold">
+                      <option value="barcode" ${!cfg.priceOnlyMode ? 'selected' : ''}>ملصق باركود قياسي</option>
+                      <option value="price" ${cfg.priceOnlyMode ? 'selected' : ''}>ملصق سعر كبير للرفوف</option>
+                    </select>
+                  </div>
+                  <div class="col-span-2">
+                    <label class="block font-bold mb-1">اختر العنصر للمعاينة والطباعة</label>
+                    <select onchange="App.updateLabelStudioProp('selectedId', Number(this.value))" class="w-full px-3 py-2 rounded-xl font-bold">
+                      ${(cfg.source === 'customers' ? AppState.customers : AppState.products)
+                        .map((item) => `<option value="${item.id}" ${Number(cfg.selectedId) === Number(item.id) ? 'selected' : ''}>${item.name} ${item.barcode ? '(' + item.barcode + ')' : ''}</option>`)
+                        .join('')}
+                    </select>
+                  </div>
+                  <div><label class="block font-bold mb-1">العرض (mm)</label><input type="number" value="${cfg.widthMm}" oninput="App.updateLabelStudioProp('widthMm', Number(this.value))" class="w-full px-3 py-2 rounded-xl font-mono font-bold"></div>
+                  <div><label class="block font-bold mb-1">الارتفاع (mm)</label><input type="number" value="${cfg.heightMm}" oninput="App.updateLabelStudioProp('heightMm', Number(this.value))" class="w-full px-3 py-2 rounded-xl font-mono font-bold"></div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.showShop ? 'checked' : ''} onchange="App.updateLabelStudioProp('showShop', this.checked)"><span>إظهار اسم المتجر</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.showName ? 'checked' : ''} onchange="App.updateLabelStudioProp('showName', this.checked)"><span>إظهار اسم المنتج</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.showPrice ? 'checked' : ''} onchange="App.updateLabelStudioProp('showPrice', this.checked)"><span>إظهار السعر</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.showBarcodeText ? 'checked' : ''} onchange="App.updateLabelStudioProp('showBarcodeText', this.checked)"><span>إظهار أرقام الباركود</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.showPlu ? 'checked' : ''} onchange="App.updateLabelStudioProp('showPlu', this.checked)"><span>إظهار كود الميزان PLU</span></label>
+                </div>
+
+                <button onclick="App.printCurrentStudioLabel()" class="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black flex items-center justify-center gap-2 shadow">
+                  <span class="material-symbols-rounded icon-sm">print</span>
+                  <span>طباعة الملصق الآن</span>
+                </button>
+              </div>
+
+              <!-- معاينة الملصق الحية -->
+              <div class="lg:col-span-7 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 flex flex-col items-center justify-center">
+                <div class="text-xs font-bold text-slate-400 mb-4">معاينة حية ومطابقة للطباعة (${cfg.widthMm}mm × ${cfg.heightMm}mm)</div>
+                <iframe id="labelStudioPreviewFrame" class="border-2 border-dashed border-slate-300 rounded-xl bg-white shadow-inner" style="width:${Math.max(220, cfg.widthMm * 4.5)}px;height:${Math.max(140, cfg.heightMm * 4.5)}px;"></iframe>
+              </div>
+            </div>`
+        }
+      </div>`;
+
+    if (AppState.printStudioTab === 'designer' && window.TemplateBuilder) {
+      await window.TemplateBuilder.initTemplateBuilder('template-designer-root');
+    } else {
+      await this.refreshLabelStudioPreview();
+    }
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  },
+
+  async switchPrintStudioTab(tab) {
+    AppState.printStudioTab = tab;
+    await this.renderPrintStudioView();
+  },
+
+  async updateLabelStudioProp(key, val) {
+    AppState.labelStudioConfig[key] = val;
+    if (key === 'source' || key === 'widthMm' || key === 'heightMm') {
+      await this.renderPrintStudioView();
+    } else {
+      await this.refreshLabelStudioPreview();
+    }
+  },
+
+  async buildCurrentLabelHtml() {
+    const cfg = AppState.labelStudioConfig;
+    if (cfg.source === 'customers') {
+      const cust = AppState.customers.find((c) => Number(c.id) === Number(cfg.selectedId)) || AppState.customers[0] || { id: 1, name: 'زبون', phone: '0550000000', total_debt: 0 };
+      return await window.PrintEngine.renderBarcodeLabelHtml(
+        {
+          ...cfg,
+          name: cust.name,
+          barcode: `CUST-${cust.id}`,
+          custPhone: cust.phone || '',
+          custDebt: `الرصيد: ${Number(cust.total_debt || 0).toFixed(2)} د.ج`,
+          custDate: new Date().toISOString().slice(0, 10),
+          showPrice: false
+        },
+        AppState.settings
+      );
+    }
+
+    const prod = AppState.products.find((p) => Number(p.id) === Number(cfg.selectedId)) || AppState.products[0] || { name: 'منتج نموذجي', barcode: '6130001000012', selling_price: 650 };
+    return await window.PrintEngine.renderBarcodeLabelHtml(
+      {
+        ...cfg,
+        name: prod.name,
+        barcode: prod.barcode || '6130001000012',
+        price: prod.selling_price,
+        plu: prod.plu_code || ''
+      },
+      AppState.settings
+    );
+  },
+
+  async refreshLabelStudioPreview() {
+    const frame = document.getElementById('labelStudioPreviewFrame');
+    if (!frame || !window.PrintEngine) return;
+    const html = await this.buildCurrentLabelHtml();
+    const doc = frame.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+  },
+
+  async printCurrentStudioLabel() {
+    const html = await this.buildCurrentLabelHtml();
+    if (html && window.PrintEngine) {
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  },
+
+  async printFullCatalogue() {
+    if (!window.PrintEngine) return;
+    const html = await window.PrintEngine.renderPriceListHtml(AppState.products, AppState.settings, 'جميع المنتجات');
+    await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  },
+
+  // ==========================================================================
+  // 16. مركز الإحصائيات والتقارير بالتبويبات الـ 8 الكاملة + Chart.js + حاسبة الزكاة
+  // ==========================================================================
+  async renderAnalyticsView() {
+    const root = document.getElementById('analytics-view-root');
+    if (!root) return;
+
+    const data = (await window.api.getAnalytics({
+      dateFrom: AppState.analyticsDateFrom,
+      dateTo: AppState.analyticsDateTo
+    }).catch(() => ({}))) || {};
+    AppState.analyticsData = data;
+
+    const tab = AppState.analyticsTab || 'summary';
+    const goldPrice = Number(AppState.settings.zakat_gold_price_per_gram || 14500);
+    const nisabDzd = goldPrice * 85;
+    const zakatPool = Number(data.zakat?.pool || 0);
+    const zakatDue = Number(data.zakat?.amount || 0);
+
+    root.innerHTML = `
+      <div class="space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-2xl font-black">مركز القيادة، التحليلات المالية، وحاسبة الزكاة (8 تبويبات)</h2>
+            <p class="text-xs text-slate-500">تحليل الإيرادات، تكلفة البضاعة المباعة (COGS)، تحليلات الشرائح، أعمار الديون، والزكاة الشرعية</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <input id="anDateFrom" type="date" value="${AppState.analyticsDateFrom}" class="px-2.5 py-1.5 rounded-xl font-mono">
+            <input id="anDateTo" type="date" value="${AppState.analyticsDateTo}" class="px-2.5 py-1.5 rounded-xl font-mono">
+            <button onclick="App.applyAnalyticsDateRange()" class="px-3.5 py-1.5 bg-blue-600 text-white rounded-xl font-bold">تطبيق الفترة</button>
+            <button onclick="App.setAnalyticsQuickRange(0)" class="px-2.5 py-1.5 bg-slate-200 dark:bg-slate-700 rounded-xl font-bold">اليوم</button>
+            <button onclick="App.setAnalyticsQuickRange(30)" class="px-2.5 py-1.5 bg-slate-200 dark:bg-slate-700 rounded-xl font-bold">30 يوماً</button>
+          </div>
+        </div>
+
+        <!-- شريط التبويبات الـ 8 -->
+        <div class="flex flex-wrap gap-1.5 border-b border-slate-200 dark:border-slate-700 pb-2 text-xs font-bold">
+          ${[
+            { id: 'summary', label: '1. الملخص المالي' },
+            { id: 'segment', label: '2. إحصائيات الشرائح المتقدمة' },
+            { id: 'debts', label: '3. الديون وأعمارها' },
+            { id: 'inventory', label: '4. تقييم المخزون' },
+            { id: 'expenses', label: '5. تحليل المصاريف' },
+            { id: 'caisse', label: '6. التدفق النقدي' },
+            { id: 'charts', label: '7. الرسوم البيانية (Chart.js)' },
+            { id: 'zakat', label: '8. حاسبة الزكاة الشرعية' }
+          ]
+            .map(
+              (t) =>
+                `<button onclick="App.switchAnalyticsTab('${t.id}')" class="px-3 py-1.5 rounded-xl ${
+                  tab === t.id ? 'bg-blue-600 text-white shadow' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                }">${t.label}</button>`
+            )
+            .join('')}
+        </div>
+
+        <div id="analyticsTabBody"></div>
+      </div>`;
+
+    const body = document.getElementById('analyticsTabBody');
+    if (!body) return;
+
+    if (tab === 'summary') {
+      body.innerHTML = `
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <div class="text-xs text-slate-400 font-bold">صافي الإيرادات</div>
+            <div class="text-xs text-slate-400 font-bold">صافي المبيعات (${data.total_sales_count || 0} فاتورة)</div>
             <div class="text-2xl font-black font-mono text-blue-600 mt-1">${Number(data.net_revenue || 0).toFixed(2)} د.ج</div>
           </div>
           <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
@@ -1519,60 +3825,186 @@ const App = {
             <div class="text-2xl font-black font-mono text-amber-500 mt-1">${Number(data.cogs || 0).toFixed(2)} د.ج</div>
           </div>
           <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <div class="text-xs text-slate-400 font-bold">صافي الربح النهائي</div>
-            <div class="text-2xl font-black font-mono text-emerald-600 mt-1">${Number(data.net_profit || 0).toFixed(2)} د.ج</div>
+            <div class="text-xs text-slate-400 font-bold">مجمل الربح</div>
+            <div class="text-2xl font-black font-mono text-indigo-600 mt-1">${Number(data.gross_profit || 0).toFixed(2)} د.ج</div>
           </div>
-          <div class="p-4 rounded-2xl bg-emerald-900 text-white">
-            <div class="text-xs opacity-80 font-bold">مقدار الزكاة الشرعية (2.5%)</div>
-            <div class="text-2xl font-black font-mono mt-1">${Number(data.zakat?.amount || 0).toFixed(2)} د.ج</div>
-            <div class="text-[10px] opacity-75">وعاء الزكاة: ${Number(data.zakat?.pool || 0).toFixed(2)} د.ج</div>
+          <div class="p-4 rounded-2xl bg-emerald-600 text-white shadow-lg">
+            <div class="text-xs opacity-85 font-bold">صافي الربح النهائي (بعد المصاريف)</div>
+            <div class="text-2xl font-black font-mono mt-1">${Number(data.net_profit || 0).toFixed(2)} د.ج</div>
           </div>
         </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
           <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
             <h3 class="font-black text-sm mb-3">أفضل المنتجات ربحية ومبيعاً</h3>
             <div class="space-y-2 text-xs">
-              ${(data.topProducts || [])
-                .slice(0, 8)
-                .map(
-                  (tp) => `
-                <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-900">
-                  <span class="font-bold">${tp.name} (${tp.qty_sold})</span>
-                  <span class="font-mono font-bold text-emerald-600">ربح: ${Number(tp.profit || 0).toFixed(2)} د.ج</span>
-                </div>`
-                )
-                .join('')}
+              ${(data.topProducts || []).slice(0, 10).map((tp) => `<div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-900"><span class="font-bold">${tp.name} (${tp.qty_sold})</span><span class="font-mono font-bold text-emerald-600">ربح: ${Number(tp.profit || 0).toFixed(2)} د.ج</span></div>`).join('')}
             </div>
           </div>
-
           <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
-            <h3 class="font-black text-sm mb-3">تقييم المخزون وأعمار الديون</h3>
+            <h3 class="font-black text-sm mb-3">أفضل الزبائن مساهمة في الإيرادات</h3>
             <div class="space-y-2 text-xs">
-              <div class="flex justify-between p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900">
-                <span>قيمة المخزون بسعر التكلفة:</span>
-                <span class="font-mono font-bold">${Number(data.inventory?.cost_value || 0).toFixed(2)} د.ج</span>
-              </div>
-              <div class="flex justify-between p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900">
-                <span>قيمة المخزون بسعر البيع:</span>
-                <span class="font-mono font-bold text-blue-600">${Number(data.inventory?.sell_value || 0).toFixed(2)} د.ج</span>
-              </div>
-              <div class="flex justify-between p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900">
-                <span>إجمالي ديون الزبائن:</span>
-                <span class="font-mono font-bold text-rose-500">${Number(data.totalCustomerDebt || 0).toFixed(2)} د.ج</span>
-              </div>
-              <div class="flex justify-between p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900">
-                <span>إجمالي ديون الموردين:</span>
-                <span class="font-mono font-bold text-amber-500">${Number(data.totalSupplierDebt || 0).toFixed(2)} د.ج</span>
-              </div>
+              ${(data.topCustomers || []).slice(0, 10).map((tc) => `<div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-900"><span class="font-bold">${tc.name} (${tc.purchase_count} فاتورة)</span><span class="font-mono font-bold text-blue-600">${Number(tc.total_revenue || 0).toFixed(2)} د.ج</span></div>`).join('')}
             </div>
           </div>
-        </div>
-      </div>`;
+        </div>`;
+    } else if (tab === 'segment') {
+      const seg = (await window.api.getSegmentAnalytics({ scopeType: 'all' }).catch(() => ({}))) || {};
+      body.innerHTML = `
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h3 class="font-black text-sm">تحليلات الشرائح والفئات المتقدمة (Segment Analytics)</h3>
+            <select onchange="App.loadSegmentByCategory(this.value)" class="px-3 py-2 rounded-xl text-xs font-bold">
+              <option value="">جميع الفئات</option>
+              ${AppState.categories.map((c) => `<option value="${c}">${c}</option>`).join('')}
+            </select>
+          </div>
+          <div id="segmentAnalyticsResultBox" class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900"><div>صافي الكمية المباعة</div><div class="text-xl font-black font-mono mt-1">${Number(seg.summary?.net_qty || 0)}</div></div>
+            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900"><div>صافي إيراد الشريحة</div><div class="text-xl font-black font-mono text-blue-600 mt-1">${Number(seg.summary?.net_revenue || 0).toFixed(2)} د.ج</div></div>
+            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900"><div>صافي ربح الشريحة</div><div class="text-xl font-black font-mono text-emerald-600 mt-1">${Number(seg.summary?.profit || 0).toFixed(2)} د.ج</div></div>
+          </div>
+        </div>`;
+    } else if (tab === 'debts') {
+      const ag = data.debtAging || {};
+      body.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"><div class="text-xs text-slate-400 font-bold">ديون حديثة (0 - 30 يوماً)</div><div class="text-xl font-black font-mono text-emerald-600 mt-1">${Number(ag.bucket_0_30 || 0).toFixed(2)} د.ج</div></div>
+          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"><div class="text-xs text-slate-400 font-bold">ديون متوسطة (31 - 60 يوماً)</div><div class="text-xl font-black font-mono text-blue-600 mt-1">${Number(ag.bucket_31_60 || 0).toFixed(2)} د.ج</div></div>
+          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"><div class="text-xs text-slate-400 font-bold">ديون متأخرة (61 - 90 يوماً)</div><div class="text-xl font-black font-mono text-amber-500 mt-1">${Number(ag.bucket_61_90 || 0).toFixed(2)} د.ج</div></div>
+          <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"><div class="text-xs text-slate-400 font-bold">ديون حرجة (+90 يوماً)</div><div class="text-xl font-black font-mono text-rose-600 mt-1">${Number(ag.bucket_90_plus || 0).toFixed(2)} د.ج</div></div>
+        </div>`;
+    } else if (tab === 'inventory') {
+      body.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="p-5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"><div class="text-xs text-slate-400 font-bold">قيمة المخزون بسعر التكلفة</div><div class="text-2xl font-black font-mono mt-1">${Number(data.inventory?.cost_value || 0).toFixed(2)} د.ج</div></div>
+          <div class="p-5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"><div class="text-xs text-slate-400 font-bold">قيمة المخزون بسعر البيع</div><div class="text-2xl font-black font-mono text-blue-600 mt-1">${Number(data.inventory?.sell_value || 0).toFixed(2)} د.ج</div></div>
+          <div class="p-5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"><div class="text-xs text-slate-400 font-bold">الربح الكامن المتوقع من المخزون</div><div class="text-2xl font-black font-mono text-emerald-600 mt-1">${Number(data.inventory?.expected_profit || 0).toFixed(2)} د.ج</div></div>
+        </div>`;
+    } else if (tab === 'expenses') {
+      body.innerHTML = `
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3">
+          <h3 class="font-black text-sm">توزيع المصاريف حسب الفئة (الإجمالي: ${Number(data.totalExpenses || 0).toFixed(2)} د.ج)</h3>
+          <div class="space-y-2 text-xs">
+            ${(data.expensesByCategory || []).map((e) => `<div class="flex justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900"><span class="font-bold">${e.category}</span><span class="font-mono font-bold text-rose-500">${Number(e.total || 0).toFixed(2)} د.ج</span></div>`).join('')}
+          </div>
+        </div>`;
+    } else if (tab === 'caisse') {
+      body.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="p-5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"><div class="text-xs text-slate-400 font-bold">إجمالي النقد الداخل (Cash In)</div><div class="text-2xl font-black font-mono text-emerald-600 mt-1">${Number(data.cash_in || 0).toFixed(2)} د.ج</div></div>
+          <div class="p-5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"><div class="text-xs text-slate-400 font-bold">إجمالي النقد الخارج (Cash Out)</div><div class="text-2xl font-black font-mono text-rose-500 mt-1">${Number(data.cash_out || 0).toFixed(2)} د.ج</div></div>
+          <div class="p-5 rounded-2xl bg-blue-600 text-white"><div class="text-xs opacity-80 font-bold">صافي التدفق النقدي (Net Cash Flow)</div><div class="text-2xl font-black font-mono mt-1">${Number(data.net_cash_flow || 0).toFixed(2)} د.ج</div></div>
+        </div>`;
+    } else if (tab === 'charts') {
+      body.innerHTML = `
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <h3 class="font-black text-xs mb-2">منحنى المبيعات اليومية</h3>
+            <canvas id="dailySalesChartCanvas" height="200"></canvas>
+          </div>
+          <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <h3 class="font-black text-xs mb-2">توزيع المبيعات حسب ساعات الذروة</h3>
+            <canvas id="hourlySalesChartCanvas" height="200"></canvas>
+          </div>
+        </div>`;
+      setTimeout(() => this.drawAnalyticsCharts(data), 60);
+    } else if (tab === 'zakat') {
+      body.innerHTML = `
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 space-y-5">
+          <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
+            <div>
+              <h3 class="text-lg font-black text-emerald-600">حاسبة الزكاة الشرعية لعروض التجارة (2.5%)</h3>
+              <p class="text-xs text-slate-400">وعاء الزكاة = (السيولة النقدية + تقييم المخزون بسعر التكلفة + ديون الزبائن المرجوة) - ديون الموردين</p>
+            </div>
+            <div class="flex items-center gap-2 text-xs">
+              <label class="font-bold">سعر غرام الذهب (عيار 24 د.ج):</label>
+              <input id="zakatGoldInput" type="number" value="${goldPrice}" onchange="App.updateZakatGoldPrice(this.value)" class="w-28 px-2.5 py-1.5 rounded-xl font-mono font-bold text-center">
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900"><div>النصاب الشرعي (85غ ذهب)</div><div class="text-lg font-black font-mono mt-1">${nisabDzd.toLocaleString()} د.ج</div></div>
+            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900"><div>قيمة المخزون + النقد + ديون الزبائن</div><div class="text-lg font-black font-mono text-blue-600 mt-1">${(Number(data.inventory?.cost_value || 0) + Math.max(0, Number(data.net_cash_flow || 0)) + Number(data.totalCustomerDebt || 0)).toFixed(2)} د.ج</div></div>
+            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900"><div>وعاء الزكاة الصافي</div><div class="text-lg font-black font-mono text-indigo-600 mt-1">${zakatPool.toFixed(2)} د.ج</div></div>
+            <div class="p-4 rounded-xl bg-emerald-900 text-white"><div>مقدار الزكاة الواجب إخراجه (2.5%)</div><div class="text-2xl font-black font-mono mt-1">${zakatDue.toFixed(2)} د.ج</div></div>
+          </div>
+        </div>`;
+    }
   },
 
+  async switchAnalyticsTab(tabId) {
+    AppState.analyticsTab = tabId;
+    await this.renderAnalyticsView();
+  },
+
+  async applyAnalyticsDateRange() {
+    AppState.analyticsDateFrom = document.getElementById('anDateFrom')?.value || '';
+    AppState.analyticsDateTo = document.getElementById('anDateTo')?.value || '';
+    await this.renderAnalyticsView();
+  },
+
+  async setAnalyticsQuickRange(daysBack = 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    const from = new Date(Date.now() - daysBack * 86400000).toISOString().slice(0, 10);
+    AppState.analyticsDateFrom = from;
+    AppState.analyticsDateTo = today;
+    await this.renderAnalyticsView();
+  },
+
+  async loadSegmentByCategory(category) {
+    const seg = await window.api.getSegmentAnalytics({
+      scopeType: category ? 'category' : 'all',
+      category
+    });
+    const box = document.getElementById('segmentAnalyticsResultBox');
+    if (box && seg && seg.summary) {
+      box.innerHTML = `
+        <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900"><div>صافي الكمية المباعة</div><div class="text-xl font-black font-mono mt-1">${Number(seg.summary.net_qty || 0)}</div></div>
+        <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900"><div>صافي إيراد الشريحة</div><div class="text-xl font-black font-mono text-blue-600 mt-1">${Number(seg.summary.net_revenue || 0).toFixed(2)} د.ج</div></div>
+        <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900"><div>صافي ربح الشريحة</div><div class="text-xl font-black font-mono text-emerald-600 mt-1">${Number(seg.summary.profit || 0).toFixed(2)} د.ج</div></div>
+      `;
+    }
+  },
+
+  drawAnalyticsCharts(data = {}) {
+    if (typeof window.Chart !== 'function') return;
+    const dailyCanvas = document.getElementById('dailySalesChartCanvas');
+    const hourlyCanvas = document.getElementById('hourlySalesChartCanvas');
+
+    if (dailyCanvas) {
+      const trend = data.dailySalesTrend || [];
+      new window.Chart(dailyCanvas, {
+        type: 'line',
+        data: {
+          labels: trend.map((x) => x.date),
+          datasets: [{ label: 'المبيعات اليومية (د.ج)', data: trend.map((x) => x.revenue), borderColor: '#2563eb', tension: 0.3 }]
+        }
+      });
+    }
+
+    if (hourlyCanvas) {
+      const hrs = data.hourlySales || [];
+      new window.Chart(hourlyCanvas, {
+        type: 'bar',
+        data: {
+          labels: hrs.map((x) => `${x.hour}:00`),
+          datasets: [{ label: 'المبيعات حسب الساعة (د.ج)', data: hrs.map((x) => x.revenue), backgroundColor: '#10b981' }]
+        }
+      });
+    }
+  },
+
+  async updateZakatGoldPrice(val) {
+    AppState.settings.zakat_gold_price_per_gram = String(val || '14500');
+    await window.api.updateSettings({ zakat_gold_price_per_gram: AppState.settings.zakat_gold_price_per_gram });
+    await this.renderAnalyticsView();
+  },
+
+  // ==========================================================================
+  // 17. المساعد الذكي (Copilot)، المستخدمون، سجل الرقابة الأمنية، والإعدادات الشاملة
+  // ==========================================================================
   async renderCopilotView() {
     const root = document.getElementById('copilot-view-root');
+    if (!root) return;
     const insights = (await window.api.getAiCopilotInsights().catch(() => ({}))) || {};
     const reorders = insights.reorderSuggestions || [];
     const dead = insights.deadStock || [];
@@ -1588,111 +4020,181 @@ const App = {
             <p class="text-xs text-slate-500">تحليل ذكي محلي لسرعة دوران المخزون، توصيات الشراء اليومية، وكشف البضاعة الراكدة</p>
           </div>
         </div>
-
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
             <h3 class="font-black text-sm text-emerald-600 mb-3">🚀 توصيات إعادة الطلب العاجلة (بناءً على سرعة السحب)</h3>
             <div class="space-y-2 text-xs">
-              ${
-                reorders.length === 0
-                  ? '<div class="text-slate-400 py-6 text-center">جميع المنتجات السريعة متوفرة بكميات كافية</div>'
-                  : reorders
-                      .map(
-                        (r) => `
-                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 flex justify-between">
-                      <div>
-                        <div class="font-bold">${r.name}</div>
-                        <div class="text-[10px] text-slate-400">معدل البيع اليومي: ${r.daily_velocity}</div>
-                      </div>
-                      <span class="font-mono font-bold text-rose-500">يكفي ${r.days_of_supply} يوم</span>
-                    </div>`
-                      )
-                      .join('')
-              }
+              ${reorders.length === 0 ? '<div class="text-slate-400 py-6 text-center">جميع المنتجات السريعة متوفرة بكميات كافية</div>' : reorders.map((r) => `<div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 flex justify-between"><div><div class="font-bold">${r.name}</div><div class="text-[10px] text-slate-400">معدل البيع اليومي: ${r.daily_velocity}</div></div><span class="font-mono font-bold text-rose-500">يكفي ${r.days_of_supply} يوم</span></div>`).join('')}
             </div>
           </div>
-
           <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
             <h3 class="font-black text-sm text-amber-500 mb-3">⚠️ تنبيهات البضاعة الراكدة (لم تُبع منذ 30 يوماً)</h3>
             <div class="space-y-2 text-xs">
-              ${
-                dead.length === 0
-                  ? '<div class="text-slate-400 py-6 text-center">لا توجد بضاعة راكدة حالياً</div>'
-                  : dead
-                      .map(
-                        (d) => `
-                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 flex justify-between">
-                      <span class="font-bold">${d.name} (الرصيد: ${d.stock_qty})</span>
-                      <span class="font-mono font-bold text-amber-500">رأس مال مجمد: ${Number(d.tied_capital || 0).toFixed(2)} د.ج</span>
-                    </div>`
-                      )
-                      .join('')
-              }
+              ${dead.length === 0 ? '<div class="text-slate-400 py-6 text-center">لا توجد بضاعة راكدة حالياً</div>' : dead.map((d) => `<div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 flex justify-between"><span class="font-bold">${d.name} (الرصيد: ${d.stock_qty})</span><span class="font-mono font-bold text-amber-500">رأس مال مجمد: ${Number(d.tied_capital || 0).toFixed(2)} د.ج</span></div>`).join('')}
             </div>
           </div>
         </div>
       </div>`;
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
   },
 
   async renderUsersView() {
     const root = document.getElementById('users-view-root');
-    const users = (await window.api.getUsers().catch(() => [])) || [];
+    if (!root) return;
+    const [users, logs] = await Promise.all([
+      window.api.getUsers().catch(() => []),
+      window.api.getAuditLogs().catch(() => [])
+    ]);
+
     root.innerHTML = `
-      <div class="space-y-4">
+      <div class="space-y-6">
         <div class="flex items-center justify-between">
-          <h2 class="text-2xl font-black">إدارة المستخدمين والصلاحيات (${users.length})</h2>
-          <button onclick="App.addUserPrompt()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">+ إضافة مستخدم</button>
+          <div>
+            <h2 class="text-2xl font-black">إدارة المستخدمين، الصلاحيات، وسجل الرقابة الأمنية</h2>
+            <p class="text-xs text-slate-500">إدارة حسابات الكاشير ومراقبة أي حذف سطور من السلة أو تخفيض أسعار أو فتح درج النقود</p>
+          </div>
+          <button onclick="App.openUserModal()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">+ إضافة مستخدم</button>
         </div>
-        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
-          <table class="w-full text-xs text-right">
-            <thead>
-              <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
-                <th class="py-2">الاسم</th>
-                <th class="py-2">اسم الدخول</th>
-                <th class="py-2">الدور</th>
-                <th class="py-2">الحالة</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
-              ${users.map((u) => `<tr><td class="py-2.5 font-bold">${u.name}</td><td class="py-2.5 font-mono">${u.username}</td><td class="py-2.5">${u.role}</td><td class="py-2.5 text-emerald-600 font-bold">${u.status}</td></tr>`).join('')}
-            </tbody>
-          </table>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <h3 class="font-black text-sm mb-3">المستخدمون (${users.length})</h3>
+            <table class="w-full text-xs text-right">
+              <thead>
+                <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                  <th class="py-2">الاسم</th>
+                  <th class="py-2">اسم الدخول</th>
+                  <th class="py-2">الدور</th>
+                  <th class="py-2">إجراء</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+                ${users
+                  .map(
+                    (u) => `
+                  <tr>
+                    <td class="py-2.5 font-bold">${u.name}</td>
+                    <td class="py-2.5 font-mono">${u.username}</td>
+                    <td class="py-2.5">${u.role}</td>
+                    <td class="py-2.5 flex gap-1.5">
+                      <button onclick='App.openUserModal(${JSON.stringify(u).replace(/'/g, "&apos;")})' class="px-2 py-1 bg-blue-500/10 text-blue-600 rounded font-bold">تعديل</button>
+                    </td>
+                  </tr>`
+                  )
+                  .join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <h3 class="font-black text-sm text-amber-500 mb-3">🛡️ آخر أحداث الرقابة الأمنية للكاشير (${logs.length})</h3>
+            <div class="space-y-1.5 text-xs max-h-80 overflow-y-auto">
+              ${
+                logs.length === 0
+                  ? '<div class="py-8 text-center text-slate-400">لا توجد أحداث رقابية مسجلة بعد</div>'
+                  : logs
+                      .slice(0, 30)
+                      .map(
+                        (l) => `
+                    <div class="p-2 rounded-xl bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
+                      <div>
+                        <span class="font-bold text-amber-600">${l.action_type}</span>
+                        <span class="text-slate-400 mr-1">(${l.user_name || 'Cashier'})</span>
+                        <div class="text-[10px] text-slate-500 font-mono">${l.details_json || ''}</div>
+                      </div>
+                      <span class="font-mono text-[10px] text-slate-400">${String(l.created_at || '').slice(0, 16)}</span>
+                    </div>`
+                      )
+                      .join('')
+              }
+            </div>
+          </div>
         </div>
       </div>`;
   },
 
-  async addUserPrompt() {
-    const name = prompt('اسم الموظف / الكاشير:');
-    if (!name) return;
-    const username = prompt('اسم المستخدم للدخول:', name);
-    const password = prompt('كلمة المرور:', '1234') || '1234';
-    await window.api.addUser({ name, username, password, role: 'Cashier' });
+  openUserModal(u = null) {
+    document.getElementById('usrIdInput').value = u ? u.id : '';
+    document.getElementById('usrNameInput').value = u ? u.name || '' : '';
+    document.getElementById('usrUsernameInput').value = u ? u.username || '' : '';
+    document.getElementById('usrPasswordInput').value = '';
+    document.getElementById('usrRoleSelect').value = u ? u.role || 'Cashier' : 'Cashier';
+    this.openModal('userModal');
+  },
+
+  async confirmSaveUser() {
+    const id = document.getElementById('usrIdInput').value;
+    const payload = {
+      name: document.getElementById('usrNameInput').value.trim(),
+      username: document.getElementById('usrUsernameInput').value.trim(),
+      password: document.getElementById('usrPasswordInput').value,
+      role: document.getElementById('usrRoleSelect').value || 'Cashier'
+    };
+    if (!payload.name || !payload.username) return;
+
+    if (id) await window.api.updateUser(Number(id), payload);
+    else await window.api.addUser(payload);
+
+    this.closeModal('userModal');
     await this.renderUsersView();
+    showToast('تم حفظ بيانات المستخدم بنجاح', 'success');
+  },
+
+  async confirmUpdateOwnAccount() {
+    const username = document.getElementById('accUsernameInput').value.trim();
+    const newPass = document.getElementById('accNewPassInput').value;
+    if (!username) return;
+    await window.api.updateAccount(AppState.currentUser.id, username, '', newPass);
+    this.closeModal('accountModal');
+    showToast('تم تحديث بيانات الحساب الشخصي بنجاح', 'success');
+  },
+
+  async openAuditLogsModal() {
+    const logs = (await window.api.getAuditLogs().catch(() => [])) || [];
+    const body = document.getElementById('auditLogModalBody');
+    if (body) {
+      body.innerHTML =
+        logs.length === 0
+          ? `<div class="py-10 text-center text-slate-400 font-bold">سجل الرقابة نظيف — لا توجد عمليات حذف من السلة أو تخفيض أسعار مشبوهة</div>`
+          : `<table class="w-full text-xs text-right">
+              <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-2">التوقيت</th><th class="py-2">المستخدم</th><th class="py-2">نوع العملية</th><th class="py-2">التفاصيل</th></tr></thead>
+              <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+                ${logs.map((l) => `<tr><td class="py-2 font-mono">${String(l.created_at || '').slice(0, 19)}</td><td class="py-2 font-bold">${l.user_name || ''}</td><td class="py-2 font-bold text-amber-600">${l.action_type}</td><td class="py-2 font-mono text-[11px]">${l.details_json || ''}</td></tr>`).join('')}
+              </tbody>
+            </table>`;
+    }
+    this.openModal('auditLogModal');
   },
 
   async renderSettingsView() {
     const root = document.getElementById('settings-view-root');
-    const [settings, localIp, qrDataUrl] = await Promise.all([
+    if (!root) return;
+    const [settings, localIp, qrDataUrl, printers, comPorts] = await Promise.all([
       window.api.getSettings().catch(() => ({})),
       window.api.getLocalIp().catch(() => '127.0.0.1'),
-      window.api.pairingQrDataUrl().catch(() => '')
+      window.api.pairingQrDataUrl().catch(() => ''),
+      window.api.getPrinters().catch(() => []),
+      window.api.listComPorts().catch(() => [])
     ]);
     AppState.settings = settings;
 
     root.innerHTML = `
       <div class="space-y-6">
-        <div class="flex items-center justify-between">
-          <h2 class="text-2xl font-black">إعدادات المتجر، الشبكة المحلية، والنسخ الاحتياطي</h2>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-2xl font-black">إعدادات المتجر، الطباعة، الميزان الإلكتروني، والشبكة المحلية</h2>
+            <p class="text-xs text-slate-500">تخصيص الهوية الجبائية، قوالب الطباعة، منافذ الميزان، والنسخ الاحتياطي</p>
+          </div>
           <div class="flex gap-2">
             <button onclick="window.api.exportDatabaseBackup()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold">حفظ نسخة احتياطية (ZIP)</button>
             <button onclick="window.api.importDatabaseBackup()" class="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold">استعادة نسخة احتياطية</button>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div class="md:col-span-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-4 text-xs">
-            <h3 class="font-black text-sm">معلومات المتجر والبيانات الجبائية (تظهر في الفواتير)</h3>
-            <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-4 text-xs">
+            <h3 class="font-black text-sm">معلومات المتجر، الهوية الجبائية، والطباعة</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div><label class="block font-bold mb-1">اسم المتجر / المؤسسة</label><input id="set-shop-name" value="${settings.shop_name || ''}" class="w-full px-3 py-2 rounded-xl font-bold"></div>
               <div><label class="block font-bold mb-1">النشاط / الوصف</label><input id="set-shop-desc" value="${settings.shop_description || ''}" class="w-full px-3 py-2 rounded-xl"></div>
               <div><label class="block font-bold mb-1">العنوان</label><input id="set-shop-addr" value="${settings.shop_address || ''}" class="w-full px-3 py-2 rounded-xl"></div>
@@ -1701,15 +4203,44 @@ const App = {
               <div><label class="block font-bold mb-1">الرقم الجبائي (NIF)</label><input id="set-shop-nif" value="${settings.shop_nif || ''}" class="w-full px-3 py-2 rounded-xl font-mono"></div>
               <div><label class="block font-bold mb-1">مادة الضريبة (AI)</label><input id="set-shop-ai" value="${settings.shop_ai || ''}" class="w-full px-3 py-2 rounded-xl font-mono"></div>
               <div><label class="block font-bold mb-1">الرقم الإحصائي (NIS)</label><input id="set-shop-nis" value="${settings.shop_nis || ''}" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+              <div><label class="block font-bold mb-1">حساب BaridiMob / RIP (لشاشة الزبون)</label><input id="set-shop-rip" value="${settings.shop_baridimob_rip || ''}" placeholder="00799999..." class="w-full px-3 py-2 rounded-xl font-mono"></div>
+              <div>
+                <label class="block font-bold mb-1">قالب الفاتورة الافتراضي</label>
+                <select id="set-inv-tpl" class="w-full px-3 py-2 rounded-xl font-bold">
+                  ${['template1', 'template2', 'template3', 'template4', 'template5', 'template6', 'template7', 'template8', 'template9', 'a5', 'detailed', 'thermal80']
+                    .map((k) => `<option value="${k}" ${settings.invoice_template === k ? 'selected' : ''}>${k}</option>`)
+                    .join('')}
+                </select>
+              </div>
+              <div>
+                <label class="block font-bold mb-1">منفذ الميزان الإلكتروني (COM Port)</label>
+                <select id="set-scale-port" class="w-full px-3 py-2 rounded-xl font-mono">
+                  <option value="">غير متصل</option>
+                  ${comPorts.map((cp) => `<option value="${cp.path}" ${settings.usb_scale_port === cp.path ? 'selected' : ''}>${cp.path} (${cp.manufacturer || 'Serial'})</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="block font-bold mb-1">وضع الشبكة المحلية (LAN Multi-POS)</label>
+                <select id="set-net-mode" class="w-full px-3 py-2 rounded-xl font-bold">
+                  <option value="server" ${settings.network_mode !== 'client' ? 'selected' : ''}>خادم رئيسي (Server Master)</option>
+                  <option value="client" ${settings.network_mode === 'client' ? 'selected' : ''}>كاشير فرعي (LAN Client)</option>
+                </select>
+              </div>
             </div>
-            <button onclick="App.saveSettingsForm()" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold">حفظ الإعدادات</button>
+            <div class="flex gap-2 pt-2">
+              <button onclick="App.saveSettingsForm()" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold shadow">حفظ كافة الإعدادات</button>
+              <button onclick="App.testScaleConnection()" class="px-4 py-2.5 bg-emerald-600/15 text-emerald-600 rounded-xl font-bold">تشغيل / فحص الميزان</button>
+            </div>
           </div>
 
           <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 text-center space-y-3">
-            <h3 class="font-black text-sm">الشبكة المحلية واقتران الهاتف</h3>
+            <h3 class="font-black text-sm">الشبكة المحلية واقتران تطبيق الهاتف</h3>
             <div class="text-xs text-slate-400">عنوان الخادم المحلي: <strong class="font-mono text-blue-500">http://${localIp}:8080</strong></div>
             ${qrDataUrl ? `<img src="${qrDataUrl}" class="w-44 h-44 mx-auto rounded-xl border border-slate-200 p-2 bg-white">` : ''}
-            <p class="text-[11px] text-slate-400">امسح الرمز لربط تطبيق الهاتف أو الكاشير الفرعي على نفس شبكة Wi-Fi</p>
+            <p class="text-[11px] text-slate-400">امسح رمز الاستجابة السريعة لربط تطبيق الهاتف أو الكاشير الفرعي على نفس شبكة Wi-Fi</p>
+            <div class="text-[11px] text-slate-500 pt-2 border-t border-slate-200 dark:border-slate-700">
+              الطابعات المكتشفة على النظام: <strong>${printers.length} طابعة</strong>
+            </div>
           </div>
         </div>
       </div>`;
@@ -1724,11 +4255,25 @@ const App = {
       shop_rc: document.getElementById('set-shop-rc').value.trim(),
       shop_nif: document.getElementById('set-shop-nif').value.trim(),
       shop_ai: document.getElementById('set-shop-ai').value.trim(),
-      shop_nis: document.getElementById('set-shop-nis').value.trim()
+      shop_nis: document.getElementById('set-shop-nis').value.trim(),
+      shop_baridimob_rip: document.getElementById('set-shop-rip').value.trim(),
+      invoice_template: document.getElementById('set-inv-tpl').value,
+      usb_scale_port: document.getElementById('set-scale-port').value,
+      network_mode: document.getElementById('set-net-mode').value
     };
     await window.api.updateSettings(updated);
     AppState.settings = { ...AppState.settings, ...updated };
-    showToast('تم حفظ إعدادات المتجر بنجاح', 'success');
+    showToast('تم حفظ جميع إعدادات المتجر بنجاح', 'success');
+  },
+
+  async testScaleConnection() {
+    const port = document.getElementById('set-scale-port')?.value;
+    if (!port) {
+      showToast('يرجى اختيار منفذ الميزان (COM Port) أولاً', 'warning');
+      return;
+    }
+    await window.api.scale.start({ port, baud: 9600, protocol: 'auto' });
+    showToast(`تم بدء الاتصال بالميزان على المنفذ ${port}`, 'info');
   }
 };
 

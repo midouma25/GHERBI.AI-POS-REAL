@@ -1,6 +1,7 @@
 /**
  * database.js
- * المخطط الشامل لقاعدة بيانات Gherbi.Ai POS (42 جدولاً، فهارس الأداء، ومشغلات المزامنة والمخزون)
+ * المخطط الشامل لقاعدة بيانات Gherbi.Ai POS (46 جدولاً، فهارس الأداء، مشغلات المزامنة والمخزون،
+ * القاموس الجزائري لباركود 613، نظام البيع بالتقسيط، وسجل الرقابة الأمنية للكاشير)
  */
 
 'use strict';
@@ -78,7 +79,10 @@ const SYNCED_TABLES = [
   'stocktake_items',
   'users',
   'shop_info',
-  'custom_templates'
+  'custom_templates',
+  'installment_plans',
+  'installment_schedules',
+  'audit_logs'
 ];
 
 const DEFAULT_SETTINGS = {
@@ -93,6 +97,8 @@ const DEFAULT_SETTINGS = {
   shop_ai: '',
   shop_nis: '',
   shop_logo: '',
+  shop_ccp: '',
+  shop_baridimob_rip: '',
   app_lang: 'ar',
   receipt_lang: 'ar',
   invoice_template: 'template1',
@@ -100,6 +106,9 @@ const DEFAULT_SETTINGS = {
   receipt_paper_width_mm: '80',
   silent_print: 'false',
   show_receipt_barcode: 'true',
+  pos_card_size: 'medium',
+  pos_show_images: 'true',
+  pos_page_size: '24',
   network_scope: 'local',
   network_mode: 'server',
   server_ip: '192.168.1.15',
@@ -166,6 +175,7 @@ const DEFAULT_SETTINGS = {
   usb_scale_zero_cmd: 'Z\\r\\n',
   loyalty_enabled: 'true',
   loyalty_points_per_100_dzd: '1',
+  zakat_gold_price_per_gram: '14500',
   ai_copilot_enabled: 'true',
   gemini_api_key: ''
 };
@@ -175,13 +185,52 @@ const DEFAULT_DOCUMENT_COUNTERS = [
   { doc_type: 'proforma', prefix_format: 'PRO-{YYYY}-{0000}' },
   { doc_type: 'order', prefix_format: 'BC-{YYYY}-{0000}' },
   { doc_type: 'delivery', prefix_format: 'BL-{YYYY}-{0000}' },
+  { doc_type: 'reception', prefix_format: 'BR-{YYYY}-{0000}' },
   { doc_type: 'payment_receipt', prefix_format: 'REC-{YYYY}-{0000}' },
   { doc_type: 'avoir', prefix_format: 'AV-{YYYY}-{0000}' },
   { doc_type: 'recap', prefix_format: 'FR-{YYYY}-{0000}' },
   { doc_type: 'sales_summary', prefix_format: 'RM-{YYYY}-{0000}' },
   { doc_type: 'supplier_return', prefix_format: 'RF-{YYYY}-{0000}' },
   { doc_type: 'production', prefix_format: 'PRD-{YYYY}-{0000}' },
-  { doc_type: 'stocktake', prefix_format: 'INV-{YYYY}-{0000}' }
+  { doc_type: 'stocktake', prefix_format: 'INV-{YYYY}-{0000}' },
+  { doc_type: 'warranty', prefix_format: 'GAR-{YYYY}-{0000}' }
+];
+
+/**
+ * القاموس الجزائري المدمج للمنتجات كثيرة الدوران (بادئة 613) للتعرف الفوري بدون إنترنت
+ */
+const DEFAULT_DZ_DICTIONARY = [
+  { barcode: '6130001000012', name: 'زيت مائدة إيليو 5 لتر (Elio)', category: 'مواد غذائية', brand: 'Cevital', unit: 'قارورة', suggested_price: 650 },
+  { barcode: '6130001000029', name: 'زيت مائدة إيليو 2 لتر (Elio)', category: 'مواد غذائية', brand: 'Cevital', unit: 'قارورة', suggested_price: 270 },
+  { barcode: '6130001000036', name: 'زيت مائدة فلوريال 1 لتر (Fleurial)', category: 'مواد غذائية', brand: 'Cevital', unit: 'قارورة', suggested_price: 140 },
+  { barcode: '6130001000043', name: 'سكر أبيض سيفيتال 1 كغ (Scor)', category: 'مواد غذائية', brand: 'Cevital', unit: 'كيس', suggested_price: 105 },
+  { barcode: '6130001000050', name: 'سمن نباتي مدينة 500غ (Medina)', category: 'مواد غذائية', brand: 'Cevital', unit: 'علبة', suggested_price: 240 },
+  { barcode: '6130001000067', name: 'مارغارين فلوريال 250غ', category: 'مواد غذائية', brand: 'Cevital', unit: 'علبة', suggested_price: 120 },
+  { barcode: '6130002000011', name: 'حليب كانديا نصف دسم 1 لتر (Candia)', category: 'أجبان وألبان', brand: 'Tchin-Lait', unit: 'علبة', suggested_price: 150 },
+  { barcode: '6130002000028', name: 'حليب بالشوكولاتة كاندي شوكو 200 مل', category: 'أجبان وألبان', brand: 'Tchin-Lait', unit: 'علبة', suggested_price: 55 },
+  { barcode: '6130002000035', name: 'حليب مجفف لويا 500غ (Loya)', category: 'أجبان وألبان', brand: 'Loya', unit: 'علبة', suggested_price: 510 },
+  { barcode: '6130003000010', name: 'ياغورت الصومام أكتيفيا 110غ', category: 'أجبان وألبان', brand: 'Soummam', unit: 'علبة', suggested_price: 35 },
+  { barcode: '6130003000027', name: 'ياغورت الصومام فواكه ممزوج 90غ', category: 'أجبان وألبان', brand: 'Soummam', unit: 'علبة', suggested_price: 25 },
+  { barcode: '6130003000034', name: 'جبن طري شيدر الصومام 16 قطعة', category: 'أجبان وألبان', brand: 'Soummam', unit: 'علبة', suggested_price: 210 },
+  { barcode: '6130004000019', name: 'مشروب غازي حمود بوعلام أبيض 1 لتر (Selecto/la Blanche)', category: 'مشروبات وقهوة', brand: 'Hamoud Boualem', unit: 'قارورة', suggested_price: 110 },
+  { barcode: '6130004000026', name: 'مشروب غازي سيليكتو 2 لتر (Selecto)', category: 'مشروبات وقهوة', brand: 'Hamoud Boualem', unit: 'قارورة', suggested_price: 170 },
+  { barcode: '6130004000033', name: 'مشروب غازي كراش برتقال 1 لتر (Crush)', category: 'مشروبات وقهوة', brand: 'Hamoud Boualem', unit: 'قارورة', suggested_price: 110 },
+  { barcode: '6130005000018', name: 'ماء معدني إيفري 1.5 لتر (Ifri)', category: 'مشروبات وقهوة', brand: 'Ifri', unit: 'قارورة', suggested_price: 45 },
+  { barcode: '6130005000025', name: 'ماء معدني سعيدة 1.5 لتر (Saida)', category: 'مشروبات وقهوة', brand: 'Saida', unit: 'قارورة', suggested_price: 45 },
+  { barcode: '6130005000032', name: 'عصير رويبة ممتاز 1 لتر (Rouiba)', category: 'مشروبات وقهوة', brand: 'Rouiba', unit: 'علبة', suggested_price: 160 },
+  { barcode: '6130006000017', name: 'قهوة مطحونة بونال 250غ (Bonal)', category: 'مشروبات وقهوة', brand: 'Bonal', unit: 'علبة', suggested_price: 320 },
+  { barcode: '6130006000024', name: 'قهوة مطحونة فاكتو 250غ (Facto)', category: 'مشروبات وقهوة', brand: 'Facto', unit: 'علبة', suggested_price: 310 },
+  { barcode: '6130007000016', name: 'بسكويت بيمو 250غ (Bimo Galette)', category: 'بسكويت وحلويات', brand: 'Bimo', unit: 'علبة', suggested_price: 120 },
+  { barcode: '6130007000023', name: 'بسكويت ماكسون محشو شوكولاتة (Maxon)', category: 'بسكويت وحلويات', brand: 'Palmary', unit: 'علبة', suggested_price: 90 },
+  { barcode: '6130007000030', name: 'شوكولاتة الطلاء ماكسون 350غ', category: 'بسكويت وحلويات', brand: 'Palmary', unit: 'علبة', suggested_price: 350 },
+  { barcode: '6130008000015', name: 'عجائن سباغيتي سيم 500غ (Sim)', category: 'مواد غذائية', brand: 'Sim', unit: 'كيس', suggested_price: 85 },
+  { barcode: '6130008000022', name: 'كسكس ماما رقيق 1 كغ (Mama)', category: 'مواد غذائية', brand: 'Mama', unit: 'كيس', suggested_price: 160 },
+  { barcode: '6130008000039', name: 'فرينة ممتازة ماما 1 كغ', category: 'مواد غذائية', brand: 'Mama', unit: 'كيس', suggested_price: 75 },
+  { barcode: '6130009000014', name: 'طماطم مصبرة عمر بن عمر 800غ (CAB)', category: 'مصبرات وتوابل', brand: 'Benamor', unit: 'علبة', suggested_price: 290 },
+  { barcode: '6130009000021', name: 'هريسة عمر بن عمر 135غ', category: 'مصبرات وتوابل', brand: 'Benamor', unit: 'علبة', suggested_price: 75 },
+  { barcode: '6130009000038', name: 'تونة بالزيت ريكامار 80غ', category: 'مصبرات وتوابل', brand: 'Ricamar', unit: 'علبة', suggested_price: 145 },
+  { barcode: '6130010000010', name: 'مسحوق غسيل إيزيس 750غ (Isis)', category: 'مواد تنظيف', brand: 'Henkel DZ', unit: 'علبة', suggested_price: 260 },
+  { barcode: '6130010000027', name: 'سائل غسيل الأواني إيزيس 750 مل', category: 'مواد تنظيف', brand: 'Henkel DZ', unit: 'قارورة', suggested_price: 155 }
 ];
 
 function safeAddColumn(table, columnDef) {
@@ -340,7 +389,7 @@ function initializeDatabase() {
     db._rawRun('PRAGMA temp_store = MEMORY');
     db._rawRun('PRAGMA cache_size = -32000');
 
-    // 1. الإعدادات ومعلومات المتجر والمستخدمين
+    // 1. الإعدادات، معلومات المتجر، والمستخدمين
     db._rawRun(`
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
@@ -397,7 +446,7 @@ function initializeDatabase() {
       )
     `);
 
-    // 2. المنتجات، الباركودات الإضافية، مستويات الأسعار، المتغيرات، والأرقام التسلسلية
+    // 2. المنتجات، الباركودات، مستويات الأسعار، المتغيرات، والأرقام التسلسلية
     db._rawRun(`
       CREATE TABLE IF NOT EXISTS products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -419,6 +468,7 @@ function initializeDatabase() {
         is_featured INTEGER DEFAULT 0,
         material_role TEXT,
         track_serial INTEGER DEFAULT 0,
+        warranty_months INTEGER DEFAULT 0,
         hide_from_pos INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         uuid TEXT,
@@ -429,6 +479,7 @@ function initializeDatabase() {
         dirty INTEGER DEFAULT 1
       )
     `);
+    safeAddColumn('products', 'warranty_months INTEGER DEFAULT 0');
 
     db._rawRun(`
       CREATE TABLE IF NOT EXISTS product_barcodes (
@@ -878,6 +929,7 @@ function initializeDatabase() {
         session_id INTEGER,
         stamp_amount REAL DEFAULT 0,
         payment_method TEXT DEFAULT 'cash',
+        split_payments_json TEXT,
         credit_note_number TEXT,
         credit_note_issued_at TEXT,
         original_sale_id INTEGER,
@@ -894,6 +946,7 @@ function initializeDatabase() {
         FOREIGN KEY (customer_id) REFERENCES customers(id)
       )
     `);
+    safeAddColumn('sales', 'split_payments_json TEXT');
 
     db._rawRun(`
       CREATE TABLE IF NOT EXISTS sale_items (
@@ -910,6 +963,7 @@ function initializeDatabase() {
         custom_product_name TEXT,
         custom_cost_price REAL,
         serial_number TEXT,
+        warranty_months INTEGER DEFAULT 0,
         sold_without_stock INTEGER DEFAULT 0,
         uuid TEXT,
         updated_at TEXT,
@@ -922,6 +976,7 @@ function initializeDatabase() {
         FOREIGN KEY (batch_id) REFERENCES inventory_batches(id)
       )
     `);
+    safeAddColumn('sale_items', 'warranty_months INTEGER DEFAULT 0');
 
     db._rawRun(`
       CREATE TABLE IF NOT EXISTS sale_payments (
@@ -1288,7 +1343,92 @@ function initializeDatabase() {
       )
     `);
 
-    // 8. القوالب المخصصة، عدادات المستندات، سجلات الطباعة، المزامنة، والمساعد الذكي
+    // 8. الجداول الحصرية للسوق الجزائري (الأقساط، سجل الرقابة، والقاموس الوطني 613)
+    db._rawRun(`
+      CREATE TABLE IF NOT EXISTS installment_plans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sale_id INTEGER,
+        customer_id INTEGER NOT NULL,
+        total_amount REAL NOT NULL DEFAULT 0,
+        down_payment REAL NOT NULL DEFAULT 0,
+        remaining_amount REAL NOT NULL DEFAULT 0,
+        months_count INTEGER NOT NULL DEFAULT 3,
+        monthly_amount REAL NOT NULL DEFAULT 0,
+        start_date TEXT NOT NULL,
+        status TEXT DEFAULT 'active',
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        uuid TEXT,
+        updated_at TEXT,
+        deleted_at TEXT,
+        origin_device TEXT,
+        server_rev INTEGER,
+        dirty INTEGER DEFAULT 1,
+        FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+      )
+    `);
+
+    db._rawRun(`
+      CREATE TABLE IF NOT EXISTS installment_schedules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        plan_id INTEGER NOT NULL,
+        installment_num INTEGER NOT NULL,
+        due_date TEXT NOT NULL,
+        amount REAL NOT NULL DEFAULT 0,
+        paid_amount REAL NOT NULL DEFAULT 0,
+        status TEXT DEFAULT 'pending',
+        paid_at TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        uuid TEXT,
+        updated_at TEXT,
+        deleted_at TEXT,
+        origin_device TEXT,
+        server_rev INTEGER,
+        dirty INTEGER DEFAULT 1,
+        FOREIGN KEY (plan_id) REFERENCES installment_plans(id) ON DELETE CASCADE
+      )
+    `);
+
+    db._rawRun(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        user_name TEXT,
+        action_type TEXT NOT NULL,
+        target_type TEXT,
+        target_id INTEGER,
+        details_json TEXT,
+        severity TEXT DEFAULT 'info',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        uuid TEXT,
+        updated_at TEXT,
+        deleted_at TEXT,
+        origin_device TEXT,
+        server_rev INTEGER,
+        dirty INTEGER DEFAULT 1
+      )
+    `);
+
+    db._rawRun(`
+      CREATE TABLE IF NOT EXISTS dz_product_dictionary (
+        barcode TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT DEFAULT 'عام',
+        brand TEXT,
+        unit TEXT DEFAULT 'قطعة',
+        suggested_price REAL DEFAULT 0
+      )
+    `);
+
+    const dzStmt = db._rawPrepare(
+      'INSERT OR IGNORE INTO dz_product_dictionary (barcode, name, category, brand, unit, suggested_price) VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    for (const item of DEFAULT_DZ_DICTIONARY) {
+      dzStmt.run(item.barcode, item.name, item.category, item.brand, item.unit, item.suggested_price);
+    }
+    dzStmt.finalize();
+
+    // 9. القوالب المخصصة، عدادات المستندات، سجلات الطباعة، والمزامنة
     db._rawRun(`
       CREATE TABLE IF NOT EXISTS custom_templates (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1435,7 +1575,7 @@ function initializeDatabase() {
       )
     `);
 
-    // 9. إنشاء الفهارس الشاملة
+    // 10. إنشاء الفهارس الشاملة
     const indexes = [
       'CREATE INDEX IF NOT EXISTS idx_products_name ON products(name)',
       'CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)',
@@ -1464,7 +1604,10 @@ function initializeDatabase() {
       'CREATE INDEX IF NOT EXISTS idx_sale_items_product ON sale_items(product_id)',
       'CREATE INDEX IF NOT EXISTS idx_sale_payments_date ON sale_payments(date)',
       'CREATE INDEX IF NOT EXISTS idx_caisse_sessions_status ON caisse_sessions(status)',
-      'CREATE INDEX IF NOT EXISTS idx_caisse_transactions_session ON caisse_transactions(session_id)'
+      'CREATE INDEX IF NOT EXISTS idx_caisse_transactions_session ON caisse_transactions(session_id)',
+      'CREATE INDEX IF NOT EXISTS idx_installment_plans_cust ON installment_plans(customer_id, status)',
+      'CREATE INDEX IF NOT EXISTS idx_installment_sched_due ON installment_schedules(due_date, status)',
+      'CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at)'
     ];
 
     for (const sql of indexes) {
@@ -1489,6 +1632,7 @@ db.dbPath = dbPath;
 db.SYNCED_TABLES = SYNCED_TABLES;
 db.DEFAULT_SETTINGS = DEFAULT_SETTINGS;
 db.DEFAULT_DOCUMENT_COUNTERS = DEFAULT_DOCUMENT_COUNTERS;
+db.DEFAULT_DZ_DICTIONARY = DEFAULT_DZ_DICTIONARY;
 db.tombstoneOrphans = tombstoneOrphans;
 db.safeAddColumn = safeAddColumn;
 db.dataRevisionTracker = dataRevisionTracker;
