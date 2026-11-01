@@ -2,13 +2,16 @@
 
 ```text
 GHERBI.AI POS REAL/
+    ├── Lumina_DZ_Products.csv
     ├── build-structure.js
+    ├── extract_code.py
     ├── project_structuregherbiaiposCLEAN.md
     ├── project_structuregherbiaiposCLEANnew.md
     ├── project_structuregherbiaiposCLEANnew1.md
     ├── project_structuregherbiaiposCLEANnew2.md
 ├── Gherbi_Ai_POS_Clean/
     ├── Inventory_products.xlsx
+    ├── Lumina_DZ_Products.csv
     ├── activation.html
     ├── analytics-queries.js
     ├── api-client.js
@@ -112,6 +115,8 @@ GHERBI.AI POS REAL/
             ├── translations.js
     ├── data/
         ├── gherbi_ai_pos.db
+        ├── gherbi_ai_pos.db-shm
+        ├── gherbi_ai_pos.db-wal
     ├── manufacturing/
         ├── manufacturing-ui.js
         ├── manufacturing.js
@@ -291,6 +296,203 @@ buildProjectStructure();
 
 ---
 
+## `extract_code.py`
+
+```python
+import os
+
+# ==============================
+# الإعدادات
+# ==============================
+
+OUTPUT_FILE = "project_structuregherbiaiposCLEANnew2.md"
+MAX_DEPTH = 3                 # أقصى عمق للشجرة
+MAX_FILE_SIZE = 200 * 1024    # 200KB
+
+IGNORE_DIRS = {
+    ".git",
+    ".github",
+    ".idea",
+    ".vscode",
+    "node_modules",
+    "fet-engine",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "env",
+    "build",
+    "dist",
+    "release",
+    "out",
+    "target",
+    "bin",
+    "obj",
+    "coverage",
+    ".next"
+}
+
+IGNORE_FILES = {
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    ".gitignore",
+    ".DS_Store",
+    "Thumbs.db"
+}
+
+IGNORE_EXTENSIONS = {
+    ".png", ".jpg", ".jpeg", ".gif",
+    ".svg", ".ico",
+    ".pdf",
+    ".zip", ".rar", ".7z",
+    ".mp3", ".mp4", ".wav",
+    ".exe", ".dll",
+    ".pyc",
+    ".log"
+}
+
+CODE_EXTENSIONS = {
+    ".py",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".json",
+    ".css",
+    ".html",
+    ".md",
+    ".sql"
+}
+
+
+def language(ext):
+    ext = ext.lower()
+
+    if ext == ".py":
+        return "python"
+
+    if ext in [".js", ".jsx"]:
+        return "javascript"
+
+    if ext in [".ts", ".tsx"]:
+        return "typescript"
+
+    if ext == ".css":
+        return "css"
+
+    if ext == ".html":
+        return "html"
+
+    if ext == ".json":
+        return "json"
+
+    if ext == ".sql":
+        return "sql"
+
+    if ext == ".md":
+        return "markdown"
+
+    return "text"
+
+
+def generate(directory):
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+
+        ##################################################
+        # Project Tree
+        ##################################################
+
+        f.write("# Project Structure\n\n")
+        f.write("```text\n")
+
+        for root, dirs, files in os.walk(directory):
+
+            dirs[:] = sorted([d for d in dirs if d not in IGNORE_DIRS])
+
+            level = os.path.relpath(root, directory).count(os.sep)
+
+            if level > MAX_DEPTH:
+                dirs.clear()
+                continue
+
+            indent = "    " * level
+
+            folder = os.path.basename(root)
+
+            if root == directory:
+                f.write(f"{os.path.basename(directory)}/\n")
+            else:
+                f.write(f"{indent}├── {folder}/\n")
+
+            sub = "    " * (level + 1)
+
+            for file in sorted(files):
+
+                if file in IGNORE_FILES:
+                    continue
+
+                ext = os.path.splitext(file)[1].lower()
+
+                if ext in IGNORE_EXTENSIONS:
+                    continue
+
+                f.write(f"{sub}├── {file}\n")
+
+        f.write("```\n\n")
+
+        ##################################################
+        # Source Code
+        ##################################################
+
+        f.write("\n---\n\n")
+        f.write("# Source Code\n\n")
+
+        for root, dirs, files in os.walk(directory):
+
+            dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
+
+            for file in sorted(files):
+
+                if file in IGNORE_FILES:
+                    continue
+
+                ext = os.path.splitext(file)[1].lower()
+
+                if ext not in CODE_EXTENSIONS:
+                    continue
+
+                path = os.path.join(root, file)
+
+                if os.path.getsize(path) > MAX_FILE_SIZE:
+                    continue
+
+                relative = os.path.relpath(path, directory)
+
+                f.write(f"## `{relative}`\n\n")
+
+                f.write(f"```{language(ext)}\n")
+
+                try:
+                    with open(path, "r", encoding="utf-8") as code:
+                        f.write(code.read())
+                except UnicodeDecodeError:
+                    f.write("// Unable to read file (encoding).")
+                except Exception as e:
+                    f.write(f"// {e}")
+
+                f.write("\n```\n\n---\n\n")
+
+    print("Done!")
+    print("Output:", OUTPUT_FILE)
+
+
+if __name__ == "__main__":
+    generate(os.getcwd())
+```
+
+---
+
 ## `project_structuregherbiaiposCLEANnew2.md`
 
 ```markdown
@@ -298,13 +500,16 @@ buildProjectStructure();
 
 ```text
 GHERBI.AI POS REAL/
+    ├── Lumina_DZ_Products.csv
     ├── build-structure.js
+    ├── extract_code.py
     ├── project_structuregherbiaiposCLEAN.md
     ├── project_structuregherbiaiposCLEANnew.md
     ├── project_structuregherbiaiposCLEANnew1.md
     ├── project_structuregherbiaiposCLEANnew2.md
 ├── Gherbi_Ai_POS_Clean/
     ├── Inventory_products.xlsx
+    ├── Lumina_DZ_Products.csv
     ├── activation.html
     ├── analytics-queries.js
     ├── api-client.js
@@ -408,6 +613,8 @@ GHERBI.AI POS REAL/
             ├── translations.js
     ├── data/
         ├── gherbi_ai_pos.db
+        ├── gherbi_ai_pos.db-shm
+        ├── gherbi_ai_pos.db-wal
     ├── manufacturing/
         ├── manufacturing-ui.js
         ├── manufacturing.js
@@ -1998,102 +2205,203 @@ module.exports.LanApiClient = LanApiClient;
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <title>Barcode Label — Gherbi.Ai POS</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Barcode Label</title>
   <style>
-    @page {
-      size: {{LABEL_W}}mm {{LABEL_H}}mm;
-      margin: 0;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    @page { size: {{LABEL_W}}mm {{LABEL_H}}mm; margin: 0; }
     html, body {
+      margin: 0;
+      padding: 0;
       width: {{LABEL_W}}mm;
       height: {{LABEL_H}}mm;
-      overflow: hidden;
-      font-family: 'Cairo', Arial, sans-serif;
-      background: #ffffff;
-      color: #000000;
     }
-    .label-box {
+    body { font-family: Arial, "Segoe UI", Tahoma, sans-serif; color: #000; }
+
+    .label {
+      /* حجم السعر في وضع «ملصق السعر» — يحسبه computePriceSize ويُحقن هنا */
+      --price-size: {{PRICE_SIZE}}mm;
       width: {{LABEL_W}}mm;
       height: {{LABEL_H}}mm;
-      padding: 1.2mm 1.5mm;
+      box-sizing: border-box;
+      padding: 1mm 1.5mm;
       display: flex;
       flex-direction: column;
+      /* توسيط عمودي لا space-between: الأخير يلصق أول صفّ بالحافة العليا وآخر
+         صفّ بالسفلى، فمتى قصُر المحتوى عن الملصق (ارتفاع باركود يدوي، أو صفوف
+         نصّية مُطفأة) خرج الباركود عن منتصف الملصق — حتى 17مم في ملصق 30مم.
+         مع center تُتمركز الكتلة كلها مهما قصُرت، والـgap يعوّض تباعد الصفوف
+         الذي كان space-between يوفّره. */
+      justify-content: center;
+      gap: 0.5mm;
+      align-items: stretch;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .shop {
+      font-size: 2.2mm;
+      font-weight: 800;
+      text-align: center;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .name {
+      font-size: 2.5mm;
+      font-weight: 800;
+      text-align: center;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* الباركود يمتدّ حتى حافتَي الملصق: نلغي حشو الملصق الأفقي (1.5مم) بهامش سالب
+       مساوٍ له، فيصبح عرضه = عرض الملصق كاملاً، متمركزاً ومن الجانبين. باقي العناصر
+       (الاسم/الرقم) تبقى ضمن الحشو. */
+    .barcode {
+      display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: center;
+      height: {{BARCODE_H}}mm;
+      flex: 0 0 auto;
+      box-sizing: border-box;
+      width: calc(100% + 3mm);
+      margin-left: -1.5mm;
+      margin-right: -1.5mm;
+    }
+    /* الصورة تملأ صفّ الباركود عرضاً وارتفاعاً. التمدّد المنتظم لا يؤثر على قابلية
+       مسح Code128 لأن نِسَب الأعمدة تبقى ثابتة. */
+    .barcode img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      image-rendering: pixelated;
+    }
+
+    .barcodeText {
+      font-size: 2mm;
+      font-weight: 800;
+      text-align: center;
+      letter-spacing: 0.2mm;
+      line-height: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .meta {
+      font-size: 1.8mm;
+      text-align: center;
+      color: #333;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── صفوف بطاقة الزبون ─────────────────────────────────────────────────
+       تُستعمل حين يكون مصدر مركز الطباعة «زبائن»: الهاتف والدين وتاريخ الطبع.
+       مخفيّة تماماً في ملصق المنتج (المستدعي لا يمرّر حقول cust*) فلا أثر لها
+       على القياس التلقائي هناك. nowrap شرط لصحّة قياس الارتفاع في
+       computeAutoBarcodeHeight — ارتفاع الصفّ يجب ألّا يتعلّق بطول النصّ. */
+    .custline {
+      font-size: 2mm;
+      font-weight: 700;
+      text-align: center;
+      line-height: 1.1;
+      color: #000;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .custline.strong { font-size: 2.4mm; font-weight: 900; }
+    .custline.dim    { font-size: 1.7mm; font-weight: 600; color: #333; }
+
+    .plu {
+      font-size: 2.4mm;
+      font-weight: 900;
+      text-align: center;
+      letter-spacing: 0.3mm;
+      line-height: 1;
+      color: #000;
+      border: 0.25mm dashed #000;
+      border-radius: 1mm;
+      padding: 0.4mm 1.5mm;
+      align-self: center;
+    }
+
+    .price {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1.5mm;
       text-align: center;
     }
-    .hidden { display: none !important; }
-    .shop-name {
-      font-size: 2.3mm;
-      font-weight: 800;
-      line-height: 1.1;
-      max-width: 100%;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .prod-name {
-      font-size: 2.7mm;
+    .price .type {
+      font-size: 2mm;
       font-weight: 900;
-      line-height: 1.15;
-      max-width: 100%;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .barcode-img {
-      width: 92%;
-      height: {{BARCODE_H}}mm;
-      object-fit: contain;
-    }
-    .barcode-txt {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 2.4mm;
-      font-weight: 800;
-      letter-spacing: 0.4px;
-    }
-    .price-row {
-      display: flex;
-      align-items: baseline;
-      justify-content: center;
-      gap: 1mm;
-    }
-    .price-val {
-      font-family: 'Segoe UI', Tahoma, sans-serif;
-      font-size: 3.6mm;
-      font-weight: 900;
-    }
-    .mode-price .price-val {
-      font-size: {{PRICE_SIZE}}mm;
-      border: 0.4mm solid #000;
-      padding: 0.6mm 2mm;
+      padding: 0.3mm 1.5mm;
+      border: 0.2mm solid #000;
       border-radius: 1mm;
     }
-    .meta-line {
-      font-size: 2.1mm;
-      font-weight: 700;
+    .price .value {
+      font-size: 3mm;
+      font-weight: 900;
+      line-height: 1;
     }
+    .price .discount {
+      font-size: 1.8mm;
+      font-weight: 800;
+      color: #b00020;
+    }
+
+    /* ── وضع «ملصق السعر»: بلا باركود، والسعر يرث كل المساحة المتبقّية ─────────
+       صندوق السعر يصير عمودياً ويأخذ ما تبقّى من ارتفاع الملصق، وقيمة السعر
+       تُرسم بحجم --price-size الذي يحسبه computePriceSize في renderer.js:
+       يقيس ارتفاع بقيّة الصفوف وعرض نصّ السعر، ويمنحه أكبر حجم يتّسع
+       ارتفاعاً وعرضاً معاً. nowrap شرط لصحّة قياس العرض. */
+    .label.mode-price .price {
+      flex: 1 1 auto;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.6mm;
+      min-height: 0;
+    }
+    .label.mode-price .price .value {
+      font-size: var(--price-size);
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .label.mode-price .price .type { font-size: 2.2mm; }
+    .label.mode-price .price .discount { font-size: 2.2mm; }
+
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
-  <div class="label-box {{MODE_CLASS}}">
-    <div class="shop-name {{HIDE_SHOP}}">{{SHOP_NAME}}</div>
-    <div class="prod-name {{HIDE_NAME}}">{{PRODUCT_NAME}}</div>
-    <div class="meta-line {{HIDE_VARIANTS}}">{{VARIANTS_TEXT}}</div>
-    <img src="{{BARCODE_IMAGE}}" class="barcode-img {{HIDE_BARCODE}}" alt="Barcode">
-    <div class="barcode-txt {{HIDE_BCTEXT}}">{{BARCODE_TEXT}}</div>
-    <div class="price-row {{HIDE_PRICE}}">
-      <span class="price-val">{{PRICE_TEXT}}</span>
-      <span class="meta-line {{HIDE_PRICETYPE}}">{{PRICE_TYPE}}</span>
+  <div class="label {{MODE_CLASS}}">
+    <div class="shop {{HIDE_SHOP}}">{{SHOP_NAME}}</div>
+    <div class="name {{HIDE_NAME}}">{{PRODUCT_NAME}}</div>
+    <div class="custline {{HIDE_CUSTPHONE}}">{{CUST_PHONE}}</div>
+    <div class="barcode {{HIDE_BARCODE}}">
+      <img src="{{BARCODE_IMAGE}}" alt="barcode" />
     </div>
-    <div class="meta-line {{HIDE_DISCOUNT}}">{{DISCOUNT_TEXT}}</div>
-    <div class="meta-line {{HIDE_PLU}}">PLU: {{PLU_TEXT}}</div>
-    <div class="meta-line {{HIDE_CUSTPHONE}}">{{CUST_PHONE}}</div>
-    <div class="meta-line {{HIDE_CUSTDEBT}}">{{CUST_DEBT}}</div>
-    <div class="meta-line {{HIDE_CUSTDATE}}">{{CUST_DATE}}</div>
+    <div class="barcodeText {{HIDE_BCTEXT}}">{{BARCODE_TEXT}}</div>
+    <div class="custline strong {{HIDE_CUSTDEBT}}">{{CUST_DEBT}}</div>
+    <div class="plu {{HIDE_PLU}}">PLU: {{PLU_TEXT}}</div>
+    <div class="meta {{HIDE_VARIANTS}}">{{VARIANTS_TEXT}}</div>
+    <div class="price {{HIDE_PRICE}}">
+      <span class="type {{HIDE_PRICETYPE}}">{{PRICE_TYPE}}</span>
+      <span class="value">{{PRICE_TEXT}}</span>
+      <span class="discount {{HIDE_DISCOUNT}}">{{DISCOUNT_TEXT}}</span>
+    </div>
+    <div class="custline dim {{HIDE_CUSTDATE}}">{{CUST_DATE}}</div>
   </div>
 </body>
 </html>
@@ -3316,31 +3624,105 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
   <meta charset="utf-8">
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>إشعار دائن - {{CREDIT_NOTE_NUMBER}}</title>
   <script src="assets/js/tailwind.min.js"></script>
   <style>
-    body { font-family: 'Cairo', sans-serif; font-size: 11px; color: #000; background-color: #f3f4f6; }
-    .doc-container { width: 210mm; min-height: 297mm; margin: 20px auto; padding: 40px; background: #fff; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
-    .rounded-box { border: 1.5px solid #000; border-radius: 12px; padding: 12px; }
-    .table-border, .table-border th, .table-border td { border: 1px solid #000; border-collapse: collapse; }
-    .table-border th { padding: 6px 4px; font-weight: bold; background: #f3f4f6; }
-    .table-border td { padding: 6px 4px; }
-    .avoir-banner { background: #fee2e2; border: 2px solid #b91c1c; color: #7f1d1d; padding: 8px 18px; border-radius: 10px; display: inline-block; font-weight: 900; font-size: 13px; }
-    .ref-strip { background: #fef3c7; border: 1.5px dashed #b45309; color: #78350f; padding: 8px 14px; border-radius: 8px; font-weight: 800; font-size: 11px; }
-    .totals-table td { padding: 5px 10px; }
-    .credit-amount { color: #b91c1c; font-weight: 900; }
+    body {
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
+    }
+
+    .doc-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+      background: #f3f4f6;
+    }
+
+    .table-border td {
+      padding: 6px 4px;
+    }
+
+    .avoir-banner {
+      background: #fee2e2;
+      border: 2px solid #b91c1c;
+      color: #7f1d1d;
+      padding: 8px 18px;
+      border-radius: 10px;
+      display: inline-block;
+      font-weight: 900;
+      font-size: 13px;
+    }
+
+    .ref-strip {
+      background: #fef3c7;
+      border: 1.5px dashed #b45309;
+      color: #78350f;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 11px;
+    }
+
+    .totals-table td {
+      padding: 5px 10px;
+    }
+
+    .credit-amount {
+      color: #b91c1c;
+      font-weight: 900;
+    }
+
     @media print {
-      body { background-color: #fff; padding: 0; margin: 0; }
-      .doc-container { box-shadow: none; margin: 0; width: 100%; min-height: auto; padding: 20px; }
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .doc-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 20px;
+      }
     }
   </style>
   <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body class="p-4">
   <main class="doc-container mx-auto bg-white">
+
+    <!-- Header -->
     <header class="mb-6">
       <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
       <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
@@ -3357,6 +3739,8 @@ module.exports = {
         <div>رقم الإحصاء : {{COMPANY_NIS}}</div>
       </div>
     </header>
+
+    <!-- Client + Avoir Info -->
     <section class="flex justify-between items-start mb-4">
       <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
         <p>الزبون : {{PARTY_NAME}}</p>
@@ -3372,6 +3756,8 @@ module.exports = {
         <p class="text-sm font-bold">التاريخ : {{DATE}}</p>
       </div>
     </section>
+
+    <!-- Reference to original invoice -->
     <section class="mb-5">
       <div class="ref-strip">
         يُخصم من الفاتورة رقم <span class="font-black">{{ORIGINAL_INVOICE_NUMBER}}</span>
@@ -3379,6 +3765,8 @@ module.exports = {
       </div>
       <p class="text-[11px] font-bold mt-2 text-slate-700">سبب الإرجاع : {{RETURN_REASON}}</p>
     </section>
+
+    <!-- Items Table -->
     <section class="mb-6">
       <table class="w-full table-border text-center text-[10px] font-bold">
         <thead>
@@ -3393,35 +3781,78 @@ module.exports = {
             <th class="w-[16%]">المجموع HT</th>
           </tr>
         </thead>
-        <tbody>{{ITEMS_ROWS}}</tbody>
-      </table>
-    </section>
-    <section class="flex justify-end mb-8">
-      <table class="totals-table text-[11px] font-bold border border-black">
         <tbody>
-          <tr><td class="border-b border-black">المجموع HT</td><td class="border-b border-black text-left credit-amount">{{SUBTOTAL_HT}} د.ج</td></tr>
-          <tr><td class="border-b border-black">التخفيض</td><td class="border-b border-black text-left credit-amount">{{DISCOUNT}} د.ج</td></tr>
-          <tr><td class="border-b border-black">TVA ({{TAX_PERCENT}}%)</td><td class="border-b border-black text-left credit-amount">{{TVA_AMOUNT}} د.ج</td></tr>
-          <tr><td class="border-b border-black">المجموع الدائن TTC</td><td class="border-b border-black text-left credit-amount">{{TOTAL_TTC}} د.ج</td></tr>
-          <tr data-purpose="stamp-row"><td class="border-b border-black">حقّ الطابع المُسترجع</td><td class="border-b border-black text-left credit-amount">{{STAMP_AMOUNT}} د.ج</td></tr>
-          <tr><td class="font-black bg-slate-100">الصافي المُسترجع</td><td class="font-black bg-slate-100 text-left credit-amount">{{NET_TO_PAY}} د.ج</td></tr>
+          {{ITEMS_ROWS}}
         </tbody>
       </table>
     </section>
+
+    <!-- Totals + TVA reversal -->
+    <section class="flex justify-end mb-8">
+      <table class="totals-table text-[11px] font-bold border border-black">
+        <tbody>
+          <tr>
+            <td class="border-b border-black">المجموع HT</td>
+            <td class="border-b border-black text-left credit-amount">{{SUBTOTAL_HT}} د.ج</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">التخفيض</td>
+            <td class="border-b border-black text-left credit-amount">{{DISCOUNT}} د.ج</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">TVA ({{TAX_PERCENT}}%)</td>
+            <td class="border-b border-black text-left credit-amount">{{TVA_AMOUNT}} د.ج</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">المجموع الدائن TTC</td>
+            <td class="border-b border-black text-left credit-amount">{{TOTAL_TTC}} د.ج</td>
+          </tr>
+          <tr data-purpose="stamp-row">
+            <td class="border-b border-black">حقّ الطابع المُسترجع (1%)</td>
+            <td class="border-b border-black text-left credit-amount">{{STAMP_AMOUNT}} د.ج</td>
+          </tr>
+          <tr>
+            <td class="font-black bg-slate-100">الصافي المُسترجع</td>
+            <td class="font-black bg-slate-100 text-left credit-amount">{{NET_TO_PAY}} د.ج</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
     <p class="text-[10px] font-bold mb-6">المبلغ المُسترجع للزبون بالأحرف : <span class="credit-amount">{{TOTAL_IN_WORDS}}</span></p>
+
+    <!-- Signatures -->
     <section class="flex justify-between items-start mt-10">
       <div class="w-[45%]">
         <p class="font-bold text-[10px] mb-8">المستلم : {{COMPANY_NAME}}</p>
-        <div class="border-t border-black w-3/4 pt-1"><p class="text-[9px] font-bold text-slate-500">التوقيع والختم</p></div>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">التوقيع والختم</p>
+        </div>
       </div>
       <div class="w-[45%]" style="text-align: left;">
         <p class="font-bold text-[10px] mb-8">توقيع الزبون : {{PARTY_NAME}}</p>
-        <div class="border-t border-black w-3/4 pt-1" style="margin-left:auto; margin-right:0;"><p class="text-[9px] font-bold text-slate-500">التوقيع والختم</p></div>
+        <div class="border-t border-black w-3/4 pt-1" style="margin-left:auto; margin-right:0;">
+          <p class="text-[9px] font-bold text-slate-500">التوقيع والختم</p>
+        </div>
       </div>
     </section>
+
+    <p class="text-[9px] text-slate-500 mt-6 text-center font-bold">
+      هذا المستند يلغي/يخفض الفاتورة المرجعية أعلاه. يُحفظ مع نسخة الفاتورة الأصلية لأغراض المحاسبة وضريبة TVA.
+    </p>
+
   </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
+
 ```
 
 ---
@@ -3431,31 +3862,104 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
+
 <head>
   <meta charset="utf-8">
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>Credit Note - {{CREDIT_NOTE_NUMBER}}</title>
   <script src="assets/js/tailwind.min.js"></script>
   <style>
-    body { font-family: 'Cairo', sans-serif; font-size: 11px; color: #000; background-color: #f3f4f6; }
-    .doc-container { width: 210mm; min-height: 297mm; margin: 20px auto; padding: 40px; background: #fff; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
-    .rounded-box { border: 1.5px solid #000; border-radius: 12px; padding: 12px; }
-    .table-border, .table-border th, .table-border td { border: 1px solid #000; border-collapse: collapse; }
-    .table-border th { padding: 6px 4px; font-weight: bold; background: #f3f4f6; }
-    .table-border td { padding: 6px 4px; }
-    .avoir-banner { background: #fee2e2; border: 2px solid #b91c1c; color: #7f1d1d; padding: 8px 18px; border-radius: 10px; display: inline-block; font-weight: 900; font-size: 13px; }
-    .ref-strip { background: #fef3c7; border: 1.5px dashed #b45309; color: #78350f; padding: 8px 14px; border-radius: 8px; font-weight: 800; font-size: 11px; }
-    .totals-table td { padding: 5px 10px; }
-    .credit-amount { color: #b91c1c; font-weight: 900; }
+    body {
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
+    }
+
+    .doc-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+      background: #f3f4f6;
+    }
+
+    .table-border td {
+      padding: 6px 4px;
+    }
+
+    .avoir-banner {
+      background: #fee2e2;
+      border: 2px solid #b91c1c;
+      color: #7f1d1d;
+      padding: 8px 18px;
+      border-radius: 10px;
+      display: inline-block;
+      font-weight: 900;
+      font-size: 13px;
+    }
+
+    .ref-strip {
+      background: #fef3c7;
+      border: 1.5px dashed #b45309;
+      color: #78350f;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 11px;
+    }
+
+    .totals-table td {
+      padding: 5px 10px;
+    }
+
+    .credit-amount {
+      color: #b91c1c;
+      font-weight: 900;
+    }
+
     @media print {
-      body { background-color: #fff; padding: 0; margin: 0; }
-      .doc-container { box-shadow: none; margin: 0; width: 100%; min-height: auto; padding: 20px; }
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .doc-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 20px;
+      }
     }
   </style>
   <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body class="p-4">
   <main class="doc-container mx-auto bg-white">
+
     <header class="mb-6">
       <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
       <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
@@ -3472,6 +3976,7 @@ module.exports = {
         <div>NIS : {{COMPANY_NIS}}</div>
       </div>
     </header>
+
     <section class="flex justify-between items-start mb-4">
       <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
         <p>Client : {{PARTY_NAME}}</p>
@@ -3487,6 +3992,7 @@ module.exports = {
         <p class="text-sm font-bold">Date : {{DATE}}</p>
       </div>
     </section>
+
     <section class="mb-5">
       <div class="ref-strip">
         To be deducted from invoice No. <span class="font-black">{{ORIGINAL_INVOICE_NUMBER}}</span>
@@ -3494,6 +4000,7 @@ module.exports = {
       </div>
       <p class="text-[11px] font-bold mt-2 text-slate-700">Return reason : {{RETURN_REASON}}</p>
     </section>
+
     <section class="mb-6">
       <table class="w-full table-border text-center text-[10px] font-bold">
         <thead>
@@ -3508,35 +4015,76 @@ module.exports = {
             <th class="w-[16%]">Total excl. tax</th>
           </tr>
         </thead>
-        <tbody>{{ITEMS_ROWS}}</tbody>
-      </table>
-    </section>
-    <section class="flex justify-end mb-8">
-      <table class="totals-table text-[11px] font-bold border border-black">
         <tbody>
-          <tr><td class="border-b border-black">Subtotal (excl. tax)</td><td class="border-b border-black text-right credit-amount">{{SUBTOTAL_HT}} DA</td></tr>
-          <tr><td class="border-b border-black">Discount</td><td class="border-b border-black text-right credit-amount">{{DISCOUNT}} DA</td></tr>
-          <tr><td class="border-b border-black">VAT ({{TAX_PERCENT}}%)</td><td class="border-b border-black text-right credit-amount">{{TVA_AMOUNT}} DA</td></tr>
-          <tr><td class="border-b border-black">Credit total (incl. tax)</td><td class="border-b border-black text-right credit-amount">{{TOTAL_TTC}} DA</td></tr>
-          <tr data-purpose="stamp-row"><td class="border-b border-black">Stamp duty refunded</td><td class="border-b border-black text-right credit-amount">{{STAMP_AMOUNT}} DA</td></tr>
-          <tr><td class="font-black bg-slate-100">Net refunded</td><td class="font-black bg-slate-100 text-right credit-amount">{{NET_TO_PAY}} DA</td></tr>
+          {{ITEMS_ROWS}}
         </tbody>
       </table>
     </section>
+
+    <section class="flex justify-end mb-8">
+      <table class="totals-table text-[11px] font-bold border border-black">
+        <tbody>
+          <tr>
+            <td class="border-b border-black">Subtotal (excl. tax)</td>
+            <td class="border-b border-black text-right credit-amount">{{SUBTOTAL_HT}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">Discount</td>
+            <td class="border-b border-black text-right credit-amount">{{DISCOUNT}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">VAT ({{TAX_PERCENT}}%)</td>
+            <td class="border-b border-black text-right credit-amount">{{TVA_AMOUNT}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">Credit total (incl. tax)</td>
+            <td class="border-b border-black text-right credit-amount">{{TOTAL_TTC}} DA</td>
+          </tr>
+          <tr data-purpose="stamp-row">
+            <td class="border-b border-black">Stamp duty refunded (1%)</td>
+            <td class="border-b border-black text-right credit-amount">{{STAMP_AMOUNT}} DA</td>
+          </tr>
+          <tr>
+            <td class="font-black bg-slate-100">Net refunded</td>
+            <td class="font-black bg-slate-100 text-right credit-amount">{{NET_TO_PAY}} DA</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
     <p class="text-[10px] font-bold mb-6">Amount credited to client in words : <span class="credit-amount">{{TOTAL_IN_WORDS}}</span></p>
+
     <section class="flex justify-between items-start mt-10">
       <div class="w-[45%]">
         <p class="font-bold text-[10px] mb-8">Receiver : {{COMPANY_NAME}}</p>
-        <div class="border-t border-black w-3/4 pt-1"><p class="text-[9px] font-bold text-slate-500">Signature and stamp</p></div>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">Signature and stamp</p>
+        </div>
       </div>
       <div class="w-[45%] text-right">
         <p class="font-bold text-[10px] mb-8">Client signature : {{PARTY_NAME}}</p>
-        <div class="border-t border-black w-3/4 pt-1 ml-auto"><p class="text-[9px] font-bold text-slate-500">Signature and stamp</p></div>
+        <div class="border-t border-black w-3/4 pt-1 ml-auto">
+          <p class="text-[9px] font-bold text-slate-500">Signature and stamp</p>
+        </div>
       </div>
     </section>
+
+    <p class="text-[9px] text-slate-500 mt-6 text-center font-bold">
+      This document cancels / reduces the referenced invoice above. Keep with the original invoice copy for accounting and VAT.
+    </p>
+
   </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
+
 ```
 
 ---
@@ -3546,31 +4094,104 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="fr" dir="ltr">
+
 <head>
   <meta charset="utf-8">
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>Facture d'Avoir - {{CREDIT_NOTE_NUMBER}}</title>
   <script src="assets/js/tailwind.min.js"></script>
   <style>
-    body { font-family: 'Cairo', sans-serif; font-size: 11px; color: #000; background-color: #f3f4f6; }
-    .doc-container { width: 210mm; min-height: 297mm; margin: 20px auto; padding: 40px; background: #fff; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
-    .rounded-box { border: 1.5px solid #000; border-radius: 12px; padding: 12px; }
-    .table-border, .table-border th, .table-border td { border: 1px solid #000; border-collapse: collapse; }
-    .table-border th { padding: 6px 4px; font-weight: bold; background: #f3f4f6; }
-    .table-border td { padding: 6px 4px; }
-    .avoir-banner { background: #fee2e2; border: 2px solid #b91c1c; color: #7f1d1d; padding: 8px 18px; border-radius: 10px; display: inline-block; font-weight: 900; font-size: 13px; }
-    .ref-strip { background: #fef3c7; border: 1.5px dashed #b45309; color: #78350f; padding: 8px 14px; border-radius: 8px; font-weight: 800; font-size: 11px; }
-    .totals-table td { padding: 5px 10px; }
-    .credit-amount { color: #b91c1c; font-weight: 900; }
+    body {
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
+    }
+
+    .doc-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+      background: #f3f4f6;
+    }
+
+    .table-border td {
+      padding: 6px 4px;
+    }
+
+    .avoir-banner {
+      background: #fee2e2;
+      border: 2px solid #b91c1c;
+      color: #7f1d1d;
+      padding: 8px 18px;
+      border-radius: 10px;
+      display: inline-block;
+      font-weight: 900;
+      font-size: 13px;
+    }
+
+    .ref-strip {
+      background: #fef3c7;
+      border: 1.5px dashed #b45309;
+      color: #78350f;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 11px;
+    }
+
+    .totals-table td {
+      padding: 5px 10px;
+    }
+
+    .credit-amount {
+      color: #b91c1c;
+      font-weight: 900;
+    }
+
     @media print {
-      body { background-color: #fff; padding: 0; margin: 0; }
-      .doc-container { box-shadow: none; margin: 0; width: 100%; min-height: auto; padding: 20px; }
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .doc-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 20px;
+      }
     }
   </style>
   <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body class="p-4">
   <main class="doc-container mx-auto bg-white">
+
     <header class="mb-6">
       <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
       <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
@@ -3587,6 +4208,7 @@ module.exports = {
         <div>NIS : {{COMPANY_NIS}}</div>
       </div>
     </header>
+
     <section class="flex justify-between items-start mb-4">
       <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
         <p>Client : {{PARTY_NAME}}</p>
@@ -3602,6 +4224,7 @@ module.exports = {
         <p class="text-sm font-bold">Date : {{DATE}}</p>
       </div>
     </section>
+
     <section class="mb-5">
       <div class="ref-strip">
         À déduire de la facture N° <span class="font-black">{{ORIGINAL_INVOICE_NUMBER}}</span>
@@ -3609,6 +4232,7 @@ module.exports = {
       </div>
       <p class="text-[11px] font-bold mt-2 text-slate-700">Motif du retour : {{RETURN_REASON}}</p>
     </section>
+
     <section class="mb-6">
       <table class="w-full table-border text-center text-[10px] font-bold">
         <thead>
@@ -3623,35 +4247,76 @@ module.exports = {
             <th class="w-[16%]">Total HT</th>
           </tr>
         </thead>
-        <tbody>{{ITEMS_ROWS}}</tbody>
-      </table>
-    </section>
-    <section class="flex justify-end mb-8">
-      <table class="totals-table text-[11px] font-bold border border-black">
         <tbody>
-          <tr><td class="border-b border-black">Total HT</td><td class="border-b border-black text-right credit-amount">{{SUBTOTAL_HT}} DA</td></tr>
-          <tr><td class="border-b border-black">Remise</td><td class="border-b border-black text-right credit-amount">{{DISCOUNT}} DA</td></tr>
-          <tr><td class="border-b border-black">TVA ({{TAX_PERCENT}}%)</td><td class="border-b border-black text-right credit-amount">{{TVA_AMOUNT}} DA</td></tr>
-          <tr><td class="border-b border-black">Avoir TTC</td><td class="border-b border-black text-right credit-amount">{{TOTAL_TTC}} DA</td></tr>
-          <tr data-purpose="stamp-row"><td class="border-b border-black">Droit de timbre récupéré</td><td class="border-b border-black text-right credit-amount">{{STAMP_AMOUNT}} DA</td></tr>
-          <tr><td class="font-black bg-slate-100">Net à rembourser</td><td class="font-black bg-slate-100 text-right credit-amount">{{NET_TO_PAY}} DA</td></tr>
+          {{ITEMS_ROWS}}
         </tbody>
       </table>
     </section>
+
+    <section class="flex justify-end mb-8">
+      <table class="totals-table text-[11px] font-bold border border-black">
+        <tbody>
+          <tr>
+            <td class="border-b border-black">Total HT</td>
+            <td class="border-b border-black text-right credit-amount">{{SUBTOTAL_HT}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">Remise</td>
+            <td class="border-b border-black text-right credit-amount">{{DISCOUNT}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">TVA ({{TAX_PERCENT}}%)</td>
+            <td class="border-b border-black text-right credit-amount">{{TVA_AMOUNT}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">Avoir TTC</td>
+            <td class="border-b border-black text-right credit-amount">{{TOTAL_TTC}} DA</td>
+          </tr>
+          <tr data-purpose="stamp-row">
+            <td class="border-b border-black">Droit de timbre récupéré (1%)</td>
+            <td class="border-b border-black text-right credit-amount">{{STAMP_AMOUNT}} DA</td>
+          </tr>
+          <tr>
+            <td class="font-black bg-slate-100">Net à rembourser</td>
+            <td class="font-black bg-slate-100 text-right credit-amount">{{NET_TO_PAY}} DA</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
     <p class="text-[10px] font-bold mb-6">Montant à créditer au client en lettres : <span class="credit-amount">{{TOTAL_IN_WORDS}}</span></p>
+
     <section class="flex justify-between items-start mt-10">
       <div class="w-[45%]">
         <p class="font-bold text-[10px] mb-8">Réceptionnaire : {{COMPANY_NAME}}</p>
-        <div class="border-t border-black w-3/4 pt-1"><p class="text-[9px] font-bold text-slate-500">Signature et cachet</p></div>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">Signature et cachet</p>
+        </div>
       </div>
       <div class="w-[45%] text-right">
         <p class="font-bold text-[10px] mb-8">Signature du client : {{PARTY_NAME}}</p>
-        <div class="border-t border-black w-3/4 pt-1 ml-auto"><p class="text-[9px] font-bold text-slate-500">Signature et cachet</p></div>
+        <div class="border-t border-black w-3/4 pt-1 ml-auto">
+          <p class="text-[9px] font-bold text-slate-500">Signature et cachet</p>
+        </div>
       </div>
     </section>
+
+    <p class="text-[9px] text-slate-500 mt-6 text-center font-bold">
+      Ce document annule / réduit la facture référencée ci-dessus. À conserver avec l'exemplaire d'origine pour la comptabilité et la TVA.
+    </p>
+
   </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
+
 ```
 
 ---
@@ -5817,29 +6482,69 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
   <meta charset="utf-8">
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>{{LBL_DELIVERY_TITLE}} - {{DELIVERY_NUMBER}}</title>
   <script src="assets/js/tailwind.min.js"></script>
-  <style data-purpose="page-size">@page { size: A5; margin: 0; }</style>
+  <style data-purpose="page-size">
+    /* Compact half-page delivery note. A5 portrait = 148mm × 210mm. */
+    @page { size: A5; margin: 0; }
+  </style>
   <style data-purpose="typography">
-    body { font-family: 'Cairo', sans-serif; font-size: 9px; color: #000; background-color: #e5e7eb; }
+    body {
+      font-family: 'Cairo', sans-serif;
+      font-size: 9px;
+      color: #000;
+      background-color: #e5e7eb;
+    }
   </style>
   <style data-purpose="layout-and-borders">
-    .delivery-container { width: 148mm; min-height: 210mm; margin: 16px auto; padding: 10mm 9mm; background: #fff; box-shadow: 0 0 10px rgba(0, 0, 0, 0.12); }
-    .rounded-box { border: 1px solid #000; border-radius: 8px; padding: 7px 9px; }
-    .table-border, .table-border th, .table-border td { border: 1px solid #000; border-collapse: collapse; }
-    .table-border th, .table-border td { padding: 3px 2px; font-weight: bold; }
+    .delivery-container {
+      width: 148mm;
+      min-height: 210mm;
+      margin: 16px auto;
+      padding: 10mm 9mm;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.12);
+    }
+
+    .rounded-box {
+      border: 1px solid #000;
+      border-radius: 8px;
+      padding: 7px 9px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th { padding: 3px 2px; font-weight: bold; }
+    .table-border td { padding: 3px 2px; }
+
     @media print {
       body { background-color: #fff; padding: 0; margin: 0; }
-      .delivery-container { box-shadow: none; margin: 0; width: 100%; min-height: auto; box-sizing: border-box; padding: 9mm 10mm; }
+      .delivery-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        box-sizing: border-box;
+        padding: 9mm 10mm;
+      }
     }
   </style>
   <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body class="p-2">
   <main class="delivery-container mx-auto bg-white" data-purpose="delivery-document">
+
+    <!-- Header -->
     <header class="flex justify-between items-start mb-4 pb-2 border-b-2 border-black">
       <div>
         <h1 class="text-base font-bold mb-0.5">{{COMPANY_NAME}}</h1>
@@ -5852,6 +6557,8 @@ module.exports = {
       <img src="{{COMPANY_LOGO}}" alt="logo" style="max-height:48px;max-width:90px;object-fit:contain;" />
       {{/if}}
     </header>
+
+    <!-- Client + delivery meta -->
     <section class="flex justify-between items-start mb-3 gap-3" data-purpose="info-block">
       <div class="w-[58%] rounded-box text-[8px] font-bold leading-snug">
         <p>{{LBL_CLIENT}} : {{PARTY_NAME}}</p>
@@ -5866,6 +6573,8 @@ module.exports = {
         <p class="text-[8px] font-bold mt-0.5">{{LBL_VEHICLE}} : {{VEHICLE_PLATE}}</p>
       </div>
     </section>
+
+    <!-- Items (no prices) -->
     <section class="mb-3" data-purpose="items-table">
       <table class="w-full table-border text-center text-[8px] font-bold">
         <thead>
@@ -5878,22 +6587,33 @@ module.exports = {
             <th class="w-[24%]">{{LBL_NOTES}}</th>
           </tr>
         </thead>
-        <tbody>{{ITEMS_ROWS}}</tbody>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
       </table>
     </section>
+
+    <!-- Signatures -->
     <section class="flex justify-between items-start mt-6 gap-3" data-purpose="signature-section">
       <div class="w-[45%]">
         <p class="font-bold text-[8px] mb-6">{{LBL_SIGNATURE_SENDER}}</p>
-        <div class="border-t border-black w-3/4 pt-1"><p class="text-[8px] font-bold">{{COMPANY_NAME}}</p></div>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[8px] font-bold">{{COMPANY_NAME}}</p>
+        </div>
       </div>
       <div class="w-[45%] text-left">
         <p class="font-bold text-[8px] mb-6">{{LBL_SIGNATURE_CLIENT}}</p>
-        <div class="border-t border-black w-3/4 pt-1" style="margin-left:auto;"><p class="text-[8px] font-bold">{{PARTY_NAME}}</p></div>
+        <div class="border-t border-black w-3/4 pt-1" style="margin-left:auto;">
+          <p class="text-[8px] font-bold">{{PARTY_NAME}}</p>
+        </div>
       </div>
     </section>
+
   </main>
 </body>
+
 </html>
+
 ```
 
 ---
@@ -5903,28 +6623,81 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
   <meta charset="utf-8">
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>وصل التوصيل - {{DELIVERY_NUMBER}}</title>
   <script src="assets/js/tailwind.min.js"></script>
   <style data-purpose="typography">
-    body { font-family: 'Cairo', sans-serif; font-size: 11px; color: #000; background-color: #f3f4f6; }
+    body {
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
+    }
+
+    .font-serif-bold {
+      font-family: serif;
+      font-weight: bold;
+    }
   </style>
   <style data-purpose="layout-and-borders">
-    .delivery-container { width: 210mm; min-height: 297mm; margin: 20px auto; padding: 40px; background: #fff; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
-    .rounded-box { border: 1.5px solid #000; border-radius: 12px; padding: 12px; }
-    .table-border, .table-border th, .table-border td { border: 1px solid #000; border-collapse: collapse; }
-    .table-border th, .table-border td { padding: 6px 4px; font-weight: bold; }
+    .delivery-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+    }
+
+    .table-border td {
+      padding: 6px 4px;
+    }
+
     @media print {
-      body { background-color: #fff; padding: 0; margin: 0; }
-      .delivery-container { box-shadow: none; margin: 0; width: 100%; min-height: auto; box-sizing: border-box; padding: 12mm 14mm; }
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .delivery-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        box-sizing: border-box;
+        padding: 12mm 14mm;
+      }
     }
   </style>
   <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body class="p-4">
   <main class="delivery-container mx-auto bg-white" data-purpose="delivery-document">
+
+    <!-- Header Section -->
     <header class="mb-8">
       <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
       <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
@@ -5941,6 +6714,8 @@ module.exports = {
       </div>
       <div class="font-bold text-[10px] mt-1">رقم الإحصاء : {{COMPANY_NIS}}</div>
     </header>
+
+    <!-- Client and Delivery Info -->
     <section class="flex justify-between items-start mb-10" data-purpose="info-block">
       <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
         <p>الزبون : {{PARTY_NAME}}</p>
@@ -5958,6 +6733,8 @@ module.exports = {
         <p class="text-[11px] font-bold mt-1">رقم المركبة : {{VEHICLE_PLATE}}</p>
       </div>
     </section>
+
+    <!-- Items Table -->
     <section class="mb-8" data-purpose="items-table">
       <table class="w-full table-border text-center text-[10px] font-bold">
         <thead>
@@ -5970,24 +6747,42 @@ module.exports = {
             <th class="w-[26%]">ملاحظات وتحفظات الزبون</th>
           </tr>
         </thead>
-        <tbody>{{ITEMS_ROWS}}</tbody>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
       </table>
     </section>
+
+    <!-- Footer / Signature -->
     <section class="flex justify-between items-start mt-12" data-purpose="signature-section">
       <div class="w-[45%]">
         <p class="font-bold text-[10px] mb-1">المرسل :</p>
         <p class="font-bold text-[10px] mb-8">{{COMPANY_NAME}}</p>
-        <div class="border-t border-black w-3/4 pt-1"><p class="text-[9px] font-bold text-slate-500">التوقيع والختم</p></div>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">التوقيع والختم</p>
+        </div>
       </div>
       <div class="w-[45%]" style="text-align: left;">
         <p class="font-bold text-[10px] mb-1">توقيع الزبون :</p>
         <p class="font-bold text-[10px] mb-8">{{PARTY_NAME}}</p>
-        <div class="border-t border-black w-3/4 pt-1" style="margin-left:auto; margin-right:0;"><p class="text-[9px] font-bold text-slate-500">التوقيع والختم</p></div>
+        <div class="border-t border-black w-3/4 pt-1 mr-auto" style="margin-left:auto; margin-right:0;">
+          <p class="text-[9px] font-bold text-slate-500">التوقيع والختم</p>
+        </div>
       </div>
     </section>
+
   </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
+
 ```
 
 ---
@@ -5997,28 +6792,81 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
+
 <head>
   <meta charset="utf-8">
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>Delivery Note - {{DELIVERY_NUMBER}}</title>
   <script src="assets/js/tailwind.min.js"></script>
   <style data-purpose="typography">
-    body { font-family: 'Cairo', sans-serif; font-size: 11px; color: #000; background-color: #f3f4f6; }
+    body {
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
+    }
+
+    .font-serif-bold {
+      font-family: serif;
+      font-weight: bold;
+    }
   </style>
   <style data-purpose="layout-and-borders">
-    .delivery-container { width: 210mm; min-height: 297mm; margin: 20px auto; padding: 40px; background: #fff; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
-    .rounded-box { border: 1.5px solid #000; border-radius: 12px; padding: 12px; }
-    .table-border, .table-border th, .table-border td { border: 1px solid #000; border-collapse: collapse; }
-    .table-border th, .table-border td { padding: 6px 4px; font-weight: bold; }
+    .delivery-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+    }
+
+    .table-border td {
+      padding: 6px 4px;
+    }
+
     @media print {
-      body { background-color: #fff; padding: 0; margin: 0; }
-      .delivery-container { box-shadow: none; margin: 0; width: 100%; min-height: auto; box-sizing: border-box; padding: 12mm 14mm; }
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .delivery-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        box-sizing: border-box;
+        padding: 12mm 14mm;
+      }
     }
   </style>
   <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body class="p-4">
   <main class="delivery-container mx-auto bg-white" data-purpose="delivery-document">
+
+    <!-- Header Section -->
     <header class="mb-8">
       <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
       <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
@@ -6035,6 +6883,8 @@ module.exports = {
       </div>
       <div class="font-bold text-[10px] mt-1">NIS : {{COMPANY_NIS}}</div>
     </header>
+
+    <!-- Client and Delivery Info -->
     <section class="flex justify-between items-start mb-10" data-purpose="info-block">
       <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
         <p>Client : {{PARTY_NAME}}</p>
@@ -6052,6 +6902,8 @@ module.exports = {
         <p class="text-[11px] font-bold mt-1">Plate : {{VEHICLE_PLATE}}</p>
       </div>
     </section>
+
+    <!-- Items Table -->
     <section class="mb-8" data-purpose="items-table">
       <table class="w-full table-border text-center text-[10px] font-bold">
         <thead>
@@ -6064,24 +6916,42 @@ module.exports = {
             <th class="w-[26%]">Client observations and reserves</th>
           </tr>
         </thead>
-        <tbody>{{ITEMS_ROWS}}</tbody>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
       </table>
     </section>
+
+    <!-- Footer / Signature -->
     <section class="flex justify-between items-start mt-12" data-purpose="signature-section">
       <div class="w-[45%]">
         <p class="font-bold text-[10px] mb-1">Sender :</p>
         <p class="font-bold text-[10px] mb-8">{{COMPANY_NAME}}</p>
-        <div class="border-t border-black w-3/4 pt-1"><p class="text-[9px] font-bold text-slate-500">Signature and stamp</p></div>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">Signature and stamp</p>
+        </div>
       </div>
       <div class="w-[45%] text-right">
         <p class="font-bold text-[10px] mb-1">Client signature :</p>
         <p class="font-bold text-[10px] mb-8">{{PARTY_NAME}}</p>
-        <div class="border-t border-black w-3/4 pt-1 ml-auto"><p class="text-[9px] font-bold text-slate-500">Signature and stamp</p></div>
+        <div class="border-t border-black w-3/4 pt-1 ml-auto">
+          <p class="text-[9px] font-bold text-slate-500">Signature and stamp</p>
+        </div>
       </div>
     </section>
+
   </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
+
 ```
 
 ---
@@ -6091,28 +6961,81 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="fr" dir="ltr">
+
 <head>
   <meta charset="utf-8">
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>Bon de Livraison - {{DELIVERY_NUMBER}}</title>
   <script src="assets/js/tailwind.min.js"></script>
   <style data-purpose="typography">
-    body { font-family: 'Cairo', sans-serif; font-size: 11px; color: #000; background-color: #f3f4f6; }
+    body {
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
+    }
+
+    .font-serif-bold {
+      font-family: serif;
+      font-weight: bold;
+    }
   </style>
   <style data-purpose="layout-and-borders">
-    .delivery-container { width: 210mm; min-height: 297mm; margin: 20px auto; padding: 40px; background: #fff; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
-    .rounded-box { border: 1.5px solid #000; border-radius: 12px; padding: 12px; }
-    .table-border, .table-border th, .table-border td { border: 1px solid #000; border-collapse: collapse; }
-    .table-border th, .table-border td { padding: 6px 4px; font-weight: bold; }
+    .delivery-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+    }
+
+    .table-border td {
+      padding: 6px 4px;
+    }
+
     @media print {
-      body { background-color: #fff; padding: 0; margin: 0; }
-      .delivery-container { box-shadow: none; margin: 0; width: 100%; min-height: auto; box-sizing: border-box; padding: 12mm 14mm; }
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .delivery-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        box-sizing: border-box;
+        padding: 12mm 14mm;
+      }
     }
   </style>
   <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body class="p-4">
   <main class="delivery-container mx-auto bg-white" data-purpose="delivery-document">
+
+    <!-- Header Section -->
     <header class="mb-8">
       <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
       <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
@@ -6129,6 +7052,8 @@ module.exports = {
       </div>
       <div class="font-bold text-[10px] mt-1">NIS : {{COMPANY_NIS}}</div>
     </header>
+
+    <!-- Client and Delivery Info -->
     <section class="flex justify-between items-start mb-10" data-purpose="info-block">
       <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
         <p>Client : {{PARTY_NAME}}</p>
@@ -6146,6 +7071,8 @@ module.exports = {
         <p class="text-[11px] font-bold mt-1">Matricule : {{VEHICLE_PLATE}}</p>
       </div>
     </section>
+
+    <!-- Items Table -->
     <section class="mb-8" data-purpose="items-table">
       <table class="w-full table-border text-center text-[10px] font-bold">
         <thead>
@@ -6158,24 +7085,42 @@ module.exports = {
             <th class="w-[26%]">Observations et réserves du client</th>
           </tr>
         </thead>
-        <tbody>{{ITEMS_ROWS}}</tbody>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
       </table>
     </section>
+
+    <!-- Footer / Signature -->
     <section class="flex justify-between items-start mt-12" data-purpose="signature-section">
       <div class="w-[45%]">
         <p class="font-bold text-[10px] mb-1">Expéditeur :</p>
         <p class="font-bold text-[10px] mb-8">{{COMPANY_NAME}}</p>
-        <div class="border-t border-black w-3/4 pt-1"><p class="text-[9px] font-bold text-slate-500">Signature et cachet</p></div>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">Signature et cachet</p>
+        </div>
       </div>
       <div class="w-[45%] text-right">
         <p class="font-bold text-[10px] mb-1">Signature du client :</p>
         <p class="font-bold text-[10px] mb-8">{{PARTY_NAME}}</p>
-        <div class="border-t border-black w-3/4 pt-1 ml-auto"><p class="text-[9px] font-bold text-slate-500">Signature et cachet</p></div>
+        <div class="border-t border-black w-3/4 pt-1 ml-auto">
+          <p class="text-[9px] font-bold text-slate-500">Signature et cachet</p>
+        </div>
       </div>
     </section>
+
   </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
+
 ```
 
 ---
@@ -6185,17 +7130,25 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
   <meta charset="utf-8">
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>{{LBL_DELIVERY_TITLE}} - {{DELIVERY_NUMBER}}</title>
   <style data-purpose="page-size">
+    /* 80mm thermal roll, continuous height. */
+    /* مقاس الصفحة يُحسب وقت الطباعة (ورق مستمر): pageSize بطول المحتوى.
+       ملاحظة: `size: 80mm auto` تصريح غير صالح — خلط <length> مع auto — كان
+       Chromium يُسقطه ويعود لنموذج ورق التعريف الافتراضي فيقسّم المستند. */
     @page { margin: 0; }
   </style>
   <style>
     * { box-sizing: border-box; }
     body {
       font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+      /* كان 76مم مثبّتاً: على بكرة 58مم يخرج الوصل بعرض بكرة 80مم
+         فيقتطعه التعريف أو يصغّره. العرض الآن من receipt_paper_width_mm
+         عبر --rcpt-paper-w، والحشو من الهامش الجانبي نفسه كوقت الطباعة. */
       width: 100%;
       max-width: var(--rcpt-paper-w, 80mm);
       margin: 0 auto;
@@ -6211,16 +7164,22 @@ module.exports = {
     h1 { font-size: 15px; font-weight: 900; margin: 0 0 2px; }
     .muted { font-size: 9px; }
     .logo { max-width: 120px; max-height: 60px; object-fit: contain; margin: 0 auto 4px; display: block; }
+
+    /* Item blocks (generated by printDeliveryNote for this thermal template) */
     .t-item { margin-bottom: 3px; }
     .t-name { font-weight: 700; font-size: 11px; }
     .t-line { display: flex; justify-content: space-between; font-size: 10px; }
     .t-line .muted2 { color: #333; }
+
+    /* Signature area — two stacked lines for the thermal roll */
     .sig { margin-top: 10px; }
     .sig-line { border-top: 1px solid #000; margin-top: 18px; padding-top: 2px; font-size: 9px; }
+
     @media print { body { padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm); } }
   </style>
   <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body>
   <div class="center">
     {{#if COMPANY_LOGO}}<img class="logo" src="{{COMPANY_LOGO}}" alt="logo" />{{/if}}
@@ -6230,24 +7189,38 @@ module.exports = {
     <div class="muted">{{LBL_TEL}} : {{COMPANY_PHONE}}</div>
     <div class="muted">RC : {{COMPANY_RC}} — NIF : {{COMPANY_NIF}}</div>
   </div>
+
   <div class="sep"></div>
+
   <div class="b center" style="font-size:13px;">{{LBL_DELIVERY_TITLE}} {{DELIVERY_NUMBER}}</div>
   <div class="row muted"><span>{{LBL_DATE}} {{DATE}}</span><span>{{LBL_ORDER_NUMBER}} {{ORDER_NUMBER}}</span></div>
+
   <div class="sep"></div>
+
   <div class="row muted"><span>{{LBL_CLIENT}} :</span><span class="b">{{PARTY_NAME}}</span></div>
   <div class="row muted"><span>{{LBL_ADDRESS}}</span><span>{{PARTY_ADDRESS}}</span></div>
   <div class="row muted"><span>{{LBL_CARRIER}} :</span><span>{{CARRIER_NAME}}</span></div>
   <div class="row muted"><span>{{LBL_VEHICLE}} :</span><span>{{VEHICLE_PLATE}}</span></div>
+
   <div class="sep"></div>
-  <div data-purpose="items-table">{{ITEMS_ROWS}}</div>
+
+  <!-- Items (vertical thermal layout — no prices) -->
+  <div data-purpose="items-table">
+    {{ITEMS_ROWS}}
+  </div>
+
   <div class="sep"></div>
+
   <div class="sig">
     <div class="sig-line">{{LBL_SIGNATURE_SENDER}}</div>
     <div class="sig-line">{{LBL_SIGNATURE_CLIENT}}</div>
   </div>
+
   <div class="center b" style="margin-top:8px;">{{COMPANY_NAME}}</div>
 </body>
+
 </html>
+
 ```
 
 ---
@@ -6439,7 +7412,7 @@ MAX_FILE_SIZE = 200 * 1024    # 200KB
 
 IGNORE_DIRS = {
     ".git",
-    ".github",
+    ".github", 
     ".idea",
     ".vscode",
     "node_modules",
@@ -8630,6 +9603,7 @@ module.exports = {
   <script src="./template-designer/template-builder.js"></script>
   <script src="./manufacturing/manufacturing.js"></script>
   <script src="./manufacturing/manufacturing-ui.js"></script>
+  <script src="./manufacturing/pos-produce.js"></script>
   <script src="./stocktake/stocktake-ui.js"></script>
   <script src="./renderer.js"></script>
   <script src="./renderer-rc-100.js"></script>
@@ -8644,339 +9618,199 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
-  <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
-  <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Facture - {{INVOICE_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
+  <style data-purpose="typography">
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
-    }
-    .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
-    }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #1d4ed8;
-      
-    }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #1d4ed8;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #eff6ff;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #eff6ff;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #1d4ed8;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #1d4ed8;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
+      font-family: 'Cairo', sans-serif;
       font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
+      color: #000;
+      background-color: #f3f4f6;
     }
-    .party-card {
-      background: #eff6ff;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #1d4ed8;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-    }
-    table.items-table th {
-      background: #1d4ed8;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #1d4ed8;
-      text-align: center;
-    }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
-    }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #eff6ff;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #1d4ed8;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #1d4ed8;
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 900;
-      padding: 8px 12px;
-    }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+
+    .font-serif-bold {
+      font-family: serif;
+      font-weight: bold;
     }
   </style>
+  <style data-purpose="layout-and-borders">
+    .invoice-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+    }
+
+    .table-border td {
+      padding: 6px 4px;
+    }
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .invoice-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 20px;
+      }
+    }
+  </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
-        {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
-        </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
-        </div>
-      </div>
 
-      <div class="doc-badge">
-        <div class="doc-type">{{INVOICE_TYPE_LABEL}}</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
+<body class="p-4">
+  <main class="invoice-container mx-auto bg-white" data-purpose="invoice-document">
 
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
-        </div>
+    <!-- Header Section -->
+    <header class="mb-8">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>الهاتف : {{COMPANY_PHONE}}</div>
+        <div>الثابت : {{COMPANY_FAX}}</div>
+        <div>البريد : {{COMPANY_EMAIL}}</div>
       </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>سجل تجاري : {{COMPANY_RC}}</div>
+        <div>رقم جبائي : {{COMPANY_NIF}}</div>
+        <div>مادة جبائية : {{COMPANY_AI}}</div>
       </div>
-    </div>
+      <div class="font-bold text-[10px] mt-1">رقم الإحصاء : {{COMPANY_NIS}}</div>
+    </header>
 
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
-
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
+    <!-- Client/Supplier and Invoice Info -->
+    <section class="flex justify-between items-start mb-10" data-purpose="info-block">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>{{CLIENT_ROLE_LABEL}} : {{PARTY_NAME}}</p>
+        <p>العنوان : {{PARTY_ADDRESS}}</p>
+        <p>سجل تجاري : {{PARTY_RC}}</p>
+        <p>رقم جبائي : {{PARTY_NIF}}</p>
+        <p>مادة جبائية : {{PARTY_AI}}</p>
+        <p>رقم الإحصاء : {{PARTY_NIS}}</p>
       </div>
+      <div class="w-[48%] pl-8" style="text-align: left;">
+        <h2 class="text-xl font-bold mb-2">{{INVOICE_TYPE_LABEL}} رقم {{INVOICE_NUMBER}}</h2>
+        <p class="text-sm font-bold">التاريخ : {{DATE}}</p>
+      </div>
+    </section>
 
-      <div class="totals-box">
-        <div class="totals-row">
+    <!-- Items Table -->
+    <section class="mb-8" data-purpose="items-table">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr class="bg-white">
+            <th class="w-[6%]">الرقم</th>
+            <th class="w-[14%]">المرجع</th>
+            <th class="w-[30%]">البيان</th>
+            <th class="w-[10%]">الكمية</th>
+            <th class="w-[10%]">الوحدة</th>
+            <th class="w-[10%]">{{LBL_UNIT_PRICE}}</th>
+            <th class="w-[10%]">{{LBL_TVA}}</th>
+            <th class="w-[10%]">{{LBL_TOTAL_HT}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Summary and Total -->
+    <section class="flex flex-col mb-8" style="align-items: flex-start;" data-purpose="totals-section">
+      <div class="w-[48%] rounded-box font-bold text-[10px]">
+        <div class="flex justify-between py-1">
           <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
+          <span>{{SUBTOTAL}}</span>
         </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1">
           <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
+          <span>{{DISCOUNT}}</span>
         </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1">
           <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
+          <span>{{TAX_TOTAL}}</span>
         </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1" data-purpose="stamp-row">
           <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
+          <span>{{STAMP_AMOUNT}}</span>
         </div>
-        {{/if}}
-        <div class="totals-row net-row">
+        <div class="flex justify-between py-1 border-t border-black mt-1 pt-1 font-black">
           <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
+          <span>{{NET_TO_PAY}}</span>
         </div>
-        
-        {{#if OLD_BALANCE}}
-        <div class="totals-row" data-purpose="old-balance-row">
+        <div class="flex justify-between py-1 mt-2 pt-2 border-t border-dashed border-slate-400" data-purpose="old-balance-row">
           <span>{{LBL_OLD_BALANCE}}</span>
-          <span class="val">{{OLD_BALANCE}}</span>
+          <span>{{OLD_BALANCE}}</span>
         </div>
-        {{/if}}
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1" data-purpose="remaining-row">
           <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
+          <span>{{REMAINING_DEBT}}</span>
         </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1 border-t border-black mt-1 pt-1 font-black" data-purpose="total-debt-row">
           <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
+          <span>{{TOTAL_DEBT}}</span>
         </div>
-        {{/if}}
       </div>
-    </div>
+    </section>
 
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+    <!-- Footer -->
+    <section class="space-y-6" data-purpose="footer-details">
+      <div>
+        <p class="font-bold text-[10px] mb-1">حررت هذه الفاتورة بمبلغ :</p>
+        <p class="font-bold text-[10px]">{{TOTAL_IN_WORDS}}</p>
+      </div>
+      <div class="flex justify-between items-end gap-4 mt-6" data-purpose="footer-row">
+        <div class="border border-black px-4 py-2 font-bold text-[10px]" data-purpose="payment-mode">
+          {{LBL_MODE_PAIEMENT}} {{PAYMENT_MODE}}
+        </div>
+        <div class="w-[45%] border border-black rounded-md px-3 pt-2 pb-12 text-center font-bold text-[10px]" data-purpose="signature-box">
+          {{LBL_SIGNATURE}}
+        </div>
+      </div>
+    </section>
+
+  </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
-</html>
 
+</html>
 ```
 
 ---
@@ -8986,337 +9820,252 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
-  <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  <script src="assets/js/tailwind.min.js"></script>
+  <style data-purpose="typography">
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
-    }
-    .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
-    }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #0f172a;
-      background: #f8fafc; padding: 14px; border-radius: 10px;
-    }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #0f172a;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #0f172a;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #0f172a;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
+      font-family: 'Cairo', sans-serif;
+      color: #1f2937;
+      background-color: #f3f4f6;
       font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
     }
-    .party-card {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #0f172a;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-    }
-    table.items-table th {
-      background: #0f172a;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #0f172a;
-      text-align: center;
-    }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
-    }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #0f172a;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #0f172a;
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 900;
-      padding: 8px 12px;
-    }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+
+    .accent {
+      color: #1e3a8a;
     }
   </style>
+  <style data-purpose="layout-and-table">
+    .invoice-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 16px auto;
+      padding: 22px 26px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .reg-strip {
+      border-top: 2px double #1e3a8a;
+      border-bottom: 2px double #1e3a8a;
+    }
+
+    .info-box {
+      border: 1px solid #94a3b8;
+      border-radius: 8px;
+    }
+
+    /* جدول مضغوط — يتسع لعدد كبير من المنتجات في صفحة واحدة. */
+    .invoice-table {
+      border-collapse: collapse;
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    .invoice-table th,
+    .invoice-table td {
+      border: 1px solid #475569;
+      padding: 3px 5px;
+      text-align: center;
+      font-size: 10px;
+      line-height: 1.35;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+
+    .invoice-table th {
+      font-weight: 800;
+      background: #e8eefc;
+      color: #1e3a8a;
+    }
+
+    .invoice-table td {
+      font-weight: 600;
+    }
+
+    /* خلية البيان يضع لها الـ renderer صنف .text-left — نحاذيها يميناً في RTL */
+    .invoice-table td.text-left {
+      text-align: right;
+    }
+
+    .filler td {
+      height: 70px;
+      border-left: 1px solid #475569;
+      border-right: 1px solid #475569;
+      border-bottom: 1px solid #475569;
+      border-top: none;
+    }
+
+    .totals-box {
+      border: 1.5px solid #1e3a8a;
+      border-radius: 10px;
+    }
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .invoice-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 14px 16px;
+      }
+
+      .invoice-table th {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .no-print {
+        display: none;
+      }
+    }
+  </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
+
+<body class="p-4">
+  <main class="invoice-container mx-auto bg-white" id="invoice-paper">
+
+    <!-- الترويسة -->
+    <header class="flex items-center justify-between gap-4 mb-2">
+      <div class="text-right flex-1" data-purpose="company-details">
+        <h1 class="text-xl font-extrabold accent leading-tight">{{COMPANY_NAME}}</h1>
+        <p class="text-[10px] font-bold mt-0.5">العنوان : {{COMPANY_ADDRESS}}</p>
+        <div class="flex flex-wrap gap-x-4 text-[10px] mt-0.5">
+          <span>الهاتف : {{COMPANY_PHONE}}</span>
+          <span>الثابت : {{COMPANY_FAX}}</span>
+          <span>البريد : {{COMPANY_EMAIL}}</span>
+        </div>
+      </div>
+      <div data-purpose="logo-container">
         {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
+        <img src="{{COMPANY_LOGO}}" alt="{{COMPANY_NAME}}" class="h-20 w-20 object-contain rounded-lg" />
         {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
+        {{#unless COMPANY_LOGO}}
+        <div class="h-20 w-20 bg-slate-100 rounded-lg flex items-center justify-center border-2 border-dashed border-slate-300">
+          <span class="text-slate-400 font-black text-[9px] text-center px-1">{{COMPANY_NAME}}</span>
         </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
+        {{/unless}}
+      </div>
+    </header>
+
+    <!-- المعلومات القانونية للشركة -->
+    <section class="reg-strip py-1 mb-2 text-center text-[9.5px] font-semibold tracking-tight" data-purpose="registry-info">
+      رقم جبائي : {{COMPANY_NIF}} &nbsp;•&nbsp; سجل تجاري : {{COMPANY_RC}} &nbsp;•&nbsp; مادة جبائية : {{COMPANY_AI}} &nbsp;•&nbsp; رقم الإحصاء : {{COMPANY_NIS}}
+    </section>
+
+    <!-- العنوان -->
+    <h2 class="text-center text-lg font-extrabold accent mb-2">{{INVOICE_TYPE_LABEL}} رقم {{INVOICE_NUMBER}}</h2>
+
+    <!-- معلومات الزبون + الفاتورة -->
+    <section class="flex justify-between gap-3 mb-2 text-[10.5px]" data-purpose="client-information">
+      <div class="info-box p-2 w-[62%] leading-relaxed">
+        <p><span class="font-bold">{{CLIENT_ROLE_LABEL}} :</span> {{PARTY_NAME}}</p>
+        <p><span class="font-bold">العنوان :</span> {{PARTY_ADDRESS}}</p>
+        <div class="flex flex-wrap gap-x-4">
+          <span><span class="font-bold">سجل تجاري :</span> {{PARTY_RC}}</span>
+          <span><span class="font-bold">رقم جبائي :</span> {{PARTY_NIF}}</span>
+          <span><span class="font-bold">مادة جبائية :</span> {{PARTY_AI}}</span>
+          <span><span class="font-bold">رقم الإحصاء :</span> {{PARTY_NIS}}</span>
         </div>
       </div>
-
-      <div class="doc-badge">
-        <div class="doc-type">{{INVOICE_TYPE_LABEL}}</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
+      <div class="info-box p-2 w-[36%] leading-relaxed">
+        <p><span class="font-bold">التاريخ :</span> {{DATE}}</p>
+        <p><span class="font-bold">{{LBL_MODE_PAIEMENT}}</span> {{PAYMENT_MODE}}</p>
       </div>
-    </div>
+    </section>
 
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
+    <!-- جدول المنتجات (8 أعمدة — مطابق لمخرجات الـ renderer) -->
+    <section class="mb-2">
+      <table class="invoice-table">
+        <thead>
+          <tr>
+            <th style="width:5%">الرقم</th>
+            <th style="width:13%">المرجع</th>
+            <th style="width:29%">البيان</th>
+            <th style="width:10%">الكمية</th>
+            <th style="width:9%">الوحدة</th>
+            <th style="width:11%">{{LBL_UNIT_PRICE}}</th>
+            <th style="width:8%">{{LBL_TVA}}</th>
+            <th style="width:15%">{{LBL_TOTAL_HT}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+          <tr class="filler">
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- المجاميع + المبلغ بالحروف -->
+    <section class="flex flex-row justify-between gap-4 mt-2">
+      <div class="w-1/2 pt-2">
+        <p class="font-bold text-[11px] mb-1">حررت هذه الفاتورة بمبلغ :</p>
+        <p class="text-[11px] italic font-bold">{{TOTAL_IN_WORDS}}</p>
+      </div>
+      <div class="w-1/2 totals-box p-3 bg-white" data-purpose="totals-box">
+        <div class="flex justify-between text-sm mb-1">
+          <span class="font-bold">{{LBL_SUBTOTAL}}</span>
+          <span class="font-bold">{{SUBTOTAL}}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1">
+          <span class="font-bold">{{LBL_DISCOUNT}}</span>
+          <span class="font-bold">{{DISCOUNT}}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1">
+          <span class="font-bold">{{LBL_TAX_TOTAL}}</span>
+          <span class="font-bold">{{TAX_TOTAL}}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1" data-purpose="stamp-row">
+          <span class="font-bold">{{LBL_STAMP}}</span>
+          <span class="font-bold">{{STAMP_AMOUNT}}</span>
+        </div>
+        <div class="flex justify-between text-sm border-t border-black pt-1 mt-1">
+          <span class="font-black text-base accent">{{LBL_NET_PAY}}</span>
+          <span class="font-black text-base accent">{{NET_TO_PAY}}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1 mt-2 pt-2 border-t border-dashed border-slate-400" data-purpose="old-balance-row">
+          <span class="font-bold">{{LBL_OLD_BALANCE}}</span>
+          <span class="font-bold">{{OLD_BALANCE}}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1" data-purpose="remaining-row">
+          <span class="font-bold">{{LBL_REMAINING_PAY}}</span>
+          <span class="font-bold">{{REMAINING_DEBT}}</span>
+        </div>
+        <div class="flex justify-between text-sm border-t border-black pt-1 mt-1" data-purpose="total-debt-row">
+          <span class="font-black text-base">{{LBL_TOTAL_DEBT}}</span>
+          <span class="font-black text-base">{{TOTAL_DEBT}}</span>
         </div>
       </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
+    </section>
+
+    <!-- التوقيع -->
+    <section class="flex justify-end mt-6" data-purpose="signature-section">
+      <div class="w-1/3 info-box px-3 pt-2 pb-12 text-center font-bold text-[10px]" data-purpose="signature-box">
+        {{LBL_SIGNATURE}}
       </div>
-    </div>
-
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
-
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
-      </div>
-
-      <div class="totals-box">
-        <div class="totals-row">
-          <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
-        </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
-        </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
-          <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
-        </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
-        </div>
-        {{/if}}
-        <div class="totals-row net-row">
-          <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
-        </div>
-        
-        {{#if OLD_BALANCE}}
-        <div class="totals-row" data-purpose="old-balance-row">
-          <span>{{LBL_OLD_BALANCE}}</span>
-          <span class="val">{{OLD_BALANCE}}</span>
-        </div>
-        {{/if}}
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
-        </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
-        </div>
-        {{/if}}
-      </div>
-    </div>
-
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+    </section>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -9664,333 +10413,199 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
-  <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  <script src="assets/js/tailwind.min.js"></script>
+  <style data-purpose="typography">
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
-    }
-    .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
-    }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #4338ca;
-      background: #eef2ff; padding: 14px; border-radius: 10px;
-    }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #4338ca;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #eef2ff;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #eef2ff;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #4338ca;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #4338ca;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
+      font-family: 'Cairo', sans-serif;
       font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
+      color: #000;
+      background-color: #f3f4f6;
     }
-    .party-card {
-      background: #eef2ff;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #4338ca;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-    }
-    table.items-table th {
-      background: #4338ca;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #4338ca;
-      text-align: center;
-    }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
-    }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #eef2ff;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #4338ca;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #4338ca;
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 900;
-      padding: 8px 12px;
-    }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+
+    .font-serif-bold {
+      font-family: serif;
+      font-weight: bold;
     }
   </style>
+  <style data-purpose="layout-and-borders">
+    .invoice-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+    }
+
+    .table-border td {
+      padding: 6px 4px;
+    }
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .invoice-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 20px;
+      }
+    }
+  </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
-        {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
-        </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
-        </div>
-      </div>
 
-      <div class="doc-badge">
-        <div class="doc-type">{{INVOICE_TYPE_LABEL}}</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
+<body class="p-4">
+  <main class="invoice-container mx-auto bg-white" data-purpose="invoice-document">
 
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
-        </div>
+    <!-- Header Section -->
+    <header class="mb-8">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>الهاتف : {{COMPANY_PHONE}}</div>
+        <div>الثابت : {{COMPANY_FAX}}</div>
+        <div>البريد : {{COMPANY_EMAIL}}</div>
       </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>سجل تجاري : {{COMPANY_RC}}</div>
+        <div>رقم جبائي : {{COMPANY_NIF}}</div>
+        <div>مادة جبائية : {{COMPANY_AI}}</div>
       </div>
-    </div>
+      <div class="font-bold text-[10px] mt-1">رقم الإحصاء : {{COMPANY_NIS}}</div>
+    </header>
 
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
-
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
+    <!-- Client/Supplier and Invoice Info -->
+    <section class="flex justify-between items-start mb-10" data-purpose="info-block">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>{{CLIENT_ROLE_LABEL}} : {{PARTY_NAME}}</p>
+        <p>العنوان : {{PARTY_ADDRESS}}</p>
+        <p>سجل تجاري : {{PARTY_RC}}</p>
+        <p>رقم جبائي : {{PARTY_NIF}}</p>
+        <p>مادة جبائية : {{PARTY_AI}}</p>
+        <p>رقم الإحصاء : {{PARTY_NIS}}</p>
       </div>
+      <div class="w-[48%] pl-8" style="text-align: left;">
+        <h2 class="text-xl font-bold mb-2">{{INVOICE_TYPE_LABEL}} رقم {{INVOICE_NUMBER}}</h2>
+        <p class="text-sm font-bold">التاريخ : {{DATE}}</p>
+      </div>
+    </section>
 
-      <div class="totals-box">
-        <div class="totals-row">
+    <!-- Items Table -->
+    <section class="mb-8" data-purpose="items-table">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr class="bg-white">
+            <th class="w-[6%]">الرقم</th>
+            <th class="w-[14%]">المرجع</th>
+            <th class="w-[30%]">البيان</th>
+            <th class="w-[10%]">الكمية</th>
+            <th class="w-[10%]">الوحدة</th>
+            <th class="w-[10%]">{{LBL_UNIT_PRICE}}</th>
+            <th class="w-[10%]">{{LBL_TVA}}</th>
+            <th class="w-[10%]">{{LBL_TOTAL_HT}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Summary and Total -->
+    <section class="flex flex-col mb-8" style="align-items: flex-start;" data-purpose="totals-section">
+      <div class="w-[48%] rounded-box font-bold text-[10px]">
+        <div class="flex justify-between py-1">
           <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
+          <span>{{SUBTOTAL}}</span>
         </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1">
           <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
+          <span>{{DISCOUNT}}</span>
         </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1">
           <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
+          <span>{{TAX_TOTAL}}</span>
         </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1" data-purpose="stamp-row">
           <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
+          <span>{{STAMP_AMOUNT}}</span>
         </div>
-        {{/if}}
-        <div class="totals-row net-row">
+        <div class="flex justify-between py-1 border-t border-black mt-1 pt-1 font-black">
           <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
+          <span>{{NET_TO_PAY}}</span>
         </div>
-        
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1 mt-2 pt-2 border-t border-dashed border-slate-400" data-purpose="old-balance-row">
+          <span>{{LBL_OLD_BALANCE}}</span>
+          <span>{{OLD_BALANCE}}</span>
+        </div>
+        <div class="flex justify-between py-1" data-purpose="remaining-row">
           <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
+          <span>{{REMAINING_DEBT}}</span>
         </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1 border-t border-black mt-1 pt-1 font-black" data-purpose="total-debt-row">
           <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
+          <span>{{TOTAL_DEBT}}</span>
         </div>
-        {{/if}}
       </div>
-    </div>
+    </section>
 
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+    <!-- Footer -->
+    <section class="space-y-6" data-purpose="footer-details">
+      <div>
+        <p class="font-bold text-[10px] mb-1">حررت هذه الفاتورة بمبلغ :</p>
+        <p class="font-bold text-[10px]">{{TOTAL_IN_WORDS}}</p>
+      </div>
+      <div class="flex justify-between items-end gap-4 mt-6" data-purpose="footer-row">
+        <div class="border border-black px-4 py-2 font-bold text-[10px]" data-purpose="payment-mode">
+          {{LBL_MODE_PAIEMENT}} {{PAYMENT_MODE}}
+        </div>
+        <div class="w-[45%] border border-black rounded-md px-3 pt-2 pb-12 text-center font-bold text-[10px]" data-purpose="signature-box">
+          {{LBL_SIGNATURE}}
+        </div>
+      </div>
+    </section>
+
+  </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
-</html>
 
+</html>
 ```
 
 ---
@@ -9999,334 +10614,200 @@ module.exports = {
 
 ```html
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="fr" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
-  <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  <script src="assets/js/tailwind.min.js"></script>
+  <style data-purpose="typography">
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
-    }
-    .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
-    }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #b45309;
-      
-    }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #b45309;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #fffbeb;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #fffbeb;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #b45309;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #b45309;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
+      font-family: 'Cairo', sans-serif;
       font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
+      color: #000;
+      background-color: #f3f4f6;
     }
-    .party-card {
-      background: #fffbeb;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #b45309;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-    }
-    table.items-table th {
-      background: #b45309;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #b45309;
-      text-align: center;
-    }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
-    }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #fffbeb;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #b45309;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #b45309;
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 900;
-      padding: 8px 12px;
-    }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+
+    .font-serif-bold {
+      font-family: serif;
+      font-weight: bold;
     }
   </style>
+  <style data-purpose="layout-and-borders">
+    .invoice-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+    }
+
+    .table-border td {
+      padding: 6px 4px;
+    }
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .invoice-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 20px;
+      }
+    }
+  </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
-        {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
-        </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
-        </div>
-      </div>
 
-      <div class="doc-badge">
-        <div class="doc-type">{{INVOICE_TYPE_LABEL}}</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
+<body class="p-4">
+  <main class="invoice-container mx-auto bg-white" data-purpose="invoice-document">
 
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
-        </div>
+    <!-- Header Section -->
+    <header class="mb-8">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>Tél : {{COMPANY_PHONE}}</div>
+        <div>Tél Fixe : {{COMPANY_FAX}}</div>
+        <div>Email : {{COMPANY_EMAIL}}</div>
       </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>R.C : {{COMPANY_RC}}</div>
+        <div>NIF : {{COMPANY_NIF}}</div>
+        <div>AI : {{COMPANY_AI}}</div>
       </div>
-    </div>
+      <div class="font-bold text-[10px] mt-1">NIS : {{COMPANY_NIS}}</div>
+    </header>
 
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
-
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
+    <!-- Client/Supplier and Invoice Info -->
+    <section class="flex justify-between items-start mb-10" data-purpose="info-block">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>{{CLIENT_ROLE_LABEL}} : {{PARTY_NAME}}</p>
+        <p>Addresse : {{PARTY_ADDRESS}}</p>
+        <p>R.C : {{PARTY_RC}}</p>
+        <p>NIF : {{PARTY_NIF}}</p>
+        <p>AI : {{PARTY_AI}}</p>
+        <p>NIS : {{PARTY_NIS}}</p>
       </div>
+      <div class="w-[48%] text-right pr-8">
+        <h2 class="text-xl font-bold mb-2">{{INVOICE_TYPE_LABEL}} N° {{INVOICE_NUMBER}}</h2>
+        <p class="text-sm font-bold">Date : {{DATE}}</p>
+      </div>
+    </section>
 
-      <div class="totals-box">
-        <div class="totals-row">
+    <!-- Items Table -->
+    <section class="mb-8" data-purpose="items-table">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr class="bg-white">
+            <th class="w-[6%]">N°</th>
+            <th class="w-[14%]">Réf</th>
+            <th class="w-[30%]">Désignation</th>
+            <th class="w-[10%]">Quantité</th>
+            <th class="w-[10%]">Unité</th>
+            <th class="w-[10%]">{{LBL_UNIT_PRICE}}</th>
+            <th class="w-[10%]">{{LBL_TVA}}</th>
+            <th class="w-[10%]">{{LBL_TOTAL_HT}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Summary and Total -->
+    <section class="flex flex-col items-end mb-8" data-purpose="totals-section">
+      <div class="w-[48%] rounded-box font-bold text-[10px]">
+        <div class="flex justify-between py-1">
           <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
+          <span>{{SUBTOTAL}}</span>
         </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1">
           <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
+          <span>{{DISCOUNT}}</span>
         </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1">
           <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
+          <span>{{TAX_TOTAL}}</span>
         </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1" data-purpose="stamp-row">
           <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
+          <span>{{STAMP_AMOUNT}}</span>
         </div>
-        {{/if}}
-        <div class="totals-row net-row">
+        <div class="flex justify-between py-1 border-t border-black mt-1 pt-1 font-black">
           <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
+          <span>{{NET_TO_PAY}}</span>
         </div>
-        
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1 mt-2 pt-2 border-t border-dashed border-slate-400" data-purpose="old-balance-row">
+          <span>{{LBL_OLD_BALANCE}}</span>
+          <span>{{OLD_BALANCE}}</span>
+        </div>
+        <div class="flex justify-between py-1" data-purpose="remaining-row">
           <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
+          <span>{{REMAINING_DEBT}}</span>
         </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1 border-t border-black mt-1 pt-1 font-black" data-purpose="total-debt-row">
           <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
+          <span>{{TOTAL_DEBT}}</span>
         </div>
-        {{/if}}
       </div>
-    </div>
+    </section>
 
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+    <!-- Footer -->
+    <section class="space-y-6" data-purpose="footer-details">
+      <div>
+        <p class="font-bold text-[10px] mb-1">Facture arrêtée à la somme de :</p>
+        <p class="font-bold text-[10px]">{{TOTAL_IN_WORDS}}</p>
+      </div>
+      <div class="flex justify-between items-end gap-4 mt-6" data-purpose="footer-row">
+        <div class="border border-black px-4 py-2 font-bold text-[10px]" data-purpose="payment-mode">
+          {{LBL_MODE_PAIEMENT}} {{PAYMENT_MODE}}
+        </div>
+        <div class="w-[45%] border border-black rounded-md px-3 pt-2 pb-12 text-center font-bold text-[10px]" data-purpose="signature-box">
+          {{LBL_SIGNATURE}}
+        </div>
+      </div>
+    </section>
+
+  </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
-</html>
 
+</html>
 ```
 
 ---
@@ -10335,334 +10816,200 @@ module.exports = {
 
 ```html
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
-  <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  <script src="assets/js/tailwind.min.js"></script>
+  <style data-purpose="typography">
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
-    }
-    .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
-    }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #be123c;
-      
-    }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #be123c;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #fff1f2;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #fff1f2;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #be123c;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #be123c;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
+      font-family: 'Cairo', sans-serif;
       font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
+      color: #000;
+      background-color: #f3f4f6;
     }
-    .party-card {
-      background: #fff1f2;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #be123c;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-    }
-    table.items-table th {
-      background: #be123c;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #be123c;
-      text-align: center;
-    }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
-    }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #fff1f2;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #be123c;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #be123c;
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 900;
-      padding: 8px 12px;
-    }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+
+    .font-serif-bold {
+      font-family: serif;
+      font-weight: bold;
     }
   </style>
+  <style data-purpose="layout-and-borders">
+    .invoice-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+    }
+
+    .table-border td {
+      padding: 6px 4px;
+    }
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .invoice-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 20px;
+      }
+    }
+  </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
-        {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
-        </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
-        </div>
-      </div>
 
-      <div class="doc-badge">
-        <div class="doc-type">{{INVOICE_TYPE_LABEL}}</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
+<body class="p-4">
+  <main class="invoice-container mx-auto bg-white" data-purpose="invoice-document">
 
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
-        </div>
+    <!-- Header Section -->
+    <header class="mb-8">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>Phone : {{COMPANY_PHONE}}</div>
+        <div>Landline : {{COMPANY_FAX}}</div>
+        <div>Email : {{COMPANY_EMAIL}}</div>
       </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>CR : {{COMPANY_RC}}</div>
+        <div>TIN : {{COMPANY_NIF}}</div>
+        <div>AI : {{COMPANY_AI}}</div>
       </div>
-    </div>
+      <div class="font-bold text-[10px] mt-1">NIS : {{COMPANY_NIS}}</div>
+    </header>
 
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
-
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
+    <!-- Client/Supplier and Invoice Info -->
+    <section class="flex justify-between items-start mb-10" data-purpose="info-block">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>{{CLIENT_ROLE_LABEL}} : {{PARTY_NAME}}</p>
+        <p>Address : {{PARTY_ADDRESS}}</p>
+        <p>CR : {{PARTY_RC}}</p>
+        <p>TIN : {{PARTY_NIF}}</p>
+        <p>AI : {{PARTY_AI}}</p>
+        <p>NIS : {{PARTY_NIS}}</p>
       </div>
+      <div class="w-[48%] text-right pr-8">
+        <h2 class="text-xl font-bold mb-2">{{INVOICE_TYPE_LABEL}} No. {{INVOICE_NUMBER}}</h2>
+        <p class="text-sm font-bold">Date : {{DATE}}</p>
+      </div>
+    </section>
 
-      <div class="totals-box">
-        <div class="totals-row">
+    <!-- Items Table -->
+    <section class="mb-8" data-purpose="items-table">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr class="bg-white">
+            <th class="w-[6%]">No.</th>
+            <th class="w-[14%]">Ref</th>
+            <th class="w-[30%]">Description</th>
+            <th class="w-[10%]">Qty</th>
+            <th class="w-[10%]">Unit</th>
+            <th class="w-[10%]">{{LBL_UNIT_PRICE}}</th>
+            <th class="w-[10%]">{{LBL_TVA}}</th>
+            <th class="w-[10%]">{{LBL_TOTAL_HT}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Summary and Total -->
+    <section class="flex flex-col items-end mb-8" data-purpose="totals-section">
+      <div class="w-[48%] rounded-box font-bold text-[10px]">
+        <div class="flex justify-between py-1">
           <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
+          <span>{{SUBTOTAL}}</span>
         </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1">
           <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
+          <span>{{DISCOUNT}}</span>
         </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1">
           <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
+          <span>{{TAX_TOTAL}}</span>
         </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1" data-purpose="stamp-row">
           <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
+          <span>{{STAMP_AMOUNT}}</span>
         </div>
-        {{/if}}
-        <div class="totals-row net-row">
+        <div class="flex justify-between py-1 border-t border-black mt-1 pt-1 font-black">
           <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
+          <span>{{NET_TO_PAY}}</span>
         </div>
-        
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1 mt-2 pt-2 border-t border-dashed border-slate-400" data-purpose="old-balance-row">
+          <span>{{LBL_OLD_BALANCE}}</span>
+          <span>{{OLD_BALANCE}}</span>
+        </div>
+        <div class="flex justify-between py-1" data-purpose="remaining-row">
           <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
+          <span>{{REMAINING_DEBT}}</span>
         </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1 border-t border-black mt-1 pt-1 font-black" data-purpose="total-debt-row">
           <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
+          <span>{{TOTAL_DEBT}}</span>
         </div>
-        {{/if}}
       </div>
-    </div>
+    </section>
 
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+    <!-- Footer -->
+    <section class="space-y-6" data-purpose="footer-details">
+      <div>
+        <p class="font-bold text-[10px] mb-1">Invoice fixed at the sum of :</p>
+        <p class="font-bold text-[10px]">{{TOTAL_IN_WORDS}}</p>
+      </div>
+      <div class="flex justify-between items-end gap-4 mt-6" data-purpose="footer-row">
+        <div class="border border-black px-4 py-2 font-bold text-[10px]" data-purpose="payment-mode">
+          {{LBL_MODE_PAIEMENT}} {{PAYMENT_MODE}}
+        </div>
+        <div class="w-[45%] border border-black rounded-md px-3 pt-2 pb-12 text-center font-bold text-[10px]" data-purpose="signature-box">
+          {{LBL_SIGNATURE}}
+        </div>
+      </div>
+    </section>
+
+  </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
-</html>
 
+</html>
 ```
 
 ---
@@ -10671,332 +11018,253 @@ module.exports = {
 
 ```html
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="fr" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
-  <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  <script src="assets/js/tailwind.min.js"></script>
+  <style data-purpose="typography">
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
-    }
-    .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
-    }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #0f766e;
-      background: #f0fdfa; padding: 14px; border-radius: 10px;
-    }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #0f766e;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #f0fdfa;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #f0fdfa;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #0f766e;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #0f766e;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
+      font-family: 'Cairo', sans-serif;
+      color: #1f2937;
+      background-color: #f3f4f6;
       font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
     }
-    .party-card {
-      background: #f0fdfa;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #0f766e;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-    }
-    table.items-table th {
-      background: #0f766e;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #0f766e;
-      text-align: center;
-    }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
-    }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #f0fdfa;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #0f766e;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #0f766e;
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 900;
-      padding: 8px 12px;
-    }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+
+    .accent {
+      color: #1e3a8a;
     }
   </style>
+  <style data-purpose="layout-and-table">
+    .invoice-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 16px auto;
+      padding: 22px 26px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .reg-strip {
+      border-top: 2px double #1e3a8a;
+      border-bottom: 2px double #1e3a8a;
+    }
+
+    .info-box {
+      border: 1px solid #94a3b8;
+      border-radius: 8px;
+    }
+
+    /* Compact products grid — many rows fit on a single page. */
+    .invoice-table {
+      border-collapse: collapse;
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    .invoice-table th,
+    .invoice-table td {
+      border: 1px solid #475569;
+      padding: 3px 5px;
+      text-align: center;
+      font-size: 10px;
+      line-height: 1.35;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+
+    .invoice-table th {
+      font-weight: 800;
+      background: #e8eefc;
+      color: #1e3a8a;
+    }
+
+    .invoice-table td {
+      font-weight: 600;
+    }
+
+    /* Renderer tags the designation cell with .text-left */
+    .invoice-table td.text-left {
+      text-align: left;
+    }
+
+    .filler td {
+      height: 70px;
+      border-left: 1px solid #475569;
+      border-right: 1px solid #475569;
+      border-bottom: 1px solid #475569;
+      border-top: none;
+    }
+
+    .totals-box {
+      border: 1.5px solid #1e3a8a;
+      border-radius: 10px;
+    }
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .invoice-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 14px 16px;
+      }
+
+      .invoice-table th {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .no-print {
+        display: none;
+      }
+    }
+  </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
+
+<body class="p-4">
+  <main class="invoice-container mx-auto bg-white" id="invoice-paper">
+
+    <!-- Header -->
+    <header class="flex items-center justify-between gap-4 mb-2">
+      <div data-purpose="logo-container">
         {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
+        <img src="{{COMPANY_LOGO}}" alt="{{COMPANY_NAME}}" class="h-20 w-20 object-contain rounded-lg" />
         {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
+        {{#unless COMPANY_LOGO}}
+        <div class="h-20 w-20 bg-slate-100 rounded-lg flex items-center justify-center border-2 border-dashed border-slate-300">
+          <span class="text-slate-400 font-black text-[9px] text-center px-1">{{COMPANY_NAME}}</span>
         </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
+        {{/unless}}
+      </div>
+      <div class="text-right flex-1" data-purpose="company-details">
+        <h1 class="text-xl font-extrabold accent leading-tight">{{COMPANY_NAME}}</h1>
+        <p class="text-[10px] font-bold mt-0.5">Adresse : {{COMPANY_ADDRESS}}</p>
+        <div class="flex flex-wrap justify-end gap-x-4 text-[10px] mt-0.5">
+          <span>Tél : {{COMPANY_PHONE}}</span>
+          <span>Tél Fixe : {{COMPANY_FAX}}</span>
+          <span>Email : {{COMPANY_EMAIL}}</span>
         </div>
       </div>
+    </header>
 
-      <div class="doc-badge">
-        <div class="doc-type">{{INVOICE_TYPE_LABEL}}</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
+    <!-- Company registry -->
+    <section class="reg-strip py-1 mb-2 text-center text-[9.5px] font-semibold tracking-tight" data-purpose="registry-info">
+      NIF : {{COMPANY_NIF}} &nbsp;•&nbsp; R.C : {{COMPANY_RC}} &nbsp;•&nbsp; AI : {{COMPANY_AI}} &nbsp;•&nbsp; NIS : {{COMPANY_NIS}}
+    </section>
 
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
-        </div>
-      </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
-      </div>
-    </div>
+    <!-- Title -->
+    <h2 class="text-center text-lg font-extrabold accent mb-2">{{INVOICE_TYPE_LABEL}} N° {{INVOICE_NUMBER}}</h2>
 
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
-
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
+    <!-- Client + invoice meta -->
+    <section class="flex justify-between gap-3 mb-2 text-[10.5px]" data-purpose="client-information">
+      <div class="info-box p-2 w-[62%] leading-relaxed">
+        <p><span class="font-bold">{{CLIENT_ROLE_LABEL}} :</span> {{PARTY_NAME}}</p>
+        <p><span class="font-bold">Adresse :</span> {{PARTY_ADDRESS}}</p>
+        <div class="flex flex-wrap gap-x-4">
+          <span><span class="font-bold">R.C :</span> {{PARTY_RC}}</span>
+          <span><span class="font-bold">NIF :</span> {{PARTY_NIF}}</span>
+          <span><span class="font-bold">AI :</span> {{PARTY_AI}}</span>
+          <span><span class="font-bold">NIS :</span> {{PARTY_NIS}}</span>
         </div>
       </div>
-
-      <div class="totals-box">
-        <div class="totals-row">
-          <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
-        </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
-        </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
-          <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
-        </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
-        </div>
-        {{/if}}
-        <div class="totals-row net-row">
-          <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
-        </div>
-        
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
-        </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
-        </div>
-        {{/if}}
+      <div class="info-box p-2 w-[36%] leading-relaxed">
+        <p><span class="font-bold">Date :</span> {{DATE}}</p>
+        <p><span class="font-bold">{{LBL_MODE_PAIEMENT}}</span> {{PAYMENT_MODE}}</p>
       </div>
-    </div>
+    </section>
 
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+    <!-- Products table (8 columns — matches the renderer output) -->
+    <section class="mb-2">
+      <table class="invoice-table">
+        <thead>
+          <tr>
+            <th style="width:5%">N°</th>
+            <th style="width:13%">Réf</th>
+            <th style="width:29%">Désignation</th>
+            <th style="width:10%">Quantité</th>
+            <th style="width:9%">Unité</th>
+            <th style="width:11%">{{LBL_UNIT_PRICE}}</th>
+            <th style="width:8%">{{LBL_TVA}}</th>
+            <th style="width:15%">{{LBL_TOTAL_HT}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+          <tr class="filler">
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Totals + amount in words -->
+    <section class="flex flex-row justify-between gap-4 mt-2">
+      <div class="w-1/2 pt-2">
+        <p class="font-bold text-[11px] mb-1">Facture arrêtée à la somme de :</p>
+        <p class="text-[11px] italic font-bold">{{TOTAL_IN_WORDS}}</p>
+      </div>
+      <div class="w-1/2 totals-box p-3 bg-white" data-purpose="totals-box">
+        <div class="flex justify-between text-sm mb-1">
+          <span class="font-bold">{{LBL_SUBTOTAL}}</span>
+          <span class="font-bold">{{SUBTOTAL}}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1">
+          <span class="font-bold">{{LBL_DISCOUNT}}</span>
+          <span class="font-bold">{{DISCOUNT}}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1">
+          <span class="font-bold">{{LBL_TAX_TOTAL}}</span>
+          <span class="font-bold">{{TAX_TOTAL}}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1" data-purpose="stamp-row">
+          <span class="font-bold">{{LBL_STAMP}}</span>
+          <span class="font-bold">{{STAMP_AMOUNT}}</span>
+        </div>
+        <div class="flex justify-between text-sm border-t border-black pt-1 mt-1">
+          <span class="font-black text-base accent">{{LBL_NET_PAY}}</span>
+          <span class="font-black text-base accent">{{NET_TO_PAY}}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1 mt-2 pt-2 border-t border-dashed border-slate-400" data-purpose="old-balance-row">
+          <span class="font-bold">{{LBL_OLD_BALANCE}}</span>
+          <span class="font-bold">{{OLD_BALANCE}}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1" data-purpose="remaining-row">
+          <span class="font-bold">{{LBL_REMAINING_PAY}}</span>
+          <span class="font-bold">{{REMAINING_DEBT}}</span>
+        </div>
+        <div class="flex justify-between text-sm border-t border-black pt-1 mt-1" data-purpose="total-debt-row">
+          <span class="font-black text-base">{{LBL_TOTAL_DEBT}}</span>
+          <span class="font-black text-base">{{TOTAL_DEBT}}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Signature -->
+    <section class="flex justify-end mt-6" data-purpose="signature-section">
+      <div class="w-1/3 info-box px-3 pt-2 pb-12 text-center font-bold text-[10px]" data-purpose="signature-box">
+        {{LBL_SIGNATURE}}
+      </div>
+    </section>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -11007,332 +11275,253 @@ module.exports = {
 
 ```html
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
-  <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  <script src="assets/js/tailwind.min.js"></script>
+  <style data-purpose="typography">
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
-    }
-    .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
-    }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px double #111827;
-      
-    }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #111827;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #f3f4f6;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #f3f4f6;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #111827;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #111827;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
+      font-family: 'Cairo', sans-serif;
+      color: #1f2937;
+      background-color: #f3f4f6;
       font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
     }
-    .party-card {
-      background: #f3f4f6;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #111827;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-    }
-    table.items-table th {
-      background: #111827;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #111827;
-      text-align: center;
-    }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
-    }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #f3f4f6;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #111827;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #111827;
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 900;
-      padding: 8px 12px;
-    }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+
+    .accent {
+      color: #1e3a8a;
     }
   </style>
+  <style data-purpose="layout-and-table">
+    .invoice-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 16px auto;
+      padding: 22px 26px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .reg-strip {
+      border-top: 2px double #1e3a8a;
+      border-bottom: 2px double #1e3a8a;
+    }
+
+    .info-box {
+      border: 1px solid #94a3b8;
+      border-radius: 8px;
+    }
+
+    /* Compact products grid — many rows fit on a single page. */
+    .invoice-table {
+      border-collapse: collapse;
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    .invoice-table th,
+    .invoice-table td {
+      border: 1px solid #475569;
+      padding: 3px 5px;
+      text-align: center;
+      font-size: 10px;
+      line-height: 1.35;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+
+    .invoice-table th {
+      font-weight: 800;
+      background: #e8eefc;
+      color: #1e3a8a;
+    }
+
+    .invoice-table td {
+      font-weight: 600;
+    }
+
+    /* Renderer tags the designation cell with .text-left */
+    .invoice-table td.text-left {
+      text-align: left;
+    }
+
+    .filler td {
+      height: 70px;
+      border-left: 1px solid #475569;
+      border-right: 1px solid #475569;
+      border-bottom: 1px solid #475569;
+      border-top: none;
+    }
+
+    .totals-box {
+      border: 1.5px solid #1e3a8a;
+      border-radius: 10px;
+    }
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .invoice-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 14px 16px;
+      }
+
+      .invoice-table th {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .no-print {
+        display: none;
+      }
+    }
+  </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
+
+<body class="p-4">
+  <main class="invoice-container mx-auto bg-white" id="invoice-paper">
+
+    <!-- Header -->
+    <header class="flex items-center justify-between gap-4 mb-2">
+      <div data-purpose="logo-container">
         {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
+        <img src="{{COMPANY_LOGO}}" alt="{{COMPANY_NAME}}" class="h-20 w-20 object-contain rounded-lg" />
         {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
+        {{#unless COMPANY_LOGO}}
+        <div class="h-20 w-20 bg-slate-100 rounded-lg flex items-center justify-center border-2 border-dashed border-slate-300">
+          <span class="text-slate-400 font-black text-[9px] text-center px-1">{{COMPANY_NAME}}</span>
         </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
+        {{/unless}}
+      </div>
+      <div class="text-right flex-1" data-purpose="company-details">
+        <h1 class="text-xl font-extrabold accent leading-tight">{{COMPANY_NAME}}</h1>
+        <p class="text-[10px] font-bold mt-0.5">Address : {{COMPANY_ADDRESS}}</p>
+        <div class="flex flex-wrap justify-end gap-x-4 text-[10px] mt-0.5">
+          <span>Phone : {{COMPANY_PHONE}}</span>
+          <span>Landline : {{COMPANY_FAX}}</span>
+          <span>Email : {{COMPANY_EMAIL}}</span>
         </div>
       </div>
+    </header>
 
-      <div class="doc-badge">
-        <div class="doc-type">{{INVOICE_TYPE_LABEL}}</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
+    <!-- Company registry -->
+    <section class="reg-strip py-1 mb-2 text-center text-[9.5px] font-semibold tracking-tight" data-purpose="registry-info">
+      TIN : {{COMPANY_NIF}} &nbsp;•&nbsp; CR : {{COMPANY_RC}} &nbsp;•&nbsp; AI : {{COMPANY_AI}} &nbsp;•&nbsp; NIS : {{COMPANY_NIS}}
+    </section>
 
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
-        </div>
-      </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
-      </div>
-    </div>
+    <!-- Title -->
+    <h2 class="text-center text-lg font-extrabold accent mb-2">{{INVOICE_TYPE_LABEL}} No. {{INVOICE_NUMBER}}</h2>
 
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
-
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
+    <!-- Client + invoice meta -->
+    <section class="flex justify-between gap-3 mb-2 text-[10.5px]" data-purpose="client-information">
+      <div class="info-box p-2 w-[62%] leading-relaxed">
+        <p><span class="font-bold">{{CLIENT_ROLE_LABEL}} :</span> {{PARTY_NAME}}</p>
+        <p><span class="font-bold">Address :</span> {{PARTY_ADDRESS}}</p>
+        <div class="flex flex-wrap gap-x-4">
+          <span><span class="font-bold">CR :</span> {{PARTY_RC}}</span>
+          <span><span class="font-bold">TIN :</span> {{PARTY_NIF}}</span>
+          <span><span class="font-bold">AI :</span> {{PARTY_AI}}</span>
+          <span><span class="font-bold">NIS :</span> {{PARTY_NIS}}</span>
         </div>
       </div>
-
-      <div class="totals-box">
-        <div class="totals-row">
-          <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
-        </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
-        </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
-          <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
-        </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
-        </div>
-        {{/if}}
-        <div class="totals-row net-row">
-          <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
-        </div>
-        
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
-        </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
-        </div>
-        {{/if}}
+      <div class="info-box p-2 w-[36%] leading-relaxed">
+        <p><span class="font-bold">Date :</span> {{DATE}}</p>
+        <p><span class="font-bold">{{LBL_MODE_PAIEMENT}}</span> {{PAYMENT_MODE}}</p>
       </div>
-    </div>
+    </section>
 
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+    <!-- Products table (8 columns — matches the renderer output) -->
+    <section class="mb-2">
+      <table class="invoice-table">
+        <thead>
+          <tr>
+            <th style="width:5%">No.</th>
+            <th style="width:13%">Ref</th>
+            <th style="width:29%">Description</th>
+            <th style="width:10%">Qty</th>
+            <th style="width:9%">Unit</th>
+            <th style="width:11%">{{LBL_UNIT_PRICE}}</th>
+            <th style="width:8%">{{LBL_TVA}}</th>
+            <th style="width:15%">{{LBL_TOTAL_HT}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+          <tr class="filler">
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Totals + amount in words -->
+    <section class="flex flex-row justify-between gap-4 mt-2">
+      <div class="w-1/2 pt-2">
+        <p class="font-bold text-[11px] mb-1">Invoice fixed at the sum of :</p>
+        <p class="text-[11px] italic font-bold">{{TOTAL_IN_WORDS}}</p>
+      </div>
+      <div class="w-1/2 totals-box p-3 bg-white" data-purpose="totals-box">
+        <div class="flex justify-between text-sm mb-1">
+          <span class="font-bold">{{LBL_SUBTOTAL}}</span>
+          <span class="font-bold">{{SUBTOTAL}}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1">
+          <span class="font-bold">{{LBL_DISCOUNT}}</span>
+          <span class="font-bold">{{DISCOUNT}}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1">
+          <span class="font-bold">{{LBL_TAX_TOTAL}}</span>
+          <span class="font-bold">{{TAX_TOTAL}}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1" data-purpose="stamp-row">
+          <span class="font-bold">{{LBL_STAMP}}</span>
+          <span class="font-bold">{{STAMP_AMOUNT}}</span>
+        </div>
+        <div class="flex justify-between text-sm border-t border-black pt-1 mt-1">
+          <span class="font-black text-base accent">{{LBL_NET_PAY}}</span>
+          <span class="font-black text-base accent">{{NET_TO_PAY}}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1 mt-2 pt-2 border-t border-dashed border-slate-400" data-purpose="old-balance-row">
+          <span class="font-bold">{{LBL_OLD_BALANCE}}</span>
+          <span class="font-bold">{{OLD_BALANCE}}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1" data-purpose="remaining-row">
+          <span class="font-bold">{{LBL_REMAINING_PAY}}</span>
+          <span class="font-bold">{{REMAINING_DEBT}}</span>
+        </div>
+        <div class="flex justify-between text-sm border-t border-black pt-1 mt-1" data-purpose="total-debt-row">
+          <span class="font-black text-base">{{LBL_TOTAL_DEBT}}</span>
+          <span class="font-black text-base">{{TOTAL_DEBT}}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Signature -->
+    <section class="flex justify-end mt-6" data-purpose="signature-section">
+      <div class="w-1/3 info-box px-3 pt-2 pb-12 text-center font-bold text-[10px]" data-purpose="signature-box">
+        {{LBL_SIGNATURE}}
+      </div>
+    </section>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -11343,330 +11532,343 @@ module.exports = {
 
 ```html
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="fr" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
-  <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  <script src="assets/js/tailwind.min.js"></script>
+  <style data-purpose="typography">
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
-    }
-    .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
-    }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #1e3a8a;
-      
-    }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #1e3a8a;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #1e3a8a;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #1e3a8a;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
+      font-family: 'Cairo', Arial, sans-serif;
       font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
-    }
-    .party-card {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #1e3a8a;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-    }
-    table.items-table th {
-      background: #1e3a8a;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #1e3a8a;
-      text-align: center;
-    }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
-    }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #1e3a8a;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #1e3a8a;
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 900;
-      padding: 8px 12px;
-    }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+      color: #1f2937;
+      background-color: #eef0f4;
     }
   </style>
+  <style data-purpose="layout-and-borders">
+    /* Indigo/blue palette sampled from the printed model. */
+    :root {
+      --ink: #283593;       /* deep indigo — titles & strong text       */
+      --line: #3f51b5;      /* indigo grid & frame lines                 */
+      --head: #e9ecfb;      /* soft tinted header fill                   */
+      --head2: #f4f6fd;     /* lighter fill for value cells / Total row  */
+    }
+
+    /* The whole sheet — A4 proportions, soft framed boxes like the model. */
+    .invoice-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 28px 32px;
+      background: #fff;
+      box-shadow: 0 0 12px rgba(0, 0, 0, 0.12);
+    }
+
+    /* Rounded outlined panels (header, client, title). */
+    .panel,
+    .panel-soft {
+      border: 1.6px solid var(--line);
+      border-radius: 14px;
+    }
+
+    /* Rounded card that clips a table's square corners into the radius. */
+    .table-card {
+      border: 1.6px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .grid-table {
+      border-collapse: collapse;
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    .grid-table th,
+    .grid-table td {
+      border: 1px solid var(--line);
+    }
+
+    /* The card frame already draws the outer edges — drop the table's own
+       outer borders so the rounded corners stay clean. */
+    .grid-table tr>*:first-child {
+      border-left: none;
+    }
+
+    .grid-table tr>*:last-child {
+      border-right: none;
+    }
+
+    .grid-table thead tr:first-child>*,
+    .grid-table tbody tr:first-child>* {
+      border-top: none;
+    }
+
+    .grid-table tbody tr:last-child>* {
+      border-bottom: none;
+    }
+
+    /* Meta band — separated rounded label pills + a value row card. */
+    .meta-labels {
+      display: flex;
+      gap: 6px;
+    }
+
+    .meta-pill {
+      border: 1.4px solid var(--line);
+      border-radius: 8px;
+      background: var(--head);
+      color: var(--ink);
+      font-weight: 700;
+      font-size: 10px;
+      text-align: center;
+      padding: 5px 4px;
+    }
+
+    .meta-values td {
+      padding: 7px 4px;
+      text-align: center;
+      font-weight: 700;
+      font-size: 11px;
+      height: 26px;
+      background: var(--head2);
+    }
+
+    .items-table th {
+      font-weight: 800;
+      font-size: 11px;
+      padding: 8px 4px;
+      text-align: center;
+      background: var(--head);
+      color: var(--ink);
+    }
+
+    .items-table td {
+      font-weight: 600;
+      font-size: 11px;
+      padding: 6px 6px;
+      text-align: center;
+      vertical-align: top;
+    }
+
+    .items-table td.desig {
+      text-align: start;
+    }
+
+    /* Tall filler so the products grid fills the page like the printed model. */
+    .filler-row td {
+      height: 340px;
+      border-top: none;
+    }
+
+    .total-row td {
+      background: var(--head);
+      color: var(--ink);
+    }
+
+    .brand-title {
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      color: var(--ink);
+    }
+
+    @media print {
+      :root {
+        --head: #e9ecfb;
+        --head2: #f4f6fd;
+      }
+
+      .meta-pill,
+      .meta-values td,
+      .items-table th,
+      .total-row td {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .invoice-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 14px 18px;
+      }
+    }
+  </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
-        {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
+
+<body class="p-4">
+  <main class="invoice-container mx-auto bg-white" data-purpose="invoice-document">
+
+    <!-- ===== Top: Company panel (left) + Client panel (right) ===== -->
+    <section class="flex justify-between gap-4 mb-3" data-purpose="head-block">
+
+      <!-- Company panel -->
+      <div class="panel w-[60%] p-3">
+        <div class="flex items-center gap-3 mb-2">
+          {{#if COMPANY_LOGO}}
+          <img src="{{COMPANY_LOGO}}" alt="{{COMPANY_NAME}}" class="h-16 w-16 object-contain rounded-lg" />
+          {{/if}}
+          {{#unless COMPANY_LOGO}}
+          <div class="h-16 w-16 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center">
+            <span class="text-slate-400 font-black text-[9px] text-center px-1">{{COMPANY_NAME}}</span>
+          </div>
+          {{/unless}}
+          <div class="flex-1">
+            <h1 class="brand-title text-lg leading-tight">{{COMPANY_NAME}}</h1>
+            <p class="text-[10px] font-bold mt-0.5">{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</p>
+            <div class="flex flex-wrap gap-x-4 text-[10px] font-bold mt-0.5">
+              <span>{{LBL_TEL}} : {{COMPANY_PHONE}}</span>
+              <span>{{LBL_FAX}} : {{COMPANY_FAX}}</span>
+            </div>
           </div>
         </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
+        <div class="pt-2 mt-1 text-[10px] font-bold space-y-0.5" style="border-top:1px solid var(--line);">
+          <p>RC : {{COMPANY_RC}}</p>
+          <p>AI : {{COMPANY_AI}}</p>
+          <p>NIF : {{COMPANY_NIF}}</p>
+          <p>NIS : {{COMPANY_NIS}}</p>
         </div>
       </div>
 
-      <div class="doc-badge">
-        <div class="doc-type">{{INVOICE_TYPE_LABEL}}</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
-
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
+      <!-- Client panel -->
+      <div class="panel-soft w-[38%] p-3">
+        <div class="brand-title text-base text-center rounded-md py-1 mb-2" style="background:var(--head);">{{CLIENT_ROLE_LABEL}}</div>
+        <div class="text-[10px] font-bold space-y-1">
+          <p>{{PARTY_NAME}}</p>
+          <p>RC : {{PARTY_RC}}</p>
+          <p>AI : {{PARTY_AI}}</p>
+          <p>NIF : {{PARTY_NIF}}</p>
+        </div>
+        <div class="text-[10px] font-bold mt-2 pt-2 space-y-0.5" style="border-top:1px solid var(--line);">
+          <p class="flex justify-between"><span>{{LBL_OLD_BALANCE}}</span><span>{{CLIENT_OLD_DEBT}}</span></p>
+          <p class="flex justify-between" style="color:var(--ink);"><span class="font-black">{{LBL_CURRENT_DEBT}}</span><span class="font-black">{{CLIENT_TOTAL_DEBT}}</span></p>
         </div>
       </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
+    </section>
+
+    <!-- ===== Title (Facture + N° + Date) ===== -->
+    <section class="panel px-4 py-2 mb-3 flex items-center justify-between" style="background:var(--head);">
+      <h2 class="brand-title text-3xl">{{INVOICE_TYPE_LABEL}}</h2>
+      <div class="text-right text-[12px] font-bold leading-snug" style="color:var(--ink);">
+        <div>N° {{INVOICE_NUMBER}}</div>
+        <div>{{LBL_DATE}} : {{DATE}}</div>
       </div>
-    </div>
+    </section>
 
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:14%;">{{LBL_REF}}</th>
-        <th style="width:40%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:10%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_QTY}}</th>
-        <th style="width:13%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:13%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
+    <!-- ===== Meta band (N° / Date / Commande / Règlement / Livraison / Page) ===== -->
+    <section class="mb-3" data-purpose="meta-band">
+      <div class="meta-labels mb-1">
+        <div class="meta-pill" style="width:16%">{{LBL_INVOICE_NO}}</div>
+        <div class="meta-pill" style="width:14%">{{LBL_DATE}}</div>
+        <div class="meta-pill" style="width:20%">{{LBL_YOUR_ORDER}}</div>
+        <div class="meta-pill" style="width:18%">{{LBL_SETTLEMENT_MODE}}</div>
+        <div class="meta-pill" style="width:20%">{{LBL_DELIVERY}}</div>
+        <div class="meta-pill" style="width:12%">{{LBL_PAGE}}</div>
+      </div>
+      <div class="table-card">
+        <table class="grid-table meta-values">
+          <tr>
+            <td style="width:16%">{{INVOICE_NUMBER}}</td>
+            <td style="width:14%">{{DATE}}</td>
+            <td style="width:20%">&nbsp;</td>
+            <td style="width:18%">{{PAYMENT_MODE}}</td>
+            <td style="width:20%">&nbsp;</td>
+            <td style="width:12%">1/1</td>
+          </tr>
+        </table>
+      </div>
+    </section>
 
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
+    <!-- ===== Items table ===== -->
+    <section class="mb-4" data-purpose="items-table">
+      <div class="table-card">
+        <table class="grid-table items-table">
+          <thead>
+            <tr>
+              <th style="width:15%">{{LBL_REF}}</th>
+              <th style="width:37%">{{LBL_DESIGNATION}}</th>
+              <th style="width:12%">{{LBL_TVA}}</th>
+              <th style="width:12%">{{LBL_QTY}}</th>
+              <th style="width:12%">{{LBL_UNIT_PRICE}}</th>
+              <th style="width:12%">{{LBL_TOTAL_HT}}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{ITEMS_ROWS}}
+            <tr class="filler-row">
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===== Totals + debts summary (follows design 1) ===== -->
+    <section class="flex justify-between gap-6 mt-2" data-purpose="totals-section">
+
+      <!-- Left: amount in words -->
+      <div class="w-1/2 pt-2" data-purpose="amount-in-words">
+        <p class="font-extrabold text-[12px] mb-1">{{LBL_TOTAL_IN_WORDS_PREFIX}}</p>
+        <p class="font-bold text-[12px] italic">{{TOTAL_IN_WORDS}}</p>
       </div>
 
-      <div class="totals-box">
-        <div class="totals-row">
-          <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
+      <!-- Right: totals / debts box -->
+      <div class="w-[44%] panel p-3 text-[11px]" data-purpose="totals-box">
+        <div class="flex justify-between text-sm mb-1">
+          <span class="font-bold">{{LBL_SUBTOTAL}}</span>
+          <span class="font-bold">{{SUBTOTAL}}</span>
         </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
+        <div class="flex justify-between text-sm mb-1" data-purpose="discount-row">
+          <span class="font-bold">{{LBL_DISCOUNT}}</span>
+          <span class="font-bold">{{DISCOUNT}}</span>
         </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
-          <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
+        <div class="flex justify-between text-sm mb-1">
+          <span class="font-bold">{{LBL_TAX_TOTAL}}</span>
+          <span class="font-bold">{{TAX_TOTAL}}</span>
         </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
+        <div class="flex justify-between text-sm mb-1" data-purpose="stamp-row">
+          <span class="font-bold">{{LBL_STAMP}}</span>
+          <span class="font-bold">{{STAMP_AMOUNT}}</span>
         </div>
-        {{/if}}
-        <div class="totals-row net-row">
-          <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
+        <div class="flex justify-between text-sm mt-1 pt-1" style="border-top:1px solid var(--line);">
+          <span class="font-black text-base" style="color:var(--ink);">{{LBL_NET_PAY}}</span>
+          <span class="font-black text-base" style="color:var(--ink);">{{NET_TO_PAY}}</span>
         </div>
-        
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
-        </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
-        </div>
-        {{/if}}
       </div>
-    </div>
+    </section>
 
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+    <!-- ===== Signature ===== -->
+    <section class="flex justify-end mt-8" data-purpose="signature-section">
+      <div class="w-1/3 panel px-3 pt-2 pb-14 text-center font-bold text-[11px]" style="color:var(--ink);">
+        {{LBL_SIGNATURE}}
+      </div>
+    </section>
+
+  </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(function () { window.print(); }, 500);
+      }
+    };
+  </script>
 </body>
+
 </html>
 
 ```
@@ -11678,331 +11880,169 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
-  <style>
-    @page { size: A5 portrait; margin: 8mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  <script src="assets/js/tailwind.min.js"></script>
+  <style data-purpose="page-size">
+    /* Compact half-page invoice. A5 portrait = 148mm × 210mm. */
+    @page { size: A5; margin: 0; }
+  </style>
+  <style data-purpose="typography">
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 11px;
-      color: #0f172a;
-      margin: 0;
-      padding: 10px;
-      background: #ffffff;
-    }
-    .doc-container {
-      max-width: 148mm;
-      margin: 0 auto;
-    }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #1d4ed8;
-      
-    }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 18px;
-      font-weight: 900;
-      color: #1d4ed8;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #1d4ed8;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #1d4ed8;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
-      font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
-    }
-    .party-card {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #1d4ed8;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-    }
-    table.items-table th {
-      background: #1d4ed8;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #1d4ed8;
-      text-align: center;
-    }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
-    }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #1d4ed8;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #1d4ed8;
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 900;
-      padding: 8px 12px;
-    }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+      font-family: 'Cairo', sans-serif;
+      font-size: 9px;
+      color: #000;
+      background-color: #e5e7eb;
     }
   </style>
+  <style data-purpose="layout-and-borders">
+    .invoice-container {
+      width: 148mm;
+      min-height: 210mm;
+      margin: 16px auto;
+      padding: 10mm 9mm;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.12);
+    }
+
+    .rounded-box {
+      border: 1px solid #000;
+      border-radius: 8px;
+      padding: 7px 9px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th { padding: 3px 2px; font-weight: bold; }
+    .table-border td { padding: 3px 2px; }
+
+    @media print {
+      body { background-color: #fff; padding: 0; margin: 0; }
+      .invoice-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 6mm 7mm;
+      }
+    }
+  </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
-        {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
-        </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
-        </div>
-      </div>
 
-      <div class="doc-badge">
-        <div class="doc-type">{{INVOICE_TYPE_LABEL}}</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
+<body class="p-2">
+  <main class="invoice-container mx-auto bg-white" data-purpose="invoice-document">
 
-    <div class="party-card">
+    <!-- Header -->
+    <header class="flex justify-between items-start mb-4 pb-2 border-b-2 border-black">
       <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
-        </div>
+        <h1 class="text-base font-bold mb-0.5">{{COMPANY_NAME}}</h1>
+        <p class="font-bold text-[8px]">{{COMPANY_DESCRIPTION}}</p>
+        <p class="font-bold text-[8px]">{{COMPANY_ADDRESS}}</p>
+        <p class="font-bold text-[8px]">{{LBL_TEL}} : {{COMPANY_PHONE}} — {{LBL_EMAIL}} : {{COMPANY_EMAIL}}</p>
+        <p class="font-bold text-[8px]">RC : {{COMPANY_RC}} — NIF : {{COMPANY_NIF}} — AI : {{COMPANY_AI}} — NIS : {{COMPANY_NIS}}</p>
       </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
+      {{#if COMPANY_LOGO}}
+      <img src="{{COMPANY_LOGO}}" alt="logo" style="max-height:48px;max-width:90px;object-fit:contain;" />
+      {{/if}}
+    </header>
+
+    <!-- Client + invoice meta -->
+    <section class="flex justify-between items-start mb-3 gap-3" data-purpose="info-block">
+      <div class="w-[58%] rounded-box text-[8px] font-bold leading-snug">
+        <p>{{CLIENT_ROLE_LABEL}} : {{PARTY_NAME}}</p>
+        <p>{{LBL_ADDRESS}} {{PARTY_ADDRESS}}</p>
+        <p>RC : {{PARTY_RC}} — NIF : {{PARTY_NIF}}</p>
       </div>
-    </div>
-
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
-
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
+      <div class="w-[40%] text-left">
+        <h2 class="text-sm font-bold mb-1">{{INVOICE_TYPE_LABEL}} {{INVOICE_NUMBER}}</h2>
+        <p class="text-[9px] font-bold">{{LBL_DATE}} {{DATE}}</p>
       </div>
+    </section>
 
-      <div class="totals-box">
-        <div class="totals-row">
+    <!-- Items -->
+    <section class="mb-3" data-purpose="items-table">
+      <table class="w-full table-border text-center text-[8px] font-bold">
+        <thead>
+          <tr class="bg-gray-100">
+            <th class="w-[6%]">{{LBL_N_INDEX}}</th>
+            <th class="w-[16%]">{{LBL_REF}}</th>
+            <th class="w-[30%]">{{LBL_DESIGNATION}}</th>
+            <th class="w-[10%]">{{LBL_QTY}}</th>
+            <th class="w-[10%]">{{LBL_UNIT}}</th>
+            <th class="w-[12%]">{{LBL_UNIT_PRICE}}</th>
+            <th class="w-[6%]">{{LBL_TVA}}</th>
+            <th class="w-[12%]">{{LBL_TOTAL_HT}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Totals (markup mirrors invoice_template_4 so the conditional row removals apply) -->
+    <section class="flex flex-col mb-3" style="align-items: flex-start;" data-purpose="totals-section">
+      <div class="w-[55%] rounded-box font-bold text-[8px]">
+        <div class="flex justify-between py-0.5">
           <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
+          <span>{{SUBTOTAL}}</span>
         </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-0.5" data-purpose="discount-row">
           <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
+          <span>{{DISCOUNT}}</span>
         </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1">
           <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
+          <span>{{TAX_TOTAL}}</span>
         </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-0.5" data-purpose="stamp-row">
           <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
+          <span>{{STAMP_AMOUNT}}</span>
         </div>
-        {{/if}}
-        <div class="totals-row net-row">
+        <div class="flex justify-between py-1 border-t border-black mt-1 pt-1 font-black">
           <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
+          <span>{{NET_TO_PAY}}</span>
         </div>
-        
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-0.5 mt-1 pt-1 border-t border-dashed border-slate-400" data-purpose="old-balance-row">
+          <span>{{LBL_OLD_BALANCE}}</span>
+          <span>{{OLD_BALANCE}}</span>
+        </div>
+        <div class="flex justify-between py-0.5" data-purpose="remaining-row">
           <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
+          <span>{{REMAINING_DEBT}}</span>
         </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
+        <div class="flex justify-between py-1 border-t border-black mt-1 pt-1 font-black" data-purpose="total-debt-row">
           <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
+          <span>{{TOTAL_DEBT}}</span>
         </div>
-        {{/if}}
       </div>
-    </div>
+    </section>
 
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+    <!-- Footer -->
+    <section class="space-y-3" data-purpose="footer-details">
+      <p class="font-bold text-[8px]">{{LBL_TOTAL_IN_WORDS_PREFIX}} {{TOTAL_IN_WORDS}}</p>
+      <div class="flex justify-between items-end gap-3 mt-3" data-purpose="footer-row">
+        <div class="border border-black px-2 py-1 font-bold text-[8px]" data-purpose="payment-mode">
+          {{LBL_MODE_PAIEMENT}} {{PAYMENT_MODE}}
+        </div>
+        <div class="w-[42%] border border-black rounded-md px-2 pt-1 pb-8 text-center font-bold text-[8px]" data-purpose="signature-box">
+          {{LBL_SIGNATURE}}
+        </div>
+      </div>
+    </section>
+
+  </main>
 </body>
+
 </html>
 
 ```
@@ -12014,335 +12054,178 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
-  <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  <script src="assets/js/tailwind.min.js"></script>
+  <style data-purpose="page-size">
+    @page { size: A4; margin: 0; }
+  </style>
+  <style data-purpose="typography">
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
-    }
-    .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
-    }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #0f172a;
-      
-    }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #0f172a;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #f1f5f9;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #f1f5f9;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #0f172a;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #0f172a;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
+      font-family: 'Cairo', sans-serif;
       font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
+      color: #1f2937;
+      background-color: #e5e7eb;
     }
-    .party-card {
-      background: #f1f5f9;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #0f172a;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-    }
-    table.items-table th {
-      background: #0f172a;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #0f172a;
-      text-align: center;
-    }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
-    }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #f1f5f9;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #0f172a;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
+    .accent { color: #1d4ed8; }
+  </style>
+  <style data-purpose="layout-and-borders">
+    .invoice-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 0;
+      background: #fff;
+      box-shadow: 0 0 12px rgba(0, 0, 0, 0.12);
       overflow: hidden;
     }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
+    .doc-pad { padding: 16mm 14mm; }
+
+    .brand-bar {
+      background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+      color: #fff;
+      padding: 10mm 14mm;
     }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
+    .logo-box {
+      width: 96px; height: 96px; border-radius: 14px;
+      background: rgba(255,255,255,.14);
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; flex: none;
     }
-    .totals-row.net-row {
-      background: #0f172a;
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 900;
-      padding: 8px 12px;
-    }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+    .logo-box img { max-width: 90px; max-height: 90px; object-fit: contain; }
+
+    .rounded-box { border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 12px 14px; }
+
+    .table-border { border-collapse: collapse; }
+    .table-border th { background: #1e293b; color: #fff; padding: 8px 6px; font-weight: bold; }
+    .table-border td { padding: 7px 6px; border-bottom: 1px solid #e2e8f0; }
+    .table-border tbody tr:nth-child(even) td { background: #f8fafc; }
+
+    @media print {
+      body { background-color: #fff; padding: 0; margin: 0; }
+      .invoice-container { box-shadow: none; margin: 0; width: 100%; min-height: auto; }
     }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
-        {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
+
+<body class="p-4">
+  <main class="invoice-container mx-auto bg-white" data-purpose="invoice-document">
+
+    <!-- Big-logo brand header -->
+    <header class="brand-bar flex justify-between items-center">
+      <div class="logo-box">
+        {{#if COMPANY_LOGO}}<img src="{{COMPANY_LOGO}}" alt="logo" />{{/if}}
+        {{#unless COMPANY_LOGO}}<span style="font-size:30px;font-weight:900;opacity:.85;">{{COMPANY_NAME}}</span>{{/unless}}
+      </div>
+      <div class="text-left" style="text-align:left;">
+        <h1 class="text-2xl font-black mb-1">{{COMPANY_NAME}}</h1>
+        <p class="text-[10px] opacity-90">{{COMPANY_DESCRIPTION}}</p>
+        <p class="text-[10px] opacity-90 mt-1">{{COMPANY_ADDRESS}}</p>
+        <p class="text-[10px] opacity-90">{{LBL_TEL}} : {{COMPANY_PHONE}} — {{LBL_FAX}} : {{COMPANY_FAX}}</p>
+        <p class="text-[10px] opacity-90">{{LBL_EMAIL}} : {{COMPANY_EMAIL}}</p>
+      </div>
+    </header>
+
+    <div class="doc-pad">
+      <!-- Invoice title + client -->
+      <section class="flex justify-between items-start mb-8 gap-6" data-purpose="info-block">
+        <div class="w-[52%] rounded-box text-[10px] font-bold leading-relaxed">
+          <p class="accent text-[11px] mb-1">{{CLIENT_ROLE_LABEL}}</p>
+          <p class="text-[13px] font-black text-slate-800 mb-1">{{PARTY_NAME}}</p>
+          <p>{{LBL_ADDRESS}} {{PARTY_ADDRESS}}</p>
+          <p>RC : {{PARTY_RC}} — NIF : {{PARTY_NIF}}</p>
+          <p>AI : {{PARTY_AI}} — NIS : {{PARTY_NIS}}</p>
+        </div>
+        <div class="w-[44%] text-left" style="text-align:left;">
+          <h2 class="text-2xl font-black accent mb-2">{{INVOICE_TYPE_LABEL}}</h2>
+          <p class="text-base font-black text-slate-800">N° {{INVOICE_NUMBER}}</p>
+          <p class="text-[11px] font-bold text-slate-500 mt-1">{{LBL_DATE}} {{DATE}}</p>
+        </div>
+      </section>
+
+      <!-- Items -->
+      <section class="mb-8" data-purpose="items-table">
+        <table class="w-full table-border text-center text-[10px] font-bold">
+          <thead>
+            <tr>
+              <th class="w-[6%]">{{LBL_N_INDEX}}</th>
+              <th class="w-[16%]">{{LBL_REF}}</th>
+              <th class="w-[26%]">{{LBL_DESIGNATION}}</th>
+              <th class="w-[10%]">{{LBL_QTY}}</th>
+              <th class="w-[10%]">{{LBL_UNIT}}</th>
+              <th class="w-[12%]">{{LBL_UNIT_PRICE}}</th>
+              <th class="w-[8%]">{{LBL_TVA}}</th>
+              <th class="w-[12%]">{{LBL_TOTAL_HT}}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{ITEMS_ROWS}}
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Totals (markup mirrors invoice_template_4 so the conditional row removals apply) -->
+      <section class="flex flex-col mb-8" style="align-items: flex-end;" data-purpose="totals-section">
+        <div class="w-[48%] rounded-box font-bold text-[11px]" style="background:#f8fafc;">
+          <div class="flex justify-between py-1">
+            <span>{{LBL_SUBTOTAL}}</span>
+            <span>{{SUBTOTAL}}</span>
+          </div>
+          <div class="flex justify-between py-1" data-purpose="discount-row">
+            <span>{{LBL_DISCOUNT}}</span>
+            <span>{{DISCOUNT}}</span>
+          </div>
+          <div class="flex justify-between py-1">
+            <span>{{LBL_TAX_TOTAL}}</span>
+            <span>{{TAX_TOTAL}}</span>
+          </div>
+          <div class="flex justify-between py-1" data-purpose="stamp-row">
+            <span>{{LBL_STAMP}}</span>
+            <span>{{STAMP_AMOUNT}}</span>
+          </div>
+          <div class="flex justify-between py-2 border-t-2 border-slate-800 mt-1 pt-2 font-black text-[13px] accent">
+            <span>{{LBL_NET_PAY}}</span>
+            <span>{{NET_TO_PAY}}</span>
+          </div>
+          <div class="flex justify-between py-1 mt-2 pt-2 border-t border-dashed border-slate-400" data-purpose="old-balance-row">
+            <span>{{LBL_OLD_BALANCE}}</span>
+            <span>{{OLD_BALANCE}}</span>
+          </div>
+          <div class="flex justify-between py-1" data-purpose="remaining-row">
+            <span>{{LBL_REMAINING_PAY}}</span>
+            <span>{{REMAINING_DEBT}}</span>
+          </div>
+          <div class="flex justify-between py-1 border-t border-black mt-1 pt-1 font-black" data-purpose="total-debt-row">
+            <span>{{LBL_TOTAL_DEBT}}</span>
+            <span>{{TOTAL_DEBT}}</span>
           </div>
         </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
-        </div>
-      </div>
+      </section>
 
-      <div class="doc-badge">
-        <div class="doc-type">{{INVOICE_TYPE_LABEL}}</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
+      <!-- Footer -->
+      <section class="space-y-6" data-purpose="footer-details">
+        <div class="rounded-box text-[10px] font-bold" style="background:#f1f5f9;border-style:dashed;">
+          <span class="text-slate-500">{{LBL_TOTAL_IN_WORDS_PREFIX}}</span>
+          <span class="text-slate-800">{{TOTAL_IN_WORDS}}</span>
+        </div>
+        <div class="flex justify-between items-end gap-4 mt-6" data-purpose="footer-row">
+          <div class="border border-slate-300 rounded-lg px-4 py-2 font-bold text-[10px]" data-purpose="payment-mode">
+            {{LBL_MODE_PAIEMENT}} {{PAYMENT_MODE}}
+          </div>
+          <div class="w-[42%] border border-slate-300 rounded-lg px-3 pt-2 pb-12 text-center font-bold text-[10px] text-slate-500" data-purpose="signature-box">
+            {{LBL_SIGNATURE}}
+          </div>
+        </div>
+      </section>
     </div>
 
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
-        </div>
-      </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
-      </div>
-    </div>
-
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
-
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
-      </div>
-
-      <div class="totals-box">
-        <div class="totals-row">
-          <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
-        </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
-        </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
-          <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
-        </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
-        </div>
-        {{/if}}
-        <div class="totals-row net-row">
-          <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
-        </div>
-        
-        <div class="totals-row">
-          <span>{{LBL_OLD_BALANCE}}</span>
-          <span class="val">{{OLD_BALANCE}}</span>
-        </div>
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
-        </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
-        </div>
-        {{/if}}
-      </div>
-    </div>
-
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -12354,53 +12237,106 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
-  <title>{{INVOICE_TYPE_LABEL}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
+  <style data-purpose="page-size">
+    /* 80mm thermal roll, continuous height. */
+    /* مقاس الصفحة يُحسب وقت الطباعة (ورق مستمر): pageSize بطول المحتوى.
+       ملاحظة: `size: 80mm auto` تصريح غير صالح — خلط <length> مع auto — كان
+       Chromium يُسقطه ويعود لنموذج ورق التعريف الافتراضي فيقسّم المستند. */
+    @page { margin: 0; }
+  </style>
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
     * { box-sizing: border-box; }
     body {
-      font-family: 'Cairo', 'Tajawal', sans-serif;
-      width: 76mm;
+      font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+      /* كان 76مم مثبّتاً: على بكرة 58مم يخرج الوصل بعرض بكرة 80مم
+         فيقتطعه التعريف أو يصغّره. العرض الآن من receipt_paper_width_mm
+         عبر --rcpt-paper-w، والحشو من الهامش الجانبي نفسه كوقت الطباعة. */
+      width: 100%;
+      max-width: var(--rcpt-paper-w, 80mm);
       margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
+      padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm);
       color: #000;
+      font-size: 11px;
+      line-height: 1.35;
     }
     .center { text-align: center; }
-    .shop-title { font-size: 15px; font-weight: 900; }
-    .divider { border-top: 1px dashed #000; margin: 6px 0; }
-    .t-item { padding: 4px 0; border-bottom: 1px dotted #ccc; }
-    .t-name { font-weight: 800; font-size: 11px; }
-    .t-line { display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; }
-    .b { font-weight: 900; }
-    .row { display: flex; justify-content: space-between; padding: 2px 0; }
-    .grand { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
+    .b { font-weight: 800; }
+    .sep { border-top: 1px dashed #000; margin: 5px 0; }
+    .row { display: flex; justify-content: space-between; gap: 6px; }
+    h1 { font-size: 15px; font-weight: 900; margin: 0 0 2px; }
+    .muted { font-size: 9px; }
+    .logo { max-width: 120px; max-height: 60px; object-fit: contain; margin: 0 auto 4px; display: block; }
+
+    /* Item blocks (generated by printInvoice for this thermal template) */
+    .t-item { margin-bottom: 3px; }
+    .t-name { font-weight: 700; font-size: 11px; }
+    .t-line { display: flex; justify-content: space-between; font-size: 10px; }
+    .t-line .muted2 { color: #333; }
+
+    .totals .row { font-size: 11px; padding: 1px 0; }
+    .totals .grand { font-size: 14px; font-weight: 900; border-top: 1px solid #000; margin-top: 3px; padding-top: 3px; }
+
+    /* The tax row keeps the exact Tailwind class string so the zero-tax row
+       removal in printInvoice matches it — but this template ships no Tailwind,
+       so re-declare the utilities it needs. */
+    .flex { display: flex; }
+    .justify-between { justify-content: space-between; }
+    .py-1 { padding: 1px 0; }
+
+    @media print { body { padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm); } }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body>
   <div class="center">
-    <div class="shop-title">{{COMPANY_NAME}}</div>
-    <div>{{COMPANY_ADDRESS}}</div>
-    <div>{{COMPANY_PHONE}}</div>
-    <div style="font-size:9.5px;">RC: {{COMPANY_RC}} | NIF: {{COMPANY_NIF}}</div>
+    {{#if COMPANY_LOGO}}<img class="logo" src="{{COMPANY_LOGO}}" alt="logo" />{{/if}}
+    <h1>{{COMPANY_NAME}}</h1>
+    <div class="muted">{{COMPANY_DESCRIPTION}}</div>
+    <div class="muted">{{COMPANY_ADDRESS}}</div>
+    <div class="muted">{{LBL_TEL}} : {{COMPANY_PHONE}}</div>
+    <div class="muted">RC : {{COMPANY_RC}} — NIF : {{COMPANY_NIF}}</div>
   </div>
-  <div class="divider"></div>
-  <div class="row"><span><strong>{{INVOICE_TYPE_LABEL}}:</strong> {{INVOICE_NUMBER}}</span><span>{{DATE}}</span></div>
-  <div class="row"><span><strong>{{CLIENT_ROLE_LABEL}}:</strong> {{PARTY_NAME}}</span><span>{{PARTY_PHONE}}</span></div>
-  <div class="divider"></div>
-  <div>{{ITEMS_ROWS}}</div>
-  <div class="divider"></div>
-  <div class="row"><span>{{LBL_SUBTOTAL}}</span><span>{{SUBTOTAL}}</span></div>
-  {{#if DISCOUNT}}<div class="row"><span>{{LBL_DISCOUNT}}</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-  {{#if TAX_TOTAL}}<div class="row"><span>{{LBL_TAX_TOTAL}}</span><span>{{TAX_TOTAL}}</span></div>{{/if}}
-  {{#if STAMP_AMOUNT}}<div class="row"><span>{{LBL_STAMP}}</span><span>{{STAMP_AMOUNT}}</span></div>{{/if}}
-  <div class="row grand"><span>{{LBL_NET_PAY}}</span><span>{{NET_TO_PAY}}</span></div>
-  {{#if REMAINING_DEBT}}<div class="row"><span>{{LBL_REMAINING_PAY}}</span><span>{{REMAINING_DEBT}}</span></div>{{/if}}
-  <div style="font-size:10px;margin-top:6px;">{{TOTAL_IN_WORDS}}</div>
+
+  <div class="sep"></div>
+
+  <div class="b center" style="font-size:13px;">{{INVOICE_TYPE_LABEL}} {{INVOICE_NUMBER}}</div>
+  <div class="row muted"><span>{{LBL_DATE}} {{DATE}}</span></div>
+  <div class="row muted"><span>{{CLIENT_ROLE_LABEL}} :</span><span class="b">{{PARTY_NAME}}</span></div>
+
+  <div class="sep"></div>
+
+  <!-- Items (vertical thermal layout) -->
+  <div data-purpose="items-table">
+    {{ITEMS_ROWS}}
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- Totals — keep the LBL_TAX_TOTAL row markup so the zero-tax removal applies -->
+  <div class="totals" data-purpose="totals-section">
+    <div class="row"><span>{{LBL_SUBTOTAL}}</span><span>{{SUBTOTAL}}</span></div>
+    <div class="row" data-purpose="discount-row"><span>{{LBL_DISCOUNT}}</span><span>{{DISCOUNT}}</span></div>
+    <div class="flex justify-between py-1"><span>{{LBL_TAX_TOTAL}}</span><span>{{TAX_TOTAL}}</span></div>
+    <div class="row" data-purpose="stamp-row"><span>{{LBL_STAMP}}</span><span>{{STAMP_AMOUNT}}</span></div>
+    <div class="row grand"><span>{{LBL_NET_PAY}}</span><span>{{NET_TO_PAY}}</span></div>
+    <div class="row" data-purpose="old-balance-row"><span>{{LBL_OLD_BALANCE}}</span><span>{{OLD_BALANCE}}</span></div>
+    <div class="row" data-purpose="remaining-row"><span>{{LBL_REMAINING_PAY}}</span><span>{{REMAINING_DEBT}}</span></div>
+    <div class="row b" data-purpose="total-debt-row"><span>{{LBL_TOTAL_DEBT}}</span><span>{{TOTAL_DEBT}}</span></div>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="muted" data-purpose="payment-mode">{{LBL_MODE_PAIEMENT}} {{PAYMENT_MODE}}</div>
+  <div class="muted" style="margin-top:4px;">{{LBL_TOTAL_IN_WORDS_PREFIX}} {{TOTAL_IN_WORDS}}</div>
+  <div class="center b" style="margin-top:8px;">{{COMPANY_NAME}}</div>
 </body>
+
 </html>
 
 ```
@@ -16187,84 +16123,172 @@ app.on('window-all-closed', () => {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
   <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>سند طلب - {{DOC_NUMBER}}</title>
   <script src="assets/js/tailwind.min.js"></script>
-  <link href="assets/css/fonts.css" rel="stylesheet">
   <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    body { font-family: 'Cairo', sans-serif; font-size: 11px; color: #000; background-color: #fff; margin: 0; padding: 18px; }
+    body { font-family: 'Cairo', sans-serif; font-size: 11px; color: #000; background-color: #f3f4f6; }
+    .doc-container {
+      width: 210mm; min-height: 297mm; margin: 20px auto; padding: 40px;
+      background: #fff; box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
     .rounded-box { border: 1.5px solid #000; border-radius: 12px; padding: 12px; }
     .table-border, .table-border th, .table-border td { border: 1px solid #000; border-collapse: collapse; }
-    .table-border th { padding: 6px 4px; font-weight: bold; background: #eff6ff; }
+    .table-border th { padding: 6px 4px; font-weight: bold; }
     .table-border td { padding: 6px 4px; }
-    .doc-banner { background: #eff6ff; border: 2px solid #2563eb; color: #1e3a8a; padding: 6px 14px; border-radius: 8px; font-weight: 900; font-size: 12px; display: inline-block; }
+
+    .doc-banner {
+      background: #eff6ff; border: 2px solid #2563eb; color: #1e3a8a;
+      padding: 6px 12px; border-radius: 8px; font-weight: 900; font-size: 11px;
+      display: inline-block;
+    }
+
+    @media print {
+      body { background-color: #fff; padding: 0; margin: 0; }
+      .doc-container { box-shadow: none; margin: 0; width: 100%; min-height: auto; box-sizing: border-box; padding: 12mm 14mm; }
+    }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <header class="mb-4 border-b-2 border-blue-700 pb-3 flex justify-between items-start">
-    <div>
-      <h1 class="text-xl font-black text-blue-800 mb-1">{{COMPANY_NAME}}</h1>
-      <p class="font-bold text-[10px]">{{COMPANY_DESCRIPTION}}</p>
-      <p class="font-bold text-[10px]">{{COMPANY_ADDRESS}} | الهاتف: {{COMPANY_PHONE}}</p>
-      <div class="font-mono text-[10px] mt-1">RC: {{COMPANY_RC}} | NIF: {{COMPANY_NIF}} | AI: {{COMPANY_AI}} | NIS: {{COMPANY_NIS}}</div>
-    </div>
-    <div><span class="doc-banner">📋 سند طلب زبون — Bon de Commande</span></div>
-  </header>
 
-  <section class="flex justify-between items-start mb-6 gap-4">
-    <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
-      <p>الزبون : {{PARTY_NAME}}</p>
-      <p>الهاتف : {{PARTY_PHONE}}</p>
-      <p>العنوان : {{PARTY_ADDRESS}}</p>
-      <p>سجل تجاري : {{PARTY_RC}} | رقم جبائي : {{PARTY_NIF}}</p>
-    </div>
-    <div class="w-[48%] text-left">
-      <h2 class="text-lg font-black mb-1">سند طلب رقم : {{DOC_NUMBER}}</h2>
-      <p class="text-xs font-bold">تاريخ الطلب : {{DATE}}</p>
-      {{#if EXPECTED_DELIVERY}}<p class="text-xs font-bold mt-1 text-blue-700">تاريخ التسليم المتوقع : {{EXPECTED_DELIVERY}}</p>{{/if}}
-      <p class="text-xs font-bold mt-1">الحالة : {{STATUS_LABEL}}</p>
-    </div>
-  </section>
+<body class="p-4">
+  <main class="doc-container mx-auto bg-white">
 
-  <table class="w-full table-border text-center text-[10px] font-bold mb-6">
-    <thead>
-      <tr>
-        <th style="width:6%">#</th>
-        <th style="width:13%">المرجع</th>
-        <th style="width:31%">البيان</th>
-        <th style="width:10%">الكمية</th>
-        <th style="width:10%">الوحدة</th>
-        <th style="width:12%">سعر الوحدة</th>
-        <th style="width:6%">TVA</th>
-        <th style="width:12%">المجموع</th>
-      </tr>
-    </thead>
-    <tbody>{{ITEMS_ROWS}}</tbody>
-  </table>
+    <header class="mb-6">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>الهاتف : {{COMPANY_PHONE}}</div>
+        <div>الثابت : {{COMPANY_FAX}}</div>
+        <div>البريد : {{COMPANY_EMAIL}}</div>
+      </div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>سجل تجاري : {{COMPANY_RC}}</div>
+        <div>رقم جبائي : {{COMPANY_NIF}}</div>
+        <div>رقم الإحصاء : {{COMPANY_NIS}}</div>
+      </div>
+    </header>
 
-  <section class="flex justify-between items-start gap-4 mb-6">
-    <div class="w-[48%] rounded-box font-bold text-[11px] bg-blue-50 border-blue-400">
-      <div class="flex justify-between py-1"><span>المبلغ الإجمالي للطلب :</span><span class="font-black font-mono">{{TOTAL}} د.ج</span></div>
-      <div class="flex justify-between py-1"><span>العربون المُستلَم (Acompte) :</span><span class="text-emerald-700 font-black font-mono">{{DEPOSIT}} د.ج</span></div>
-      <div class="flex justify-between py-1 border-t border-blue-700 mt-1 pt-1"><span>الرصيد المتبقي عند التسليم :</span><span class="text-rose-700 font-black font-mono">{{REMAINING}} د.ج</span></div>
-    </div>
-    <div class="w-[48%] rounded-box font-bold text-[11px]">
-      <div class="flex justify-between py-1"><span>المجموع الفرعي :</span><span class="font-mono">{{SUBTOTAL}} د.ج</span></div>
-      <div class="flex justify-between py-1"><span>التخفيض :</span><span class="font-mono">{{DISCOUNT}} د.ج</span></div>
-      <div class="flex justify-between py-1 border-t border-black mt-1 pt-1 font-black"><span>الصافي الإجمالي :</span><span class="font-mono">{{NET_TO_PAY}} د.ج</span></div>
-    </div>
-  </section>
+    <section class="mb-4">
+      <span class="doc-banner">📋 سند طلب — Bon de Commande</span>
+    </section>
 
-  <p class="font-bold text-[10px] mb-4">أوقف سند الطلب هذا على مبلغ : <strong>{{TOTAL_IN_WORDS}}</strong></p>
-  {{#if NOTES}}<div class="border border-slate-300 rounded-lg p-2.5 text-[10px] font-bold mb-4">ملاحظات الطلبية: {{NOTES}}</div>{{/if}}
-  <div class="flex justify-between mt-10 font-bold text-[11px]">
-    <div>إمضاء وختم المؤسسة ({{COMPANY_NAME}})</div>
-    <div>إمضاء الزبون ({{PARTY_NAME}})</div>
-  </div>
+    <section class="flex justify-between items-start mb-8">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>الزبون : {{PARTY_NAME}}</p>
+        <p>الهاتف : {{PARTY_PHONE}}</p>
+        <p>العنوان : {{PARTY_ADDRESS}}</p>
+        <p>سجل تجاري : {{PARTY_RC}}</p>
+        <p>رقم جبائي : {{PARTY_NIF}}</p>
+      </div>
+      <div class="w-[48%] pl-8" style="text-align: left;">
+        <h2 class="text-xl font-bold mb-2">سند طلب رقم {{DOC_NUMBER}}</h2>
+        <p class="text-sm font-bold">تاريخ الطلب : {{DATE}}</p>
+        {{#if EXPECTED_DELIVERY}}
+        <p class="text-sm font-bold mt-1 text-blue-700">تاريخ التسليم المتوقع : {{EXPECTED_DELIVERY}}</p>
+        {{/if}}
+        <p class="text-xs font-bold mt-1">الحالة : {{STATUS_LABEL}}</p>
+      </div>
+    </section>
+
+    <section class="mb-6">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr class="bg-white">
+            <th class="w-[6%]">الرقم</th>
+            <th class="w-[12%]">المرجع</th>
+            <th class="w-[28%]">البيان</th>
+            <th class="w-[10%]">الوحدة</th>
+            <th class="w-[10%]">الكمية</th>
+            <th class="w-[10%]">سعر الوحدة</th>
+            <th class="w-[10%]">المجموع</th>
+            <th class="w-[14%]">حالة التسليم</th>
+          </tr>
+        </thead>
+        <tbody>{{ITEMS_ROWS}}</tbody>
+      </table>
+    </section>
+
+    <section class="flex justify-between items-start mb-8">
+      <!-- Left: deposit summary -->
+      <div class="w-[48%] rounded-box font-bold text-[10px] bg-blue-50 border-blue-300">
+        <div class="flex justify-between py-1">
+          <span>المبلغ الإجمالي للطلب :</span>
+          <span class="font-black">{{TOTAL}}</span>
+        </div>
+        <div class="flex justify-between py-1">
+          <span>العربون المُستلَم :</span>
+          <span class="text-green-700 font-black">{{DEPOSIT}}</span>
+        </div>
+        <div class="flex justify-between py-1 border-t border-blue-700 mt-1 pt-1">
+          <span>الرصيد المتبقي :</span>
+          <span class="text-red-700 font-black">{{REMAINING}}</span>
+        </div>
+      </div>
+
+      <!-- Right: totals -->
+      <div class="w-[48%] rounded-box font-bold text-[10px]">
+        <div class="flex justify-between py-1"><span>المجموع الفرعي :</span><span>{{SUBTOTAL}}</span></div>
+        <div class="flex justify-between py-1"><span>التخفيض :</span><span>{{DISCOUNT}}</span></div>
+        {{#if HAS_TAX}}
+        <div class="flex justify-between py-1"><span>الضريبة :</span><span>{{TAX_TOTAL}}</span></div>
+        {{/if}}
+        <div class="flex justify-between py-1 border-t border-black mt-1 pt-1">
+          <span>الإجمالي :</span><span>{{TOTAL}}</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-6">
+      <p class="font-bold text-[10px] mb-1">الإجمالي بالحروف :</p>
+      <p class="font-bold text-[10px]">{{TOTAL_IN_WORDS}}</p>
+    </section>
+
+    {{#if NOTES}}
+    <section class="mb-6 border border-slate-300 rounded p-3 text-[10px] font-bold">
+      <div class="mb-1 font-black">ملاحظات وشروط:</div>
+      <div>{{NOTES}}</div>
+    </section>
+    {{/if}}
+
+    <section class="bg-slate-50 border border-slate-200 rounded p-2 text-[9px] font-bold text-slate-600 mb-6">
+      شروط: العربون غير قابل للاسترداد بعد البدء في تجهيز الطلب. يلتزم البائع بتسليم
+      الطلب في التاريخ المُحدّد. أي تعديل على الطلب يجب أن يكون بموافقة كتابية من الطرفين.
+    </section>
+
+    <section class="flex justify-between mt-12">
+      <div class="w-[45%]">
+        <p class="font-bold text-[10px] mb-1">المرسل :</p>
+        <p class="font-bold text-[10px] mb-8">{{COMPANY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">التوقيع والختم</p>
+        </div>
+      </div>
+      <div class="w-[45%]" style="text-align: left;">
+        <p class="font-bold text-[10px] mb-1">توقيع الزبون :</p>
+        <p class="font-bold text-[10px] mb-8">{{PARTY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1" style="margin-left:auto;">
+          <p class="text-[9px] font-bold text-slate-500">التوقيع</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
+
 ```
 
 ---
@@ -16274,84 +16298,171 @@ app.on('window-all-closed', () => {
 ```html
 <!DOCTYPE html>
 <html lang="fr" dir="ltr">
+
 <head>
   <meta charset="utf-8">
-  <title>سند طلب - {{DOC_NUMBER}}</title>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Bon de Commande - {{DOC_NUMBER}}</title>
   <script src="assets/js/tailwind.min.js"></script>
-  <link href="assets/css/fonts.css" rel="stylesheet">
   <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    body { font-family: 'Cairo', sans-serif; font-size: 11px; color: #000; background-color: #fff; margin: 0; padding: 18px; }
+    body { font-family: 'Cairo', sans-serif; font-size: 11px; color: #000; background-color: #f3f4f6; }
+    .doc-container {
+      width: 210mm; min-height: 297mm; margin: 20px auto; padding: 40px;
+      background: #fff; box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
     .rounded-box { border: 1.5px solid #000; border-radius: 12px; padding: 12px; }
     .table-border, .table-border th, .table-border td { border: 1px solid #000; border-collapse: collapse; }
-    .table-border th { padding: 6px 4px; font-weight: bold; background: #eff6ff; }
+    .table-border th { padding: 6px 4px; font-weight: bold; }
     .table-border td { padding: 6px 4px; }
-    .doc-banner { background: #eff6ff; border: 2px solid #2563eb; color: #1e3a8a; padding: 6px 14px; border-radius: 8px; font-weight: 900; font-size: 12px; display: inline-block; }
+
+    .doc-banner {
+      background: #eff6ff; border: 2px solid #2563eb; color: #1e3a8a;
+      padding: 6px 12px; border-radius: 8px; font-weight: 900; font-size: 11px;
+      display: inline-block;
+    }
+
+    @media print {
+      body { background-color: #fff; padding: 0; margin: 0; }
+      .doc-container { box-shadow: none; margin: 0; width: 100%; min-height: auto; box-sizing: border-box; padding: 12mm 14mm; }
+    }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <header class="mb-4 border-b-2 border-blue-700 pb-3 flex justify-between items-start">
-    <div>
-      <h1 class="text-xl font-black text-blue-800 mb-1">{{COMPANY_NAME}}</h1>
-      <p class="font-bold text-[10px]">{{COMPANY_DESCRIPTION}}</p>
-      <p class="font-bold text-[10px]">{{COMPANY_ADDRESS}} | الهاتف: {{COMPANY_PHONE}}</p>
-      <div class="font-mono text-[10px] mt-1">RC: {{COMPANY_RC}} | NIF: {{COMPANY_NIF}} | AI: {{COMPANY_AI}} | NIS: {{COMPANY_NIS}}</div>
-    </div>
-    <div><span class="doc-banner">📋 BON DE COMMANDE CLIENT</span></div>
-  </header>
 
-  <section class="flex justify-between items-start mb-6 gap-4">
-    <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
-      <p>الزبون : {{PARTY_NAME}}</p>
-      <p>الهاتف : {{PARTY_PHONE}}</p>
-      <p>العنوان : {{PARTY_ADDRESS}}</p>
-      <p>سجل تجاري : {{PARTY_RC}} | رقم جبائي : {{PARTY_NIF}}</p>
-    </div>
-    <div class="w-[48%] text-left">
-      <h2 class="text-lg font-black mb-1">Bon de Commande N° : {{DOC_NUMBER}}</h2>
-      <p class="text-xs font-bold">تاريخ الطلب : {{DATE}}</p>
-      {{#if EXPECTED_DELIVERY}}<p class="text-xs font-bold mt-1 text-blue-700">تاريخ التسليم المتوقع : {{EXPECTED_DELIVERY}}</p>{{/if}}
-      <p class="text-xs font-bold mt-1">الحالة : {{STATUS_LABEL}}</p>
-    </div>
-  </section>
+<body class="p-4">
+  <main class="doc-container mx-auto bg-white">
 
-  <table class="w-full table-border text-center text-[10px] font-bold mb-6">
-    <thead>
-      <tr>
-        <th style="width:6%">#</th>
-        <th style="width:13%">المرجع</th>
-        <th style="width:31%">البيان</th>
-        <th style="width:10%">الكمية</th>
-        <th style="width:10%">الوحدة</th>
-        <th style="width:12%">سعر الوحدة</th>
-        <th style="width:6%">TVA</th>
-        <th style="width:12%">المجموع</th>
-      </tr>
-    </thead>
-    <tbody>{{ITEMS_ROWS}}</tbody>
-  </table>
+    <header class="mb-6">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>Tél : {{COMPANY_PHONE}}</div>
+        <div>Fixe : {{COMPANY_FAX}}</div>
+        <div>Email : {{COMPANY_EMAIL}}</div>
+      </div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>RC : {{COMPANY_RC}}</div>
+        <div>NIF : {{COMPANY_NIF}}</div>
+        <div>NIS : {{COMPANY_NIS}}</div>
+      </div>
+    </header>
 
-  <section class="flex justify-between items-start gap-4 mb-6">
-    <div class="w-[48%] rounded-box font-bold text-[11px] bg-blue-50 border-blue-400">
-      <div class="flex justify-between py-1"><span>Montant Total de la Commande :</span><span class="font-black font-mono">{{TOTAL}} د.ج</span></div>
-      <div class="flex justify-between py-1"><span>Acompte Versé :</span><span class="text-emerald-700 font-black font-mono">{{DEPOSIT}} د.ج</span></div>
-      <div class="flex justify-between py-1 border-t border-blue-700 mt-1 pt-1"><span>Reste à Payer à la Livraison :</span><span class="text-rose-700 font-black font-mono">{{REMAINING}} د.ج</span></div>
-    </div>
-    <div class="w-[48%] rounded-box font-bold text-[11px]">
-      <div class="flex justify-between py-1"><span>المجموع الفرعي :</span><span class="font-mono">{{SUBTOTAL}} د.ج</span></div>
-      <div class="flex justify-between py-1"><span>التخفيض :</span><span class="font-mono">{{DISCOUNT}} د.ج</span></div>
-      <div class="flex justify-between py-1 border-t border-black mt-1 pt-1 font-black"><span>الصافي الإجمالي :</span><span class="font-mono">{{NET_TO_PAY}} د.ج</span></div>
-    </div>
-  </section>
+    <section class="mb-4">
+      <span class="doc-banner">📋 Bon de Commande Client</span>
+    </section>
 
-  <p class="font-bold text-[10px] mb-4">أوقف سند الطلب هذا على مبلغ : <strong>{{TOTAL_IN_WORDS}}</strong></p>
-  {{#if NOTES}}<div class="border border-slate-300 rounded-lg p-2.5 text-[10px] font-bold mb-4">ملاحظات الطلبية: {{NOTES}}</div>{{/if}}
-  <div class="flex justify-between mt-10 font-bold text-[11px]">
-    <div>إمضاء وختم المؤسسة ({{COMPANY_NAME}})</div>
-    <div>إمضاء الزبون ({{PARTY_NAME}})</div>
-  </div>
+    <section class="flex justify-between items-start mb-8">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>Client : {{PARTY_NAME}}</p>
+        <p>Tél : {{PARTY_PHONE}}</p>
+        <p>Adresse : {{PARTY_ADDRESS}}</p>
+        <p>RC : {{PARTY_RC}}</p>
+        <p>NIF : {{PARTY_NIF}}</p>
+      </div>
+      <div class="w-[48%] pr-8" style="text-align: right;">
+        <h2 class="text-xl font-bold mb-2">Bon de Commande N° {{DOC_NUMBER}}</h2>
+        <p class="text-sm font-bold">Date de commande : {{DATE}}</p>
+        {{#if EXPECTED_DELIVERY}}
+        <p class="text-sm font-bold mt-1 text-blue-700">Livraison prévue : {{EXPECTED_DELIVERY}}</p>
+        {{/if}}
+        <p class="text-xs font-bold mt-1">Statut : {{STATUS_LABEL}}</p>
+      </div>
+    </section>
+
+    <section class="mb-6">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr class="bg-white">
+            <th class="w-[6%]">N°</th>
+            <th class="w-[12%]">Réf</th>
+            <th class="w-[28%]">Désignation</th>
+            <th class="w-[10%]">Unité</th>
+            <th class="w-[10%]">Qté</th>
+            <th class="w-[10%]">Prix HT</th>
+            <th class="w-[10%]">Total</th>
+            <th class="w-[14%]">Livraison</th>
+          </tr>
+        </thead>
+        <tbody>{{ITEMS_ROWS}}</tbody>
+      </table>
+    </section>
+
+    <section class="flex justify-between items-start mb-8">
+      <div class="w-[48%] rounded-box font-bold text-[10px]">
+        <div class="flex justify-between py-1"><span>Total HT :</span><span>{{SUBTOTAL}}</span></div>
+        <div class="flex justify-between py-1"><span>Remise :</span><span>{{DISCOUNT}}</span></div>
+        {{#if HAS_TAX}}
+        <div class="flex justify-between py-1"><span>TVA :</span><span>{{TAX_TOTAL}}</span></div>
+        {{/if}}
+        <div class="flex justify-between py-1 border-t border-black mt-1 pt-1">
+          <span>Total :</span><span>{{TOTAL}}</span>
+        </div>
+      </div>
+
+      <div class="w-[48%] rounded-box font-bold text-[10px] bg-blue-50 border-blue-300">
+        <div class="flex justify-between py-1">
+          <span>Montant total :</span>
+          <span class="font-black">{{TOTAL}}</span>
+        </div>
+        <div class="flex justify-between py-1">
+          <span>Acompte versé :</span>
+          <span class="text-green-700 font-black">{{DEPOSIT}}</span>
+        </div>
+        <div class="flex justify-between py-1 border-t border-blue-700 mt-1 pt-1">
+          <span>Reste à payer :</span>
+          <span class="text-red-700 font-black">{{REMAINING}}</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-6">
+      <p class="font-bold text-[10px] mb-1">Total en lettres :</p>
+      <p class="font-bold text-[10px]">{{TOTAL_IN_WORDS}}</p>
+    </section>
+
+    {{#if NOTES}}
+    <section class="mb-6 border border-slate-300 rounded p-3 text-[10px] font-bold">
+      <div class="mb-1 font-black">Notes et conditions :</div>
+      <div>{{NOTES}}</div>
+    </section>
+    {{/if}}
+
+    <section class="bg-slate-50 border border-slate-200 rounded p-2 text-[9px] font-bold text-slate-600 mb-6">
+      Conditions : l'acompte n'est pas remboursable une fois la préparation
+      de la commande commencée. Le vendeur s'engage à livrer à la date convenue.
+      Toute modification doit faire l'objet d'un accord écrit des deux parties.
+    </section>
+
+    <section class="flex justify-between mt-12">
+      <div class="w-[45%]">
+        <p class="font-bold text-[10px] mb-1">L'expéditeur :</p>
+        <p class="font-bold text-[10px] mb-8">{{COMPANY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">Signature et cachet</p>
+        </div>
+      </div>
+      <div class="w-[45%]" style="text-align: right;">
+        <p class="font-bold text-[10px] mb-1">Signature client :</p>
+        <p class="font-bold text-[10px] mb-8">{{PARTY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1" style="margin-right:auto;">
+          <p class="text-[9px] font-bold text-slate-500">Signature</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
+
 ```
 
 ---
@@ -16423,49 +16534,158 @@ app.on('window-all-closed', () => {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
-  <title>وصل تسديد دفعة حساب - {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>وصل استلام دفعة - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: A5 landscape; margin: 10mm; }
-    body { font-family: 'Cairo', sans-serif; font-size: 13px; color: #0f172a; padding: 16px; }
-    .card { border: 2px solid #1d4ed8; border-radius: 12px; padding: 18px; background: #fff; }
-    .hdr { display: flex; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 14px; }
-    .title { font-size: 20px; font-weight: 900; color: #1d4ed8; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 14px 0; }
-    .stat { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; text-align: center; }
-    .stat.highlight { background: #ecfdf5; border-color: #10b981; color: #047857; }
-    .val { font-size: 18px; font-weight: 900; font-family: monospace; margin-top: 4px; }
+    body {
+      background: #f3f4f6;
+      color: #000;
+      margin: 0;
+      padding: 0;
+    }
+
+    .paper {
+      width: 100%;
+      /* عرض البكرة يأتي من إعداد receipt_paper_width_mm عبر PrintEngine.
+         الافتراضي 80مم حين لا يُحقن المتغيّر (معاينة/تصدير مباشر). */
+      max-width: var(--rcpt-paper-w, 80mm);
+      background: #fff;
+      margin: 0 auto;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .08);
+      border: 1px solid #e5e7eb;
+      font-family: 'Cairo', sans-serif;
+    }
+
+    @page { margin: 0; }
+
+    @media print {
+      html, body {
+        /* صندوق الصفحة هو مَن يحدّد العرض (pageSize بعرض البكرة) — لا رقم
+           مثبّت هنا، وإلا خرج الوصل بعرض 80مم على بكرة 58مم. */
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .paper {
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm) !important;
+        box-shadow: none;
+        border: none;
+        max-width: none;
+      }
+    }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body>
-  <div class="card">
-    <div class="hdr">
-      <div>
-        <div class="title">{{COMPANY_NAME}}</div>
-        <div>{{COMPANY_ADDRESS}} | {{COMPANY_PHONE}}</div>
+  <main class="paper p-3">
+    <!-- Header -->
+    <header class="text-center border-b-2 border-black pb-3 mb-4">
+      <div class="text-xl font-black">{{COMPANY_NAME}}</div>
+      <div class="text-xs font-bold text-slate-700 mt-1">{{COMPANY_ADDRESS}}</div>
+      <div class="text-xs font-bold text-slate-700 mt-1">الهاتف: {{COMPANY_PHONE}}</div>
+    </header>
+
+    <!-- Document title -->
+    <section class="text-center mb-4">
+      <div class="inline-block px-4 py-1 bg-black text-white text-sm font-black rounded">
+        وصل استلام دفعة
       </div>
-      <div style="text-align:left;">
-        <div class="title">وصل تسديد دفعة حساب</div>
-        <div><strong>رقم الوصل:</strong> {{RECEIPT_NUMBER}} | <strong>التاريخ:</strong> {{DATE}}</div>
+    </section>
+
+    <!-- Meta -->
+    <section class="text-sm font-bold mb-4 space-y-1">
+      <div class="flex justify-between">
+        <div class="font-black underline">رقم الوصل</div>
+        <div class="font-black">{{RECEIPT_NUMBER}}</div>
       </div>
-    </div>
-    <div><strong>استلمنا من السيد / المؤسسة:</strong> {{PARTY_NAME}} ({{PARTY_PHONE}})</div>
-    <div class="grid">
-      <div class="stat"><div>الرصيد / الدين السابق:</div><div class="val">{{DEBT_BEFORE}}</div></div>
-      <div class="stat highlight"><div>المبلغ المدفوع حالياً:</div><div class="val">{{PAID_AMOUNT}}</div></div>
-      <div class="stat"><div>الرصيد / الدين المتبقي:</div><div class="val">{{DEBT_AFTER}}</div></div>
-    </div>
-    <div style="background:#eff6ff;padding:8px 12px;border-radius:8px;font-weight:700;">
-      المبلغ بالحروف: {{TOTAL_IN_WORDS}}
-    </div>
-    <div style="display:flex;justify-content:space-between;margin-top:24px;font-weight:800;">
-      <div>{{PAYMENT_MODE}}</div>
-      <div>الختم والإمضاء</div>
-    </div>
-  </div>
+      <div class="flex justify-between text-xs">
+        <div>تاريخ: {{DATE}}</div>
+        <div class="italic">وقت: {{TIME}}</div>
+      </div>
+      <div class="text-xs font-bold pt-2">الزبون: {{CLIENT_NAME}}</div>
+      {{#if CLIENT_PHONE}}<div class="text-xs font-bold">الهاتف: {{CLIENT_PHONE}}</div>{{/if}}
+      <div class="text-xs font-bold">المستلم: {{SELLER_NAME}}</div>
+    </section>
+
+    <!-- Amount -->
+    <section class="border-2 border-black rounded-lg p-3 mb-4 text-center">
+      <div class="text-xs font-bold text-slate-600 mb-1">المبلغ المستلَم</div>
+      <div class="text-3xl font-black mb-1">{{AMOUNT}}</div>
+      <div class="text-xs font-bold text-slate-500">DA</div>
+      <div class="text-[10px] font-bold mt-2 border-t border-dashed border-slate-300 pt-2">
+        {{AMOUNT_IN_WORDS}}
+      </div>
+    </section>
+
+    <!-- Payment method -->
+    <section class="text-xs font-bold mb-4 space-y-1">
+      <div class="flex justify-between">
+        <div>طريقة الدفع:</div>
+        <div class="font-black">{{PAYMENT_METHOD_LABEL}}</div>
+      </div>
+      {{#if REFERENCE}}
+      <div class="flex justify-between">
+        <div>المرجع:</div>
+        <div class="font-mono">{{REFERENCE}}</div>
+      </div>
+      {{/if}}
+      {{#if RELATED_INVOICE}}
+      <div class="flex justify-between">
+        <div>مقابل الفاتورة:</div>
+        <div class="font-mono">#{{RELATED_INVOICE}}</div>
+      </div>
+      {{/if}}
+    </section>
+
+    <!-- Debt summary -->
+    <section class="border-t-2 border-black pt-3 text-xs font-bold space-y-1">
+      <div class="flex justify-between">
+        <div>الدين قبل الدفع:</div>
+        <div>{{DEBT_BEFORE}}</div>
+      </div>
+      <div class="flex justify-between">
+        <div>الدفعة الحالية:</div>
+        <div>− {{AMOUNT}}</div>
+      </div>
+      <div class="flex justify-between text-sm font-black border-t border-black pt-1 mt-1">
+        <div>الدين المتبقي:</div>
+        <div class="underline">{{DEBT_AFTER}}</div>
+      </div>
+    </section>
+
+    {{#if NOTES}}
+    <section class="text-xs font-bold mt-4 p-2 bg-slate-100 rounded">
+      <div class="font-black mb-1">ملاحظات:</div>
+      <div>{{NOTES}}</div>
+    </section>
+    {{/if}}
+
+    <!-- Signatures -->
+    <section class="flex justify-between mt-6 text-[10px] font-bold">
+      <div class="text-center">
+        <div class="border-t border-black w-20 pt-1">توقيع المستلم</div>
+      </div>
+      <div class="text-center">
+        <div class="border-t border-black w-20 pt-1">توقيع الزبون</div>
+      </div>
+    </section>
+
+    <footer class="text-center text-[10px] font-bold text-slate-700 mt-6">
+      شكراً لتعاملكم معنا
+    </footer>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -16477,49 +16697,120 @@ app.on('window-all-closed', () => {
 ```html
 <!DOCTYPE html>
 <html lang="fr" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>REÇU DE PAIEMENT / VERSEMENT - {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reçu de versement - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: A5 landscape; margin: 10mm; }
-    body { font-family: 'Cairo', sans-serif; font-size: 13px; color: #0f172a; padding: 16px; }
-    .card { border: 2px solid #1d4ed8; border-radius: 12px; padding: 18px; background: #fff; }
-    .hdr { display: flex; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 14px; }
-    .title { font-size: 20px; font-weight: 900; color: #1d4ed8; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 14px 0; }
-    .stat { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; text-align: center; }
-    .stat.highlight { background: #ecfdf5; border-color: #10b981; color: #047857; }
-    .val { font-size: 18px; font-weight: 900; font-family: monospace; margin-top: 4px; }
+    body { background: #f3f4f6; color: #000; margin: 0; padding: 0; }
+    .paper {
+      /* عرض البكرة من إعداد receipt_paper_width_mm عبر PrintEngine. */
+      width: 100%; max-width: var(--rcpt-paper-w, 80mm); background: #fff; margin: 0 auto;
+      box-shadow: 0 10px 30px rgba(0,0,0,.08); border: 1px solid #e5e7eb;
+      font-family: 'Cairo', sans-serif;
+    }
+    @page { margin: 0; }
+    @media print {
+      /* صندوق الصفحة هو مَن يحدّد العرض — لا رقم مثبّت هنا. */
+      html, body { width: 100%; margin: 0; padding: 0; background: #fff; }
+      .paper { width: 100%; margin: 0; box-sizing: border-box;
+        padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm) !important; box-shadow: none; border: none; max-width: none; }
+    }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body>
-  <div class="card">
-    <div class="hdr">
-      <div>
-        <div class="title">{{COMPANY_NAME}}</div>
-        <div>{{COMPANY_ADDRESS}} | {{COMPANY_PHONE}}</div>
+  <main class="paper p-3">
+    <header class="text-center border-b-2 border-black pb-3 mb-4">
+      <div class="text-xl font-black">{{COMPANY_NAME}}</div>
+      <div class="text-xs font-bold text-slate-700 mt-1">{{COMPANY_ADDRESS}}</div>
+      <div class="text-xs font-bold text-slate-700 mt-1">Tél: {{COMPANY_PHONE}}</div>
+    </header>
+
+    <section class="text-center mb-4">
+      <div class="inline-block px-4 py-1 bg-black text-white text-sm font-black rounded uppercase">
+        Reçu de versement
       </div>
-      <div style="text-align:left;">
-        <div class="title">REÇU DE PAIEMENT / VERSEMENT</div>
-        <div><strong>Reçu N°:</strong> {{RECEIPT_NUMBER}} | <strong>Date:</strong> {{DATE}}</div>
+    </section>
+
+    <section class="text-sm font-bold mb-4 space-y-1">
+      <div class="flex justify-between">
+        <div class="font-black underline">Reçu N°</div>
+        <div class="font-black">{{RECEIPT_NUMBER}}</div>
       </div>
-    </div>
-    <div><strong>Reçu de:</strong> {{PARTY_NAME}} ({{PARTY_PHONE}})</div>
-    <div class="grid">
-      <div class="stat"><div>Ancien Solde (Dette):</div><div class="val">{{DEBT_BEFORE}}</div></div>
-      <div class="stat highlight"><div>Montant Versé:</div><div class="val">{{PAID_AMOUNT}}</div></div>
-      <div class="stat"><div>Nouveau Solde Restant:</div><div class="val">{{DEBT_AFTER}}</div></div>
-    </div>
-    <div style="background:#eff6ff;padding:8px 12px;border-radius:8px;font-weight:700;">
-      Arrêté le présent reçu à la somme de: {{TOTAL_IN_WORDS}}
-    </div>
-    <div style="display:flex;justify-content:space-between;margin-top:24px;font-weight:800;">
-      <div>{{PAYMENT_MODE}}</div>
-      <div>Cachet & Signature</div>
-    </div>
-  </div>
+      <div class="flex justify-between text-xs">
+        <div>Date: {{DATE}}</div>
+        <div class="italic">Heure: {{TIME}}</div>
+      </div>
+      <div class="text-xs font-bold pt-2">Client: {{CLIENT_NAME}}</div>
+      {{#if CLIENT_PHONE}}<div class="text-xs font-bold">Tél: {{CLIENT_PHONE}}</div>{{/if}}
+      <div class="text-xs font-bold">Encaissé par: {{SELLER_NAME}}</div>
+    </section>
+
+    <section class="border-2 border-black rounded-lg p-3 mb-4 text-center">
+      <div class="text-xs font-bold text-slate-600 mb-1">Montant reçu</div>
+      <div class="text-3xl font-black mb-1">{{AMOUNT}}</div>
+      <div class="text-xs font-bold text-slate-500">DA</div>
+      <div class="text-[10px] font-bold mt-2 border-t border-dashed border-slate-300 pt-2">
+        {{AMOUNT_IN_WORDS}}
+      </div>
+    </section>
+
+    <section class="text-xs font-bold mb-4 space-y-1">
+      <div class="flex justify-between">
+        <div>Mode de paiement:</div>
+        <div class="font-black">{{PAYMENT_METHOD_LABEL}}</div>
+      </div>
+      {{#if REFERENCE}}
+      <div class="flex justify-between">
+        <div>Référence:</div>
+        <div class="font-mono">{{REFERENCE}}</div>
+      </div>
+      {{/if}}
+      {{#if RELATED_INVOICE}}
+      <div class="flex justify-between">
+        <div>Facture concernée:</div>
+        <div class="font-mono">#{{RELATED_INVOICE}}</div>
+      </div>
+      {{/if}}
+    </section>
+
+    <section class="border-t-2 border-black pt-3 text-xs font-bold space-y-1">
+      <div class="flex justify-between">
+        <div>Solde avant:</div>
+        <div>{{DEBT_BEFORE}}</div>
+      </div>
+      <div class="flex justify-between">
+        <div>Versement:</div>
+        <div>− {{AMOUNT}}</div>
+      </div>
+      <div class="flex justify-between text-sm font-black border-t border-black pt-1 mt-1">
+        <div>Solde restant:</div>
+        <div class="underline">{{DEBT_AFTER}}</div>
+      </div>
+    </section>
+
+    {{#if NOTES}}
+    <section class="text-xs font-bold mt-4 p-2 bg-slate-100 rounded">
+      <div class="font-black mb-1">Notes:</div>
+      <div>{{NOTES}}</div>
+    </section>
+    {{/if}}
+
+    <section class="flex justify-between mt-6 text-[10px] font-bold">
+      <div class="text-center"><div class="border-t border-black w-24 pt-1">Signature caissier</div></div>
+      <div class="text-center"><div class="border-t border-black w-24 pt-1">Signature client</div></div>
+    </section>
+
+    <footer class="text-center text-[10px] font-bold text-slate-700 mt-6">
+      Merci de votre confiance
+    </footer>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -16852,332 +17143,243 @@ contextBridge.exposeInMainWorld('api', api);
 
 ```html
 <!DOCTYPE html>
+<!-- قائمة أسعار المنتجات — قالب واحد يخدم اللغات الثلاث.
+     محايد اللغة: renderer.js يعيد كتابة <html lang/dir> ويستبدل
+     مفاتيح LBL_* حسب لغة الفاتورة المضبوطة، تماماً كقوالب A5/الحرارية.
+
+     ⚠ قاعدة التصميم هنا: **لا يعتمد شيء على طباعة الخلفيات للقراءة.**
+     مسار الطباعة غير الصامتة يمرّ بـwindow.print()، و«رسوم الخلفية» مُطفأة
+     افتراضياً في Chromium — فرأس جدول أسود بنصّ أبيض كان يخرج أبيضَ على أبيض.
+     لذلك كل نصّ داكن على خلفية فاتحة، والفصل البصري بالخطوط لا بالكتل، مع
+     print-color-adjust:exact كطبقة ثانية حين تُطبع الخلفيات فعلاً. -->
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
-  <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
-  <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>{{LBL_TITLE}} - {{COMPANY_NAME}}</title>
+  <style data-purpose="page-size">
+    @page { size: A4; margin: 12mm 10mm; }
+  </style>
+  <style data-purpose="typography">
+    :root {
+      --ink: #0f172a;
+      --ink-soft: #334155;
+      --muted: #64748b;
+      --hair: #e2e8f0;
+      --hair-soft: #eef1f5;
+      --tint: #f1f5f9;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
+      font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+      font-size: 11px;
+      line-height: 1.35;
+      color: var(--ink);
+      background-color: #e5e7eb;
+      padding: 16px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
-    .doc-container {
-      max-width: 210mm;
+    .doc {
+      width: 190mm;
       margin: 0 auto;
-    }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #1d4ed8;
-      
-    }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #1d4ed8;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #eff6ff;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #eff6ff;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #1d4ed8;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #1d4ed8;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
-      font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
-    }
-    .party-card {
-      background: #eff6ff;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #1d4ed8;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-    }
-    table.items-table th {
-      background: #1d4ed8;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #1d4ed8;
-      text-align: center;
-    }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
-    }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #eff6ff;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #1d4ed8;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #1d4ed8;
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 900;
-      padding: 8px 12px;
-    }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+      background: #fff;
+      padding: 10mm;
+      box-shadow: 0 0 12px rgba(0, 0, 0, .12);
     }
   </style>
+  <style data-purpose="header">
+    /* الترويسة: الهوية على البداية، والمعرّفات القانونية في بطاقة على النهاية.
+       الحقول الفارغة تختفي كلياً بشرط «if» بدل طبع شرطات بلا معنى. */
+    .brand {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--ink);
+    }
+    .logo-box {
+      width: 64px; height: 64px; flex: none;
+      border: 1px solid var(--hair); border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; background: #fff;
+    }
+    .logo-box img { max-width: 58px; max-height: 58px; object-fit: contain; }
+
+    .brand-main { flex: 1 1 auto; min-width: 0; }
+    .brand-main h1 {
+      margin: 0 0 1px;
+      font-size: 20px; font-weight: 900; letter-spacing: -.2px;
+      line-height: 1.15;
+    }
+    .tagline { margin: 0 0 3px; font-size: 10px; font-weight: 700; color: var(--ink-soft); }
+    .contact {
+      display: flex; flex-wrap: wrap; gap: 1px 14px;
+      font-size: 9.5px; font-weight: 600; color: var(--ink-soft);
+    }
+    .contact span { white-space: nowrap; }
+    .contact b { font-weight: 800; color: var(--muted); }
+    .contact .addr { white-space: normal; }
+
+    /* بطاقة المعرّفات — شبكة عمودين تبقى مصطفّة مهما طال الرقم */
+    .legal {
+      flex: none; max-width: 62mm;
+      display: grid; grid-template-columns: auto auto; gap: 2px 9px;
+      border: 1px solid var(--hair); border-radius: 8px;
+      padding: 6px 9px; background: var(--tint);
+      font-size: 9px;
+    }
+    .legal .k { font-weight: 800; color: var(--muted); }
+    .legal .v {
+      font-weight: 800; color: var(--ink);
+      font-variant-numeric: tabular-nums; text-align: end;
+      word-break: break-all;
+    }
+
+    /* شريط العنوان: علامة رأسية + العنوان، مقابل ختم التاريخ والعدد */
+    .sheet-title {
+      display: flex; align-items: flex-end; justify-content: space-between;
+      gap: 12px; margin: 9px 0 7px;
+    }
+    .sheet-title h2 {
+      margin: 0; font-size: 17px; font-weight: 900; letter-spacing: -.2px;
+      display: flex; align-items: center; gap: 7px;
+    }
+    .sheet-title h2::before {
+      content: ''; display: block; width: 4px; height: 16px;
+      background: var(--ink); border-radius: 2px; flex: none;
+    }
+    .stamp { font-size: 9.5px; font-weight: 700; color: var(--muted); text-align: end; line-height: 1.5; }
+    .stamp b { color: var(--ink); font-weight: 900; font-variant-numeric: tabular-nums; }
+
+    .scope {
+      background: var(--tint); border: 1px solid var(--hair); border-radius: 6px;
+      padding: 5px 9px; margin-bottom: 8px;
+      font-size: 9.5px; font-weight: 700; color: var(--ink-soft);
+    }
+    .scope b { color: var(--muted); font-weight: 800; }
+  </style>
+  <style data-purpose="table">
+    /* جدول القائمة: خطوط أفقية فقط. الشبكة الكاملة تُثقل قائمةً طويلة بصرياً،
+       والخطّ الرأسي يبقى حيث يفيد وحده: الفصل بين مجموعات الأعمدة. */
+    table.items { width: 100%; border-collapse: collapse; font-size: 10px; }
+
+    table.items th {
+      padding: 6px;
+      font-size: 9px; font-weight: 800; letter-spacing: .2px;
+      color: var(--ink); background: var(--tint);
+      border-top: 1.2px solid var(--ink);
+      border-bottom: 1.2px solid var(--ink);
+      white-space: nowrap;
+    }
+    /* الرؤوس تُحاذى كأعمدتها: الاسم من البداية والسعر من النهاية */
+    th.h-name { text-align: start; }
+    th.h-code { text-align: start; }
+    th.h-price { text-align: end; }
+
+    table.items td {
+      padding: 4.5px 6px;
+      border-bottom: .6px solid var(--hair-soft);
+      vertical-align: middle;
+    }
+    table.items tbody tr:nth-child(even) td { background: #fafbfd; }
+
+    .c-name { font-weight: 700; }
+    .c-code {
+      font-family: ui-monospace, 'Courier New', monospace;
+      font-size: 8.5px; color: var(--muted);
+      white-space: nowrap; width: 1%;
+    }
+    /* الأرقام الجدولية تُصفّ الفواصل العشرية عمودياً فيُقرأ العمود دفعة واحدة */
+    .c-price {
+      font-weight: 900; text-align: end; white-space: nowrap;
+      font-variant-numeric: tabular-nums; width: 1%;
+    }
+    /* خانات الحشو في آخر صفّ: تختفي بلا خطّ ولا ظلّ */
+    .c-empty { background: transparent !important; border-bottom-color: transparent !important; }
+
+    /* الفاصل بين مجموعات الأعمدة حين تُطبع القائمة على عمودين أو ثلاثة */
+    .grp-start {
+      border-inline-start: 1.2px solid #cbd5e1 !important;
+      padding-inline-start: 10px !important;
+    }
+
+    /* عنوان التصنيف — فاتح بنصّ داكن كي يبقى مقروءاً بلا خلفيات مطبوعة */
+    tr.cat td {
+      background: #e8edf3 !important;
+      color: var(--ink); font-weight: 900; font-size: 10.5px; letter-spacing: .2px;
+      padding: 6px 9px;
+      border-top: 1px solid var(--ink);
+      border-bottom: 1px solid #cbd5e1;
+    }
+    /* لا يُترك عنوان تصنيف يتيماً في ذيل الصفحة وبنوده في التالية */
+    tr.cat { break-after: avoid; page-break-after: avoid; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+
+    .foot {
+      margin-top: 9px; padding-top: 6px;
+      border-top: 1px solid var(--hair);
+      font-size: 9px; font-weight: 700; color: var(--muted); text-align: center;
+    }
+  </style>
+  <style data-purpose="print">
+    @media print {
+      body { background: #fff; padding: 0; }
+      .doc { width: 100%; padding: 0; box-shadow: none; margin: 0; }
+      /* رأس الجدول يتكرّر في كل صفحة من صفحات القائمة */
+      thead { display: table-header-group; }
+      tfoot { display: table-footer-group; }
+    }
+  </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
-        {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
-        </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
+  <main class="doc">
+
+    <header class="brand">
+      {{#if COMPANY_LOGO}}<div class="logo-box"><img src="{{{COMPANY_LOGO}}}" alt="logo"></div>{{/if}}
+
+      <div class="brand-main">
+        <h1>{{COMPANY_NAME}}</h1>
+        {{#if COMPANY_DESCRIPTION}}<p class="tagline">{{COMPANY_DESCRIPTION}}</p>{{/if}}
+        <div class="contact">
+          {{#if COMPANY_ADDRESS}}<span class="addr"><b>{{LBL_ADDRESS}}</b> {{COMPANY_ADDRESS}}</span>{{/if}}
+          {{#if COMPANY_PHONE}}<span><b>{{LBL_TEL}}:</b> {{COMPANY_PHONE}}</span>{{/if}}
+          {{#if COMPANY_FAX}}<span><b>{{LBL_FAX}}:</b> {{COMPANY_FAX}}</span>{{/if}}
+          {{#if COMPANY_EMAIL}}<span><b>{{LBL_EMAIL}}:</b> {{COMPANY_EMAIL}}</span>{{/if}}
         </div>
       </div>
 
-      <div class="doc-badge">
-        <div class="doc-type">قائمة أسعار المنتجات (CATALOGUE DES PRIX)</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
+      <!-- بطاقة المعرّفات القانونية يبنيها renderer صفوفاً جاهزة: محرّك القوالب
+           لا يدعم شرط «if» متداخلاً، فلو غُلّفت أربعة شروط بشرط خامس لالتقط
+           التعبير النمطي أوّل وسم إغلاق وأفسد الترويسة. بلا أي معرّف تختفي
+           البطاقة كلها بدل إطار فارغ معلّق. -->
+      {{#if LEGAL_ROWS}}<div class="legal">{{{LEGAL_ROWS}}}</div>{{/if}}
+    </header>
 
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
-        </div>
+    <section class="sheet-title">
+      <h2>{{LBL_TITLE}}</h2>
+      <div class="stamp">
+        <div>{{LBL_DATE}} : <b>{{DATE}}</b></div>
+        <div>{{LBL_ITEMS_COUNT}} : <b>{{ITEMS_COUNT}}</b></div>
       </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
-      </div>
-    </div>
+    </section>
 
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
+    <section class="scope"><b>{{LBL_SCOPE}}</b> : {{SCOPE_LABEL}}</section>
+
+    <table class="items">
+      <thead>{{{TABLE_HEAD}}}</thead>
+      <tbody>{{{ITEMS_ROWS}}}</tbody>
     </table>
 
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
-      </div>
+    <p class="foot">{{LBL_FOOTER}}</p>
 
-      <div class="totals-box">
-        <div class="totals-row">
-          <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
-        </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
-        </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
-          <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
-        </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
-        </div>
-        {{/if}}
-        <div class="totals-row net-row">
-          <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
-        </div>
-        
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
-        </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
-        </div>
-        {{/if}}
-      </div>
-    </div>
-
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -18745,331 +18947,164 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
-  <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
-  <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>فاتورة مبدئية - {{DOC_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
+  <style data-purpose="typography">
+    body { font-family: 'Cairo', sans-serif; font-size: 11px; color: #000; background-color: #f3f4f6; }
+  </style>
+  <style data-purpose="layout-and-borders">
+    .invoice-container {
+      width: 210mm; min-height: 297mm; margin: 20px auto; padding: 40px;
+      background: #fff; box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      position: relative; overflow: hidden;
     }
-    .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
-    }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #4f46e5;
-      
-    }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
+    .rounded-box { border: 1.5px solid #000; border-radius: 12px; padding: 12px; }
+    .table-border, .table-border th, .table-border td { border: 1px solid #000; border-collapse: collapse; }
+    .table-border th { padding: 6px 4px; font-weight: bold; }
+    .table-border td { padding: 6px 4px; }
+
+    /* Pro-forma diagonal watermark */
+    .watermark {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%) rotate(-30deg);
+      font-size: 110px;
       font-weight: 900;
-      color: #4f46e5;
-      margin: 0 0 4px 0;
+      color: rgba(220, 38, 38, 0.10);
+      letter-spacing: 8px;
+      pointer-events: none;
+      user-select: none;
+      white-space: nowrap;
+      z-index: 0;
     }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #eef2ff;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #eef2ff;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #4f46e5;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #4f46e5;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
-      font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
-    }
-    .party-card {
-      background: #eef2ff;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #4f46e5;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-    }
-    table.items-table th {
-      background: #4f46e5;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #4f46e5;
-      text-align: center;
-    }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
-    }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #eef2ff;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #4f46e5;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
+
+    .doc-banner {
+      background: #fef2f2;
+      border: 2px solid #dc2626;
+      color: #991b1b;
       padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #4f46e5;
-      color: #ffffff;
-      font-size: 13px;
+      border-radius: 8px;
       font-weight: 900;
-      padding: 8px 12px;
-    }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
       font-size: 11px;
-      color: #475569;
+      display: inline-block;
     }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+
+    main > * { position: relative; z-index: 1; }
+
+    @media print {
+      body { background-color: #fff; padding: 0; margin: 0; }
+      .invoice-container { box-shadow: none; margin: 0; width: 100%; min-height: auto; padding: 20px; }
     }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
+
+<body class="p-4">
+  <main class="invoice-container mx-auto bg-white">
+    <div class="watermark">PRO-FORMA</div>
+
+    <header class="mb-6">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>الهاتف : {{COMPANY_PHONE}}</div>
+        <div>الثابت : {{COMPANY_FAX}}</div>
+        <div>البريد : {{COMPANY_EMAIL}}</div>
+      </div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>سجل تجاري : {{COMPANY_RC}}</div>
+        <div>رقم جبائي : {{COMPANY_NIF}}</div>
+        <div>مادة جبائية : {{COMPANY_AI}}</div>
+      </div>
+      <div class="font-bold text-[10px] mt-1">رقم الإحصاء : {{COMPANY_NIS}}</div>
+    </header>
+
+    <section class="mb-4">
+      <span class="doc-banner">⚠ فاتورة مبدئية — وثيقة غير محاسبية</span>
+    </section>
+
+    <section class="flex justify-between items-start mb-8">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>الزبون : {{PARTY_NAME}}</p>
+        <p>العنوان : {{PARTY_ADDRESS}}</p>
+        <p>سجل تجاري : {{PARTY_RC}}</p>
+        <p>رقم جبائي : {{PARTY_NIF}}</p>
+      </div>
+      <div class="w-[48%] pl-8" style="text-align: left;">
+        <h2 class="text-xl font-bold mb-2">فاتورة مبدئية رقم {{DOC_NUMBER}}</h2>
+        <p class="text-sm font-bold">التاريخ : {{DATE}}</p>
+        <p class="text-sm font-bold mt-1">صالحة لمدة : {{VALIDITY_DAYS}} يوم</p>
+        <p class="text-sm font-bold mt-1">صالحة حتى : {{VALID_UNTIL}}</p>
+      </div>
+    </section>
+
+    <section class="mb-6">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr class="bg-white">
+            <th class="w-[6%]">الرقم</th>
+            <th class="w-[14%]">المرجع</th>
+            <th class="w-[30%]">البيان</th>
+            <th class="w-[10%]">الكمية</th>
+            <th class="w-[10%]">الوحدة</th>
+            <th class="w-[10%]">سعر الوحدة</th>
+            <th class="w-[10%]">الضريبة</th>
+            <th class="w-[10%]">المجموع</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="flex flex-col mb-8" style="align-items: flex-start;">
+      <div class="w-[42%] rounded-box font-bold text-[10px]">
+        <div class="flex justify-between py-1"><span>المجموع الفرعي :</span><span>{{SUBTOTAL}}</span></div>
+        <div class="flex justify-between py-1"><span>التخفيض :</span><span>{{DISCOUNT}}</span></div>
+        {{#if HAS_TAX}}
+        <div class="flex justify-between py-1"><span>مجموع الضريبة :</span><span>{{TAX_TOTAL}}</span></div>
         {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
-        </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
+        <div class="flex justify-between py-1 border-t border-black mt-1 pt-1">
+          <span>الإجمالي التقديري :</span><span>{{TOTAL}}</span>
         </div>
       </div>
+    </section>
 
-      <div class="doc-badge">
-        <div class="doc-type">فاتورة شكلية / مبدئية (PROFORMA)</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
-
-    <div class="party-card">
+    <section class="space-y-4">
       <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
-        </div>
-      </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
-      </div>
-    </div>
-
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
-
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
+        <p class="font-bold text-[10px] mb-1">الإجمالي بالحروف :</p>
+        <p class="font-bold text-[10px]">{{TOTAL_IN_WORDS}}</p>
       </div>
 
-      <div class="totals-box">
-        <div class="totals-row">
-          <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
-        </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
-        </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
-          <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
-        </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
-        </div>
-        {{/if}}
-        <div class="totals-row net-row">
-          <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
-        </div>
-        
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
-        </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
-        </div>
-        {{/if}}
+      {{#if NOTES}}
+      <div class="border border-slate-300 rounded p-2 text-[10px] font-bold">
+        <div class="mb-1">ملاحظات:</div>
+        <div>{{NOTES}}</div>
       </div>
-    </div>
+      {{/if}}
 
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+      <div class="bg-amber-50 border border-amber-300 rounded p-2 text-[10px] font-bold text-amber-800">
+        ملاحظة قانونية: هذه فاتورة مبدئية لأغراض العرض فقط. لا تُستخدم للتصريح الجبائي أو المحاسبي.
+        الأسعار صالحة لمدة {{VALIDITY_DAYS}} يوم من تاريخ الإصدار وتبقى قابلة للتعديل.
+      </div>
+    </section>
+  </main>
+
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
 
 ```
@@ -19081,331 +19116,146 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="fr" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Facture Pro-forma - {{DOC_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
+    body { font-family: 'Cairo', sans-serif; font-size: 11px; color: #000; background-color: #f3f4f6; }
+    .invoice-container {
+      width: 210mm; min-height: 297mm; margin: 20px auto; padding: 40px;
+      background: #fff; box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      position: relative; overflow: hidden;
     }
-    .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
+    .rounded-box { border: 1.5px solid #000; border-radius: 12px; padding: 12px; }
+    .table-border, .table-border th, .table-border td { border: 1px solid #000; border-collapse: collapse; }
+    .table-border th { padding: 6px 4px; font-weight: bold; }
+    .table-border td { padding: 6px 4px; }
+
+    .watermark {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%) rotate(-30deg);
+      font-size: 110px; font-weight: 900; color: rgba(220,38,38,.10);
+      letter-spacing: 8px; pointer-events: none; user-select: none;
+      white-space: nowrap; z-index: 0;
     }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #4f46e5;
-      
+    .doc-banner {
+      background: #fef2f2; border: 2px solid #dc2626; color: #991b1b;
+      padding: 6px 12px; border-radius: 8px; font-weight: 900; font-size: 11px;
+      display: inline-block;
     }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #4f46e5;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #eef2ff;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #eef2ff;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #4f46e5;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #4f46e5;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
-      font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
-    }
-    .party-card {
-      background: #eef2ff;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #4f46e5;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-    }
-    table.items-table th {
-      background: #4f46e5;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #4f46e5;
-      text-align: center;
-    }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
-    }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #eef2ff;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #4f46e5;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #4f46e5;
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 900;
-      padding: 8px 12px;
-    }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+    main > * { position: relative; z-index: 1; }
+
+    @media print {
+      body { background-color: #fff; padding: 0; margin: 0; }
+      .invoice-container { box-shadow: none; margin: 0; width: 100%; min-height: auto; padding: 20px; }
     }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
+
+<body class="p-4">
+  <main class="invoice-container mx-auto bg-white">
+    <div class="watermark">PRO-FORMA</div>
+
+    <header class="mb-6">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>Tél : {{COMPANY_PHONE}}</div>
+        <div>Fixe : {{COMPANY_FAX}}</div>
+        <div>Email : {{COMPANY_EMAIL}}</div>
+      </div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>RC : {{COMPANY_RC}}</div>
+        <div>NIF : {{COMPANY_NIF}}</div>
+        <div>AI : {{COMPANY_AI}}</div>
+      </div>
+      <div class="font-bold text-[10px] mt-1">NIS : {{COMPANY_NIS}}</div>
+    </header>
+
+    <section class="mb-4">
+      <span class="doc-banner">⚠ Facture Pro-forma — Document non comptable</span>
+    </section>
+
+    <section class="flex justify-between items-start mb-8">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>Client : {{PARTY_NAME}}</p>
+        <p>Adresse : {{PARTY_ADDRESS}}</p>
+        <p>RC : {{PARTY_RC}}</p>
+        <p>NIF : {{PARTY_NIF}}</p>
+      </div>
+      <div class="w-[48%] pr-8" style="text-align: right;">
+        <h2 class="text-xl font-bold mb-2">Pro-forma N° {{DOC_NUMBER}}</h2>
+        <p class="text-sm font-bold">Date : {{DATE}}</p>
+        <p class="text-sm font-bold mt-1">Validité : {{VALIDITY_DAYS}} jours</p>
+        <p class="text-sm font-bold mt-1">Valable jusqu'au : {{VALID_UNTIL}}</p>
+      </div>
+    </section>
+
+    <section class="mb-6">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr class="bg-white">
+            <th class="w-[6%]">N°</th>
+            <th class="w-[14%]">Réf</th>
+            <th class="w-[30%]">Désignation</th>
+            <th class="w-[10%]">Quantité</th>
+            <th class="w-[10%]">Unité</th>
+            <th class="w-[10%]">Prix HT</th>
+            <th class="w-[10%]">TVA</th>
+            <th class="w-[10%]">Total HT</th>
+          </tr>
+        </thead>
+        <tbody>{{ITEMS_ROWS}}</tbody>
+      </table>
+    </section>
+
+    <section class="flex flex-col mb-8" style="align-items: flex-end;">
+      <div class="w-[42%] rounded-box font-bold text-[10px]">
+        <div class="flex justify-between py-1"><span>Total HT :</span><span>{{SUBTOTAL}}</span></div>
+        <div class="flex justify-between py-1"><span>Remise :</span><span>{{DISCOUNT}}</span></div>
+        {{#if HAS_TAX}}
+        <div class="flex justify-between py-1"><span>Total TVA :</span><span>{{TAX_TOTAL}}</span></div>
         {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
-        </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
+        <div class="flex justify-between py-1 border-t border-black mt-1 pt-1">
+          <span>Total estimé :</span><span>{{TOTAL}}</span>
         </div>
       </div>
+    </section>
 
-      <div class="doc-badge">
-        <div class="doc-type">FACTURE PROFORMA</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
-
-    <div class="party-card">
+    <section class="space-y-4">
       <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
-        </div>
-      </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
-      </div>
-    </div>
-
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
-
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
+        <p class="font-bold text-[10px] mb-1">Total en lettres :</p>
+        <p class="font-bold text-[10px]">{{TOTAL_IN_WORDS}}</p>
       </div>
 
-      <div class="totals-box">
-        <div class="totals-row">
-          <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
-        </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
-        </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
-          <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
-        </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
-        </div>
-        {{/if}}
-        <div class="totals-row net-row">
-          <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
-        </div>
-        
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
-        </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
-        </div>
-        {{/if}}
+      {{#if NOTES}}
+      <div class="border border-slate-300 rounded p-2 text-[10px] font-bold">
+        <div class="mb-1">Notes:</div>
+        <div>{{NOTES}}</div>
       </div>
-    </div>
+      {{/if}}
 
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+      <div class="bg-amber-50 border border-amber-300 rounded p-2 text-[10px] font-bold text-amber-800">
+        Mention légale : ce document est une facture pro-forma destinée à la consultation
+        uniquement. Elle n'a aucune valeur comptable ni fiscale. Prix valables {{VALIDITY_DAYS}} jours.
+      </div>
+    </section>
+  </main>
+
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
 
 ```
@@ -19417,335 +19267,230 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
-  <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>فاتورة إجمالية - {{RECAP_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
     }
+
     .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #1e293b;
-      
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
     }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #1e293b;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #1e293b;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #1e293b;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
-      font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
-    }
-    .party-card {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #1e293b;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
       border-collapse: collapse;
-      margin-bottom: 14px;
     }
-    table.items-table th {
-      background: #1e293b;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #1e293b;
-      text-align: center;
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+      background: #f3f4f6;
     }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
+
+    .table-border td {
+      padding: 6px 4px;
     }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #1e293b;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
+
+    .recap-banner {
+      background: #dbeafe;
+      border: 2px solid #1d4ed8;
+      color: #1e3a8a;
+      padding: 8px 18px;
       border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #1e293b;
-      color: #ffffff;
-      font-size: 13px;
+      display: inline-block;
       font-weight: 900;
-      padding: 8px 12px;
+      font-size: 13px;
     }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
+
+    .period-strip {
+      background: #ede9fe;
+      border: 1.5px dashed #6d28d9;
+      color: #4c1d95;
+      padding: 8px 14px;
+      border-radius: 8px;
       font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+      font-size: 11px;
+    }
+
+    .totals-table td {
+      padding: 5px 10px;
+    }
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .doc-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 20px;
+      }
     }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
-        {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
-        </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
+
+<body class="p-4">
+  <main class="doc-container mx-auto bg-white">
+
+    <header class="mb-6">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>الهاتف : {{COMPANY_PHONE}}</div>
+        <div>الثابت : {{COMPANY_FAX}}</div>
+        <div>البريد : {{COMPANY_EMAIL}}</div>
+      </div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>سجل تجاري : {{COMPANY_RC}}</div>
+        <div>رقم جبائي : {{COMPANY_NIF}}</div>
+        <div>مادة جبائية : {{COMPANY_AI}}</div>
+        <div>رقم الإحصاء : {{COMPANY_NIS}}</div>
+      </div>
+    </header>
+
+    <section class="flex justify-between items-start mb-4">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>الزبون : {{PARTY_NAME}}</p>
+        <p>العنوان : {{PARTY_ADDRESS}}</p>
+        <p>الهاتف : {{PARTY_PHONE}}</p>
+        <p>سجل تجاري : {{PARTY_RC}}</p>
+        <p>رقم جبائي : {{PARTY_NIF}}</p>
+      </div>
+      <div class="w-[48%] pl-8" style="text-align: left;">
+        <span class="recap-banner">فاتـورة إجماليـة</span>
+        <h2 class="text-lg font-bold mt-3 mb-1">فاتورة إجمالية رقم : {{RECAP_NUMBER}}</h2>
+        <p class="text-sm font-bold">تاريخ الإصدار : {{DATE}}</p>
+      </div>
+    </section>
+
+    <section class="mb-5">
+      <div class="period-strip">
+        فترة التجميع : من <span class="font-black">{{DATE_FROM}}</span>
+        إلى <span class="font-black">{{DATE_TO}}</span>
+        <span class="mx-2">•</span>
+        عدد المبيعات المُجمَّعة : <span class="font-black">{{SALES_COUNT}}</span>
+      </div>
+    </section>
+
+    <section class="mb-6">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr>
+            <th class="w-[5%]">#</th>
+            <th class="w-[12%]">المرجع</th>
+            <th class="w-[33%]">البيان</th>
+            <th class="w-[8%]">الوحدة</th>
+            <th class="w-[10%]">الكمية الإجمالية</th>
+            <th class="w-[12%]">سعر الوحدة HT</th>
+            <th class="w-[8%]">TVA %</th>
+            <th class="w-[12%]">المجموع HT</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="flex justify-end mb-8">
+      <table class="totals-table text-[11px] font-bold border border-black">
+        <tbody>
+          <tr>
+            <td class="border-b border-black">المجموع HT</td>
+            <td class="border-b border-black text-left">{{SUBTOTAL_HT}} د.ج</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">التخفيض</td>
+            <td class="border-b border-black text-left">{{DISCOUNT}} د.ج</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">TVA ({{TAX_PERCENT}}%)</td>
+            <td class="border-b border-black text-left">{{TVA_AMOUNT}} د.ج</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">الإجمالي TTC</td>
+            <td class="border-b border-black text-left">{{TOTAL_TTC}} د.ج</td>
+          </tr>
+          <tr data-purpose="stamp-row">
+            <td class="border-b border-black">حقّ الطابع (1%)</td>
+            <td class="border-b border-black text-left">{{STAMP_AMOUNT}} د.ج</td>
+          </tr>
+          <tr>
+            <td class="font-black bg-slate-100">الصافي للدفع</td>
+            <td class="font-black bg-slate-100 text-left text-blue-700">{{NET_TO_PAY}} د.ج</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">المدفوع</td>
+            <td class="border-b border-black text-left text-emerald-700">{{PAID_AMOUNT}} د.ج</td>
+          </tr>
+          <tr>
+            <td class="font-black bg-slate-100">الباقي (الدين)</td>
+            <td class="font-black bg-slate-100 text-left text-red-700">{{REMAINING_DEBT}} د.ج</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p class="text-[10px] font-bold mb-6">المبلغ بالأحرف : <span class="text-blue-700">{{TOTAL_IN_WORDS}}</span></p>
+
+    <section class="flex justify-between items-start mt-10">
+      <div class="w-[45%]">
+        <p class="font-bold text-[10px] mb-8">المرسل : {{COMPANY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">التوقيع والختم</p>
         </div>
       </div>
-
-      <div class="doc-badge">
-        <div class="doc-type">فاتورة مجمعة للفترة (FACTURE RÉCAPITULATIVE)</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
-
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
+      <div class="w-[45%]" style="text-align: left;">
+        <p class="font-bold text-[10px] mb-8">المستلم : {{PARTY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1" style="margin-left:auto; margin-right:0;">
+          <p class="text-[9px] font-bold text-slate-500">التوقيع والختم</p>
         </div>
       </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
-      </div>
-    </div>
+    </section>
 
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
+    <p class="text-[9px] text-slate-500 mt-6 text-center font-bold">
+      فاتورة إجمالية تلخيصية تُجمّع كل المبيعات للزبون خلال الفترة المذكورة. تحلّ محلّ الفواتير الفردية لأغراض المحاسبة و TVA.
+    </p>
 
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
-      </div>
-
-      <div class="totals-box">
-        <div class="totals-row">
-          <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
-        </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
-        </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
-          <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
-        </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
-        </div>
-        {{/if}}
-        <div class="totals-row net-row">
-          <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
-        </div>
-        
-        <div class="totals-row">
-          <span>{{LBL_OLD_BALANCE}}</span>
-          <span class="val">{{OLD_BALANCE}}</span>
-        </div>
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
-        </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
-        </div>
-        {{/if}}
-      </div>
-    </div>
-
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+  </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
 
 ```
@@ -19757,335 +19502,230 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Recapitulative Invoice - {{RECAP_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
     }
+
     .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #1e293b;
-      
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
     }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #1e293b;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #1e293b;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #1e293b;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
-      font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
-    }
-    .party-card {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #1e293b;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
       border-collapse: collapse;
-      margin-bottom: 14px;
     }
-    table.items-table th {
-      background: #1e293b;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #1e293b;
-      text-align: center;
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+      background: #f3f4f6;
     }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
+
+    .table-border td {
+      padding: 6px 4px;
     }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #1e293b;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
+
+    .recap-banner {
+      background: #dbeafe;
+      border: 2px solid #1d4ed8;
+      color: #1e3a8a;
+      padding: 8px 18px;
       border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #1e293b;
-      color: #ffffff;
-      font-size: 13px;
+      display: inline-block;
       font-weight: 900;
-      padding: 8px 12px;
+      font-size: 13px;
     }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
+
+    .period-strip {
+      background: #ede9fe;
+      border: 1.5px dashed #6d28d9;
+      color: #4c1d95;
+      padding: 8px 14px;
+      border-radius: 8px;
       font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+      font-size: 11px;
+    }
+
+    .totals-table td {
+      padding: 5px 10px;
+    }
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .doc-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 20px;
+      }
     }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
-        {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
-        </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
+
+<body class="p-4">
+  <main class="doc-container mx-auto bg-white">
+
+    <header class="mb-6">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>Phone : {{COMPANY_PHONE}}</div>
+        <div>Fax : {{COMPANY_FAX}}</div>
+        <div>Email : {{COMPANY_EMAIL}}</div>
+      </div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>CR : {{COMPANY_RC}}</div>
+        <div>TIN : {{COMPANY_NIF}}</div>
+        <div>AI : {{COMPANY_AI}}</div>
+        <div>NIS : {{COMPANY_NIS}}</div>
+      </div>
+    </header>
+
+    <section class="flex justify-between items-start mb-4">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>Client : {{PARTY_NAME}}</p>
+        <p>Address : {{PARTY_ADDRESS}}</p>
+        <p>Phone : {{PARTY_PHONE}}</p>
+        <p>CR : {{PARTY_RC}}</p>
+        <p>TIN : {{PARTY_NIF}}</p>
+      </div>
+      <div class="w-[48%] text-right pr-8">
+        <span class="recap-banner">RECAPITULATIVE INVOICE</span>
+        <h2 class="text-lg font-bold mt-3 mb-1">No. : {{RECAP_NUMBER}}</h2>
+        <p class="text-sm font-bold">Issue date : {{DATE}}</p>
+      </div>
+    </section>
+
+    <section class="mb-5">
+      <div class="period-strip">
+        Period : from <span class="font-black">{{DATE_FROM}}</span>
+        to <span class="font-black">{{DATE_TO}}</span>
+        <span class="mx-2">•</span>
+        Sales consolidated : <span class="font-black">{{SALES_COUNT}}</span>
+      </div>
+    </section>
+
+    <section class="mb-6">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr>
+            <th class="w-[5%]">#</th>
+            <th class="w-[12%]">Ref</th>
+            <th class="w-[33%]">Description</th>
+            <th class="w-[8%]">Unit</th>
+            <th class="w-[10%]">Total Qty</th>
+            <th class="w-[12%]">Unit price excl. tax</th>
+            <th class="w-[8%]">VAT %</th>
+            <th class="w-[12%]">Total excl. tax</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="flex justify-end mb-8">
+      <table class="totals-table text-[11px] font-bold border border-black">
+        <tbody>
+          <tr>
+            <td class="border-b border-black">Subtotal (excl. tax)</td>
+            <td class="border-b border-black text-right">{{SUBTOTAL_HT}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">Discount</td>
+            <td class="border-b border-black text-right">{{DISCOUNT}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">VAT ({{TAX_PERCENT}}%)</td>
+            <td class="border-b border-black text-right">{{TVA_AMOUNT}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">Total (incl. tax)</td>
+            <td class="border-b border-black text-right">{{TOTAL_TTC}} DA</td>
+          </tr>
+          <tr data-purpose="stamp-row">
+            <td class="border-b border-black">Stamp duty (1%)</td>
+            <td class="border-b border-black text-right">{{STAMP_AMOUNT}} DA</td>
+          </tr>
+          <tr>
+            <td class="font-black bg-slate-100">Net to pay</td>
+            <td class="font-black bg-slate-100 text-right text-blue-700">{{NET_TO_PAY}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">Paid</td>
+            <td class="border-b border-black text-right text-emerald-700">{{PAID_AMOUNT}} DA</td>
+          </tr>
+          <tr>
+            <td class="font-black bg-slate-100">Remaining (debt)</td>
+            <td class="font-black bg-slate-100 text-right text-red-700">{{REMAINING_DEBT}} DA</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p class="text-[10px] font-bold mb-6">Amount in words : <span class="text-blue-700">{{TOTAL_IN_WORDS}}</span></p>
+
+    <section class="flex justify-between items-start mt-10">
+      <div class="w-[45%]">
+        <p class="font-bold text-[10px] mb-8">Sender : {{COMPANY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">Signature and stamp</p>
         </div>
       </div>
-
-      <div class="doc-badge">
-        <div class="doc-type">SUMMARY INVOICE</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
-
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
+      <div class="w-[45%] text-right">
+        <p class="font-bold text-[10px] mb-8">Receiver : {{PARTY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1 ml-auto">
+          <p class="text-[9px] font-bold text-slate-500">Signature and stamp</p>
         </div>
       </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
-      </div>
-    </div>
+    </section>
 
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
+    <p class="text-[9px] text-slate-500 mt-6 text-center font-bold">
+      Recapitulative invoice consolidating all sales for the client over the indicated period. Replaces individual invoices for accounting and VAT.
+    </p>
 
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
-      </div>
-
-      <div class="totals-box">
-        <div class="totals-row">
-          <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
-        </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
-        </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
-          <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
-        </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
-        </div>
-        {{/if}}
-        <div class="totals-row net-row">
-          <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
-        </div>
-        
-        <div class="totals-row">
-          <span>{{LBL_OLD_BALANCE}}</span>
-          <span class="val">{{OLD_BALANCE}}</span>
-        </div>
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
-        </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
-        </div>
-        {{/if}}
-      </div>
-    </div>
-
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+  </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
 
 ```
@@ -20097,335 +19737,230 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="fr" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Facture Récapitulative - {{RECAP_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
     }
+
     .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #1e293b;
-      
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
     }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #1e293b;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #1e293b;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #1e293b;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
-      font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
-    }
-    .party-card {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #1e293b;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
       border-collapse: collapse;
-      margin-bottom: 14px;
     }
-    table.items-table th {
-      background: #1e293b;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #1e293b;
-      text-align: center;
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+      background: #f3f4f6;
     }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
+
+    .table-border td {
+      padding: 6px 4px;
     }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #1e293b;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
+
+    .recap-banner {
+      background: #dbeafe;
+      border: 2px solid #1d4ed8;
+      color: #1e3a8a;
+      padding: 8px 18px;
       border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #1e293b;
-      color: #ffffff;
-      font-size: 13px;
+      display: inline-block;
       font-weight: 900;
-      padding: 8px 12px;
+      font-size: 13px;
     }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
+
+    .period-strip {
+      background: #ede9fe;
+      border: 1.5px dashed #6d28d9;
+      color: #4c1d95;
+      padding: 8px 14px;
+      border-radius: 8px;
       font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+      font-size: 11px;
+    }
+
+    .totals-table td {
+      padding: 5px 10px;
+    }
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .doc-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 20px;
+      }
     }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
-        {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
-        </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
+
+<body class="p-4">
+  <main class="doc-container mx-auto bg-white">
+
+    <header class="mb-6">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>Tél : {{COMPANY_PHONE}}</div>
+        <div>Fixe : {{COMPANY_FAX}}</div>
+        <div>Email : {{COMPANY_EMAIL}}</div>
+      </div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>R.C : {{COMPANY_RC}}</div>
+        <div>NIF : {{COMPANY_NIF}}</div>
+        <div>AI : {{COMPANY_AI}}</div>
+        <div>NIS : {{COMPANY_NIS}}</div>
+      </div>
+    </header>
+
+    <section class="flex justify-between items-start mb-4">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>Client : {{PARTY_NAME}}</p>
+        <p>Adresse : {{PARTY_ADDRESS}}</p>
+        <p>Tél : {{PARTY_PHONE}}</p>
+        <p>R.C : {{PARTY_RC}}</p>
+        <p>NIF : {{PARTY_NIF}}</p>
+      </div>
+      <div class="w-[48%] text-right pr-8">
+        <span class="recap-banner">FACTURE RÉCAPITULATIVE</span>
+        <h2 class="text-lg font-bold mt-3 mb-1">N° : {{RECAP_NUMBER}}</h2>
+        <p class="text-sm font-bold">Date d'émission : {{DATE}}</p>
+      </div>
+    </section>
+
+    <section class="mb-5">
+      <div class="period-strip">
+        Période : du <span class="font-black">{{DATE_FROM}}</span>
+        au <span class="font-black">{{DATE_TO}}</span>
+        <span class="mx-2">•</span>
+        Nombre de ventes regroupées : <span class="font-black">{{SALES_COUNT}}</span>
+      </div>
+    </section>
+
+    <section class="mb-6">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr>
+            <th class="w-[5%]">#</th>
+            <th class="w-[12%]">Réf</th>
+            <th class="w-[33%]">Désignation</th>
+            <th class="w-[8%]">Unité</th>
+            <th class="w-[10%]">Quantité totale</th>
+            <th class="w-[12%]">P.U. HT</th>
+            <th class="w-[8%]">TVA %</th>
+            <th class="w-[12%]">Total HT</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="flex justify-end mb-8">
+      <table class="totals-table text-[11px] font-bold border border-black">
+        <tbody>
+          <tr>
+            <td class="border-b border-black">Total HT</td>
+            <td class="border-b border-black text-right">{{SUBTOTAL_HT}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">Remise</td>
+            <td class="border-b border-black text-right">{{DISCOUNT}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">TVA ({{TAX_PERCENT}}%)</td>
+            <td class="border-b border-black text-right">{{TVA_AMOUNT}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">Total TTC</td>
+            <td class="border-b border-black text-right">{{TOTAL_TTC}} DA</td>
+          </tr>
+          <tr data-purpose="stamp-row">
+            <td class="border-b border-black">Droit de timbre (1%)</td>
+            <td class="border-b border-black text-right">{{STAMP_AMOUNT}} DA</td>
+          </tr>
+          <tr>
+            <td class="font-black bg-slate-100">Net à payer</td>
+            <td class="font-black bg-slate-100 text-right text-blue-700">{{NET_TO_PAY}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">Payé</td>
+            <td class="border-b border-black text-right text-emerald-700">{{PAID_AMOUNT}} DA</td>
+          </tr>
+          <tr>
+            <td class="font-black bg-slate-100">Reste (dette)</td>
+            <td class="font-black bg-slate-100 text-right text-red-700">{{REMAINING_DEBT}} DA</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p class="text-[10px] font-bold mb-6">Arrêtée à la somme de : <span class="text-blue-700">{{TOTAL_IN_WORDS}}</span></p>
+
+    <section class="flex justify-between items-start mt-10">
+      <div class="w-[45%]">
+        <p class="font-bold text-[10px] mb-8">Expéditeur : {{COMPANY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">Signature et cachet</p>
         </div>
       </div>
-
-      <div class="doc-badge">
-        <div class="doc-type">FACTURE RÉCAPITULATIVE</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
-
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
+      <div class="w-[45%] text-right">
+        <p class="font-bold text-[10px] mb-8">Réceptionnaire : {{PARTY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1 ml-auto">
+          <p class="text-[9px] font-bold text-slate-500">Signature et cachet</p>
         </div>
       </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
-      </div>
-    </div>
+    </section>
 
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
+    <p class="text-[9px] text-slate-500 mt-6 text-center font-bold">
+      Facture récapitulative regroupant toutes les ventes du client sur la période indiquée. Se substitue aux factures individuelles pour la comptabilité et la TVA.
+    </p>
 
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
-      </div>
-
-      <div class="totals-box">
-        <div class="totals-row">
-          <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
-        </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
-        </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
-          <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
-        </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
-        </div>
-        {{/if}}
-        <div class="totals-row net-row">
-          <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
-        </div>
-        
-        <div class="totals-row">
-          <span>{{LBL_OLD_BALANCE}}</span>
-          <span class="val">{{OLD_BALANCE}}</span>
-        </div>
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
-        </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
-        </div>
-        {{/if}}
-      </div>
-    </div>
-
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+  </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
 
 ```
@@ -20437,79 +19972,140 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
-  <title>وصل بيع رقم {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reçu - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; }
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
+      background: #f3f4f6;
       color: #000;
-      background: #fff;
+      margin: 0;
+      padding: 0;
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 1px dashed #000;  }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: right; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+
+    .paper {
+      width: 100%;
+      /* عرض البكرة يأتي من إعداد receipt_paper_width_mm عبر PrintEngine.
+         الافتراضي 80مم حين لا يُحقن المتغيّر (معاينة/تصدير مباشر). */
+      max-width: var(--rcpt-paper-w, 80mm);
+      background: #fff;
+      margin: 0 auto;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .08);
+      border: 1px solid #e5e7eb;
+      font-family: 'Cairo', 'Cairo', sans-serif;
+    }
+
+    @page {
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        /* صندوق الصفحة هو مَن يحدّد العرض (pageSize بعرض البكرة) — لا رقم
+           مثبّت هنا، وإلا خرج الوصل بعرض 80مم على بكرة 58مم. */
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .paper {
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm) !important;
+        box-shadow: none;
+        border: none;
+        max-width: none;
+      }
+    }
+
+    /* ── وضوح الطباعة الحرارية ──────────────────────────────────────────────
+       الطابعات الحرارية أحادية اللون تُظهر النص/الحدود الرمادية باهتة وغير
+       واضحة. نفرض أسود صريحاً على كل النص والحدود داخل الوصل، ونجعل الخط عريضاً
+       (700) كحد أدنى مع الإبقاء على العناوين الأثقل (font-black كما هي). */
+    .paper { font-weight: 900; }
+    .paper * { color: #000 !important; border-color: #000 !important; }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
+  <main class="paper">
+    <!-- Header -->
+    <header class="text-center border-b-2 border-black pb-3 mb-4">
+      <div class="text-xl font-black">{{COMPANY_NAME}}</div>
+      <div class="text-xs font-bold text-slate-700 mt-1">{{COMPANY_ADDRESS}}</div>
+      <div class="text-xs font-bold text-slate-700 mt-1">الهاتف: {{COMPANY_PHONE}}</div>
+    </header>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>وصل بيع رقم:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>الزبون:</strong> {{CLIENT_NAME}}</span><span><strong>البائع:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+    <!-- Meta -->
+    <section class="text-sm font-bold mb-4 space-y-1">
+      <div class="flex justify-between">
+        <div class="font-black underline">وصل رقم</div>
+        <div class="font-black">{{RECEIPT_NUMBER}}</div>
+      </div>
+      <div class="flex justify-between text-xs">
+        <div>تاريخ: {{DATE}}</div>
+        <div class="italic">وقت: {{TIME}}</div>
+      </div>
+      <div class="text-xs font-bold pt-2">الزبون: {{CLIENT_NAME}}</div>
+      <div class="text-xs font-bold">البائع: {{SELLER_NAME}}</div>
+    </section>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:right;">المنتج</th>
-        <th>الكمية</th>
-        <th>السعر</th>
-        <th>المجموع</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <!-- Items -->
+    <section class="mb-4">
+      <div class="grid grid-cols-12 gap-1 bg-slate-100 border border-black rounded-xl p-2 text-xs font-black">
+        <div class="col-span-2 text-center">كمية</div>
+        <div class="col-span-6 text-center">المنتج</div>
+        <div class="col-span-2 text-center">سعر</div>
+        <div class="col-span-2 text-center">مجموع</div>
+      </div>
 
-  <div class="totals">
-    <div class="t-row"><span>المجموع الفرعي:</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>التخفيض:</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>الإجمالي:</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>المدفوع:</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>الباقي للزبون:</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>الباقي (دين):</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+      <div class="mt-2 border border-black rounded-xl overflow-hidden">
+        <table class="w-full text-xs">
+          <tbody>
+            {{ITEMS_ROWS}}
+          </tbody>
+        </table>
+      </div>
+    </section>
 
-  
-  <div class="footer">شكراً لزيارتكم — مرحباً بكم دائماً</div>
+    <!-- Totals -->
+    <section class="border-t-2 border-black pt-3 text-sm font-black space-y-2">
+      <div class="flex justify-between">
+        <div>المجموع:</div>
+        <div>{{TOTAL}}</div>
+      </div>
+      <div class="flex justify-between text-xs font-bold">
+        <div>المدفوع =</div>
+        <div>{{PAID}}</div>
+      </div>
+      <div
+        class="flex justify-between text-[11px] font-bold text-slate-700 pt-1 border-t border-dashed mt-2 border-slate-300">
+        <div>الرصيد السابق :</div>
+        <div>{{OLD_BALANCE}}</div>
+      </div>
+      <div class="flex justify-between text-[11px] font-bold text-slate-700">
+        <div>المتبقي للدفع :</div>
+        <div>{{RECEIPT_REST}}</div>
+      </div>
+      <div class="flex justify-between text-xs font-black pt-1">
+        <div>إجمالي الديون :</div>
+        <div class="underline">{{REST}}</div>
+      </div>
+    </section>
+
+    <footer class="text-center text-xs font-bold text-slate-700 mt-6">
+      شكراً لزيارتكم.
+    </footer>
+  </main>
 </body>
-</html>
 
+</html>
 ```
 
 ---
@@ -20519,77 +20115,138 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Receipt # {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Receipt - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; }
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
+      background: #f3f4f6;
       color: #000;
-      background: #fff;
+      margin: 0;
+      padding: 0;
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 1px dashed #000;  }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: left; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+
+    .paper {
+      width: 100%;
+      /* عرض البكرة يأتي من إعداد receipt_paper_width_mm عبر PrintEngine.
+         الافتراضي 80مم حين لا يُحقن المتغيّر (معاينة/تصدير مباشر). */
+      max-width: var(--rcpt-paper-w, 80mm);
+      background: #fff;
+      margin: 0 auto;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .08);
+      border: 1px solid #e5e7eb;
+      font-family: 'Cairo', 'Cairo', sans-serif;
+    }
+
+    @page {
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        /* صندوق الصفحة هو مَن يحدّد العرض (pageSize بعرض البكرة) — لا رقم
+           مثبّت هنا، وإلا خرج الوصل بعرض 80مم على بكرة 58مم. */
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .paper {
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm) !important;
+        box-shadow: none;
+        border: none;
+        max-width: none;
+      }
+    }
+
+    /* ── Thermal print legibility ───────────────────────────────────────────
+       Monochrome thermal printers render gray text/borders faint and unclear.
+       Force pure black on all receipt text and borders, and a minimum bold
+       weight (700) while keeping heavier headings (font-black) intact. */
+    .paper { font-weight: 700; }
+    .paper * { color: #000 !important; border-color: #000 !important; }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
+  <main class="paper">
+    <!-- Header -->
+    <header class="text-center border-b-2 border-black pb-3 mb-4">
+      <div class="text-xl font-black">{{COMPANY_NAME}}</div>
+      <div class="text-xs font-bold text-slate-700 mt-1">{{COMPANY_ADDRESS}}</div>
+      <div class="text-xs font-bold text-slate-700 mt-1">Tel: {{COMPANY_PHONE}}</div>
+    </header>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>Receipt #:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>Customer:</strong> {{CLIENT_NAME}}</span><span><strong>Cashier:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+    <!-- Meta -->
+    <section class="text-sm font-bold mb-4 space-y-1">
+      <div class="flex justify-between">
+        <div class="font-black underline">Receipt #</div>
+        <div class="font-black">{{RECEIPT_NUMBER}}</div>
+      </div>
+      <div class="flex justify-between text-xs">
+        <div>Date: {{DATE}}</div>
+        <div class="italic">Time: {{TIME}}</div>
+      </div>
+      <div class="text-xs font-bold pt-2">Client: {{CLIENT_NAME}}</div>
+      <div class="text-xs font-bold">Seller: {{SELLER_NAME}}</div>
+    </section>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:left;">Item</th>
-        <th>Qty</th>
-        <th>Price</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <!-- Items -->
+    <section class="mb-4">
+      <div class="grid grid-cols-12 gap-1 bg-slate-100 border border-black rounded-xl p-2 text-xs font-black">
+        <div class="col-span-2 text-center">Qty</div>
+        <div class="col-span-6 text-center">Items</div>
+        <div class="col-span-2 text-center">Price</div>
+        <div class="col-span-2 text-center">Total</div>
+      </div>
 
-  <div class="totals">
-    <div class="t-row"><span>Subtotal:</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>Discount:</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>TOTAL DUE:</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>Paid:</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>Change:</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>Balance Due:</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+      <div class="mt-2 border border-black rounded-xl overflow-hidden">
+        <table class="w-full text-xs">
+          <tbody>
+            {{ITEMS_ROWS}}
+          </tbody>
+        </table>
+      </div>
+    </section>
 
-  
-  <div class="footer">Thank you for shopping with us!</div>
+    <!-- Totals -->
+    <section class="border-t-2 border-black pt-3 text-sm font-black space-y-2">
+      <div class="flex justify-between">
+        <div>Total:</div>
+        <div>{{TOTAL}}</div>
+      </div>
+      <div class="flex justify-between text-xs font-bold">
+        <div>Paid =</div>
+        <div>{{PAID}}</div>
+      </div>
+      <div class="flex justify-between text-[11px] font-bold text-slate-700 pt-1 border-t border-dashed mt-2 border-slate-300">
+        <div>PREVIOUS BALANCE :</div>
+        <div>{{OLD_BALANCE}}</div>
+      </div>
+      <div class="flex justify-between text-[11px] font-bold text-slate-700">
+        <div>REMAINING TO PAY :</div>
+        <div>{{RECEIPT_REST}}</div>
+      </div>
+      <div class="flex justify-between text-xs font-black pt-1">
+        <div>TOTAL DEBT :</div>
+        <div class="underline">{{REST}}</div>
+      </div>
+    </section>
+
+    <footer class="text-center text-xs font-bold text-slate-700 mt-6">
+      Thank you for your visit.
+    </footer>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -20601,77 +20258,139 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="fr" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Ticket N° {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reçu - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; }
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
+      background: #f3f4f6;
       color: #000;
-      background: #fff;
+      margin: 0;
+      padding: 0;
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 1px dashed #000;  }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: left; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+
+    .paper {
+      width: 100%;
+      /* عرض البكرة يأتي من إعداد receipt_paper_width_mm عبر PrintEngine.
+         الافتراضي 80مم حين لا يُحقن المتغيّر (معاينة/تصدير مباشر). */
+      max-width: var(--rcpt-paper-w, 80mm);
+      background: #fff;
+      margin: 0 auto;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .08);
+      border: 1px solid #e5e7eb;
+      font-family: 'Cairo', 'Cairo', sans-serif;
+    }
+
+    @page {
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        /* صندوق الصفحة هو مَن يحدّد العرض (pageSize بعرض البكرة) — لا رقم
+           مثبّت هنا، وإلا خرج الوصل بعرض 80مم على بكرة 58مم. */
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .paper {
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm) !important;
+        box-shadow: none;
+        border: none;
+        max-width: none;
+      }
+    }
+
+    /* ── Netteté impression thermique ───────────────────────────────────────
+       Les imprimantes thermiques monochromes rendent le texte/les bordures
+       en gris de façon pâle et illisible. On force le noir pur sur tout le
+       texte et les bordures du reçu, et une graisse minimale (700) tout en
+       gardant les titres plus épais (font-black inchangé). */
+    .paper { font-weight: 700; }
+    .paper * { color: #000 !important; border-color: #000 !important; }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
+  <main class="paper">
+    <!-- Header -->
+    <header class="text-center border-b-2 border-black pb-3 mb-4">
+      <div class="text-xl font-black">{{COMPANY_NAME}}</div>
+      <div class="text-xs font-bold text-slate-700 mt-1">{{COMPANY_ADDRESS}}</div>
+      <div class="text-xs font-bold text-slate-700 mt-1">Tél: {{COMPANY_PHONE}}</div>
+    </header>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>Ticket N°:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>Client:</strong> {{CLIENT_NAME}}</span><span><strong>Caissier:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+    <!-- Meta -->
+    <section class="text-sm font-bold mb-4 space-y-1">
+      <div class="flex justify-between">
+        <div class="font-black underline">Reçu N°</div>
+        <div class="font-black">{{RECEIPT_NUMBER}}</div>
+      </div>
+      <div class="flex justify-between text-xs">
+        <div>Le: {{DATE}}</div>
+        <div class="italic">Heure: {{TIME}}</div>
+      </div>
+      <div class="text-xs font-bold pt-2">Client: {{CLIENT_NAME}}</div>
+      <div class="text-xs font-bold">Vendeur: {{SELLER_NAME}}</div>
+    </section>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:left;">Article</th>
-        <th>Qté</th>
-        <th>P.U</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <!-- Items -->
+    <section class="mb-4">
+      <div class="grid grid-cols-12 gap-1 bg-slate-100 border border-black rounded-xl p-2 text-xs font-black">
+        <div class="col-span-2 text-center">Qté</div>
+        <div class="col-span-6 text-center">Articles</div>
+        <div class="col-span-2 text-center">P.U</div>
+        <div class="col-span-2 text-center">Total</div>
+      </div>
 
-  <div class="totals">
-    <div class="t-row"><span>Sous-total :</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>Remise :</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>NET À PAYER :</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>Reçu :</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>Rendu :</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>Reste (Crédit) :</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+      <div class="mt-2 border border-black rounded-xl overflow-hidden">
+        <table class="w-full text-xs">
+          <tbody>
+            {{ITEMS_ROWS}}
+          </tbody>
+        </table>
+      </div>
+    </section>
 
-  
-  <div class="footer">Merci de votre visite — À bientôt !</div>
+    <!-- Totals -->
+    <section class="border-t-2 border-black pt-3 text-sm font-black space-y-2">
+      <div class="flex justify-between">
+        <div>Total:</div>
+        <div>{{TOTAL}}</div>
+      </div>
+      <div class="flex justify-between text-xs font-bold">
+        <div>Versement =</div>
+        <div>{{PAID}}</div>
+      </div>
+      <div class="flex justify-between text-[11px] font-bold text-slate-700 pt-1 border-t border-dashed mt-2 border-slate-300">
+        <div>ANCIEN SOLDE :</div>
+        <div>{{OLD_BALANCE}}</div>
+      </div>
+      <div class="flex justify-between text-[11px] font-bold text-slate-700">
+        <div>RESTE À PAYER :</div>
+        <div>{{RECEIPT_REST}}</div>
+      </div>
+      <div class="flex justify-between text-xs font-black pt-1">
+        <div>DETTE TOTALE :</div>
+        <div class="underline">{{REST}}</div>
+      </div>
+    </section>
+
+    <footer class="text-center text-xs font-bold text-slate-700 mt-6">
+      Merci pour votre visite.
+    </footer>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -20682,80 +20401,180 @@ module.exports = {
 
 ```html
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html dir="rtl" lang="ar">
+
 <head>
-  <meta charset="UTF-8">
-  <title>وصل بيع رقم {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <title>Reçu - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
+  <!-- بلا خطوط بعيدة: طلبُ شبكةٍ داخل نافذة الطباعة يؤخّر حدث load (حتى مهلة
+       الحارس على شبكة بطيئة)، والأسوأ أنه يجعل ارتفاع الوصل غير حتمي — نقيس
+       بخطٍّ احتياطي ثم يصل خطّ الويب فيقصُر المطبوع عن الصفحة المطلوبة ⇒ فراغ
+       في ذيل الورق «أحياناً». المكدّس أدناه محلّي بالكامل. -->
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
-      color: #000;
-      background: #fff;
+    :root {
+      /* عرض البكرة من إعداد receipt_paper_width_mm عبر PrintEngine؛ 80مم
+         افتراضاً حين لا يُحقن المتغيّر (معاينة/تصدير مباشر). */
+      --paper-width: var(--rcpt-paper-w, 80mm);
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 2px solid #000;  }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: right; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+
+    body {
+      background: #e4e4e7;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: #000;
+    }
+
+    .thermal-width {
+      width: 100%;
+      max-width: var(--paper-width);
+      margin: 0 auto;
+    }
+
+    .dashed-separator {
+      border-top: 1px dashed #000;
+    }
+
+    @page {
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        /* صندوق الصفحة هو مَن يحدّد العرض — لا رقم مثبّت هنا. */
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .thermal-width {
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm) !important;
+        box-shadow: none !important;
+        border: none !important;
+        max-width: none !important;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+
+      .shadow-xl {
+        box-shadow: none !important;
+      }
+    }
   </style>
 </head>
-<body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>وصل بيع رقم:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>الزبون:</strong> {{CLIENT_NAME}}</span><span><strong>البائع:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+<!-- py-8 و min-h-screen زينةُ معاينةٍ على الشاشة (تُوسّط الورقة على خلفية
+     رمادية). وقت الطباعة تصير 8.5مم ورقاً أبيض قبل الوصل وصفحةً تُملأ قسراً،
+     فتُطفأ بمتغيّر print: — قاعدة @media print العامة كانت تخسر أمام أصناف
+     Tailwind في الترجيح. -->
+<body class="min-h-screen flex flex-col items-center py-8 print:py-0 print:min-h-0">
+  <main class="thermal-width bg-white p-2 shadow-xl border-t-8 border-black">
+    <!-- Brand Header -->
+    <section class="text-center mb-3">
+      <h1 class="font-black text-2xl tracking-tighter leading-none mb-1"
+        style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;">
+        {{COMPANY_NAME}}
+      </h1>
+      <p class="text-[8px] font-bold text-zinc-600 mt-1">{{COMPANY_ADDRESS}}</p>
+      <p class="text-[8px] font-bold text-zinc-600">الهاتف: {{COMPANY_PHONE}}</p>
+    </section>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:right;">المنتج</th>
-        <th>الكمية</th>
-        <th>السعر</th>
-        <th>المجموع</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <div class="dashed-separator my-2"></div>
 
-  <div class="totals">
-    <div class="t-row"><span>المجموع الفرعي:</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>التخفيض:</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>الإجمالي:</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>المدفوع:</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>الباقي للزبون:</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>الباقي (دين):</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+    <!-- Meta -->
+    <section class="text-[8px] font-bold text-zinc-700 space-y-1 mb-2">
+      <div class="flex justify-between">
+        <span>وصل رقم</span>
+        <span class="font-black">{{RECEIPT_NUMBER}}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>{{DATE}}</span>
+        <span>{{TIME}}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>الزبون</span>
+        <span class="font-black">{{CLIENT_NAME}}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>البائع</span>
+        <span class="font-black">{{SELLER_NAME}}</span>
+      </div>
+    </section>
 
-  
-  <div class="footer">شكراً لزيارتكم — مرحباً بكم دائماً</div>
+    <div class="dashed-separator my-2"></div>
+
+    <!-- Table Headers -->
+    <section class="mb-2">
+      <div class="grid grid-cols-12 gap-x-0.5 text-[6px] font-black border-b border-black pb-1 mb-1">
+        <div class="col-span-3">المرجع</div>
+        <div class="col-span-4">البيان</div>
+        <div class="col-span-1 text-center">الكمية</div>
+        <div class="col-span-2 text-left">السعر</div>
+        <div class="col-span-2 text-left">المجموع</div>
+      </div>
+
+      <!-- Rows -->
+      <div class="space-y-2">
+        {{ITEMS_ROWS}}
+      </div>
+    </section>
+
+    <div class="dashed-separator my-2"></div>
+
+    <!-- Financial Summary -->
+    <section class="grid grid-cols-2 gap-x-4">
+      <!-- Left Column -->
+      <div class="space-y-1">
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">عدد العناصر</span>
+          <span class="text-[9px] font-bold">{{ITEMS_COUNT}}</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">التخفيض</span>
+          <span class="text-[9px] font-bold">{{DISCOUNT}} DZD</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">الرصيد السابق</span>
+          <span class="text-[9px] font-bold">{{OLD_BALANCE}} DZD</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">المتبقي للدفع</span>
+          <span class="text-[9px] font-bold">{{RECEIPT_REST}} DZD</span>
+        </div>
+      </div>
+
+      <!-- Right Column -->
+      <div class="space-y-1 text-left">
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">المجموع</span>
+          <span class="text-[9px] font-bold">{{TOTAL}}</span>
+        </div>
+        <div class="flex flex-col p-1 border border-black">
+          <span class="text-[7px] font-black uppercase">الصافي للدفع</span>
+          <span class="text-xs font-black">{{TOTAL}} DZD</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">المدفوع</span>
+          <span class="text-[9px] font-bold">{{PAID}} DZD</span>
+        </div>
+      </div>
+    </section>
+    <div class="dashed-separator my-2"></div>
+    <div class="text-center font-black text-xs">إجمالي الديون: {{REST}} DZD</div>
+
+    <div class="mt-4 text-center text-[8px] font-bold text-zinc-600">
+      شكراً لزيارتكم.
+    </div>
+  </main>
 </body>
-</html>
 
+</html>
 ```
 
 ---
@@ -20764,78 +20583,179 @@ module.exports = {
 
 ```html
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html dir="ltr" lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Receipt # {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <title>Receipt - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
+  <!-- بلا خطوط بعيدة: طلبُ شبكةٍ داخل نافذة الطباعة يؤخّر حدث load (حتى مهلة
+       الحارس على شبكة بطيئة)، والأسوأ أنه يجعل ارتفاع الوصل غير حتمي — نقيس
+       بخطٍّ احتياطي ثم يصل خطّ الويب فيقصُر المطبوع عن الصفحة المطلوبة ⇒ فراغ
+       في ذيل الورق «أحياناً». المكدّس أدناه محلّي بالكامل. -->
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
-      color: #000;
-      background: #fff;
+    :root {
+      /* عرض البكرة من إعداد receipt_paper_width_mm عبر PrintEngine؛ 80مم
+         افتراضاً حين لا يُحقن المتغيّر (معاينة/تصدير مباشر). */
+      --paper-width: var(--rcpt-paper-w, 80mm);
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 2px solid #000;  }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: left; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+
+    body {
+      background: #e4e4e7;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: #000;
+    }
+
+    .thermal-width {
+      width: 100%;
+      max-width: var(--paper-width);
+      margin: 0 auto;
+    }
+
+    .dashed-separator {
+      border-top: 1px dashed #000;
+    }
+
+    @page {
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        /* صندوق الصفحة هو مَن يحدّد العرض — لا رقم مثبّت هنا. */
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .thermal-width {
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm) !important;
+        box-shadow: none !important;
+        border: none !important;
+        max-width: none !important;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+
+      .shadow-xl {
+        box-shadow: none !important;
+      }
+    }
   </style>
 </head>
-<body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>Receipt #:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>Customer:</strong> {{CLIENT_NAME}}</span><span><strong>Cashier:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+<!-- py-8 و min-h-screen زينةُ معاينةٍ على الشاشة (تُوسّط الورقة على خلفية
+     رمادية). وقت الطباعة تصير 8.5مم ورقاً أبيض قبل الوصل وصفحةً تُملأ قسراً،
+     فتُطفأ بمتغيّر print: — قاعدة @media print العامة كانت تخسر أمام أصناف
+     Tailwind في الترجيح. -->
+<body class="min-h-screen flex flex-col items-center py-8 print:py-0 print:min-h-0">
+  <main class="thermal-width bg-white p-2 shadow-xl border-t-8 border-black">
+    <!-- Brand Header -->
+    <section class="text-center mb-3">
+      <h1 class="font-black text-2xl tracking-tighter leading-none mb-1"
+        style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;">
+        {{COMPANY_NAME}}
+      </h1>
+      <p class="text-[8px] font-bold text-zinc-600 mt-1">{{COMPANY_ADDRESS}}</p>
+      <p class="text-[8px] font-bold text-zinc-600">Tel: {{COMPANY_PHONE}}</p>
+    </section>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:left;">Item</th>
-        <th>Qty</th>
-        <th>Price</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <div class="dashed-separator my-2"></div>
 
-  <div class="totals">
-    <div class="t-row"><span>Subtotal:</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>Discount:</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>TOTAL DUE:</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>Paid:</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>Change:</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>Balance Due:</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+    <!-- Meta -->
+    <section class="text-[8px] font-bold text-zinc-700 space-y-1 mb-2">
+      <div class="flex justify-between">
+        <span>Receipt #</span>
+        <span class="font-black">{{RECEIPT_NUMBER}}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>{{DATE}}</span>
+        <span>{{TIME}}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Client</span>
+        <span class="font-black">{{CLIENT_NAME}}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Seller</span>
+        <span class="font-black">{{SELLER_NAME}}</span>
+      </div>
+    </section>
 
-  
-  <div class="footer">Thank you for shopping with us!</div>
+    <div class="dashed-separator my-2"></div>
+
+    <!-- Table Headers -->
+    <section class="mb-2">
+      <div class="grid grid-cols-12 gap-x-0.5 text-[6px] font-black border-b border-black pb-1 mb-1">
+        <div class="col-span-3">REF</div>
+        <div class="col-span-4">ITEMS</div>
+        <div class="col-span-1 text-center">QTY</div>
+        <div class="col-span-2 text-right">PRICE</div>
+        <div class="col-span-2 text-right">TOTAL</div>
+      </div>
+
+      <!-- Rows -->
+      <div class="space-y-2">
+        {{ITEMS_ROWS}}
+      </div>
+    </section>
+
+    <div class="dashed-separator my-2"></div>
+
+    <!-- Financial Summary -->
+    <section class="grid grid-cols-2 gap-x-4">
+      <!-- Left Column -->
+      <div class="space-y-1">
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">Number of items</span>
+          <span class="text-[9px] font-bold">{{ITEMS_COUNT}}</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">Discount</span>
+          <span class="text-[9px] font-bold">{{DISCOUNT}} DZD</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">PREVIOUS BALANCE</span>
+          <span class="text-[9px] font-bold">{{OLD_BALANCE}} DZD</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">REMAINING</span>
+          <span class="text-[9px] font-bold">{{RECEIPT_REST}} DZD</span>
+        </div>
+      </div>
+
+      <!-- Right Column -->
+      <div class="space-y-1 text-right">
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">Total</span>
+          <span class="text-[9px] font-bold">{{TOTAL}}</span>
+        </div>
+        <div class="flex flex-col p-1 border border-black">
+          <span class="text-[7px] font-black uppercase">NET TO PAY</span>
+          <span class="text-xs font-black">{{TOTAL}} DZD</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">Paid amount</span>
+          <span class="text-[9px] font-bold">{{PAID}} DZD</span>
+        </div>
+      </div>
+    </section>
+    <div class="dashed-separator my-2"></div>
+    <div class="text-center font-black text-xs">TOTAL DEBT: {{REST}} DZD</div>
+
+    <div class="mt-4 text-center text-[8px] font-bold text-zinc-600">
+      Thank you for your visit.
+    </div>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -20846,78 +20766,179 @@ module.exports = {
 
 ```html
 <!DOCTYPE html>
-<html lang="fr" dir="ltr">
+<html dir="ltr" lang="fr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Ticket N° {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <title>Reçu - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
+  <!-- بلا خطوط بعيدة: طلبُ شبكةٍ داخل نافذة الطباعة يؤخّر حدث load (حتى مهلة
+       الحارس على شبكة بطيئة)، والأسوأ أنه يجعل ارتفاع الوصل غير حتمي — نقيس
+       بخطٍّ احتياطي ثم يصل خطّ الويب فيقصُر المطبوع عن الصفحة المطلوبة ⇒ فراغ
+       في ذيل الورق «أحياناً». المكدّس أدناه محلّي بالكامل. -->
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
-      color: #000;
-      background: #fff;
+    :root {
+      /* عرض البكرة من إعداد receipt_paper_width_mm عبر PrintEngine؛ 80مم
+         افتراضاً حين لا يُحقن المتغيّر (معاينة/تصدير مباشر). */
+      --paper-width: var(--rcpt-paper-w, 80mm);
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 2px solid #000;  }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: left; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+
+    body {
+      background: #e4e4e7;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: #000;
+    }
+
+    .thermal-width {
+      width: 100%;
+      max-width: var(--paper-width);
+      margin: 0 auto;
+    }
+
+    .dashed-separator {
+      border-top: 1px dashed #000;
+    }
+
+    @page {
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        /* صندوق الصفحة هو مَن يحدّد العرض — لا رقم مثبّت هنا. */
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .thermal-width {
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm) !important;
+        box-shadow: none !important;
+        border: none !important;
+        max-width: none !important;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+
+      .shadow-xl {
+        box-shadow: none !important;
+      }
+    }
   </style>
 </head>
-<body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>Ticket N°:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>Client:</strong> {{CLIENT_NAME}}</span><span><strong>Caissier:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+<!-- py-8 و min-h-screen زينةُ معاينةٍ على الشاشة (تُوسّط الورقة على خلفية
+     رمادية). وقت الطباعة تصير 8.5مم ورقاً أبيض قبل الوصل وصفحةً تُملأ قسراً،
+     فتُطفأ بمتغيّر print: — قاعدة @media print العامة كانت تخسر أمام أصناف
+     Tailwind في الترجيح. -->
+<body class="min-h-screen flex flex-col items-center py-8 print:py-0 print:min-h-0">
+  <main class="thermal-width bg-white p-2 shadow-xl border-t-8 border-black">
+    <!-- Brand Header -->
+    <section class="text-center mb-3">
+      <h1 class="font-black text-2xl tracking-tighter leading-none mb-1"
+        style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;">
+        {{COMPANY_NAME}}
+      </h1>
+      <p class="text-[8px] font-bold text-zinc-600 mt-1">{{COMPANY_ADDRESS}}</p>
+      <p class="text-[8px] font-bold text-zinc-600">Tél: {{COMPANY_PHONE}}</p>
+    </section>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:left;">Article</th>
-        <th>Qté</th>
-        <th>P.U</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <div class="dashed-separator my-2"></div>
 
-  <div class="totals">
-    <div class="t-row"><span>Sous-total :</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>Remise :</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>NET À PAYER :</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>Reçu :</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>Rendu :</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>Reste (Crédit) :</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+    <!-- Meta -->
+    <section class="text-[8px] font-bold text-zinc-700 space-y-1 mb-2">
+      <div class="flex justify-between">
+        <span>Reçu N°</span>
+        <span class="font-black">{{RECEIPT_NUMBER}}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>{{DATE}}</span>
+        <span>{{TIME}}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Client</span>
+        <span class="font-black">{{CLIENT_NAME}}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Vendeur</span>
+        <span class="font-black">{{SELLER_NAME}}</span>
+      </div>
+    </section>
 
-  
-  <div class="footer">Merci de votre visite — À bientôt !</div>
+    <div class="dashed-separator my-2"></div>
+
+    <!-- Table Headers -->
+    <section class="mb-2">
+      <div class="grid grid-cols-12 gap-x-0.5 text-[6px] font-black border-b border-black pb-1 mb-1">
+        <div class="col-span-3">RÉF</div>
+        <div class="col-span-4">DÉSIGNATION</div>
+        <div class="col-span-1 text-center">QTE</div>
+        <div class="col-span-2 text-right">PRIX</div>
+        <div class="col-span-2 text-right">TOTAL</div>
+      </div>
+
+      <!-- Rows -->
+      <div class="space-y-2">
+        {{ITEMS_ROWS}}
+      </div>
+    </section>
+
+    <div class="dashed-separator my-2"></div>
+
+    <!-- Financial Summary -->
+    <section class="grid grid-cols-2 gap-x-4">
+      <!-- Left Column -->
+      <div class="space-y-1">
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">Nombre d'articles</span>
+          <span class="text-[9px] font-bold">{{ITEMS_COUNT}}</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">Remise</span>
+          <span class="text-[9px] font-bold">{{DISCOUNT}} DZD</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">ANCIEN SOLDE</span>
+          <span class="text-[9px] font-bold">{{OLD_BALANCE}} DZD</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">RESTE À PAYER</span>
+          <span class="text-[9px] font-bold">{{RECEIPT_REST}} DZD</span>
+        </div>
+      </div>
+
+      <!-- Right Column -->
+      <div class="space-y-1 text-right">
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">Total</span>
+          <span class="text-[9px] font-bold">{{TOTAL}}</span>
+        </div>
+        <div class="flex flex-col p-1 border border-black">
+          <span class="text-[7px] font-black uppercase">NET À PAYER</span>
+          <span class="text-xs font-black">{{TOTAL}} DZD</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[6px] font-black uppercase text-zinc-500">Versement</span>
+          <span class="text-[9px] font-bold">{{PAID}} DZD</span>
+        </div>
+      </div>
+    </section>
+    <div class="dashed-separator my-2"></div>
+    <div class="text-center font-black text-xs">DETTE TOTALE: {{REST}} DZD</div>
+
+    <div class="mt-4 text-center text-[8px] font-bold text-zinc-600">
+      Merci pour votre visite.
+    </div>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -20929,79 +20950,142 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
-  <title>وصل بيع رقم {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <title>Receipt - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
+  <!-- بلا خطوط بعيدة: طلبُ شبكةٍ داخل نافذة الطباعة يؤخّر حدث load (حتى مهلة
+       الحارس على شبكة بطيئة)، والأسوأ أنه يجعل ارتفاع الوصل غير حتمي — نقيس
+       بخطٍّ احتياطي ثم يصل خطّ الويب فيقصُر المطبوع عن الصفحة المطلوبة ⇒ فراغ
+       في ذيل الورق «أحياناً». المكدّس أدناه محلّي بالكامل. -->
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
+    .receipt-canvas {
+      width: 100%;
+      /* عرض البكرة من إعداد receipt_paper_width_mm عبر PrintEngine. */
+      max-width: var(--rcpt-paper-w, 80mm);
+      background: #ffffff;
       margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
-      color: #000;
-      background: #fff;
+      overflow: hidden;
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 3px double #000;  }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: right; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+
+    @page {
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        /* صندوق الصفحة هو مَن يحدّد العرض — لا رقم مثبّت هنا. */
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .receipt-canvas {
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm) !important;
+        box-shadow: none !important;
+        border: none !important;
+        max-width: none !important;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+    }
   </style>
 </head>
-<body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>وصل بيع رقم:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>الزبون:</strong> {{CLIENT_NAME}}</span><span><strong>البائع:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+<body class="bg-zinc-200 font-sans text-black antialiased">
+  <main class="receipt-canvas shadow-2xl">
+    <!-- Header -->
+    <header class="bg-white text-black font-black tracking-tighter uppercase">
+      <div class="flex items-center justify-between px-2 w-full mx-auto py-4">
+        <div class="flex flex-col items-start min-w-0 break-words">
+          <span class="text-2xl font-black tracking-tighter leading-none">{{COMPANY_NAME}}</span>
+        </div>
+        <span class="text-xl leading-none">🧾</span>
+      </div>
+    </header>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:right;">المنتج</th>
-        <th>الكمية</th>
-        <th>السعر</th>
-        <th>المجموع</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <!-- Quick Info -->
+    <section class="bg-black text-white p-3 mb-4">
+      <div class="flex flex-col gap-1">
+        <span class="text-[10px] font-black tracking-widest uppercase">وصل رقم {{RECEIPT_NUMBER}}</span>
+        <span class="text-[10px] font-medium opacity-80">{{DATE}} | {{TIME}}</span>
+        <span class="text-[9px] font-bold opacity-90">الزبون: {{CLIENT_NAME}}</span>
+        <span class="text-[9px] font-bold opacity-90">البائع: {{SELLER_NAME}}</span>
+      </div>
+    </section>
 
-  <div class="totals">
-    <div class="t-row"><span>المجموع الفرعي:</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>التخفيض:</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>الإجمالي:</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>المدفوع:</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>الباقي للزبون:</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>الباقي (دين):</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+    <!-- Items -->
+    <section class="px-0 mb-6">
+      <div class="px-3 mb-2">
+        <h2 class="text-[10px] font-black uppercase tracking-widest text-black border-b border-zinc-200 pb-1">العناصر
+        </h2>
+      </div>
+      <div class="flex flex-col">
+        {{ITEMS_ROWS}}
+      </div>
+    </section>
 
-  
-  <div class="footer">شكراً لزيارتكم — مرحباً بكم دائماً</div>
+    <!-- Totals -->
+    <section class="px-3 mb-6">
+      <div class="flex flex-col gap-2">
+        <div class="flex justify-between text-[10px] font-bold uppercase tracking-tighter">
+          <span>المجموع</span>
+          <span>{{SUBTOTAL}}</span>
+        </div>
+        <div class="flex justify-between text-[10px] font-bold uppercase tracking-tighter text-zinc-500">
+          <span>التخفيض</span>
+          <span>-{{DISCOUNT}}</span>
+        </div>
+        <div class="bg-black text-white p-2 mt-1 flex justify-between items-center">
+          <span class="text-[10px] font-black tracking-widest uppercase">الصافي للدفع</span>
+          <span class="text-xl font-black tracking-tighter underline underline-offset-4">{{TOTAL}}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Ledger -->
+    <section class="px-3 mb-8 space-y-4">
+      <div class="bg-zinc-100 p-3 space-y-3">
+        <div class="flex justify-between items-center border-b border-zinc-200 pb-2">
+          <span class="text-[9px] font-black uppercase opacity-60">الرصيد السابق</span>
+          <span class="text-[11px] font-bold">{{OLD_BALANCE}}</span>
+        </div>
+        <div class="flex justify-between items-center border-b border-zinc-200 pb-2">
+          <span class="text-[9px] font-black uppercase opacity-60">المتبقي للدفع</span>
+          <span class="text-[11px] font-bold">{{RECEIPT_REST}}</span>
+        </div>
+        <div class="flex justify-between items-center border-b border-zinc-200 pb-2">
+          <span class="text-[9px] font-black uppercase opacity-60">المدفوع</span>
+          <span class="text-[11px] font-black underline">{{PAID}}</span>
+        </div>
+        <div class="flex justify-between items-center pt-1">
+          <span class="text-[9px] font-black uppercase">إجمالي الديون</span>
+          <span class="text-[11px] font-black">{{REST}}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-black text-white block w-full p-4 mb-8">
+      <div class="w-full mx-auto flex flex-col items-center space-y-4">
+        <div class="text-center space-y-1">
+          <p class="text-[12px] font-bold tracking-[0.2em] leading-tight">شكرا لتعاملك معنا</p>
+          <p class="text-[8px] font-medium opacity-60 tracking-widest">THANK YOU FOR YOUR BUSINESS</p>
+        </div>
+      </div>
+    </footer>
+  </main>
 </body>
-</html>
 
+</html>
 ```
 
 ---
@@ -21011,79 +21095,141 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Receipt # {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <title>Receipt - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
+  <!-- بلا خطوط بعيدة: طلبُ شبكةٍ داخل نافذة الطباعة يؤخّر حدث load (حتى مهلة
+       الحارس على شبكة بطيئة)، والأسوأ أنه يجعل ارتفاع الوصل غير حتمي — نقيس
+       بخطٍّ احتياطي ثم يصل خطّ الويب فيقصُر المطبوع عن الصفحة المطلوبة ⇒ فراغ
+       في ذيل الورق «أحياناً». المكدّس أدناه محلّي بالكامل. -->
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
+    .receipt-canvas {
+      width: 100%;
+      /* عرض البكرة من إعداد receipt_paper_width_mm عبر PrintEngine. */
+      max-width: var(--rcpt-paper-w, 80mm);
+      background: #ffffff;
       margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
-      color: #000;
-      background: #fff;
+      overflow: hidden;
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 3px double #000;  }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: left; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+
+    @page {
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        /* صندوق الصفحة هو مَن يحدّد العرض — لا رقم مثبّت هنا. */
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .receipt-canvas {
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm) !important;
+        box-shadow: none !important;
+        border: none !important;
+        max-width: none !important;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+    }
   </style>
 </head>
-<body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>Receipt #:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>Customer:</strong> {{CLIENT_NAME}}</span><span><strong>Cashier:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+<body class="bg-zinc-200 font-sans text-black antialiased">
+  <main class="receipt-canvas shadow-2xl">
+    <!-- Header -->
+    <header class="bg-white text-black font-black tracking-tighter uppercase">
+      <div class="flex items-center justify-between px-2 w-full mx-auto py-4">
+        <div class="flex flex-col items-start min-w-0 break-words">
+          <span class="text-2xl font-black tracking-tighter leading-none">{{COMPANY_NAME}}</span>
+        </div>
+        <span class="text-xl leading-none">🧾</span>
+      </div>
+    </header>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:left;">Item</th>
-        <th>Qty</th>
-        <th>Price</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <!-- Quick Info -->
+    <section class="bg-black text-white p-3 mb-4">
+      <div class="flex flex-col gap-1">
+        <span class="text-[10px] font-black tracking-widest uppercase">RECEIPT #{{RECEIPT_NUMBER}}</span>
+        <span class="text-[10px] font-medium opacity-80">{{DATE}} | {{TIME}}</span>
+        <span class="text-[9px] font-bold opacity-90">Client: {{CLIENT_NAME}}</span>
+        <span class="text-[9px] font-bold opacity-90">Seller: {{SELLER_NAME}}</span>
+      </div>
+    </section>
 
-  <div class="totals">
-    <div class="t-row"><span>Subtotal:</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>Discount:</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>TOTAL DUE:</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>Paid:</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>Change:</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>Balance Due:</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+    <!-- Items -->
+    <section class="px-0 mb-6">
+      <div class="px-3 mb-2">
+        <h2 class="text-[10px] font-black uppercase tracking-widest text-black border-b border-zinc-200 pb-1">ITEMS</h2>
+      </div>
+      <div class="flex flex-col">
+        {{ITEMS_ROWS}}
+      </div>
+    </section>
 
-  
-  <div class="footer">Thank you for shopping with us!</div>
+    <!-- Totals -->
+    <section class="px-3 mb-6">
+      <div class="flex flex-col gap-2">
+        <div class="flex justify-between text-[10px] font-bold uppercase tracking-tighter">
+          <span>SUBTOTAL</span>
+          <span>{{SUBTOTAL}}</span>
+        </div>
+        <div class="flex justify-between text-[10px] font-bold uppercase tracking-tighter text-zinc-500">
+          <span>DISCOUNT</span>
+          <span>-{{DISCOUNT}}</span>
+        </div>
+        <div class="bg-black text-white p-2 mt-1 flex justify-between items-center">
+          <span class="text-[10px] font-black tracking-widest uppercase">NET TO PAY</span>
+          <span class="text-xl font-black tracking-tighter underline underline-offset-4">{{TOTAL}}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Ledger -->
+    <section class="px-3 mb-8 space-y-4">
+      <div class="bg-zinc-100 p-3 space-y-3">
+        <div class="flex justify-between items-center border-b border-zinc-200 pb-2">
+          <span class="text-[9px] font-black uppercase opacity-60">PREVIOUS BALANCE</span>
+          <span class="text-[11px] font-bold">{{OLD_BALANCE}}</span>
+        </div>
+        <div class="flex justify-between items-center border-b border-zinc-200 pb-2">
+          <span class="text-[9px] font-black uppercase opacity-60">REMAINING TO PAY</span>
+          <span class="text-[11px] font-bold">{{RECEIPT_REST}}</span>
+        </div>
+        <div class="flex justify-between items-center border-b border-zinc-200 pb-2">
+          <span class="text-[9px] font-black uppercase opacity-60">PAID AMOUNT</span>
+          <span class="text-[11px] font-black underline">{{PAID}}</span>
+        </div>
+        <div class="flex justify-between items-center pt-1">
+          <span class="text-[9px] font-black uppercase">TOTAL DEBT</span>
+          <span class="text-[11px] font-black">{{REST}}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-black text-white block w-full p-4 mb-8">
+      <div class="w-full mx-auto flex flex-col items-center space-y-4">
+        <div class="text-center space-y-1">
+          <p class="text-[12px] font-bold tracking-[0.2em] leading-tight">Thank you for your visit</p>
+          <p class="text-[8px] font-medium opacity-60 tracking-widest">THANK YOU FOR YOUR BUSINESS</p>
+        </div>
+      </div>
+    </footer>
+  </main>
 </body>
-</html>
 
+</html>
 ```
 
 ---
@@ -21093,79 +21239,142 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="fr" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Ticket N° {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <title>Receipt - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
+  <!-- بلا خطوط بعيدة: طلبُ شبكةٍ داخل نافذة الطباعة يؤخّر حدث load (حتى مهلة
+       الحارس على شبكة بطيئة)، والأسوأ أنه يجعل ارتفاع الوصل غير حتمي — نقيس
+       بخطٍّ احتياطي ثم يصل خطّ الويب فيقصُر المطبوع عن الصفحة المطلوبة ⇒ فراغ
+       في ذيل الورق «أحياناً». المكدّس أدناه محلّي بالكامل. -->
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
+    .receipt-canvas {
+      width: 100%;
+      /* عرض البكرة من إعداد receipt_paper_width_mm عبر PrintEngine. */
+      max-width: var(--rcpt-paper-w, 80mm);
+      background: #ffffff;
       margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
-      color: #000;
-      background: #fff;
+      overflow: hidden;
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 3px double #000;  }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: left; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+
+    @page {
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        /* صندوق الصفحة هو مَن يحدّد العرض — لا رقم مثبّت هنا. */
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .receipt-canvas {
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        padding: var(--rcpt-pad-y, 3mm) var(--rcpt-pad-x, 7mm) !important;
+        box-shadow: none !important;
+        border: none !important;
+        max-width: none !important;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+    }
   </style>
 </head>
-<body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>Ticket N°:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>Client:</strong> {{CLIENT_NAME}}</span><span><strong>Caissier:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+<body class="bg-zinc-200 font-sans text-black antialiased">
+  <main class="receipt-canvas shadow-2xl">
+    <!-- Header -->
+    <header class="bg-white text-black font-black tracking-tighter uppercase">
+      <div class="flex items-center justify-between px-2 w-full mx-auto py-4">
+        <div class="flex flex-col items-start min-w-0 break-words">
+          <span class="text-2xl font-black tracking-tighter leading-none">{{COMPANY_NAME}}</span>
+        </div>
+        <span class="text-xl leading-none">🧾</span>
+      </div>
+    </header>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:left;">Article</th>
-        <th>Qté</th>
-        <th>P.U</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <!-- Quick Info -->
+    <section class="bg-black text-white p-3 mb-4">
+      <div class="flex flex-col gap-1">
+        <span class="text-[10px] font-black tracking-widest uppercase">REÇU N°{{RECEIPT_NUMBER}}</span>
+        <span class="text-[10px] font-medium opacity-80">{{DATE}} | {{TIME}}</span>
+        <span class="text-[9px] font-bold opacity-90">Client: {{CLIENT_NAME}}</span>
+        <span class="text-[9px] font-bold opacity-90">Vendeur: {{SELLER_NAME}}</span>
+      </div>
+    </section>
 
-  <div class="totals">
-    <div class="t-row"><span>Sous-total :</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>Remise :</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>NET À PAYER :</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>Reçu :</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>Rendu :</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>Reste (Crédit) :</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+    <!-- Items -->
+    <section class="px-0 mb-6">
+      <div class="px-3 mb-2">
+        <h2 class="text-[10px] font-black uppercase tracking-widest text-black border-b border-zinc-200 pb-1">ARTICLES
+        </h2>
+      </div>
+      <div class="flex flex-col">
+        {{ITEMS_ROWS}}
+      </div>
+    </section>
 
-  
-  <div class="footer">Merci de votre visite — À bientôt !</div>
+    <!-- Totals -->
+    <section class="px-3 mb-6">
+      <div class="flex flex-col gap-2">
+        <div class="flex justify-between text-[10px] font-bold uppercase tracking-tighter">
+          <span>SOUS-TOTAL</span>
+          <span>{{SUBTOTAL}}</span>
+        </div>
+        <div class="flex justify-between text-[10px] font-bold uppercase tracking-tighter text-zinc-500">
+          <span>REMISE</span>
+          <span>-{{DISCOUNT}}</span>
+        </div>
+        <div class="bg-black text-white p-2 mt-1 flex justify-between items-center">
+          <span class="text-[10px] font-black tracking-widest uppercase">NET À PAYER</span>
+          <span class="text-xl font-black tracking-tighter underline underline-offset-4">{{TOTAL}}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Ledger -->
+    <section class="px-3 mb-8 space-y-4">
+      <div class="bg-zinc-100 p-3 space-y-3">
+        <div class="flex justify-between items-center border-b border-zinc-200 pb-2">
+          <span class="text-[9px] font-black uppercase opacity-60">ANCIEN SOLDE</span>
+          <span class="text-[11px] font-bold">{{OLD_BALANCE}}</span>
+        </div>
+        <div class="flex justify-between items-center border-b border-zinc-200 pb-2">
+          <span class="text-[9px] font-black uppercase opacity-60">RESTE À PAYER</span>
+          <span class="text-[11px] font-bold">{{RECEIPT_REST}}</span>
+        </div>
+        <div class="flex justify-between items-center border-b border-zinc-200 pb-2">
+          <span class="text-[9px] font-black uppercase opacity-60">VERSEMENT</span>
+          <span class="text-[11px] font-black underline">{{PAID}}</span>
+        </div>
+        <div class="flex justify-between items-center pt-1">
+          <span class="text-[9px] font-black uppercase">DETTE TOTALE</span>
+          <span class="text-[11px] font-black">{{REST}}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-black text-white block w-full p-4 mb-8">
+      <div class="w-full mx-auto flex flex-col items-center space-y-4">
+        <div class="text-center space-y-1">
+          <p class="text-[12px] font-bold tracking-[0.2em] leading-tight">Merci pour votre visite</p>
+          <p class="text-[8px] font-medium opacity-60 tracking-widest">THANK YOU FOR YOUR BUSINESS</p>
+        </div>
+      </div>
+    </footer>
+  </main>
 </body>
-</html>
 
+</html>
 ```
 
 ---
@@ -21175,77 +21384,256 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
-  <title>وصل بيع رقم {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>وصل تسليم - {{RECEIPT_NUMBER}}</title>
+  <link href="assets/css/fonts.css" rel="stylesheet">
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
     * { box-sizing: border-box; }
+
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
+      background: #f3f4f6;
       color: #000;
-      background: #fff;
+      margin: 0;
+      padding: 0;
+      font-family: 'Cairo', Arial, sans-serif;
+      font-size: 12px;
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 1px dashed #000; background:#000;color:#fff;padding:6px;border-radius:4px; }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: right; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+
+    .page {
+      width: 210mm;
+      min-height: 280mm;
+      background: #fff;
+      margin: 0 auto;
+      padding: 12mm 14mm;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .08);
+      display: flex;
+      flex-direction: column;
+    }
+
+    @page {
+      size: A4;
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .page {
+        width: 100%;
+        min-height: auto;
+        margin: 0;
+        box-shadow: none;
+      }
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 14mm;
+    }
+
+    .company-name {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      margin: 0;
+    }
+
+    .company-phone {
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      margin-top: 2px;
+    }
+
+    .logo-img {
+      width: 26mm;
+      height: 26mm;
+      object-fit: contain;
+      border-radius: 50%;
+    }
+
+    /* ── Title row + client box ─────────────────────────── */
+    .title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 4mm;
+    }
+
+    .doc-title {
+      font-size: 21px;
+      font-weight: 900;
+      margin: 0;
+    }
+
+    .client-box {
+      border: 1px solid #999;
+      border-radius: 2mm;
+      padding: 2mm 4mm;
+      min-width: 60mm;
+      font-size: 12px;
+    }
+
+    .client-box .client-name { font-weight: 800; }
+    .client-box .client-code { font-weight: 600; margin-top: 1mm; }
+
+    /* ── Tables ─────────────────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      border: 1px solid #000;
+      padding: 1.2mm 2mm;
+    }
+
+    th {
+      background: #d3d3d3;
+      font-weight: 800;
+      text-align: center;
+      font-size: 11.5px;
+    }
+
+    .info-table { margin-bottom: 6mm; }
+    .info-table td { text-align: center; font-weight: 700; }
+
+    /* Items: full outer frame + bordered header, open rows (no inner grid)
+       like the source document */
+    .items-table { margin-bottom: 8mm; border: 1.5px solid #000; }
+    .items-table th.start { text-align: start; }
+    .items-table th.end { text-align: end; }
+    .items-table td { border: none; font-size: 11.5px; padding: 1mm 2mm; }
+    .items-table td.code { font-family: monospace; font-size: 11px; white-space: nowrap; }
+    .items-table td.num { text-align: end; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .items-table td.qty { text-align: end; white-space: nowrap; }
+
+    /* ── Bottom: payment mode + totals ───────────────────── */
+    .bottom-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8mm;
+    }
+
+    .payment-mode {
+      border: 1px solid #000;
+      padding: 2mm 3mm 6mm;
+      font-weight: 700;
+      min-width: 70mm;
+      align-self: flex-start;
+    }
+
+    .totals-table { width: 75mm; }
+    .totals-table td { font-weight: 800; }
+    .totals-table td.lbl { width: 45%; }
+    .totals-table td.val { text-align: end; font-variant-numeric: tabular-nums; }
+    .totals-table tr.net td { font-weight: 900; font-size: 13px; border-width: 2px; }
+
+    .amount-words {
+      margin-top: 6mm;
+      font-size: 11.5px;
+      font-weight: 700;
+      border-top: 1px solid #ccc;
+      padding-top: 2.5mm;
+    }
+
+    .page-footer {
+      margin-top: auto;
+      text-align: left;
+      font-size: 10px;
+      color: #555;
+      padding-top: 6mm;
+    }
   </style>
 </head>
+
 <body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
+  <main class="page">
+    <!-- Header: company + logo -->
+    <header class="doc-header">
+      <div>
+        <h1 class="company-name">{{COMPANY_NAME}}</h1>
+        <div class="company-phone">{{COMPANY_PHONE}}</div>
+      </div>
+      {{#if COMPANY_LOGO}}<img class="logo-img" src="{{COMPANY_LOGO}}" alt="logo" />{{/if}}
+    </header>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>وصل بيع رقم:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>الزبون:</strong> {{CLIENT_NAME}}</span><span><strong>البائع:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+    <!-- Title + client box -->
+    <div class="title-row">
+      <h2 class="doc-title">وصل تسليم</h2>
+      <div class="client-box">
+        <div class="client-name">{{CLIENT_NAME}}</div>
+        <div class="client-code">كود الزبون : {{CLIENT_CODE}}</div>
+      </div>
+    </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:right;">المنتج</th>
-        <th>الكمية</th>
-        <th>السعر</th>
-        <th>المجموع</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <!-- Info table -->
+    <table class="info-table">
+      <thead>
+        <tr>
+          <th>رقم الوصل</th>
+          <th>التاريخ</th>
+          <th>كود الزبون</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{{RECEIPT_NUMBER}}</td>
+          <td>{{DATE}}</td>
+          <td>{{CLIENT_CODE}}</td>
+        </tr>
+      </tbody>
+    </table>
 
-  <div class="totals">
-    <div class="t-row"><span>المجموع الفرعي:</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>التخفيض:</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>الإجمالي:</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>المدفوع:</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>الباقي للزبون:</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>الباقي (دين):</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+    <!-- Items table -->
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th class="start" style="width:18%">الكود</th>
+          <th class="start">التسمية</th>
+          <th class="end" style="width:9%">الكمية</th>
+          <th class="end" style="width:15%">سعر الوحدة</th>
+          <th class="end" style="width:17%">المبلغ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ITEMS_ROWS}}
+      </tbody>
+    </table>
 
-  
-  <div class="footer">شكراً لزيارتكم — مرحباً بكم دائماً</div>
+    <!-- Payment mode + totals -->
+    <div class="bottom-row">
+      <div class="payment-mode">طريقة الدفع : {{PAYMENT_MODE}}</div>
+      <table class="totals-table">
+        <tr>
+          <td class="lbl">المجموع</td>
+          <td class="val">{{SUBTOTAL}} DA</td>
+        </tr>
+        <tr class="net">
+          <td class="lbl">الصافي للدفع</td>
+          <td class="val">{{TOTAL}} DA</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Amount in words -->
+    <p class="amount-words">أُوقِف هذا الوصل على مبلغ : {{TOTAL_IN_WORDS}}</p>
+
+    <footer class="page-footer">1/1</footer>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -21257,77 +21645,256 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Receipt # {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Delivery Note - {{RECEIPT_NUMBER}}</title>
+  <link href="assets/css/fonts.css" rel="stylesheet">
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
     * { box-sizing: border-box; }
+
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
+      background: #f3f4f6;
       color: #000;
-      background: #fff;
+      margin: 0;
+      padding: 0;
+      font-family: 'Cairo', Arial, sans-serif;
+      font-size: 12px;
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 1px dashed #000; background:#000;color:#fff;padding:6px;border-radius:4px; }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: left; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+
+    .page {
+      width: 210mm;
+      min-height: 280mm;
+      background: #fff;
+      margin: 0 auto;
+      padding: 12mm 14mm;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .08);
+      display: flex;
+      flex-direction: column;
+    }
+
+    @page {
+      size: A4;
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .page {
+        width: 100%;
+        min-height: auto;
+        margin: 0;
+        box-shadow: none;
+      }
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 14mm;
+    }
+
+    .company-name {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      margin: 0;
+    }
+
+    .company-phone {
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      margin-top: 2px;
+    }
+
+    .logo-img {
+      width: 26mm;
+      height: 26mm;
+      object-fit: contain;
+      border-radius: 50%;
+    }
+
+    /* ── Title row + client box ─────────────────────────── */
+    .title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 4mm;
+    }
+
+    .doc-title {
+      font-size: 21px;
+      font-weight: 900;
+      margin: 0;
+    }
+
+    .client-box {
+      border: 1px solid #999;
+      border-radius: 2mm;
+      padding: 2mm 4mm;
+      min-width: 60mm;
+      font-size: 12px;
+    }
+
+    .client-box .client-name { font-weight: 800; }
+    .client-box .client-code { font-weight: 600; margin-top: 1mm; }
+
+    /* ── Tables ─────────────────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      border: 1px solid #000;
+      padding: 1.2mm 2mm;
+    }
+
+    th {
+      background: #d3d3d3;
+      font-weight: 800;
+      text-align: center;
+      font-size: 11.5px;
+    }
+
+    .info-table { margin-bottom: 6mm; }
+    .info-table td { text-align: center; font-weight: 700; }
+
+    /* Items: full outer frame + bordered header, open rows (no inner grid)
+       like the source document */
+    .items-table { margin-bottom: 8mm; border: 1.5px solid #000; }
+    .items-table th.start { text-align: start; }
+    .items-table th.end { text-align: end; }
+    .items-table td { border: none; font-size: 11.5px; padding: 1mm 2mm; }
+    .items-table td.code { font-family: monospace; font-size: 11px; white-space: nowrap; }
+    .items-table td.num { text-align: end; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .items-table td.qty { text-align: end; white-space: nowrap; }
+
+    /* ── Bottom: payment mode + totals ───────────────────── */
+    .bottom-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8mm;
+    }
+
+    .payment-mode {
+      border: 1px solid #000;
+      padding: 2mm 3mm 6mm;
+      font-weight: 700;
+      min-width: 70mm;
+      align-self: flex-start;
+    }
+
+    .totals-table { width: 75mm; }
+    .totals-table td { font-weight: 800; }
+    .totals-table td.lbl { width: 45%; }
+    .totals-table td.val { text-align: end; font-variant-numeric: tabular-nums; }
+    .totals-table tr.net td { font-weight: 900; font-size: 13px; border-width: 2px; }
+
+    .amount-words {
+      margin-top: 6mm;
+      font-size: 11.5px;
+      font-weight: 700;
+      border-top: 1px solid #ccc;
+      padding-top: 2.5mm;
+    }
+
+    .page-footer {
+      margin-top: auto;
+      text-align: right;
+      font-size: 10px;
+      color: #555;
+      padding-top: 6mm;
+    }
   </style>
 </head>
+
 <body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
+  <main class="page">
+    <!-- Header: company + logo -->
+    <header class="doc-header">
+      <div>
+        <h1 class="company-name">{{COMPANY_NAME}}</h1>
+        <div class="company-phone">{{COMPANY_PHONE}}</div>
+      </div>
+      {{#if COMPANY_LOGO}}<img class="logo-img" src="{{COMPANY_LOGO}}" alt="logo" />{{/if}}
+    </header>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>Receipt #:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>Customer:</strong> {{CLIENT_NAME}}</span><span><strong>Cashier:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+    <!-- Title + client box -->
+    <div class="title-row">
+      <h2 class="doc-title">DELIVERY NOTE</h2>
+      <div class="client-box">
+        <div class="client-name">{{CLIENT_NAME}}</div>
+        <div class="client-code">Client code : {{CLIENT_CODE}}</div>
+      </div>
+    </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:left;">Item</th>
-        <th>Qty</th>
-        <th>Price</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <!-- Info table -->
+    <table class="info-table">
+      <thead>
+        <tr>
+          <th>Delivery note N°</th>
+          <th>Date</th>
+          <th>Client code</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{{RECEIPT_NUMBER}}</td>
+          <td>{{DATE}}</td>
+          <td>{{CLIENT_CODE}}</td>
+        </tr>
+      </tbody>
+    </table>
 
-  <div class="totals">
-    <div class="t-row"><span>Subtotal:</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>Discount:</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>TOTAL DUE:</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>Paid:</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>Change:</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>Balance Due:</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+    <!-- Items table -->
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th class="start" style="width:18%">Code</th>
+          <th class="start">Description</th>
+          <th class="end" style="width:9%">Qty</th>
+          <th class="end" style="width:15%">Unit price</th>
+          <th class="end" style="width:17%">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ITEMS_ROWS}}
+      </tbody>
+    </table>
 
-  
-  <div class="footer">Thank you for shopping with us!</div>
+    <!-- Payment mode + totals -->
+    <div class="bottom-row">
+      <div class="payment-mode">Payment method : {{PAYMENT_MODE}}</div>
+      <table class="totals-table">
+        <tr>
+          <td class="lbl">Total</td>
+          <td class="val">{{SUBTOTAL}} DA</td>
+        </tr>
+        <tr class="net">
+          <td class="lbl">NET TO PAY</td>
+          <td class="val">{{TOTAL}} DA</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Amount in words -->
+    <p class="amount-words">This delivery note is established for the sum of : {{TOTAL_IN_WORDS}}</p>
+
+    <footer class="page-footer">1/1</footer>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -21339,77 +21906,256 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="fr" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Ticket N° {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bon de livraison - {{RECEIPT_NUMBER}}</title>
+  <link href="assets/css/fonts.css" rel="stylesheet">
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
     * { box-sizing: border-box; }
+
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
+      background: #f3f4f6;
       color: #000;
-      background: #fff;
+      margin: 0;
+      padding: 0;
+      font-family: 'Cairo', Arial, sans-serif;
+      font-size: 12px;
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 1px dashed #000; background:#000;color:#fff;padding:6px;border-radius:4px; }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: left; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+
+    .page {
+      width: 210mm;
+      min-height: 280mm;
+      background: #fff;
+      margin: 0 auto;
+      padding: 12mm 14mm;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .08);
+      display: flex;
+      flex-direction: column;
+    }
+
+    @page {
+      size: A4;
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .page {
+        width: 100%;
+        min-height: auto;
+        margin: 0;
+        box-shadow: none;
+      }
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 14mm;
+    }
+
+    .company-name {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      margin: 0;
+    }
+
+    .company-phone {
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      margin-top: 2px;
+    }
+
+    .logo-img {
+      width: 26mm;
+      height: 26mm;
+      object-fit: contain;
+      border-radius: 50%;
+    }
+
+    /* ── Title row + client box ─────────────────────────── */
+    .title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 4mm;
+    }
+
+    .doc-title {
+      font-size: 21px;
+      font-weight: 900;
+      margin: 0;
+    }
+
+    .client-box {
+      border: 1px solid #999;
+      border-radius: 2mm;
+      padding: 2mm 4mm;
+      min-width: 60mm;
+      font-size: 12px;
+    }
+
+    .client-box .client-name { font-weight: 800; }
+    .client-box .client-code { font-weight: 600; margin-top: 1mm; }
+
+    /* ── Tables ─────────────────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      border: 1px solid #000;
+      padding: 1.2mm 2mm;
+    }
+
+    th {
+      background: #d3d3d3;
+      font-weight: 800;
+      text-align: center;
+      font-size: 11.5px;
+    }
+
+    .info-table { margin-bottom: 6mm; }
+    .info-table td { text-align: center; font-weight: 700; }
+
+    /* Items: full outer frame + bordered header, open rows (no inner grid)
+       like the source document */
+    .items-table { margin-bottom: 8mm; border: 1.5px solid #000; }
+    .items-table th.start { text-align: start; }
+    .items-table th.end { text-align: end; }
+    .items-table td { border: none; font-size: 11.5px; padding: 1mm 2mm; }
+    .items-table td.code { font-family: monospace; font-size: 11px; white-space: nowrap; }
+    .items-table td.num { text-align: end; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .items-table td.qty { text-align: end; white-space: nowrap; }
+
+    /* ── Bottom: payment mode + totals ───────────────────── */
+    .bottom-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8mm;
+    }
+
+    .payment-mode {
+      border: 1px solid #000;
+      padding: 2mm 3mm 6mm;
+      font-weight: 700;
+      min-width: 70mm;
+      align-self: flex-start;
+    }
+
+    .totals-table { width: 75mm; }
+    .totals-table td { font-weight: 800; }
+    .totals-table td.lbl { width: 45%; }
+    .totals-table td.val { text-align: end; font-variant-numeric: tabular-nums; }
+    .totals-table tr.net td { font-weight: 900; font-size: 13px; border-width: 2px; }
+
+    .amount-words {
+      margin-top: 6mm;
+      font-size: 11.5px;
+      font-weight: 700;
+      border-top: 1px solid #ccc;
+      padding-top: 2.5mm;
+    }
+
+    .page-footer {
+      margin-top: auto;
+      text-align: right;
+      font-size: 10px;
+      color: #555;
+      padding-top: 6mm;
+    }
   </style>
 </head>
+
 <body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
+  <main class="page">
+    <!-- Header: company + logo -->
+    <header class="doc-header">
+      <div>
+        <h1 class="company-name">{{COMPANY_NAME}}</h1>
+        <div class="company-phone">{{COMPANY_PHONE}}</div>
+      </div>
+      {{#if COMPANY_LOGO}}<img class="logo-img" src="{{COMPANY_LOGO}}" alt="logo" />{{/if}}
+    </header>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>Ticket N°:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>Client:</strong> {{CLIENT_NAME}}</span><span><strong>Caissier:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+    <!-- Title + client box -->
+    <div class="title-row">
+      <h2 class="doc-title">BON DE LIVRAISON</h2>
+      <div class="client-box">
+        <div class="client-name">{{CLIENT_NAME}}</div>
+        <div class="client-code">Code client : {{CLIENT_CODE}}</div>
+      </div>
+    </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:left;">Article</th>
-        <th>Qté</th>
-        <th>P.U</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <!-- Info table -->
+    <table class="info-table">
+      <thead>
+        <tr>
+          <th>N° Bon de livraison</th>
+          <th>Date</th>
+          <th>Code client</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{{RECEIPT_NUMBER}}</td>
+          <td>{{DATE}}</td>
+          <td>{{CLIENT_CODE}}</td>
+        </tr>
+      </tbody>
+    </table>
 
-  <div class="totals">
-    <div class="t-row"><span>Sous-total :</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>Remise :</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>NET À PAYER :</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>Reçu :</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>Rendu :</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>Reste (Crédit) :</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+    <!-- Items table -->
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th class="start" style="width:18%">Code</th>
+          <th class="start">Désignation</th>
+          <th class="end" style="width:9%">Qte</th>
+          <th class="end" style="width:15%">P.U HT</th>
+          <th class="end" style="width:17%">Montant HT</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ITEMS_ROWS}}
+      </tbody>
+    </table>
 
-  
-  <div class="footer">Merci de votre visite — À bientôt !</div>
+    <!-- Payment mode + totals -->
+    <div class="bottom-row">
+      <div class="payment-mode">Mode de règlement : {{PAYMENT_MODE}}</div>
+      <table class="totals-table">
+        <tr>
+          <td class="lbl">Total HT</td>
+          <td class="val">{{SUBTOTAL}} DA</td>
+        </tr>
+        <tr class="net">
+          <td class="lbl">NET A PAYER</td>
+          <td class="val">{{TOTAL}} DA</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Amount in words -->
+    <p class="amount-words">Arrêté le présent bon de livraison à la somme de : {{TOTAL_IN_WORDS}}</p>
+
+    <footer class="page-footer">1/1</footer>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -21421,77 +22167,93 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
-  <title>وصل بيع رقم {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>وصل A5 - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
-      color: #000;
-      background: #fff;
+    @page { size: A5; margin: 0; }
+    body { background: #e5e7eb; color: #000; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; }
+    .paper {
+      width: 148mm; min-height: 210mm; background: #fff; margin: 14px auto;
+      padding: 12mm 11mm; box-shadow: 0 10px 30px rgba(0,0,0,.1);
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 1px dashed #000;  }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: right; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+    table.items { width: 100%; border-collapse: collapse; }
+    table.items thead th { background: #1e293b; color: #fff; padding: 6px 6px; font-size: 11px; font-weight: 800; }
+    @media print {
+      html, body { background: #fff; margin: 0; padding: 0; }
+      .paper { width: 100%; min-height: auto; margin: 0; padding: 8mm 8mm; box-shadow: none; }
+    }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
+  <main class="paper">
+    <!-- Header -->
+    <header class="flex justify-between items-start border-b-2 border-black pb-3 mb-4">
+      <div>
+        <div class="text-xl font-black">{{COMPANY_NAME}}</div>
+        <div class="text-[11px] font-bold text-slate-700 mt-1">{{COMPANY_ADDRESS}}</div>
+        <div class="text-[11px] font-bold text-slate-700">الهاتف: {{COMPANY_PHONE}}</div>
+      </div>
+      {{#if COMPANY_LOGO}}<img src="{{COMPANY_LOGO}}" alt="logo" style="max-height:56px;max-width:110px;object-fit:contain;" />{{/if}}
+    </header>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>وصل بيع رقم:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>الزبون:</strong> {{CLIENT_NAME}}</span><span><strong>البائع:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+    <!-- Meta -->
+    <section class="flex justify-between items-start text-[12px] font-bold mb-4">
+      <div class="space-y-0.5">
+        <div class="text-base font-black">وصل رقم {{RECEIPT_NUMBER}}</div>
+        <div class="text-[11px]">الزبون: <span class="font-black">{{CLIENT_NAME}}</span></div>
+        <div class="text-[11px]">البائع: {{SELLER_NAME}}</div>
+      </div>
+      <div class="text-left text-[11px]">
+        <div>التاريخ: {{DATE}}</div>
+        <div>الوقت: {{TIME}}</div>
+      </div>
+    </section>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:right;">المنتج</th>
-        <th>الكمية</th>
-        <th>السعر</th>
-        <th>المجموع</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <!-- Items -->
+    <section class="mb-4">
+      <table class="items text-[11px] font-bold">
+        <thead>
+          <tr>
+            <th class="w-[16%] text-center">الكمية</th>
+            <th class="w-[46%] text-right px-2">المنتج</th>
+            <th class="w-[19%] text-center">السعر</th>
+            <th class="w-[19%] text-center">المجموع</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
 
-  <div class="totals">
-    <div class="t-row"><span>المجموع الفرعي:</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>التخفيض:</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>الإجمالي:</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>المدفوع:</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>الباقي للزبون:</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>الباقي (دين):</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+    <!-- Totals -->
+    <section class="flex justify-end mb-4">
+      <div class="w-[56%] text-[12px] font-bold space-y-1">
+        <div class="flex justify-between"><span>المجموع الفرعي:</span><span>{{SUBTOTAL}}</span></div>
+        <div class="flex justify-between"><span>التخفيض:</span><span>{{DISCOUNT}}</span></div>
+        <div class="flex justify-between text-[15px] font-black border-t-2 border-black pt-1 mt-1"><span>الإجمالي:</span><span>{{TOTAL}}</span></div>
+        <div class="flex justify-between text-[11px]"><span>المدفوع:</span><span>{{PAID}}</span></div>
+        <div class="flex justify-between text-[11px]"><span>الباقي (الصرف):</span><span>{{CHANGE}}</span></div>
+        <div class="flex justify-between text-[11px] pt-1 mt-1 border-t border-dashed border-slate-300"><span>الرصيد السابق:</span><span>{{OLD_BALANCE}}</span></div>
+        <div class="flex justify-between text-[11px]"><span>المتبقي للدفع:</span><span>{{RECEIPT_REST}}</span></div>
+        <div class="flex justify-between text-[12px] font-black"><span>إجمالي الديون:</span><span class="underline">{{REST}}</span></div>
+      </div>
+    </section>
 
-  <div style="font-size:9.5px;margin-top:4px;text-align:center;">{{TOTAL_IN_WORDS}}</div>
-  <div class="footer">شكراً لزيارتكم — مرحباً بكم دائماً</div>
+    <div class="text-[11px] font-bold border border-black rounded-md inline-block px-3 py-1">طريقة الدفع: {{PAYMENT_MODE}}</div>
+
+    <footer class="text-center text-[11px] font-bold text-slate-600 mt-8 pt-3 border-t border-slate-200">
+      شكراً لزيارتكم — {{COMPANY_NAME}}
+    </footer>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -21503,77 +22265,89 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Receipt # {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Receipt A5 - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
-      color: #000;
-      background: #fff;
+    @page { size: A5; margin: 0; }
+    body { background: #e5e7eb; color: #000; margin: 0; padding: 0; font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif; }
+    .paper {
+      width: 148mm; min-height: 210mm; background: #fff; margin: 14px auto;
+      padding: 12mm 11mm; box-shadow: 0 10px 30px rgba(0,0,0,.1);
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 1px dashed #000;  }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: left; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+    table.items { width: 100%; border-collapse: collapse; }
+    table.items thead th { background: #1e293b; color: #fff; padding: 6px 6px; font-size: 11px; font-weight: 800; }
+    @media print {
+      html, body { background: #fff; margin: 0; padding: 0; }
+      .paper { width: 100%; min-height: auto; margin: 0; padding: 8mm 8mm; box-shadow: none; }
+    }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
+  <main class="paper">
+    <header class="flex justify-between items-start border-b-2 border-black pb-3 mb-4">
+      <div>
+        <div class="text-xl font-black">{{COMPANY_NAME}}</div>
+        <div class="text-[11px] font-bold text-slate-700 mt-1">{{COMPANY_ADDRESS}}</div>
+        <div class="text-[11px] font-bold text-slate-700">Tel: {{COMPANY_PHONE}}</div>
+      </div>
+      {{#if COMPANY_LOGO}}<img src="{{COMPANY_LOGO}}" alt="logo" style="max-height:56px;max-width:110px;object-fit:contain;" />{{/if}}
+    </header>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>Receipt #:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>Customer:</strong> {{CLIENT_NAME}}</span><span><strong>Cashier:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+    <section class="flex justify-between items-start text-[12px] font-bold mb-4">
+      <div class="space-y-0.5">
+        <div class="text-base font-black">Receipt No. {{RECEIPT_NUMBER}}</div>
+        <div class="text-[11px]">Customer: <span class="font-black">{{CLIENT_NAME}}</span></div>
+        <div class="text-[11px]">Seller: {{SELLER_NAME}}</div>
+      </div>
+      <div class="text-right text-[11px]">
+        <div>Date: {{DATE}}</div>
+        <div>Time: {{TIME}}</div>
+      </div>
+    </section>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:left;">Item</th>
-        <th>Qty</th>
-        <th>Price</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <section class="mb-4">
+      <table class="items text-[11px] font-bold">
+        <thead>
+          <tr>
+            <th class="w-[16%] text-center">Qty</th>
+            <th class="w-[46%] text-left px-2">Item</th>
+            <th class="w-[19%] text-center">Price</th>
+            <th class="w-[19%] text-center">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
 
-  <div class="totals">
-    <div class="t-row"><span>Subtotal:</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>Discount:</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>TOTAL DUE:</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>Paid:</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>Change:</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>Balance Due:</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+    <section class="flex justify-end mb-4">
+      <div class="w-[56%] text-[12px] font-bold space-y-1">
+        <div class="flex justify-between"><span>Subtotal:</span><span>{{SUBTOTAL}}</span></div>
+        <div class="flex justify-between"><span>Discount:</span><span>{{DISCOUNT}}</span></div>
+        <div class="flex justify-between text-[15px] font-black border-t-2 border-black pt-1 mt-1"><span>Total:</span><span>{{TOTAL}}</span></div>
+        <div class="flex justify-between text-[11px]"><span>Paid:</span><span>{{PAID}}</span></div>
+        <div class="flex justify-between text-[11px]"><span>Change:</span><span>{{CHANGE}}</span></div>
+        <div class="flex justify-between text-[11px] pt-1 mt-1 border-t border-dashed border-slate-300"><span>Previous balance:</span><span>{{OLD_BALANCE}}</span></div>
+        <div class="flex justify-between text-[11px]"><span>Remaining to pay:</span><span>{{RECEIPT_REST}}</span></div>
+        <div class="flex justify-between text-[12px] font-black"><span>Total debt:</span><span class="underline">{{REST}}</span></div>
+      </div>
+    </section>
 
-  <div style="font-size:9.5px;margin-top:4px;text-align:center;">{{TOTAL_IN_WORDS}}</div>
-  <div class="footer">Thank you for shopping with us!</div>
+    <div class="text-[11px] font-bold border border-black rounded-md inline-block px-3 py-1">Payment method: {{PAYMENT_MODE}}</div>
+
+    <footer class="text-center text-[11px] font-bold text-slate-600 mt-8 pt-3 border-t border-slate-200">
+      Thank you for your visit — {{COMPANY_NAME}}
+    </footer>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -21585,77 +22359,89 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="fr" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Ticket N° {{RECEIPT_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reçu A5 - {{RECEIPT_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      width: 74mm;
-      margin: 0 auto;
-      padding: 4px;
-      font-size: 11px;
-      color: #000;
-      background: #fff;
+    @page { size: A5; margin: 0; }
+    body { background: #e5e7eb; color: #000; margin: 0; padding: 0; font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif; }
+    .paper {
+      width: 148mm; min-height: 210mm; background: #fff; margin: 14px auto;
+      padding: 12mm 11mm; box-shadow: 0 10px 30px rgba(0,0,0,.1);
     }
-    .header { text-align: center; padding-bottom: 6px; border-bottom: 1px dashed #000;  }
-    .shop-name { font-size: 16px; font-weight: 900; }
-    .meta { padding: 5px 0; font-size: 10.5px; border-bottom: 1px dashed #000; }
-    .meta-row { display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-    th { border-bottom: 1px solid #000; padding: 3px 2px; font-size: 10px; text-align: center; }
-    td { padding: 4px 2px; border-bottom: 1px dotted #cbd5e1; font-size: 10.5px; text-align: center; }
-    td:first-child { text-align: left; font-weight: 700; }
-    .totals { border-top: 1px dashed #000; padding-top: 5px; }
-    .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .t-net { font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
-    .footer { text-align: center; margin-top: 8px; font-size: 10px; font-weight: 700; }
+    table.items { width: 100%; border-collapse: collapse; }
+    table.items thead th { background: #1e293b; color: #fff; padding: 6px 6px; font-size: 11px; font-weight: 800; }
+    @media print {
+      html, body { background: #fff; margin: 0; padding: 0; }
+      .paper { width: 100%; min-height: auto; margin: 0; padding: 8mm 8mm; box-shadow: none; }
+    }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
+
 <body>
-  <div class="header">
-    {{#if COMPANY_LOGO}}
-    <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:38px;margin-bottom:3px;">
-    {{/if}}
-    <div class="shop-name">{{COMPANY_NAME}}</div>
-    {{#if COMPANY_ADDRESS}}<div style="font-size:10px;">{{COMPANY_ADDRESS}}</div>{{/if}}
-    {{#if COMPANY_PHONE}}<div style="font-size:10px;">{{COMPANY_PHONE}}</div>{{/if}}
-  </div>
+  <main class="paper">
+    <header class="flex justify-between items-start border-b-2 border-black pb-3 mb-4">
+      <div>
+        <div class="text-xl font-black">{{COMPANY_NAME}}</div>
+        <div class="text-[11px] font-bold text-slate-700 mt-1">{{COMPANY_ADDRESS}}</div>
+        <div class="text-[11px] font-bold text-slate-700">Tél : {{COMPANY_PHONE}}</div>
+      </div>
+      {{#if COMPANY_LOGO}}<img src="{{COMPANY_LOGO}}" alt="logo" style="max-height:56px;max-width:110px;object-fit:contain;" />{{/if}}
+    </header>
 
-  <div class="meta">
-    <div class="meta-row"><span><strong>Ticket N°:</strong> {{RECEIPT_NUMBER}}</span><span>{{DATE}} {{TIME}}</span></div>
-    <div class="meta-row"><span><strong>Client:</strong> {{CLIENT_NAME}}</span><span><strong>Caissier:</strong> {{SELLER_NAME}}</span></div>
-  </div>
+    <section class="flex justify-between items-start text-[12px] font-bold mb-4">
+      <div class="space-y-0.5">
+        <div class="text-base font-black">Reçu N° {{RECEIPT_NUMBER}}</div>
+        <div class="text-[11px]">Client : <span class="font-black">{{CLIENT_NAME}}</span></div>
+        <div class="text-[11px]">Vendeur : {{SELLER_NAME}}</div>
+      </div>
+      <div class="text-right text-[11px]">
+        <div>Date : {{DATE}}</div>
+        <div>Heure : {{TIME}}</div>
+      </div>
+    </section>
 
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:left;">Article</th>
-        <th>Qté</th>
-        <th>P.U</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ITEMS_ROWS}}
-    </tbody>
-  </table>
+    <section class="mb-4">
+      <table class="items text-[11px] font-bold">
+        <thead>
+          <tr>
+            <th class="w-[16%] text-center">Qté</th>
+            <th class="w-[46%] text-left px-2">Désignation</th>
+            <th class="w-[19%] text-center">P.U.</th>
+            <th class="w-[19%] text-center">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
 
-  <div class="totals">
-    <div class="t-row"><span>Sous-total :</span><span>{{SUBTOTAL}}</span></div>
-    {{#if DISCOUNT}}<div class="t-row"><span>Remise :</span><span>-{{DISCOUNT}}</span></div>{{/if}}
-    <div class="t-row t-net"><span>NET À PAYER :</span><span>{{TOTAL}}</span></div>
-    <div class="t-row"><span>Reçu :</span><span>{{PAID}}</span></div>
-    {{#if CHANGE}}<div class="t-row"><span>Rendu :</span><span>{{CHANGE}}</span></div>{{/if}}
-    {{#if RECEIPT_REST}}<div class="t-row"><span>Reste (Crédit) :</span><span>{{RECEIPT_REST}}</span></div>{{/if}}
-  </div>
+    <section class="flex justify-end mb-4">
+      <div class="w-[56%] text-[12px] font-bold space-y-1">
+        <div class="flex justify-between"><span>Sous-total :</span><span>{{SUBTOTAL}}</span></div>
+        <div class="flex justify-between"><span>Remise :</span><span>{{DISCOUNT}}</span></div>
+        <div class="flex justify-between text-[15px] font-black border-t-2 border-black pt-1 mt-1"><span>Total :</span><span>{{TOTAL}}</span></div>
+        <div class="flex justify-between text-[11px]"><span>Payé :</span><span>{{PAID}}</span></div>
+        <div class="flex justify-between text-[11px]"><span>Rendu :</span><span>{{CHANGE}}</span></div>
+        <div class="flex justify-between text-[11px] pt-1 mt-1 border-t border-dashed border-slate-300"><span>Solde antérieur :</span><span>{{OLD_BALANCE}}</span></div>
+        <div class="flex justify-between text-[11px]"><span>Reste à payer :</span><span>{{RECEIPT_REST}}</span></div>
+        <div class="flex justify-between text-[12px] font-black"><span>Solde dû total :</span><span class="underline">{{REST}}</span></div>
+      </div>
+    </section>
 
-  <div style="font-size:9.5px;margin-top:4px;text-align:center;">{{TOTAL_IN_WORDS}}</div>
-  <div class="footer">Merci de votre visite — À bientôt !</div>
+    <div class="text-[11px] font-bold border border-black rounded-md inline-block px-3 py-1">Mode de paiement : {{PAYMENT_MODE}}</div>
+
+    <footer class="text-center text-[11px] font-bold text-slate-600 mt-8 pt-3 border-t border-slate-200">
+      Merci de votre visite — {{COMPANY_NAME}}
+    </footer>
+  </main>
 </body>
+
 </html>
 
 ```
@@ -21667,331 +22453,174 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
-  <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>وصل الاستلام - {{RECEPTION_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
     }
+
     .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #059669;
-      
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
     }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #059669;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #ecfdf5;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #ecfdf5;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #059669;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #059669;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
-      font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
-    }
-    .party-card {
-      background: #ecfdf5;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #059669;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
       border-collapse: collapse;
-      margin-bottom: 14px;
     }
-    table.items-table th {
-      background: #059669;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #059669;
-      text-align: center;
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+      background: #f3f4f6;
     }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
+
+    .table-border td {
+      padding: 6px 4px;
     }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #ecfdf5;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #059669;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
+
+    .reception-banner {
+      background: #dcfce7;
+      border: 2px solid #15803d;
+      color: #14532d;
+      padding: 6px 14px;
       border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #059669;
-      color: #ffffff;
-      font-size: 13px;
+      display: inline-block;
       font-weight: 900;
-      padding: 8px 12px;
+      font-size: 12px;
     }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .doc-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        box-sizing: border-box;
+        padding: 12mm 14mm;
+      }
     }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
-        {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
-        </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
+
+<body class="p-4">
+  <main class="doc-container mx-auto bg-white">
+
+    <!-- Header -->
+    <header class="mb-8">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>الهاتف : {{COMPANY_PHONE}}</div>
+        <div>الثابت : {{COMPANY_FAX}}</div>
+        <div>البريد : {{COMPANY_EMAIL}}</div>
+      </div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>سجل تجاري : {{COMPANY_RC}}</div>
+        <div>رقم جبائي : {{COMPANY_NIF}}</div>
+        <div>مادة جبائية : {{COMPANY_AI}}</div>
+      </div>
+      <div class="font-bold text-[10px] mt-1">رقم الإحصاء : {{COMPANY_NIS}}</div>
+    </header>
+
+    <!-- Supplier + Reception Info -->
+    <section class="flex justify-between items-start mb-10">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>المورّد : {{PARTY_NAME}}</p>
+        <p>العنوان : {{PARTY_ADDRESS}}</p>
+        <p>سجل تجاري : {{PARTY_RC}}</p>
+        <p>رقم جبائي : {{PARTY_NIF}}</p>
+        <p>مادة جبائية : {{PARTY_AI}}</p>
+        <p>رقم الإحصاء : {{PARTY_NIS}}</p>
+      </div>
+      <div class="w-[48%] pl-8" style="text-align: left;">
+        <span class="reception-banner">وصل استلام</span>
+        <h2 class="text-xl font-bold mb-2 mt-2">وصل استلام رقم {{RECEPTION_NUMBER}}</h2>
+        <p class="text-sm font-bold">تاريخ الاستلام : {{DATE}}</p>
+        <p class="text-sm font-bold mt-1">رقم فاتورة الشراء : {{INVOICE_NUMBER}}</p>
+      </div>
+    </section>
+
+    <!-- Items Table -->
+    <section class="mb-8">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr>
+            <th class="w-[6%]">الرقم</th>
+            <th class="w-[14%]">المرجع</th>
+            <th class="w-[30%]">البيان</th>
+            <th class="w-[10%]">الوحدة</th>
+            <th class="w-[12%]">الكمية المطلوبة</th>
+            <th class="w-[12%]">الكمية المستلمة</th>
+            <th class="w-[16%]">حالة المنتج / ملاحظات</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <p class="text-[10px] font-bold mb-8">
+      ملاحظات عامة : ............................................................................................................
+    </p>
+
+    <!-- Signatures -->
+    <section class="flex justify-between items-start mt-10">
+      <div class="w-[45%]">
+        <p class="font-bold text-[10px] mb-1">المستلم :</p>
+        <p class="font-bold text-[10px] mb-8">{{COMPANY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">التوقيع والختم</p>
         </div>
       </div>
-
-      <div class="doc-badge">
-        <div class="doc-type">وصل استلام بضاعة (BON DE RÉCEPTION)</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
-
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
+      <div class="w-[45%]" style="text-align: left;">
+        <p class="font-bold text-[10px] mb-1">الموصِّل / المورّد :</p>
+        <p class="font-bold text-[10px] mb-8">{{PARTY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1" style="margin-left:auto; margin-right:0;">
+          <p class="text-[9px] font-bold text-slate-500">التوقيع والختم</p>
         </div>
       </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
-      </div>
-    </div>
+    </section>
 
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
-
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
-      </div>
-
-      <div class="totals-box">
-        <div class="totals-row">
-          <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
-        </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
-        </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
-          <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
-        </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
-        </div>
-        {{/if}}
-        <div class="totals-row net-row">
-          <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
-        </div>
-        
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
-        </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
-        </div>
-        {{/if}}
-      </div>
-    </div>
-
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+  </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
 
 ```
@@ -22003,331 +22632,170 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Reception Note - {{RECEPTION_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
     }
+
     .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #059669;
-      
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
     }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #059669;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #ecfdf5;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #ecfdf5;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #059669;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #059669;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
-      font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
-    }
-    .party-card {
-      background: #ecfdf5;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #059669;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
       border-collapse: collapse;
-      margin-bottom: 14px;
     }
-    table.items-table th {
-      background: #059669;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #059669;
-      text-align: center;
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+      background: #f3f4f6;
     }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
+
+    .table-border td {
+      padding: 6px 4px;
     }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #ecfdf5;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #059669;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
+
+    .reception-banner {
+      background: #dcfce7;
+      border: 2px solid #15803d;
+      color: #14532d;
+      padding: 6px 14px;
       border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #059669;
-      color: #ffffff;
-      font-size: 13px;
+      display: inline-block;
       font-weight: 900;
-      padding: 8px 12px;
+      font-size: 12px;
     }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .doc-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        box-sizing: border-box;
+        padding: 12mm 14mm;
+      }
     }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
-        {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
-        </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
+
+<body class="p-4">
+  <main class="doc-container mx-auto bg-white">
+
+    <header class="mb-8">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>Phone : {{COMPANY_PHONE}}</div>
+        <div>Fax : {{COMPANY_FAX}}</div>
+        <div>Email : {{COMPANY_EMAIL}}</div>
+      </div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>CR : {{COMPANY_RC}}</div>
+        <div>TIN : {{COMPANY_NIF}}</div>
+        <div>AI : {{COMPANY_AI}}</div>
+      </div>
+      <div class="font-bold text-[10px] mt-1">NIS : {{COMPANY_NIS}}</div>
+    </header>
+
+    <section class="flex justify-between items-start mb-10">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>Supplier : {{PARTY_NAME}}</p>
+        <p>Address : {{PARTY_ADDRESS}}</p>
+        <p>CR : {{PARTY_RC}}</p>
+        <p>TIN : {{PARTY_NIF}}</p>
+        <p>AI : {{PARTY_AI}}</p>
+        <p>NIS : {{PARTY_NIS}}</p>
+      </div>
+      <div class="w-[48%] text-right pr-8">
+        <span class="reception-banner">RECEPTION NOTE</span>
+        <h2 class="text-xl font-bold mb-2 mt-2">RECEPTION NOTE No. {{RECEPTION_NUMBER}}</h2>
+        <p class="text-sm font-bold">Reception date : {{DATE}}</p>
+        <p class="text-sm font-bold mt-1">Purchase invoice No. : {{INVOICE_NUMBER}}</p>
+      </div>
+    </section>
+
+    <section class="mb-8">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr>
+            <th class="w-[6%]">No.</th>
+            <th class="w-[14%]">Ref</th>
+            <th class="w-[30%]">Description</th>
+            <th class="w-[10%]">Unit</th>
+            <th class="w-[12%]">Ordered Qty</th>
+            <th class="w-[12%]">Received Qty</th>
+            <th class="w-[16%]">Condition / Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <p class="text-[10px] font-bold mb-8">
+      General observations : .....................................................................................................
+    </p>
+
+    <section class="flex justify-between items-start mt-10">
+      <div class="w-[45%]">
+        <p class="font-bold text-[10px] mb-1">Receiver :</p>
+        <p class="font-bold text-[10px] mb-8">{{COMPANY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">Signature and stamp</p>
         </div>
       </div>
-
-      <div class="doc-badge">
-        <div class="doc-type">GOODS RECEPTION NOTE</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
-
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
+      <div class="w-[45%] text-right">
+        <p class="font-bold text-[10px] mb-1">Carrier / Supplier :</p>
+        <p class="font-bold text-[10px] mb-8">{{PARTY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1 ml-auto">
+          <p class="text-[9px] font-bold text-slate-500">Signature and stamp</p>
         </div>
       </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
-      </div>
-    </div>
+    </section>
 
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
-
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
-      </div>
-
-      <div class="totals-box">
-        <div class="totals-row">
-          <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
-        </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
-        </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
-          <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
-        </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
-        </div>
-        {{/if}}
-        <div class="totals-row net-row">
-          <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
-        </div>
-        
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
-        </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
-        </div>
-        {{/if}}
-      </div>
-    </div>
-
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+  </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
 
 ```
@@ -22339,331 +22807,170 @@ module.exports = {
 ```html
 <!DOCTYPE html>
 <html lang="fr" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>{{LBL_INVOICE_TITLE}} - {{INVOICE_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Bon de Réception - {{RECEPTION_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body {
-      font-family: 'Cairo', 'Tajawal', Arial, sans-serif;
-      font-size: 12px;
-      color: #0f172a;
-      margin: 0;
-      padding: 18px;
-      background: #ffffff;
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
     }
+
     .doc-container {
-      max-width: 210mm;
-      margin: 0 auto;
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      padding-bottom: 14px;
-      margin-bottom: 14px;
-      border-bottom: 3px solid #059669;
-      
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
     }
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 22px;
-      font-weight: 900;
-      color: #059669;
-      margin: 0 0 4px 0;
-    }
-    .company-desc { font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 6px; }
-    .company-meta { font-size: 10.5px; color: #334155; line-height: 1.5; }
-    .fiscal-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #1e293b;
-    }
-    .fiscal-pills span {
-      background: #ecfdf5;
-      border: 1px solid #cbd5e1;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 700;
-    }
-    .doc-badge {
-      text-align: left;
-      min-width: 190px;
-      background: #ecfdf5;
-      border: 1px solid #cbd5e1;
-      border-top: 4px solid #059669;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .doc-type {
-      font-size: 16px;
-      font-weight: 900;
-      color: #059669;
-      text-transform: uppercase;
-    }
-    .doc-num {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 14px;
-      font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .doc-date {
-      font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
-    }
-    .party-card {
-      background: #ecfdf5;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .party-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #059669;
-      margin-bottom: 3px;
-    }
-    .party-name { font-size: 14px; font-weight: 900; color: #0f172a; }
-    .party-details { font-size: 10.5px; color: #334155; margin-top: 3px; }
-    .party-fiscal {
-      font-size: 10px;
-      font-family: 'Segoe UI', Tahoma, monospace;
-      color: #334155;
-      text-align: left;
-      line-height: 1.6;
-    }
-    table.items-table {
-      width: 100%;
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
       border-collapse: collapse;
-      margin-bottom: 14px;
     }
-    table.items-table th {
-      background: #059669;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 11px;
-      padding: 7px 6px;
-      border: 1px solid #059669;
-      text-align: center;
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+      background: #f3f4f6;
     }
-    table.items-table td {
-      padding: 6px 6px;
-      border: 1px solid #cbd5e1;
-      font-size: 11px;
-      text-align: center;
+
+    .table-border td {
+      padding: 6px 4px;
     }
-    table.items-table td.text-left,
-    table.items-table td.desig {
-      text-align: right;
-      font-weight: 700;
-    }
-    table.items-table tbody tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      margin-top: 8px;
-    }
-    .words-and-payment { flex: 1; }
-    .words-box {
-      background: #ecfdf5;
-      border: 1px solid #cbd5e1;
-      border-right: 4px solid #059669;
-      border-radius: 8px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-    }
-    .words-prefix { font-size: 10.5px; color: #475569; font-weight: 700; }
-    .words-text { font-size: 12px; font-weight: 900; color: #0f172a; margin-top: 3px; }
-    .payment-meta {
-      font-size: 11px;
-      color: #334155;
-      font-weight: 700;
-    }
-    .totals-box {
-      width: 270px;
-      border: 1px solid #cbd5e1;
+
+    .reception-banner {
+      background: #dcfce7;
+      border: 2px solid #15803d;
+      color: #14532d;
+      padding: 6px 14px;
       border-radius: 10px;
-      overflow: hidden;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .totals-row .val {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-weight: 800;
-    }
-    .totals-row.net-row {
-      background: #059669;
-      color: #ffffff;
-      font-size: 13px;
+      display: inline-block;
       font-weight: 900;
-      padding: 8px 12px;
+      font-size: 12px;
     }
-    .footer-sign {
-      margin-top: 24px;
-      padding-top: 10px;
-      border-top: 1px dashed #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #475569;
-    }
-    .sign-box {
-      min-width: 160px;
-      text-align: center;
-      font-weight: 800;
-      color: #0f172a;
-      padding-bottom: 36px;
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .doc-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        box-sizing: border-box;
+        padding: 12mm 14mm;
+      }
     }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="doc-container">
-    <div class="header-bar">
-      <div class="company-block">
-        {{#if COMPANY_LOGO}}
-        <img src="{{COMPANY_LOGO}}" alt="Logo" style="max-height:52px;margin-bottom:6px;object-fit:contain;">
-        {{/if}}
-        <h1 class="company-name">{{COMPANY_NAME}}</h1>
-        {{#if COMPANY_DESCRIPTION}}<div class="company-desc">{{COMPANY_DESCRIPTION}}</div>{{/if}}
-        <div class="company-meta">
-          {{#if COMPANY_ADDRESS}}<div>{{LBL_ADDRESS}} {{COMPANY_ADDRESS}}</div>{{/if}}
-          <div>
-            {{#if COMPANY_PHONE}}<span>{{LBL_TEL}}: {{COMPANY_PHONE}}</span>{{/if}}
-            {{#if COMPANY_FAX}}<span> | {{LBL_FAX}}: {{COMPANY_FAX}}</span>{{/if}}
-            {{#if COMPANY_EMAIL}}<span> | {{LBL_EMAIL}}: {{COMPANY_EMAIL}}</span>{{/if}}
-          </div>
-        </div>
-        <div class="fiscal-pills">
-          <span>RC: {{COMPANY_RC}}</span>
-          <span>NIF: {{COMPANY_NIF}}</span>
-          <span>AI: {{COMPANY_AI}}</span>
-          <span>NIS: {{COMPANY_NIS}}</span>
+
+<body class="p-4">
+  <main class="doc-container mx-auto bg-white">
+
+    <header class="mb-8">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>Tél : {{COMPANY_PHONE}}</div>
+        <div>Fixe : {{COMPANY_FAX}}</div>
+        <div>Email : {{COMPANY_EMAIL}}</div>
+      </div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>R.C : {{COMPANY_RC}}</div>
+        <div>NIF : {{COMPANY_NIF}}</div>
+        <div>AI : {{COMPANY_AI}}</div>
+      </div>
+      <div class="font-bold text-[10px] mt-1">NIS : {{COMPANY_NIS}}</div>
+    </header>
+
+    <section class="flex justify-between items-start mb-10">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>Fournisseur : {{PARTY_NAME}}</p>
+        <p>Adresse : {{PARTY_ADDRESS}}</p>
+        <p>R.C : {{PARTY_RC}}</p>
+        <p>NIF : {{PARTY_NIF}}</p>
+        <p>AI : {{PARTY_AI}}</p>
+        <p>NIS : {{PARTY_NIS}}</p>
+      </div>
+      <div class="w-[48%] text-right pr-8">
+        <span class="reception-banner">BON DE RÉCEPTION</span>
+        <h2 class="text-xl font-bold mb-2 mt-2">BON DE RÉCEPTION N° {{RECEPTION_NUMBER}}</h2>
+        <p class="text-sm font-bold">Date de réception : {{DATE}}</p>
+        <p class="text-sm font-bold mt-1">N° facture d'achat : {{INVOICE_NUMBER}}</p>
+      </div>
+    </section>
+
+    <section class="mb-8">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr>
+            <th class="w-[6%]">N°</th>
+            <th class="w-[14%]">Réf</th>
+            <th class="w-[30%]">Désignation</th>
+            <th class="w-[10%]">Unité</th>
+            <th class="w-[12%]">Qté commandée</th>
+            <th class="w-[12%]">Qté reçue</th>
+            <th class="w-[16%]">État / Observations</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <p class="text-[10px] font-bold mb-8">
+      Observations générales : .....................................................................................................
+    </p>
+
+    <section class="flex justify-between items-start mt-10">
+      <div class="w-[45%]">
+        <p class="font-bold text-[10px] mb-1">Réceptionnaire :</p>
+        <p class="font-bold text-[10px] mb-8">{{COMPANY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">Signature et cachet</p>
         </div>
       </div>
-
-      <div class="doc-badge">
-        <div class="doc-type">BON DE RÉCEPTION</div>
-        <div class="doc-num">N°: {{INVOICE_NUMBER}}</div>
-        <div class="doc-date">{{LBL_DATE}} {{DATE}}</div>
-      </div>
-    </div>
-
-    <div class="party-card">
-      <div>
-        <div class="party-title">{{CLIENT_ROLE_LABEL}}</div>
-        <div class="party-name">{{PARTY_NAME}}</div>
-        <div class="party-details">
-          {{#if PARTY_ADDRESS}}<span>{{PARTY_ADDRESS}}</span>{{/if}}
-          {{#if PARTY_PHONE}}<span> | {{LBL_TEL}}: {{PARTY_PHONE}}</span>{{/if}}
+      <div class="w-[45%] text-right">
+        <p class="font-bold text-[10px] mb-1">Livreur / Fournisseur :</p>
+        <p class="font-bold text-[10px] mb-8">{{PARTY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1 ml-auto">
+          <p class="text-[9px] font-bold text-slate-500">Signature et cachet</p>
         </div>
       </div>
-      <div class="party-fiscal">
-        <div><strong>RC:</strong> {{PARTY_RC}} | <strong>NIF:</strong> {{PARTY_NIF}}</div>
-        <div><strong>AI:</strong> {{PARTY_AI}} | <strong>NIS:</strong> {{PARTY_NIS}}</div>
-      </div>
-    </div>
+    </section>
 
-    <table class="items-table">
-      <thead>
-      <tr>
-        <th style="width:6%;">{{LBL_N_INDEX}}</th>
-        <th style="width:13%;">{{LBL_REF}}</th>
-        <th style="width:35%;">{{LBL_DESIGNATION}}</th>
-        <th style="width:9%;">{{LBL_QTY}}</th>
-        <th style="width:9%;">{{LBL_UNIT}}</th>
-        <th style="width:11%;">{{LBL_UNIT_PRICE}}</th>
-        <th style="width:7%;">{{LBL_TVA}}</th>
-        <th style="width:10%;">{{LBL_TOTAL_HT}}</th>
-      </tr></thead>
-      <tbody>
-        {{ITEMS_ROWS}}
-      </tbody>
-    </table>
-
-    <div class="summary-section">
-      <div class="words-and-payment">
-        <div class="words-box">
-          <div class="words-prefix">{{LBL_TOTAL_IN_WORDS_PREFIX}}</div>
-          <div class="words-text">{{TOTAL_IN_WORDS}}</div>
-        </div>
-        <div class="payment-meta">
-          {{LBL_MODE_PAIEMENT}} <span>{{PAYMENT_MODE}}</span>
-        </div>
-      </div>
-
-      <div class="totals-box">
-        <div class="totals-row">
-          <span>{{LBL_SUBTOTAL}}</span>
-          <span class="val">{{SUBTOTAL}}</span>
-        </div>
-        {{#if DISCOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_DISCOUNT}}</span>
-          <span class="val">-{{DISCOUNT}}</span>
-        </div>
-        {{/if}}
-        {{#if TAX_TOTAL}}
-        <div class="totals-row">
-          <span>{{LBL_TAX_TOTAL}}</span>
-          <span class="val">{{TAX_TOTAL}}</span>
-        </div>
-        {{/if}}
-        {{#if STAMP_AMOUNT}}
-        <div class="totals-row">
-          <span>{{LBL_STAMP}}</span>
-          <span class="val">{{STAMP_AMOUNT}}</span>
-        </div>
-        {{/if}}
-        <div class="totals-row net-row">
-          <span>{{LBL_NET_PAY}}</span>
-          <span class="val">{{NET_TO_PAY}}</span>
-        </div>
-        
-        {{#if REMAINING_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_REMAINING_PAY}}</span>
-          <span class="val">{{REMAINING_DEBT}}</span>
-        </div>
-        {{/if}}
-        {{#if TOTAL_DEBT}}
-        <div class="totals-row">
-          <span>{{LBL_TOTAL_DEBT}}</span>
-          <span class="val">{{TOTAL_DEBT}}</span>
-        </div>
-        {{/if}}
-      </div>
-    </div>
-
-    <div class="footer-sign">
-      <div>Gherbi.Ai POS — نظام نقاط البيع والمحاسبة المتكامل</div>
-      <div class="sign-box">{{LBL_SIGNATURE}}</div>
-    </div>
-  </div>
+  </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
 
 ```
@@ -24849,60 +25156,204 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
 ```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
-  <meta charset="UTF-8">
-  <title>تقرير ملخص المبيعات والخزينة للفترة - {{SUMMARY_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>ملخص المبيعات - {{SUMMARY_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    body { font-family: 'Cairo', Arial, sans-serif; font-size: 12px; color: #0f172a; margin: 0; padding: 18px; }
-    .hdr { display: flex; justify-content: space-between; border-bottom: 3px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }
-    .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
-    .kpi { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 12px; }
-    .kpi .v { font-size: 16px; font-weight: 900; font-family: monospace; margin-top: 4px; color: #1d4ed8; }
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    th { background: #0f172a; color: #fff; padding: 7px; border: 1px solid #0f172a; font-size: 11px; }
-    td { padding: 6px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px; }
+    body {
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
+    }
+
+    .doc-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+      background: #f3f4f6;
+    }
+
+    .table-border td {
+      padding: 6px 4px;
+    }
+
+    .summary-banner {
+      background: #dcfce7;
+      border: 2px solid #15803d;
+      color: #14532d;
+      padding: 8px 18px;
+      border-radius: 10px;
+      display: inline-block;
+      font-weight: 900;
+      font-size: 13px;
+    }
+
+    .period-strip {
+      background: #ede9fe;
+      border: 1.5px dashed #6d28d9;
+      color: #4c1d95;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 11px;
+    }
+
+    .totals-table td {
+      padding: 5px 10px;
+    }
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .doc-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 20px;
+      }
+    }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="hdr">
-    <div>
-      <div style="font-size:20px;font-weight:900;">{{COMPANY_NAME}}</div>
-      <div>{{COMPANY_ADDRESS}} | {{COMPANY_PHONE}}</div>
-    </div>
-    <div style="text-align:left;">
-      <div style="font-size:16px;font-weight:900;">تقرير ملخص المبيعات والخزينة للفترة</div>
-      <div><strong>رقم التقرير:</strong> {{SUMMARY_NUMBER}}</div>
-      <div><strong>الفترة الزمنية:</strong> {{DATE_FROM}} -> {{DATE_TO}}</div>
-    </div>
-  </div>
 
-  <div class="kpi-grid">
-    <div class="kpi"><div>عدد الفواتير</div><div class="v">{{SALES_COUNT}}</div></div>
-    <div class="kpi"><div>إجمالي المبيعات</div><div class="v">{{TOTAL_SALES}}</div></div>
-    <div class="kpi"><div>إجمالي المقبوضات</div><div class="v" style="color:#059669;">{{TOTAL_PAID}}</div></div>
-    <div class="kpi"><div>إجمالي الديون المتبقية</div><div class="v" style="color:#e11d48;">{{TOTAL_REMAINING}}</div></div>
-    <div class="kpi"><div>تكلفة البضاعة المباعة (COGS)</div><div class="v" style="color:#d97706;">{{COGS_TOTAL}}</div></div>
-    <div class="kpi"><div>صافي الربح الصافي</div><div class="v" style="color:#059669;">{{NET_PROFIT}}</div></div>
-  </div>
+<body class="p-4">
+  <main class="doc-container mx-auto bg-white">
 
-  <h4 style="margin:10px 0 6px 0;font-weight:900;">تفصيل المنتجات المباعة خلال الفترة</h4>
-  <table>
-    <thead>
-      <tr>
-        <th>#</th>
-        <th>المنتج</th>
-        <th>الكمية المباعة</th>
-        <th>الإيرادات</th>
-        <th>الربح الصافي</th>
-      </tr>
-    </thead>
-    <tbody>{{ITEMS_ROWS}}</tbody>
-  </table>
+    <header class="mb-6">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>الهاتف : {{COMPANY_PHONE}}</div>
+        <div>الثابت : {{COMPANY_FAX}}</div>
+        <div>البريد : {{COMPANY_EMAIL}}</div>
+      </div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>سجل تجاري : {{COMPANY_RC}}</div>
+        <div>رقم جبائي : {{COMPANY_NIF}}</div>
+        <div>مادة جبائية : {{COMPANY_AI}}</div>
+        <div>رقم الإحصاء : {{COMPANY_NIS}}</div>
+      </div>
+    </header>
+
+    <section class="flex justify-between items-start mb-4">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>النطاق : {{SCOPE_LABEL}}</p>
+        <p>عدد المبيعات : {{SALES_COUNT}}</p>
+      </div>
+      <div class="w-[48%] pl-8" style="text-align: left;">
+        <span class="summary-banner">ملخّـص المبيعـات</span>
+        <h2 class="text-lg font-bold mt-3 mb-1">ملخص رقم : {{SUMMARY_NUMBER}}</h2>
+        <p class="text-sm font-bold">تاريخ الإصدار : {{DATE}}</p>
+      </div>
+    </section>
+
+    <section class="mb-5">
+      <div class="period-strip">
+        فترة الملخص : من <span class="font-black">{{DATE_FROM}}</span>
+        إلى <span class="font-black">{{DATE_TO}}</span>
+      </div>
+    </section>
+
+    <section class="mb-6">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr>
+            <th class="w-[6%]">#</th>
+            <th class="w-[16%]">رقم الفاتورة</th>
+            <th class="w-[22%]">التاريخ</th>
+            <th class="w-[26%]">الزبون</th>
+            <th class="w-[8%]">العناصر</th>
+            <th class="w-[11%]">المدفوع</th>
+            <th class="w-[11%]">الإجمالي</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="flex justify-end mb-8">
+      <table class="totals-table text-[11px] font-bold border border-black">
+        <tbody>
+          <tr>
+            <td class="border-b border-black">عدد المبيعات</td>
+            <td class="border-b border-black text-left">{{SALES_COUNT}}</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">إجمالي المبيعات</td>
+            <td class="border-b border-black text-left">{{TOTAL_SALES}} د.ج</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">إجمالي المدفوع</td>
+            <td class="border-b border-black text-left">{{TOTAL_PAID}} د.ج</td>
+          </tr>
+          <tr>
+            <td class="font-black bg-slate-100">إجمالي الباقي</td>
+            <td class="font-black bg-slate-100 text-left text-blue-700">{{TOTAL_REMAINING}} د.ج</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p class="text-[10px] font-bold mb-6">المبلغ بالأحرف : <span class="text-blue-700">{{TOTAL_IN_WORDS}}</span></p>
+
+    <section class="flex justify-between items-start mt-10">
+      <div class="w-[45%]">
+        <p class="font-bold text-[10px] mb-8">المُصدِر : {{COMPANY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">التوقيع والختم</p>
+        </div>
+      </div>
+    </section>
+
+    <p class="text-[9px] text-slate-500 mt-6 text-center font-bold">
+      وثيقة داخلية لتلخيص حركة المبيعات خلال الفترة المذكورة. لا تُعدّ فاتورة ضريبية رسمية.
+    </p>
+
+  </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
+
 ```
 
 ---
@@ -24912,60 +25363,204 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
 ```html
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>PERIODIC SALES & PROFIT SUMMARY REPORT - {{SUMMARY_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Sales Summary - {{SUMMARY_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    body { font-family: 'Cairo', Arial, sans-serif; font-size: 12px; color: #0f172a; margin: 0; padding: 18px; }
-    .hdr { display: flex; justify-content: space-between; border-bottom: 3px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }
-    .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
-    .kpi { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 12px; }
-    .kpi .v { font-size: 16px; font-weight: 900; font-family: monospace; margin-top: 4px; color: #1d4ed8; }
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    th { background: #0f172a; color: #fff; padding: 7px; border: 1px solid #0f172a; font-size: 11px; }
-    td { padding: 6px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px; }
+    body {
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
+    }
+
+    .doc-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+      background: #f3f4f6;
+    }
+
+    .table-border td {
+      padding: 6px 4px;
+    }
+
+    .summary-banner {
+      background: #dcfce7;
+      border: 2px solid #15803d;
+      color: #14532d;
+      padding: 8px 18px;
+      border-radius: 10px;
+      display: inline-block;
+      font-weight: 900;
+      font-size: 13px;
+    }
+
+    .period-strip {
+      background: #ede9fe;
+      border: 1.5px dashed #6d28d9;
+      color: #4c1d95;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 11px;
+    }
+
+    .totals-table td {
+      padding: 5px 10px;
+    }
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .doc-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 20px;
+      }
+    }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="hdr">
-    <div>
-      <div style="font-size:20px;font-weight:900;">{{COMPANY_NAME}}</div>
-      <div>{{COMPANY_ADDRESS}} | {{COMPANY_PHONE}}</div>
-    </div>
-    <div style="text-align:left;">
-      <div style="font-size:16px;font-weight:900;">PERIODIC SALES & PROFIT SUMMARY REPORT</div>
-      <div><strong>Report #:</strong> {{SUMMARY_NUMBER}}</div>
-      <div><strong>Period:</strong> {{DATE_FROM}} -> {{DATE_TO}}</div>
-    </div>
-  </div>
 
-  <div class="kpi-grid">
-    <div class="kpi"><div>Sales Count</div><div class="v">{{SALES_COUNT}}</div></div>
-    <div class="kpi"><div>Total Revenue</div><div class="v">{{TOTAL_SALES}}</div></div>
-    <div class="kpi"><div>Total Collected</div><div class="v" style="color:#059669;">{{TOTAL_PAID}}</div></div>
-    <div class="kpi"><div>Remaining Receivables</div><div class="v" style="color:#e11d48;">{{TOTAL_REMAINING}}</div></div>
-    <div class="kpi"><div>Cost of Goods Sold (COGS)</div><div class="v" style="color:#d97706;">{{COGS_TOTAL}}</div></div>
-    <div class="kpi"><div>Net Profit</div><div class="v" style="color:#059669;">{{NET_PROFIT}}</div></div>
-  </div>
+<body class="p-4">
+  <main class="doc-container mx-auto bg-white">
 
-  <h4 style="margin:10px 0 6px 0;font-weight:900;">Sold Products Breakdown</h4>
-  <table>
-    <thead>
-      <tr>
-        <th>#</th>
-        <th>Product</th>
-        <th>Qty Sold</th>
-        <th>Revenue</th>
-        <th>Net Profit</th>
-      </tr>
-    </thead>
-    <tbody>{{ITEMS_ROWS}}</tbody>
-  </table>
+    <header class="mb-6">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>Phone : {{COMPANY_PHONE}}</div>
+        <div>Landline : {{COMPANY_FAX}}</div>
+        <div>Email : {{COMPANY_EMAIL}}</div>
+      </div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>RC : {{COMPANY_RC}}</div>
+        <div>NIF : {{COMPANY_NIF}}</div>
+        <div>AI : {{COMPANY_AI}}</div>
+        <div>NIS : {{COMPANY_NIS}}</div>
+      </div>
+    </header>
+
+    <section class="flex justify-between items-start mb-4">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>Scope : {{SCOPE_LABEL}}</p>
+        <p>Sales count : {{SALES_COUNT}}</p>
+      </div>
+      <div class="w-[48%] pr-8" style="text-align: right;">
+        <span class="summary-banner">Sales Summary</span>
+        <h2 class="text-lg font-bold mt-3 mb-1">Summary No : {{SUMMARY_NUMBER}}</h2>
+        <p class="text-sm font-bold">Issue date : {{DATE}}</p>
+      </div>
+    </section>
+
+    <section class="mb-5">
+      <div class="period-strip">
+        Period : from <span class="font-black">{{DATE_FROM}}</span>
+        to <span class="font-black">{{DATE_TO}}</span>
+      </div>
+    </section>
+
+    <section class="mb-6">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr>
+            <th class="w-[6%]">#</th>
+            <th class="w-[16%]">Invoice No</th>
+            <th class="w-[22%]">Date</th>
+            <th class="w-[26%]">Customer</th>
+            <th class="w-[8%]">Items</th>
+            <th class="w-[11%]">Paid</th>
+            <th class="w-[11%]">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="flex justify-end mb-8">
+      <table class="totals-table text-[11px] font-bold border border-black">
+        <tbody>
+          <tr>
+            <td class="border-b border-black">Sales count</td>
+            <td class="border-b border-black text-right">{{SALES_COUNT}}</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">Total sales</td>
+            <td class="border-b border-black text-right">{{TOTAL_SALES}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">Total paid</td>
+            <td class="border-b border-black text-right">{{TOTAL_PAID}} DA</td>
+          </tr>
+          <tr>
+            <td class="font-black bg-slate-100">Remaining</td>
+            <td class="font-black bg-slate-100 text-right text-blue-700">{{TOTAL_REMAINING}} DA</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p class="text-[10px] font-bold mb-6">Amount in words : <span class="text-blue-700">{{TOTAL_IN_WORDS}}</span></p>
+
+    <section class="flex justify-between items-start mt-10">
+      <div class="w-[45%]">
+        <p class="font-bold text-[10px] mb-8">Issuer : {{COMPANY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">Signature and stamp</p>
+        </div>
+      </div>
+    </section>
+
+    <p class="text-[9px] text-slate-500 mt-6 text-center font-bold">
+      Internal document summarizing sales activity over the stated period. Not an official tax invoice.
+    </p>
+
+  </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
+
 ```
 
 ---
@@ -24975,60 +25570,204 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
 ```html
 <!DOCTYPE html>
 <html lang="fr" dir="ltr">
+
 <head>
-  <meta charset="UTF-8">
-  <title>RAPPORT RÉCAPITULATIF DES VENTES - {{SUMMARY_NUMBER}}</title>
-  <link rel="stylesheet" href="./assets/css/fonts.css">
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Récapitulatif des ventes - {{SUMMARY_NUMBER}}</title>
+  <script src="assets/js/tailwind.min.js"></script>
   <style>
-    @page { size: A4 portrait; margin: 10mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    body { font-family: 'Cairo', Arial, sans-serif; font-size: 12px; color: #0f172a; margin: 0; padding: 18px; }
-    .hdr { display: flex; justify-content: space-between; border-bottom: 3px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }
-    .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
-    .kpi { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 12px; }
-    .kpi .v { font-size: 16px; font-weight: 900; font-family: monospace; margin-top: 4px; color: #1d4ed8; }
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    th { background: #0f172a; color: #fff; padding: 7px; border: 1px solid #0f172a; font-size: 11px; }
-    td { padding: 6px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px; }
+    body {
+      font-family: 'Cairo', sans-serif;
+      font-size: 11px;
+      color: #000;
+      background-color: #f3f4f6;
+    }
+
+    .doc-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 40px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .rounded-box {
+      border: 1.5px solid #000;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .table-border,
+    .table-border th,
+    .table-border td {
+      border: 1px solid #000;
+      border-collapse: collapse;
+    }
+
+    .table-border th {
+      padding: 6px 4px;
+      font-weight: bold;
+      background: #f3f4f6;
+    }
+
+    .table-border td {
+      padding: 6px 4px;
+    }
+
+    .summary-banner {
+      background: #dcfce7;
+      border: 2px solid #15803d;
+      color: #14532d;
+      padding: 8px 18px;
+      border-radius: 10px;
+      display: inline-block;
+      font-weight: 900;
+      font-size: 13px;
+    }
+
+    .period-strip {
+      background: #ede9fe;
+      border: 1.5px dashed #6d28d9;
+      color: #4c1d95;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 11px;
+    }
+
+    .totals-table td {
+      padding: 5px 10px;
+    }
+
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+      }
+
+      .doc-container {
+        box-shadow: none;
+        margin: 0;
+        width: 100%;
+        min-height: auto;
+        padding: 20px;
+      }
+    }
   </style>
+  <link href="assets/css/fonts.css" rel="stylesheet">
 </head>
-<body>
-  <div class="hdr">
-    <div>
-      <div style="font-size:20px;font-weight:900;">{{COMPANY_NAME}}</div>
-      <div>{{COMPANY_ADDRESS}} | {{COMPANY_PHONE}}</div>
-    </div>
-    <div style="text-align:left;">
-      <div style="font-size:16px;font-weight:900;">RAPPORT RÉCAPITULATIF DES VENTES</div>
-      <div><strong>Rapport N° :</strong> {{SUMMARY_NUMBER}}</div>
-      <div><strong>Période :</strong> {{DATE_FROM}} -> {{DATE_TO}}</div>
-    </div>
-  </div>
 
-  <div class="kpi-grid">
-    <div class="kpi"><div>Nombre de Ventes</div><div class="v">{{SALES_COUNT}}</div></div>
-    <div class="kpi"><div>Chiffre d'Affaires</div><div class="v">{{TOTAL_SALES}}</div></div>
-    <div class="kpi"><div>Total Encaissé</div><div class="v" style="color:#059669;">{{TOTAL_PAID}}</div></div>
-    <div class="kpi"><div>Total Créances</div><div class="v" style="color:#e11d48;">{{TOTAL_REMAINING}}</div></div>
-    <div class="kpi"><div>Coût des Marchandises (COGS)</div><div class="v" style="color:#d97706;">{{COGS_TOTAL}}</div></div>
-    <div class="kpi"><div>Bénéfice Net</div><div class="v" style="color:#059669;">{{NET_PROFIT}}</div></div>
-  </div>
+<body class="p-4">
+  <main class="doc-container mx-auto bg-white">
 
-  <h4 style="margin:10px 0 6px 0;font-weight:900;">Détail des Articles Vendus</h4>
-  <table>
-    <thead>
-      <tr>
-        <th>N°</th>
-        <th>Désignation</th>
-        <th>Qté Vendue</th>
-        <th>Chiffre d'Affaires</th>
-        <th>Bénéfice</th>
-      </tr>
-    </thead>
-    <tbody>{{ITEMS_ROWS}}</tbody>
-  </table>
+    <header class="mb-6">
+      <h1 class="text-xl font-bold mb-1">{{COMPANY_NAME}}</h1>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_DESCRIPTION}}</p>
+      <p class="font-bold text-[10px] mb-1">{{COMPANY_ADDRESS}}</p>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-2 font-bold text-[10px]">
+        <div>Tél : {{COMPANY_PHONE}}</div>
+        <div>Fixe : {{COMPANY_FAX}}</div>
+        <div>Email : {{COMPANY_EMAIL}}</div>
+      </div>
+      <div class="flex flex-wrap gap-x-8 gap-y-1 mt-1 font-bold text-[10px]">
+        <div>RC : {{COMPANY_RC}}</div>
+        <div>NIF : {{COMPANY_NIF}}</div>
+        <div>AI : {{COMPANY_AI}}</div>
+        <div>NIS : {{COMPANY_NIS}}</div>
+      </div>
+    </header>
+
+    <section class="flex justify-between items-start mb-4">
+      <div class="w-[48%] rounded-box text-[10px] font-bold leading-relaxed">
+        <p>Périmètre : {{SCOPE_LABEL}}</p>
+        <p>Nombre de ventes : {{SALES_COUNT}}</p>
+      </div>
+      <div class="w-[48%] pr-8" style="text-align: right;">
+        <span class="summary-banner">Récapitulatif des ventes</span>
+        <h2 class="text-lg font-bold mt-3 mb-1">Récapitulatif N° : {{SUMMARY_NUMBER}}</h2>
+        <p class="text-sm font-bold">Date d'émission : {{DATE}}</p>
+      </div>
+    </section>
+
+    <section class="mb-5">
+      <div class="period-strip">
+        Période : du <span class="font-black">{{DATE_FROM}}</span>
+        au <span class="font-black">{{DATE_TO}}</span>
+      </div>
+    </section>
+
+    <section class="mb-6">
+      <table class="w-full table-border text-center text-[10px] font-bold">
+        <thead>
+          <tr>
+            <th class="w-[6%]">#</th>
+            <th class="w-[16%]">N° Facture</th>
+            <th class="w-[22%]">Date</th>
+            <th class="w-[26%]">Client</th>
+            <th class="w-[8%]">Articles</th>
+            <th class="w-[11%]">Payé</th>
+            <th class="w-[11%]">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="flex justify-end mb-8">
+      <table class="totals-table text-[11px] font-bold border border-black">
+        <tbody>
+          <tr>
+            <td class="border-b border-black">Nombre de ventes</td>
+            <td class="border-b border-black text-right">{{SALES_COUNT}}</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">Total des ventes</td>
+            <td class="border-b border-black text-right">{{TOTAL_SALES}} DA</td>
+          </tr>
+          <tr>
+            <td class="border-b border-black">Total payé</td>
+            <td class="border-b border-black text-right">{{TOTAL_PAID}} DA</td>
+          </tr>
+          <tr>
+            <td class="font-black bg-slate-100">Reste à payer</td>
+            <td class="font-black bg-slate-100 text-right text-blue-700">{{TOTAL_REMAINING}} DA</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p class="text-[10px] font-bold mb-6">Montant en lettres : <span class="text-blue-700">{{TOTAL_IN_WORDS}}</span></p>
+
+    <section class="flex justify-between items-start mt-10">
+      <div class="w-[45%]">
+        <p class="font-bold text-[10px] mb-8">Émetteur : {{COMPANY_NAME}}</p>
+        <div class="border-t border-black w-3/4 pt-1">
+          <p class="text-[9px] font-bold text-slate-500">Signature et cachet</p>
+        </div>
+      </div>
+    </section>
+
+    <p class="text-[9px] text-slate-500 mt-6 text-center font-bold">
+      Document interne récapitulant l'activité des ventes sur la période indiquée. Ne constitue pas une facture fiscale officielle.
+    </p>
+
+  </main>
+  <script>
+    window.onload = function () {
+      if (window.location.search.includes('print=true')) {
+        setTimeout(() => { window.print(); }, 500);
+      }
+    }
+  </script>
 </body>
+
 </html>
+
 ```
 
 ---

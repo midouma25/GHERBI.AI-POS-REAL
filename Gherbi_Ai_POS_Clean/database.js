@@ -1661,4 +1661,50 @@ db.tombstoneOrphans = tombstoneOrphans;
 db.safeAddColumn = safeAddColumn;
 db.dataRevisionTracker = dataRevisionTracker;
 
+
+/**
+ * شحن تلقائي كامل لملف Lumina_DZ_Products.csv (31,533 منتجاً) في جدول dz_product_dictionary
+ */
+function autoSeedFullAlgerianCsvDictionary() {
+  db._rawGet('SELECT COUNT(*) AS cnt FROM dz_product_dictionary', [], (err, row) => {
+    if (err || (row && Number(row.cnt) >= 1000)) return;
+    const candidates = [
+      path.join(__dirname, 'Lumina_DZ_Products.csv'),
+      path.join(__dirname, '..', 'Lumina_DZ_Products.csv')
+    ];
+    const csvPath = candidates.find((p) => fs.existsSync(p));
+    if (!csvPath) return;
+
+    try {
+      const content = fs.readFileSync(csvPath, 'utf8');
+      const lines = content.split(/\r?\n/);
+      if (lines.length <= 1) return;
+
+      db.serialize(() => {
+        db._rawRun('BEGIN IMMEDIATE TRANSACTION');
+        const stmt = db._rawPrepare(
+          'INSERT OR IGNORE INTO dz_product_dictionary (barcode, name, category, brand, unit, suggested_price) VALUES (?, ?, ?, ?, ?, ?)'
+        );
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i];
+          if (!line || !line.trim()) continue;
+          const parts = line.split(',');
+          const barcode = String(parts[0] || '').replace(/^"|"$/g, '').trim();
+          const name = String(parts[1] || '').replace(/^"|"$/g, '').trim();
+          if (!barcode || !name || barcode.length < 6) continue;
+          const category = String(parts[2] || 'عام').replace(/^"|"$/g, '').trim() || 'عام';
+          const brand = String(parts[3] || '').replace(/^"|"$/g, '').trim();
+          const price = parseFloat(parts[4]) || 0;
+          stmt.run(barcode, name.slice(0, 120), category.slice(0, 60), brand.slice(0, 60), 'قطعة', price);
+        }
+        stmt.finalize();
+        db._rawRun('COMMIT');
+      });
+    } catch (e) {
+      console.warn('[DZ Dictionary Auto-Seed] Warning:', e.message);
+    }
+  });
+}
+autoSeedFullAlgerianCsvDictionary();
+
 module.exports = db;

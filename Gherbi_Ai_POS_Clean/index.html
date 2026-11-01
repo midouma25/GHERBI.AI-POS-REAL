@@ -6,11 +6,10 @@
   <title>نظام Gherbi.Ai POS لنقاط البيع وإدارة المخازن والتصنيع</title>
   <link rel="stylesheet" href="./assets/css/fonts.css">
   <link rel="stylesheet" href="./assets/css/material-symbols.css">
-  <script>
-    window.tailwind = window.tailwind || {};
-    window.tailwind.config = { darkMode: 'class' };
-  </script>
   <script src="./assets/js/tailwind.min.js"></script>
+  <script>
+    if (window.tailwind) { window.tailwind.config = { darkMode: 'class' }; }
+  </script>
   <script src="./assets/js/chart.umd.min.js"></script>
   <link rel="stylesheet" href="./styles.css">
   <script src="./assets/js/svg-icons.js"></script>
@@ -28,6 +27,15 @@
       <div class="h-full bg-blue-500 w-full animate-pulse"></div>
     </div>
   </div>
+  <script id="splash-failsafe-script">
+    setTimeout(function () {
+      var sp = document.getElementById('splashScreen');
+      if (sp) {
+        sp.style.opacity = '0';
+        setTimeout(function () { sp.style.display = 'none'; }, 300);
+      }
+    }, 500);
+  </script>
   <div id="app-container">
     <!-- ===================================================================
          القائمة الجانبية (Sidebar — 18 قسماً رئيسياً)
@@ -1810,27 +1818,28 @@
         <h3 class="text-lg font-black text-indigo-600">🏦 حافظة الشيكات والكمبيالات المؤجلة (Échéancier Chèques & CCP)</h3>
         <button onclick="App.closeModal('chequesPortfolioModal')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-6 gap-2 text-xs bg-slate-50 dark:bg-slate-800/70 p-3 rounded-2xl border border-slate-200 dark:border-slate-700">
-        <select id="chqDirectionInp" class="px-2.5 py-2 rounded-xl font-bold">
+      <div id="chequesSummaryCards" class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs"></div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs bg-slate-50 dark:bg-slate-800/70 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700">
+        <select id="chqDirectionInp" class="px-3 py-2 rounded-xl font-bold">
           <option value="in">📥 شيك وارد (من زبون)</option>
           <option value="out">📤 شيك صادر (لمورد)</option>
         </select>
-        <input id="chqPartyInp" type="text" placeholder="اسم الزبون / المورد *" class="px-2.5 py-2 rounded-xl font-bold">
-        <input id="chqNumberInp" type="text" placeholder="رقم الشيك / الكمبيالة *" class="px-2.5 py-2 rounded-xl font-mono font-bold">
-        <select id="chqBankInp" class="px-2.5 py-2 rounded-xl font-bold">
+        <input id="chqPartyInp" type="text" placeholder="اسم الزبون أو المورد *" class="px-3 py-2 rounded-xl font-bold">
+        <input id="chqNumberInp" type="text" placeholder="رقم الشيك / الصك البريدي *" class="px-3 py-2 rounded-xl font-mono font-bold">
+        <select id="chqBankInp" class="px-3 py-2 rounded-xl font-bold">
           <option value="CCP Algérie Poste">CCP بريد الجزائر</option>
           <option value="BNA">BNA البنك الوطني الجزائري</option>
           <option value="BEA">BEA بنك الجزائر الخارجي</option>
           <option value="CPA">CPA القرض الشعبي الجزائري</option>
           <option value="BADR">BADR بنك الفلاحة والتنمية</option>
-          <option value="AGB">AGB الخليج الجزائر</option>
+          <option value="AGB">AGB بنك الخليج الجزائر</option>
           <option value="Al Salam Bank">بنك السلام الجزائر</option>
           <option value="Société Générale">Société Générale</option>
         </select>
-        <input id="chqAmountInp" type="number" step="any" placeholder="المبلغ (د.ج) *" class="px-2.5 py-2 rounded-xl font-mono font-bold">
-        <div class="flex gap-1">
-          <input id="chqDueInp" type="date" class="flex-1 px-2 py-2 rounded-xl font-mono">
-          <button onclick="App.addNewChequeRecord()" class="px-3 py-2 bg-indigo-600 text-white rounded-xl font-black">+</button>
+        <input id="chqAmountInp" type="number" step="any" placeholder="المبلغ بالدينار (د.ج) *" class="px-3 py-2 rounded-xl font-mono font-bold">
+        <div class="flex gap-2">
+          <input id="chqDueInp" type="date" class="flex-1 px-3 py-2 rounded-xl font-mono">
+          <button onclick="App.addNewChequeRecord()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black whitespace-nowrap">+ إضافة شيك</button>
         </div>
       </div>
       <div id="chequesPortfolioTableBox" class="max-h-80 overflow-y-auto text-xs"></div>

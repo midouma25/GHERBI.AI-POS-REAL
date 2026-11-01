@@ -10,7 +10,7 @@ MAX_FILE_SIZE = 200 * 1024    # 200KB
 
 IGNORE_DIRS = {
     ".git",
-    ".github",
+    ".github", 
     ".idea",
     ".vscode",
     "node_modules",

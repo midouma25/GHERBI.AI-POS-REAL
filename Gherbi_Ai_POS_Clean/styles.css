@@ -208,3 +208,79 @@ input:focus, select:focus, textarea:focus {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* [PAGE 1 POS SURGICAL THEME OVERRIDES] */
+/* 1. منع انقطاع زر التسديد السفلي (F1) عند ظهور شريط تعديل الفاتورة الأصفر */
+#view-pos {
+  overflow: hidden !important;
+  padding: 0.75rem 1rem !important;
+}
+.pos-layout {
+  height: calc(100vh - var(--header-height) - 1.5rem) !important;
+  min-height: 0 !important;
+}
+.pos-layout > div {
+  min-height: 0 !important;
+}
+.cart-container {
+  height: 100% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.cart-items {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+}
+#posCartContainer > div:not(#posCartItems) {
+  flex-shrink: 0 !important;
+}
+
+/* 2. ضمان سطوع ووضوح الوضع النهاري (Light Mode) 100% حتى لو كان نظام ويندوز داكناً */
+html:not(.dark) .dark\:bg-slate-800,
+html:not(.dark) .dark\:bg-slate-800\/90,
+html:not(.dark) .dark\:bg-slate-800\/80,
+html:not(.dark) .dark\:bg-slate-800\/70,
+html:not(.dark) .dark\:bg-slate-800\/60,
+html:not(.dark) .dark\:bg-slate-900,
+html:not(.dark) .dark\:bg-slate-900\/70,
+html:not(.dark) .bg-slate-200.dark\:bg-slate-800,
+html:not(.dark) .bg-slate-100.dark\:bg-slate-800,
+html:not(.dark) .bg-slate-100.dark\:bg-slate-700 {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+html:not(.dark) #posCartContainer > div:last-child,
+html:not(.dark) #posAlgerianMasterBar {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+html:not(.dark) .dark\:border-slate-700 {
+  border-color: #cbd5e1 !important;
+}
+
+html:not(.dark) .dark\:text-slate-200,
+html:not(.dark) .dark\:text-slate-300,
+html:not(.dark) .text-slate-300 {
+  color: #1e293b !important;
+}
+html:not(.dark) #sidebar .text-slate-300 {
+  color: #cbd5e1 !important;
+}
+
+/* 3. إصلاح موقع أيقونة البحث والباركود عند التبديل إلى الفرنسية أو الإنجليزية (LTR) */
+html[dir="ltr"] #top-header .relative > .material-symbols-rounded {
+  right: auto !important;
+  left: 0.75rem !important;
+}
+html[dir="ltr"] #globalPosSearch,
+html[dir="ltr"] #barcodeInput {
+  padding-right: 0.75rem !important;
+  padding-left: 2.25rem !important;
+}
+
