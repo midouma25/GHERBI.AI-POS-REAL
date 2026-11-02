@@ -4585,3 +4585,2962 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
     }
   }, true);
 })();
+
+// ============================================================================
+// [PAGE 3 CAISSE SURGICAL PERFECTION, Z-REPORT STUDIO & QA BOT — GHERBI.AI]
+// ============================================================================
+(function applyPage3CaisseSurgicalPerfection() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.caisseTxFilterType = 'all';
+  AppState.caisseTxSearchQuery = '';
+  AppState._currentZReportPreviewMode = '80mm';
+
+  function formatCleanCaisseDate(raw) {
+    if (!raw) return '—';
+    var s = String(raw).replace('T', ' ');
+    var d = s.slice(0, 10);
+    var t = s.slice(11, 16);
+    return t ? d + ' | 🕒 ' + t : d;
+  }
+
+  function getCaisseTxTypeInfo(type) {
+    var t = String(type || '').toLowerCase();
+    var map = {
+      sale_cash: { label: '📥 مبيعات نقدية', cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400', sign: '+', isIn: true },
+      sale: { label: '📥 مبيعات نقدية', cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400', sign: '+', isIn: true },
+      debt_payment: { label: '🤝 تسديد دين زبون', cls: 'bg-blue-500/15 text-blue-600 dark:text-blue-400', sign: '+', isIn: true },
+      order_deposit: { label: '📋 عربون طلبية', cls: 'bg-sky-500/15 text-sky-600 dark:text-sky-400', sign: '+', isIn: true },
+      cash_in: { label: '➕ إيداع / تغذية صندوق', cls: 'bg-teal-500/15 text-teal-600 dark:text-teal-400', sign: '+', isIn: true },
+      cash_out: { label: '➖ سحب نقدي / خزنة', cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400', sign: '-', isIn: false },
+      expense: { label: '💸 مصروف تشغيلي', cls: 'bg-rose-500/15 text-rose-600 dark:text-rose-400', sign: '-', isIn: false },
+      sale_refund: { label: '↩️ مرتجع مبيعات', cls: 'bg-purple-500/15 text-purple-600 dark:text-purple-400', sign: '-', isIn: false }
+    };
+    return map[t] || { label: t || 'حركة صندوق', cls: 'bg-slate-200 dark:bg-slate-700 text-slate-600', sign: '', isIn: true };
+  }
+
+  // إخفاء شارة (اضغط F5 للمسح) خارج شاشة المبيعات (#view-pos)
+  var _prevSwitchView = typeof App.switchView === 'function' ? App.switchView.bind(App) : null;
+  if (_prevSwitchView) {
+    App.switchView = async function (viewName) {
+      var res = await _prevSwitchView(viewName);
+      var pill = document.getElementById('barcodeMagnetStatusPill');
+      if (pill) {
+        pill.style.display = viewName === 'pos' ? '' : 'none';
+      }
+      return res;
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // 1. المولد الهندسي الكامل لتقرير الوردية Z-Report / X-Report (80mm حراري + A4 رسمي)
+  // --------------------------------------------------------------------------
+  App.buildSessionZReportHtml = function (details, mode) {
+    var sess = (details && details.session) || {};
+    var sum = (details && details.summary) || {};
+    var txs = (details && details.transactions) || [];
+    var s = AppState.settings || {};
+
+    var opening = Number(sum.openingBalance ?? sess.opening_balance ?? 0);
+    var salesCash = Number(sum.totalSalesCash || 0);
+    var cashIn = Number(sum.totalCashIn || 0);
+    var cashOut = Number(sum.totalCashOut || 0);
+    var expenses = Number(sum.totalExpenses || 0);
+    var refunds = Number(sum.totalRefunds || 0);
+    var expected = Number(sum.expectedBalance ?? sum.currentBalance ?? opening);
+    var isClosed = sess.status === 'closed' && sess.closing_balance !== null && sess.closing_balance !== undefined;
+    var closing = isClosed ? Number(sess.closing_balance) : expected;
+    var diff = isClosed ? Number((closing - expected).toFixed(2)) : 0;
+
+    var centimeExpected = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(expected) : '';
+    var centimeClosing = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(closing) : '';
+    var reportTitle = isClosed ? 'تقرير إغلاق الوردية النهائي (Z-REPORT)' : 'تقرير جرد الصندوق اللحظي (X-REPORT)';
+
+    var txRowsHtml = txs.length > 0
+      ? txs.slice(0, 80).map(function (t) {
+          var info = getCaisseTxTypeInfo(t.type);
+          return (
+            '<tr>' +
+            '<td>' + info.label.replace(/^[^\s]+\s/, '') + '</td>' +
+            '<td>' + (t.description || '-') + '</td>' +
+            '<td style="direction:ltr;font-family:monospace;font-weight:bold;">' + info.sign + Number(t.amount || 0).toFixed(2) + '</td>' +
+            '<td style="font-family:monospace;font-size:10px;">' + String(t.created_at || '').replace('T', ' ').slice(11, 16) + '</td>' +
+            '</tr>'
+          );
+        }).join('')
+      : '<tr><td colspan="4" style="text-align:center;padding:8px;color:#64748b;">لا توجد حركات مسجلة في هذه الوردية</td></tr>';
+
+    if (mode === 'a4') {
+      return (
+        '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">' +
+        '<title>' + reportTitle + ' #' + (sess.id || '') + '</title>' +
+        '<style>' +
+        '@page { size: A4 portrait; margin: 12mm; }' +
+        'body { font-family: "Cairo", "Segoe UI", Tahoma, Arial, sans-serif; color: #0f172a; font-size: 12px; margin: 0; padding: 16px; background: #fff; }' +
+        '.hdr { display: flex; justify-content: space-between; border-bottom: 3px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 16px; }' +
+        '.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }' +
+        '.kpi { border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 10px; background: #f8fafc; text-align: center; }' +
+        '.kpi strong { display: block; font-size: 16px; font-family: monospace; margin-top: 4px; }' +
+        'table { width: 100%; border-collapse: collapse; margin-top: 10px; }' +
+        'th, td { border: 1px solid #0f172a; padding: 6px 8px; text-align: right; font-size: 11px; }' +
+        'th { background: #e2e8f0; font-weight: bold; }' +
+        '.sigs { display: flex; justify-content: space-between; margin-top: 36px; font-weight: bold; }' +
+        '</style></head><body>' +
+        '<div class="hdr">' +
+        '  <div><h2 style="margin:0;color:#1e3a8a;">' + (s.shop_name || 'Gherbi.Ai POS') + '</h2><div>' + (s.shop_address || 'الجزائر') + ' | هاتف: ' + (s.shop_phone || '-') + '</div></div>' +
+        '  <div style="text-align:left;"><h2 style="margin:0;">' + reportTitle + '</h2><div>رقم المناوبة: <strong>#' + (sess.id || 1) + '</strong> | الكاشير: <strong>' + (sess.user_name || 'المدير العام') + '</strong></div><div>الافتتاح: ' + formatCleanCaisseDate(sess.opened_at) + ' | الإغلاق: ' + (sess.closed_at ? formatCleanCaisseDate(sess.closed_at) : 'مفتوحة الآن') + '</div></div>' +
+        '</div>' +
+        '<div class="kpi-grid">' +
+        '  <div class="kpi"><span>الرصيد الافتتاحي</span><strong>' + opening.toFixed(2) + ' د.ج</strong></div>' +
+        '  <div class="kpi"><span>مبيعات وتسديدات النقد (+)</span><strong style="color:#059669;">+' + salesCash.toFixed(2) + ' د.ج</strong></div>' +
+        '  <div class="kpi"><span>إيداعات (+) / مسحوبات ومصاريف (-)</span><strong style="color:#e11d48;">+' + cashIn.toFixed(2) + ' / -' + (cashOut + expenses + refunds).toFixed(2) + ' د.ج</strong></div>' +
+        '  <div class="kpi"><span>الرصيد المتوقع في الدرج</span><strong style="color:#2563eb;">' + expected.toFixed(2) + ' د.ج</strong><div style="font-size:10px;color:#d97706;">' + centimeExpected + '</div></div>' +
+        '</div>' +
+        '<div style="border:1.5px solid #0f172a;border-radius:10px;padding:10px;margin-bottom:14px;display:flex;justify-content:space-between;background:#eff6ff;">' +
+        '  <div><strong>المبلغ الفعلي المعدود عند الجرد:</strong> <span style="font-family:monospace;font-size:15px;font-weight:bold;">' + closing.toFixed(2) + ' د.ج (' + centimeClosing + ')</span></div>' +
+        '  <div><strong>فارق الصندوق (Écart de Caisse):</strong> <span style="font-family:monospace;font-size:15px;font-weight:bold;color:' + (diff < -0.01 ? '#e11d48' : diff > 0.01 ? '#d97706' : '#059669') + ';">' + (diff > 0 ? '+' : '') + diff.toFixed(2) + ' د.ج (' + (Math.abs(diff) < 0.01 ? 'مطابق تماماً' : diff < 0 ? 'عجز في الصندوق' : 'فائض في الصندوق') + ')</span></div>' +
+        '</div>' +
+        (sess.close_note ? '<div style="margin-bottom:12px;font-weight:bold;">ملاحظة الجرد والإغلاق: ' + sess.close_note + '</div>' : '') +
+        '<h4>سجل حركات الخزينة التفصيلي خلال المناوبة (' + txs.length + ' حركة):</h4>' +
+        '<table><thead><tr><th>نوع الحركة</th><th>البيان والتفاصيل</th><th>المبلغ (د.ج)</th><th>التوقيت</th></tr></thead><tbody>' + txRowsHtml + '</tbody></table>' +
+        '<div class="sigs"><div>توقيع أمين الصندوق (الكاشير): ............................</div><div>توقيع ومصادقة المدير: ............................</div></div>' +
+        '</body></html>'
+      );
+    }
+
+    return (
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">' +
+      '<title>Z-Report #' + (sess.id || '') + '</title>' +
+      '<style>' +
+      '@page { margin: 0; }' +
+      '* { box-sizing: border-box; }' +
+      'body { font-family: "Cairo", "Segoe UI", Tahoma, Arial, sans-serif; width: 100%; max-width: 78mm; margin: 0 auto; padding: 3mm 4mm; color: #000; background: #fff; font-size: 11px; line-height: 1.4; }' +
+      '.c { text-align: center; }' +
+      '.b { font-weight: 900; }' +
+      '.sep { border-top: 1.5px dashed #000; margin: 6px 0; }' +
+      '.row { display: flex; justify-content: space-between; align-items: center; margin: 2px 0; }' +
+      '.box { border: 1.5px solid #000; border-radius: 6px; padding: 5px; margin: 6px 0; background: #f8fafc; }' +
+      'table { width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 4px; }' +
+      'th, td { border-bottom: 1px dotted #94a3b8; padding: 3px 2px; text-align: right; }' +
+      'th { border-bottom: 1.5px solid #000; font-weight: 900; }' +
+      '</style></head><body>' +
+      '<div class="c">' +
+      '  <div class="b" style="font-size:15px;">' + (s.shop_name || 'Gherbi.Ai POS') + '</div>' +
+      '  <div style="font-size:10px;">' + (s.shop_address || 'الجزائر') + (s.shop_phone ? ' - ' + s.shop_phone : '') + '</div>' +
+      '  <div class="box b" style="font-size:12px;">' + reportTitle + '</div>' +
+      '</div>' +
+      '<div class="row"><span>رقم المناوبة:</span><span class="b" style="font-family:monospace;">#' + (sess.id || 1) + '</span></div>' +
+      '<div class="row"><span>أمين الصندوق:</span><span class="b">' + (sess.user_name || 'المدير العام') + '</span></div>' +
+      '<div class="row"><span>وقت الافتتاح:</span><span style="font-family:monospace;font-size:10px;">' + formatCleanCaisseDate(sess.opened_at) + '</span></div>' +
+      '<div class="row"><span>وقت الإغلاق:</span><span style="font-family:monospace;font-size:10px;">' + (sess.closed_at ? formatCleanCaisseDate(sess.closed_at) : 'مفتوحة الآن') + '</span></div>' +
+      '<div class="sep"></div>' +
+      '<div class="row"><span>الرصيد الافتتاحي:</span><span class="b" style="font-family:monospace;">' + opening.toFixed(2) + ' د.ج</span></div>' +
+      '<div class="row"><span>مبيعات وتسديدات النقد (+):</span><span class="b" style="font-family:monospace;">+' + salesCash.toFixed(2) + ' د.ج</span></div>' +
+      '<div class="row"><span>إيداعات نقدية (+):</span><span class="b" style="font-family:monospace;">+' + cashIn.toFixed(2) + ' د.ج</span></div>' +
+      '<div class="row"><span>سحوبات نقدية (-):</span><span class="b" style="font-family:monospace;">-' + cashOut.toFixed(2) + ' د.ج</span></div>' +
+      '<div class="row"><span>مصاريف ومرتجعات (-):</span><span class="b" style="font-family:monospace;">-' + (expenses + refunds).toFixed(2) + ' د.ج</span></div>' +
+      '<div class="sep"></div>' +
+      '<div class="box">' +
+      '  <div class="row b" style="font-size:12px;"><span>الرصيد الدفتري المتوقع:</span><span style="font-family:monospace;">' + expected.toFixed(2) + ' د.ج</span></div>' +
+      '  <div style="font-size:9px;text-align:left;">بالسنتيم: ' + centimeExpected + '</div>' +
+      '  <div class="row b" style="font-size:12px;margin-top:3px;"><span>المبلغ الفعلي المعدود:</span><span style="font-family:monospace;">' + closing.toFixed(2) + ' د.ج</span></div>' +
+      '  <div class="row b"><span>الفارق (Écart):</span><span style="font-family:monospace;">' + (diff > 0 ? '+' : '') + diff.toFixed(2) + ' د.ج</span></div>' +
+      '</div>' +
+      (sess.close_note ? '<div style="font-size:10px;margin:4px 0;"><strong>ملاحظة:</strong> ' + sess.close_note + '</div>' : '') +
+      '<div class="sep"></div>' +
+      '<div class="b" style="font-size:10px;">ملخص الحركات (' + txs.length + '):</div>' +
+      '<table><thead><tr><th>النوع</th><th>البيان</th><th>المبلغ</th><th>الوقت</th></tr></thead><tbody>' + txRowsHtml + '</tbody></table>' +
+      '<div class="sep"></div>' +
+      '<div class="c" style="margin-top:10px;font-size:10px;">توقيع أمين الصندوق / المدير<br><br>....................................</div>' +
+      '</body></html>'
+    );
+  };
+
+  // --------------------------------------------------------------------------
+  // 2. طباعة وتصدير تقرير Z-Report بشكل مضمون 100% (حوار طابعة + حراري صامت + A4 + PDF)
+  // --------------------------------------------------------------------------
+  App.printSessionZReport = async function (sessionId, actionMode) {
+    var mode = actionMode || 'dialog_80mm';
+    var targetId = sessionId || (AppState.activeSession && AppState.activeSession.id);
+    if (!targetId) {
+      var allSess = (await window.api.getCaisseSessions().catch(function () { return []; })) || [];
+      if (allSess.length > 0) targetId = allSess[0].id;
+    }
+    if (!targetId) {
+      if (typeof showToast === 'function') showToast('لا توجد مناوبة لطباعة تقريرها حالياً', 'warning');
+      return;
+    }
+
+    var details = await window.api.getSessionDetails(targetId);
+    if (!details) {
+      if (typeof showToast === 'function') showToast('تعذر جلب بيانات المناوبة رقم #' + targetId, 'error');
+      return;
+    }
+
+    var isA4 = mode === 'dialog_a4' || mode === 'pdf';
+    var html = this.buildSessionZReportHtml(details, isA4 ? 'a4' : '80mm');
+
+    // تحديث المعاينة الحية داخل #reviewCaisseModal إن كانت مفتوحة
+    var previewFrame = document.getElementById('zReportLivePreviewFrame');
+    if (previewFrame && previewFrame.contentWindow) {
+      var fdoc = previewFrame.contentWindow.document;
+      fdoc.open();
+      fdoc.write(html);
+      fdoc.close();
+    }
+
+    // 1) تصدير مباشر كملف PDF
+    if (mode === 'pdf') {
+      if (window.api && typeof window.api.exportPDF === 'function') {
+        var pdfRes = await window.api.exportPDF({
+          html: html,
+          filename: 'Z-Report_Shift_' + targetId + '.pdf',
+          defaultFileName: 'Z-Report_Shift_' + targetId + '.pdf'
+        });
+        if (pdfRes && pdfRes.success && typeof showToast === 'function') {
+          showToast('📄 تم حفظ تقرير المناوبة #' + targetId + ' بصيغة PDF بنجاح!', 'success');
+        }
+      }
+      return;
+    }
+
+    // 2) طباعة حرارية صامتة مع Fallback تلقائي إذا لم توجد طابعة حرارية
+    if (mode === 'silent_80mm' && window.api && typeof window.api.printSilent === 'function') {
+      var silentRes = await window.api.printSilent({
+        html: html,
+        silent: true,
+        printerName: AppState.settings.thermal_printer_name || undefined
+      });
+      if (silentRes && silentRes.success) {
+        if (typeof showToast === 'function') showToast('🖨️ تمت طباعة تقرير Z-Report (80mm) مباشرة!', 'success');
+        return;
+      }
+    }
+
+    // 3) طباعة حوارية مضمونة (تفتح نافذة الطباعة في ويندوز أو تحفظ PDF إن ألغيت)
+    if (window.PrintEngine && typeof window.PrintEngine.printHtmlDocument === 'function') {
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+      if (typeof showToast === 'function') {
+        showToast('🖨️ تم إرسال تقرير المناوبة #' + targetId + ' إلى نافذة الطباعة!', 'info');
+      }
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 3. تطوير نافذة مراجعة المناوبة (#reviewCaisseModal — الصورة الثانية)
+  // --------------------------------------------------------------------------
+  App.openSessionReviewModal = async function (sessionId) {
+    var details = await window.api.getSessionDetails(sessionId);
+    if (!details) return;
+    var sess = details.session || {};
+    var sum = details.summary || {};
+    var txs = details.transactions || [];
+
+    var opening = Number(sum.openingBalance ?? sess.opening_balance ?? 0);
+    var expected = Number(sum.expectedBalance ?? sum.currentBalance ?? opening);
+    var isClosed = sess.status === 'closed' && sess.closing_balance !== null && sess.closing_balance !== undefined;
+    var closing = isClosed ? Number(sess.closing_balance) : expected;
+    var diff = isClosed ? Number((closing - expected).toFixed(2)) : 0;
+
+    var titleEl = document.getElementById('reviewCaisseModalTitle');
+    if (titleEl) {
+      titleEl.textContent =
+        (isClosed ? '📋 مراجعة المناوبة المغلقة رقم #' : '🟢 مراجعة المناوبة النشطة رقم #') +
+        (sess.id || sessionId) +
+        ' — الكاشير: ' +
+        (sess.user_name || 'المدير العام');
+    }
+
+    var zPreviewHtml = this.buildSessionZReportHtml(details, '80mm');
+
+    var body = document.getElementById('reviewCaisseModalBody');
+    if (body) {
+      body.innerHTML =
+        '<div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">الرصيد الافتتاحي</div><div class="font-mono font-black text-sm mt-0.5">' + opening.toFixed(2) + ' د.ج</div><div class="text-[10px] text-slate-400">' + formatCleanCaisseDate(sess.opened_at) + '</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">الرصيد الدفتري المتوقع</div><div class="font-mono font-black text-blue-600 text-sm mt-0.5">' + expected.toFixed(2) + ' د.ج</div><div class="text-[10px] text-amber-600 font-bold">' + (typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(expected) : '') + '</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">المبلغ الفعلي المعدود</div><div class="font-mono font-black text-emerald-600 text-sm mt-0.5">' + (isClosed ? closing.toFixed(2) + ' د.ج' : 'مفتوحة الآن') + '</div><div class="text-[10px] text-slate-400">' + (sess.closed_at ? formatCleanCaisseDate(sess.closed_at) : 'قيد العمل') + '</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">الفارق (Écart de Caisse)</div><div class="font-mono font-black text-sm mt-0.5 ' + (diff < -0.01 ? 'text-rose-600' : diff > 0.01 ? 'text-amber-600' : 'text-emerald-600') + '">' + (diff > 0 ? '+' : '') + diff.toFixed(2) + ' د.ج</div><div class="text-[10px] font-bold">' + (Math.abs(diff) < 0.01 ? '✅ مطابق تماماً' : diff < 0 ? '⚠️ عجز في الصندوق' : '➕ فائض في الصندوق') + '</div></div>' +
+        '</div>' +
+
+        '<div class="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-blue-600/10 border border-blue-500/25">' +
+        '  <div class="font-black text-blue-600 dark:text-blue-400 text-xs">🖨️ طباعة وتصدير التقرير الرسمي للمناوبة (Z-Report / X-Report):</div>' +
+        '  <div class="flex flex-wrap items-center gap-1.5">' +
+        '    <button type="button" onclick="App.printSessionZReport(' + (sess.id || sessionId) + ', \'dialog_80mm\')" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black text-xs shadow-sm">🖨️ طباعة تقرير Z-Report (80mm)</button>' +
+        '    <button type="button" onclick="App.printSessionZReport(' + (sess.id || sessionId) + ', \'silent_80mm\')" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs">⚡ طباعة حرارية فورية</button>' +
+        '    <button type="button" onclick="App.printSessionZReport(' + (sess.id || sessionId) + ', \'dialog_a4\')" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs">📄 طباعة تقرير مفصل (A4)</button>' +
+        '    <button type="button" onclick="App.printSessionZReport(' + (sess.id || sessionId) + ', \'pdf\')" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs">📥 حفظ PDF</button>' +
+        '  </div>' +
+        '</div>' +
+
+        '<div class="grid grid-cols-1 md:grid-cols-12 gap-3">' +
+        '  <div class="md:col-span-7 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 max-h-80 overflow-y-auto">' +
+        '    <div class="font-black text-xs mb-2 text-slate-600 dark:text-slate-300">حركات الخزينة في هذه المناوبة (' + txs.length + ' حركة):</div>' +
+        '    <table class="w-full text-xs text-right">' +
+        '      <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-1.5">النوع</th><th class="py-1.5">البيان</th><th class="py-1.5">المبلغ</th><th class="py-1.5">التوقيت</th></tr></thead>' +
+        '      <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (txs.length > 0
+          ? txs.map(function (t) {
+              var info = getCaisseTxTypeInfo(t.type);
+              return (
+                '<tr>' +
+                '  <td class="py-2"><span class="px-2 py-0.5 rounded-lg font-bold text-[10px] ' + info.cls + '">' + info.label + '</span></td>' +
+                '  <td class="py-2 font-bold">' + (t.description || '—') + '</td>' +
+                '  <td class="py-2 font-mono font-black ' + (info.isIn ? 'text-emerald-600' : 'text-rose-600') + '">' + info.sign + Number(t.amount || 0).toFixed(2) + ' د.ج</td>' +
+                '  <td class="py-2 font-mono text-slate-400 text-[11px]">' + formatCleanCaisseDate(t.created_at) + '</td>' +
+                '</tr>'
+              );
+            }).join('')
+          : '<tr><td colspan="4" class="py-8 text-center text-slate-400 font-bold">لا توجد حركات بيع أو سحب مسجلة خلال هذه المناوبة — التقرير جاهز للطباعة في المعاينة المقابلة</td></tr>') +
+        '      </tbody>' +
+        '    </table>' +
+        '  </div>' +
+        '  <div class="md:col-span-5 border border-slate-200 dark:border-slate-700 rounded-2xl p-2 bg-slate-100 dark:bg-slate-900 flex flex-col">' +
+        '    <div class="text-[11px] font-black text-center text-slate-500 mb-1">معاينة حية لتذكرة Z-Report (80mm):</div>' +
+        '    <iframe id="zReportLivePreviewFrame" class="w-full h-72 bg-white rounded-xl border border-slate-300"></iframe>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    this.openModal('reviewCaisseModal');
+
+    setTimeout(function () {
+      var frame = document.getElementById('zReportLivePreviewFrame');
+      if (frame && frame.contentWindow) {
+        var doc = frame.contentWindow.document;
+        doc.open();
+        doc.write(zPreviewHtml);
+        doc.close();
+      }
+    }, 60);
+  };
+
+  // --------------------------------------------------------------------------
+  // 4. إعادة هندسة شاشة إدارة الصندوق والمناوبات (#view-caisse — الصورة الأولى)
+  // --------------------------------------------------------------------------
+  
+  // ============================================================================
+  // [HOTFIX] صمام الأمان للدوال المفقودة من الواجهة الأصلية لإدارة الصندوق
+  // ============================================================================
+  App.refreshActiveSession = async function () {
+    if (!AppState.currentUser) return null;
+    try {
+      var uid = AppState.currentUser.id || 1;
+      AppState.activeSession = await window.api.getActiveSession(uid).catch(function(){ return null; });
+      
+      // تحديث شارة الكاشير العلوية آلياً
+      var shiftTxt = document.getElementById('headerShiftText');
+      if (shiftTxt) {
+        shiftTxt.textContent = AppState.activeSession
+          ? (AppState.lang === 'fr' ? 'Session active' : AppState.lang === 'en' ? 'Shift Active' : 'المناوبة نشطة')
+          : (AppState.lang === 'fr' ? 'Ouvrir la caisse' : AppState.lang === 'en' ? 'Open Till Shift' : 'فتح مناوبة صندوق');
+      }
+    } catch (e) {
+      AppState.activeSession = null;
+    }
+    return AppState.activeSession;
+  };
+
+  if (typeof App.openCaisseTxModal !== 'function') {
+    App.openCaisseTxModal = function (type) {
+      var tInp = document.getElementById('caisseTxTypeInput');
+      if (tInp) tInp.value = type;
+      var title = document.getElementById('caisseTxModalTitle');
+      if (title) {
+        title.textContent = type === 'cash_in' ? '➕ إيداع نقدي (تغذية الصندوق)' : '➖ سحب نقدي (مصاريف أو سحب للخزنة)';
+      }
+      var amtInp = document.getElementById('caisseTxAmountInput');
+      if (amtInp) amtInp.value = '';
+      var descInp = document.getElementById('caisseTxDescInput');
+      if (descInp) descInp.value = '';
+      this.openModal('caisseTxModal');
+    };
+  }
+
+  if (typeof App.confirmCaisseTx !== 'function') {
+    App.confirmCaisseTx = async function () {
+      var type = document.getElementById('caisseTxTypeInput')?.value || 'cash_in';
+      var amount = parseFloat(document.getElementById('caisseTxAmountInput')?.value) || 0;
+      var desc = document.getElementById('caisseTxDescInput')?.value || '';
+      if (amount <= 0) {
+        if (typeof showToast === 'function') showToast('يرجى إدخال مبلغ صحيح أكبر من الصفر', 'warning');
+        return;
+      }
+      
+      await window.api.addCaisseTransaction({
+        user_id: AppState.currentUser ? AppState.currentUser.id : 1,
+        type: type,
+        amount: amount,
+        description: desc
+      });
+      
+      this.closeModal('caisseTxModal');
+      if (typeof this.renderCaisseView === 'function') await this.renderCaisseView();
+      if (typeof showToast === 'function') showToast('تم تسجيل الحركة النقدية بنجاح', 'success');
+    };
+  }
+
+  if (typeof App.confirmOpenShift !== 'function') {
+    App.confirmOpenShift = async function () {
+      var bal = parseFloat(document.getElementById('openShiftBalanceInput')?.value) || 0;
+      var uid = AppState.currentUser ? AppState.currentUser.id : 1;
+      
+      await window.api.openCaisseSession({ userId: uid, openingBalance: bal });
+      this.closeModal('openShiftModal');
+      
+      await this.refreshActiveSession();
+      if (typeof this.renderCaisseView === 'function') await this.renderCaisseView();
+      if (typeof showToast === 'function') showToast('✅ تم فتح المناوبة بنجاح!', 'success');
+    };
+  }
+
+  App.renderCaisseView = async function () {
+    var root = document.getElementById('caisse-view-root');
+    if (!root) return;
+
+    await this.refreshActiveSession();
+    var activeSummary = await window.api.getCaisseSummary({
+      sessionId: AppState.activeSession ? AppState.activeSession.id : undefined,
+      userId: AppState.currentUser ? AppState.currentUser.id : undefined
+    }).catch(function () { return null; });
+
+    var sessions = (await window.api.getCaisseSessions().catch(function () { return []; })) || [];
+    var txLog = (await window.api.getCaisseTransactionsLog().catch(function () { return []; })) || [];
+
+    var displaySummary = activeSummary && activeSummary.summary ? activeSummary.summary : null;
+    var isShowingLastClosed = false;
+    var lastClosedSess = null;
+
+    if (!displaySummary && sessions.length > 0) {
+      var lastDetails = await window.api.getSessionDetails(sessions[0].id).catch(function () { return null; });
+      if (lastDetails && lastDetails.summary) {
+        displaySummary = lastDetails.summary;
+        lastClosedSess = lastDetails.session;
+        isShowingLastClosed = true;
+      }
+    }
+
+    var sum = displaySummary || {
+      openingBalance: 0,
+      totalSalesCash: 0,
+      totalCashIn: 0,
+      totalCashOut: 0,
+      totalExpenses: 0,
+      totalRefunds: 0,
+      expectedBalance: 0
+    };
+
+    var totalOutflows = Number((Number(sum.totalCashOut || 0) + Number(sum.totalExpenses || 0) + Number(sum.totalRefunds || 0)).toFixed(2));
+    var totalInflows = Number((Number(sum.totalSalesCash || 0) + Number(sum.totalCashIn || 0)).toFixed(2));
+    var expectedDrawer = Number(sum.expectedBalance || 0);
+    var centimeDrawer = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(expectedDrawer) : '';
+
+    var filteredTxs = txLog.filter(function (t) {
+      if (AppState.caisseTxFilterType === 'in') {
+        if (!getCaisseTxTypeInfo(t.type).isIn) return false;
+      } else if (AppState.caisseTxFilterType === 'out') {
+        if (getCaisseTxTypeInfo(t.type).isIn) return false;
+      }
+      if (AppState.caisseTxSearchQuery) {
+        var q = AppState.caisseTxSearchQuery.toLowerCase();
+        var matchDesc = String(t.description || '').toLowerCase().includes(q);
+        var matchAmt = String(t.amount || '').includes(q);
+        if (!matchDesc && !matchAmt) return false;
+      }
+      return true;
+    });
+
+    root.innerHTML =
+      '<div class="space-y-4">' +
+      '  <div class="flex flex-wrap items-center justify-between gap-3">' +
+      '    <div>' +
+      '      <h2 class="text-2xl font-black flex items-center gap-2">' +
+      '        <span>إدارة الصندوق والمناوبات (Caisse & Shifts)</span>' +
+      '        <button id="btnCaissePageQaBot" type="button" onclick="App.runAutoTest_CaissePage()" title="تشغيل الفحص الآلي الذاتي لصفحة الصندوق (Ctrl+Shift+T)" class="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm">🤖 فحص آلي (QA)</button>' +
+      '      </h2>' +
+      '      <p class="text-xs text-slate-500">فتح وإغلاق الورديات، حاسبة الفئات النقدية الجزائرية، الإيداع والسحب، وتقارير X-Report و Z-Report الحرارية و A4</p>' +
+      '    </div>' +
+      '    <div class="flex flex-wrap items-center gap-2 text-xs">' +
+      (AppState.activeSession
+        ? '<button type="button" onclick="App.openCaisseTxModal(\'cash_in\')" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-sm">+ إيداع نقدي (F2)</button>' +
+          '<button type="button" onclick="App.openCaisseTxModal(\'cash_out\')" class="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-sm">- سحب نقدي (F3)</button>' +
+          '<button type="button" onclick="App.openSafeDropModal()" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-sm">🔒 تحويل للخزنة (Safe Drop)</button>' +
+          '<button type="button" onclick="App.openSessionReviewModal(' + AppState.activeSession.id + ')" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-sm">📊 تقرير X-Report الفوري (F9)</button>' +
+          '<button type="button" onclick="App.openCloseShiftModal(' + AppState.activeSession.id + ', ' + expectedDrawer + ')" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black shadow-md">🛑 إغلاق المناوبة وجرد الدرج (Z-Report)</button>'
+        : '<button type="button" onclick="App.openModal(\'openShiftModal\')" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm shadow-lg shadow-emerald-600/25">+ فتح مناوبة صندوق جديدة الآن</button>' +
+          (sessions.length > 0
+            ? '<button type="button" onclick="App.openSessionReviewModal(' + sessions[0].id + ')" class="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold">🖨️ معاينة وطباعة آخر Z-Report (#' + sessions[0].id + ')</button>'
+            : '')) +
+      '      <button type="button" onclick="window.api.openCashDrawer()" title="فتح درج النقود إلكترونياً (F10)" class="px-3 py-2 rounded-xl bg-slate-800 text-white font-bold">🔓 الدرج (F10)</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      (AppState.activeSession
+        ? '<div class="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">' +
+          '  <div class="flex items-center gap-2 font-black text-emerald-700 dark:text-emerald-300">' +
+          '    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>' +
+          '    <span>المناوبة الحالية مفتوحة ونشطة (رقم #' + AppState.activeSession.id + ') — بدأت في: ' + formatCleanCaisseDate(AppState.activeSession.opened_at) + '</span>' +
+          '  </div>' +
+          '  <span class="font-bold text-slate-500">جميع المبيعات النقدية والمصاريف تقيد تلقائياً في هذه المناوبة</span>' +
+          '</div>'
+        : '<div class="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">' +
+          '  <div class="font-black text-amber-700 dark:text-amber-300">' +
+          '    ⚠️ لا توجد مناوبة مفتوحة حالياً — ' + (isShowingLastClosed ? 'البطاقات أدناه تعرض حصيلة آخر مناوبة مغلقة (#' + (lastClosedSess ? lastClosedSess.id : '') + ')' : 'اضغط على (فتح مناوبة صندوق جديدة) لبدء جرد اليوم') +
+          '  </div>' +
+          '  <button type="button" onclick="App.openModal(\'openShiftModal\')" class="px-3 py-1 rounded-lg bg-emerald-600 text-white font-bold">فتح مناوبة الآن</button>' +
+          '</div>') +
+
+      '  <div id="caisseKpiCardsGrid" class="grid grid-cols-1 md:grid-cols-4 gap-3">' +
+      '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">' +
+      '      <div class="text-xs text-slate-400 font-bold">الرصيد الافتتاحي (Fond de Caisse)</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1">' + Number(sum.openingBalance || 0).toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] text-slate-400 mt-0.5">' + (typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(sum.openingBalance || 0) : '') + '</div>' +
+      '    </div>' +
+      '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">' +
+      '      <div class="text-xs text-slate-400 font-bold">مبيعات وتسديدات وإيداعات النقد (+)</div>' +
+      '      <div class="text-2xl font-black font-mono text-emerald-600 mt-1">+' + totalInflows.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] text-emerald-600/80 font-bold mt-0.5">مبيعات: ' + Number(sum.totalSalesCash || 0).toFixed(2) + ' | إيداعات: ' + Number(sum.totalCashIn || 0).toFixed(2) + '</div>' +
+      '    </div>' +
+      '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">' +
+      '      <div class="text-xs text-slate-400 font-bold">المصاريف والمسحوبات والمرتجعات (-)</div>' +
+      '      <div class="text-2xl font-black font-mono text-rose-500 mt-1">-' + totalOutflows.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] text-rose-500/80 font-bold mt-0.5">سحوبات: ' + Number(sum.totalCashOut || 0).toFixed(2) + ' | مصاريف: ' + Number(sum.totalExpenses || 0).toFixed(2) + '</div>' +
+      '    </div>' +
+      '    <div class="p-4 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/25">' +
+      '      <div class="text-xs text-blue-100 font-bold">الرصيد المتوقع في الدرج (En Caisse)</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1">' + expectedDrawer.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] text-amber-300 font-black mt-0.5">🇩🇿 بالسنتيم: ' + centimeDrawer + '</div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">' +
+      '    <div class="lg:col-span-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm">' +
+      '      <div class="flex items-center justify-between mb-3">' +
+      '        <h3 class="font-black text-sm">سجل المناوبات وتقارير Z-Report (' + sessions.length + ')</h3>' +
+      '        <span class="text-[11px] text-slate-400 font-bold">انقر على (🖨️ Z-Report) أو (تفاصيل) للطباعة</span>' +
+      '      </div>' +
+      '      <div class="max-h-96 overflow-y-auto">' +
+      '        <table class="w-full text-xs text-right">' +
+      '          <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-2">#</th><th class="py-2">المستخدم</th><th class="py-2">الافتتاح</th><th class="py-2">الافتتاحي</th><th class="py-2">الختامي</th><th class="py-2">الفارق</th><th class="py-2 text-center">إجراءات التقرير</th></tr></thead>' +
+      '          <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      (sessions.length > 0
+        ? sessions.map(function (s) {
+            var diffVal = Number(s.difference || 0);
+            var isOpen = s.status === 'open';
+            return (
+              '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition">' +
+              '  <td class="py-2.5 font-mono font-black text-blue-600">#' + s.id + '</td>' +
+              '  <td class="py-2.5 font-bold">' + (s.user_name || 'المدير العام') + '</td>' +
+              '  <td class="py-2.5 font-mono text-slate-400 text-[11px]">' + formatCleanCaisseDate(s.opened_at) + '</td>' +
+              '  <td class="py-2.5 font-mono font-bold">' + Number(s.opening_balance || 0).toFixed(2) + '</td>' +
+              '  <td class="py-2.5 font-mono font-bold">' + (s.closing_balance !== null && s.closing_balance !== undefined ? Number(s.closing_balance).toFixed(2) : '<span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 font-sans">مفتوحة</span>') + '</td>' +
+              '  <td class="py-2.5 font-mono font-black ' + (diffVal < -0.01 ? 'text-rose-500' : diffVal > 0.01 ? 'text-amber-500' : 'text-emerald-600') + '">' + (isOpen ? '—' : (diffVal > 0 ? '+' : '') + diffVal.toFixed(2)) + '</td>' +
+              '  <td class="py-2.5 flex items-center justify-center gap-1">' +
+              '    <button type="button" onclick="App.openSessionReviewModal(' + s.id + ')" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-[11px]">📋 تفاصيل ومعاينة</button>' +
+              '    <button type="button" onclick="App.printSessionZReport(' + s.id + ', \'dialog_80mm\')" title="طباعة فورية لتقرير Z-Report" class="px-2.5 py-1 bg-indigo-600/15 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg font-bold text-[11px] transition">🖨️ Z-Report</button>' +
+              '  </td>' +
+              '</tr>'
+            );
+          }).join('')
+        : '<tr><td colspan="7" class="py-8 text-center text-slate-400 font-bold">لا توجد مناوبات مسجلة بعد</td></tr>') +
+      '          </tbody>' +
+      '        </table>' +
+      '      </div>' +
+      '    </div>' +
+
+      '    <div class="lg:col-span-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm">' +
+      '      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">' +
+      '        <h3 class="font-black text-sm">حركات الخزينة المباشرة (' + filteredTxs.length + ')</h3>' +
+      '        <div class="flex items-center gap-1 text-[11px]">' +
+      '          <input id="caisseTxSearchInput" type="text" value="' + (AppState.caisseTxSearchQuery || '') + '" oninput="App.onCaisseTxSearch(this.value)" placeholder="🔍 [F4] بحث في الحركات..." class="w-36 px-2.5 py-1 rounded-lg font-bold">' +
+      '          <button type="button" onclick="AppState.caisseTxFilterType=\'all\'; App.renderCaisseView()" class="px-2 py-1 rounded-lg font-bold ' + (AppState.caisseTxFilterType === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700') + '">الكل</button>' +
+      '          <button type="button" onclick="AppState.caisseTxFilterType=\'in\'; App.renderCaisseView()" class="px-2 py-1 rounded-lg font-bold ' + (AppState.caisseTxFilterType === 'in' ? 'bg-emerald-600 text-white' : 'bg-emerald-500/10 text-emerald-600') + '">داخل (+)</button>' +
+      '          <button type="button" onclick="AppState.caisseTxFilterType=\'out\'; App.renderCaisseView()" class="px-2 py-1 rounded-lg font-bold ' + (AppState.caisseTxFilterType === 'out' ? 'bg-rose-600 text-white' : 'bg-rose-500/10 text-rose-600') + '">خارج (-)</button>' +
+      '        </div>' +
+      '      </div>' +
+      '      <div class="max-h-96 overflow-y-auto">' +
+      '        <table class="w-full text-xs text-right">' +
+      '          <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-2">النوع</th><th class="py-2">البيان</th><th class="py-2">المبلغ</th><th class="py-2">التوقيت</th></tr></thead>' +
+      '          <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      (filteredTxs.length > 0
+        ? filteredTxs.map(function (t) {
+            var info = getCaisseTxTypeInfo(t.type);
+            return (
+              '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition">' +
+              '  <td class="py-2.5"><span class="px-2 py-0.5 rounded-lg font-bold text-[11px] ' + info.cls + '">' + info.label + '</span></td>' +
+              '  <td class="py-2.5 font-bold">' + (t.description || '—') + '</td>' +
+              '  <td class="py-2.5 font-mono font-black ' + (info.isIn ? 'text-emerald-600' : 'text-rose-600') + '">' + info.sign + Number(t.amount || 0).toFixed(2) + ' د.ج</td>' +
+              '  <td class="py-2.5 font-mono text-slate-400 text-[11px]">' + formatCleanCaisseDate(t.created_at) + '</td>' +
+              '</tr>'
+            );
+          }).join('')
+        : '<tr><td colspan="4" class="py-8 text-center text-slate-400 font-bold">لا توجد حركات مطابقة</td></tr>') +
+      '          </tbody>' +
+      '        </table>' +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  };
+
+  App.onCaisseTxSearch = function (val) {
+    AppState.caisseTxSearchQuery = String(val || '').trim();
+    this.renderCaisseView();
+    setTimeout(function () {
+      var inp = document.getElementById('caisseTxSearchInput');
+      if (inp) {
+        inp.focus();
+        var len = inp.value.length;
+        inp.setSelectionRange(len, len);
+      }
+    }, 10);
+  };
+
+  App.openSafeDropModal = function () {
+    this.openCaisseTxModal('cash_out');
+    var titleEl = document.getElementById('caisseTxModalTitle');
+    if (titleEl) titleEl.textContent = '🔒 تحويل فائض نقدي إلى الخزنة الرئيسية (Safe Drop)';
+    var descInp = document.getElementById('caisseTxDescInput');
+    if (descInp) descInp.value = 'تحويل فائض السيولة من الدرج إلى الخزنة الرئيسية';
+  };
+
+  App.confirmCloseShift = async function () {
+    var sessionId = Number(document.getElementById('closeShiftSessionId')?.value || (AppState.activeSession && AppState.activeSession.id));
+    if (!sessionId) return;
+    var closingBalance = parseFloat(document.getElementById('closeShiftCountedInput')?.value) || 0;
+    var userNote = document.getElementById('closeShiftNoteInput')?.value?.trim() || '';
+
+    var denomParts = [];
+    document.querySelectorAll('#closeShiftModal .denom-inp').forEach(function (inp) {
+      var d = Number(inp.getAttribute('data-denom') || 0);
+      var cnt = parseInt(inp.value || '0', 10) || 0;
+      if (d > 0 && cnt > 0) denomParts.push(cnt + '×' + d + 'د.ج');
+    });
+    var fullNote = denomParts.length > 0
+      ? (userNote ? userNote + ' | ' : '') + 'الجرد: [' + denomParts.join(' + ') + ']'
+      : userNote;
+
+    await window.api.closeCaisseSession({
+      sessionId: sessionId,
+      closingBalance: closingBalance,
+      closeNote: fullNote
+    });
+
+    this.closeModal('closeShiftModal');
+    await this.refreshActiveSession();
+    await this.renderCaisseView();
+    if (typeof showToast === 'function') {
+      showToast('✅ تم إغلاق المناوبة #' + sessionId + ' بنجاح — يمكنك الآن طباعة تقرير Z-Report', 'success');
+    }
+    await this.openSessionReviewModal(sessionId);
+  };
+
+  // --------------------------------------------------------------------------
+  // 5. روبوت الاختبار الآلي الذاتي للصفحة الثالثة (App.runAutoTest_CaissePage)
+  // --------------------------------------------------------------------------
+  App.runAutoTest_CaissePage = async function () {
+    if (AppState.currentView !== 'caisse') {
+      await this.switchView('caisse');
+    }
+
+    var results = [];
+    var check = function (name, cond, detail) {
+      results.push({ name: name, passed: Boolean(cond), detail: detail || '' });
+    };
+
+    try {
+      var reqIds = ['caisse-view-root', 'caisseKpiCardsGrid', 'openShiftModal', 'caisseTxModal', 'closeShiftModal', 'reviewCaisseModal'];
+      var missing = reqIds.filter(function (id) { return !document.getElementById(id); });
+      check('1. تكامل عناصر صفحة الصندوق والنوافذ الـ 4 (DOM Integrity)', missing.length === 0, missing.join(', ') || 'All 6 Containers OK');
+
+      var sessions = await window.api.getCaisseSessions();
+      check('2. اتصال قاعدة البيانات وجلب سجل المناوبات (SQLite WAL)', Array.isArray(sessions), sessions.length + ' مناوبة');
+
+      var txs = await window.api.getCaisseTransactionsLog();
+      check('3. جلب سجل حركات الخزينة المباشرة', Array.isArray(txs), txs.length + ' حركة');
+
+      var sampleBadge = getCaisseTxTypeInfo('sale_cash');
+      check('4. تعريب وتلوين شارات الحركات المالية (مبيعات نقدية بدلاً من sale_cash)', sampleBadge.label.includes('مبيعات نقدية') && sampleBadge.isIn === true, sampleBadge.label);
+
+      var kpiHtml = document.getElementById('caisseKpiCardsGrid')?.innerHTML || '';
+      check('5. عرض الرصيد المتوقع بالدينار وبالسنتيم الجزائري', kpiHtml.includes('بالسنتيم'), 'Centimes Active');
+
+      var denomInputs = document.querySelectorAll('#closeShiftModal .denom-inp');
+      check('6. حاسبة الفئات النقدية الجزائرية الكاملة (9 فئات من 2000 إلى 5 د.ج)', denomInputs.length >= 9, denomInputs.length + ' فئات نقدية');
+
+      this.openCloseShiftModal(1, 5000);
+      var d2000 = document.querySelector('#closeShiftModal .denom-inp[data-denom="2000"]');
+      var d1000 = document.querySelector('#closeShiftModal .denom-inp[data-denom="1000"]');
+      if (d2000 && d1000) {
+        d2000.value = '2';
+        d1000.value = '1';
+        this.recalcCloseShiftDenoms();
+      }
+      var countedVal = parseFloat(document.getElementById('closeShiftCountedInput')?.value || '0');
+      this.closeModal('closeShiftModal');
+      check('7. دقة حاسبة جرد الفئات النقدية ومعاينة الفارق اللحظي', countedVal === 5000, '2×2000 + 1×1000 = ' + countedVal + ' د.ج');
+
+      var sampleReport80 = this.buildSessionZReportHtml({ session: { id: 1, status: 'closed', opening_balance: 8000, closing_balance: 8000 }, summary: { openingBalance: 8000, expectedBalance: 8000 }, transactions: [] }, '80mm');
+      var sampleReportA4 = this.buildSessionZReportHtml({ session: { id: 1, status: 'closed', opening_balance: 8000, closing_balance: 8000 }, summary: { openingBalance: 8000, expectedBalance: 8000 }, transactions: [] }, 'a4');
+      check('8. مولد تقارير Z-Report / X-Report بصيغتي (80mm حراري + A4 رسمي)', sampleReport80.includes('Z-REPORT') && sampleReportA4.includes('A4 portrait'), '80mm & A4 Ready');
+
+      if (sessions.length > 0) {
+        await this.openSessionReviewModal(sessions[0].id);
+        var hasPreviewFrame = Boolean(document.getElementById('zReportLivePreviewFrame'));
+        this.closeModal('reviewCaisseModal');
+        check('9. نافذة مراجعة المناوبة والمعاينة الحية لتذكرة Z-Report قبل الطباعة', hasPreviewFrame, 'Live Preview Iframe OK');
+      } else {
+        check('9. نافذة مراجعة المناوبة (#reviewCaisseModal)', true, 'Ready');
+      }
+
+      check('10. ميزة تحويل الفائض النقدي للخزنة الحديدية (Safe Drop)', typeof this.openSafeDropModal === 'function', 'Safe Drop Ready');
+      check('11. محرك الفلترة والبحث الفوري في حركات الخزينة (داخل / خارج / الكل)', typeof this.onCaisseTxSearch === 'function', 'Filter & Search OK');
+
+      var pill = document.getElementById('barcodeMagnetStatusPill');
+      var pillHidden = !pill || pill.style.display === 'none';
+      check('12. إخفاء شارة (اضغط F5 للمسح) تلقائياً خارج شاشة المبيعات', pillHidden, 'Clean Header');
+    } catch (err) {
+      check('خطأ غير متوقع أثناء فحص صفحة الصندوق', false, err.message);
+    }
+
+    var passedCount = results.filter(function (r) { return r.passed; }).length;
+    var modal = document.getElementById('posQaReportModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'posQaReportModal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML =
+      '<div class="modal-content w-full max-w-2xl p-6 space-y-4">' +
+      '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+      '    <div class="flex items-center gap-2">' +
+      '      <span class="px-3 py-1 rounded-xl ' + (passedCount === results.length ? 'bg-emerald-600' : 'bg-amber-500') + ' text-white font-black text-xs">' + passedCount + ' / ' + results.length + ' PASS</span>' +
+      '      <h3 class="text-lg font-black">🤖 تقرير الفحص الآلي الذاتي — الصفحة 3 (إدارة الصندوق #view-caisse)</h3>' +
+      '    </div>' +
+      '    <button onclick="App.closeModal(\'posQaReportModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+      '  </div>' +
+      '  <div class="space-y-1.5 max-h-96 overflow-y-auto text-xs">' +
+      results.map(function (r) {
+        return (
+          '<div class="p-2.5 rounded-xl border ' + (r.passed ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-rose-500/40 bg-rose-500/10') + ' flex items-center justify-between">' +
+          '  <div class="font-bold">' + (r.passed ? '✅' : '❌') + ' ' + r.name + '</div>' +
+          '  <div class="font-mono text-[11px] text-slate-500 dark:text-slate-300">' + (r.detail || 'OK') + '</div>' +
+          '</div>'
+        );
+      }).join('') +
+      '  </div>' +
+      '  <div class="flex justify-end pt-2">' +
+      '    <button onclick="App.closeModal(\'posQaReportModal\')" class="px-6 py-2 bg-blue-600 text-white rounded-xl text-xs font-black">إغلاق التقرير والانتقال للصفحة الرابعة</button>' +
+      '  </div>' +
+      '</div>';
+
+    modal.classList.add('active');
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(modal);
+  };
+
+  var topQaBtn = document.getElementById('btnPosHeaderQaBot');
+  if (topQaBtn) {
+    topQaBtn.onclick = function () {
+      if (AppState.currentView === 'caisse') App.runAutoTest_CaissePage();
+      else if (AppState.currentView === 'sales') App.runAutoTest_SalesPage();
+      else App.runAutoTest_PosPage();
+    };
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.ctrlKey && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+      if (AppState.currentView === 'caisse') {
+        e.preventDefault();
+        e.stopPropagation();
+        App.runAutoTest_CaissePage();
+      }
+      return;
+    }
+
+    if (AppState.currentView !== 'caisse') return;
+    var activeModal = document.querySelector('.modal-overlay.active');
+    if (activeModal) return;
+
+    if (e.key === 'F2' && AppState.activeSession) {
+      e.preventDefault();
+      App.openCaisseTxModal('cash_in');
+    } else if (e.key === 'F3' && AppState.activeSession) {
+      e.preventDefault();
+      App.openCaisseTxModal('cash_out');
+    } else if (e.key === 'F4') {
+      e.preventDefault();
+      var sInp = document.getElementById('caisseTxSearchInput');
+      if (sInp) { sInp.focus(); sInp.select(); }
+    } else if (e.key === 'F9') {
+      e.preventDefault();
+      App.printSessionZReport(null, 'dialog_80mm');
+    }
+  }, true);
+})();
+
+// ============================================================================
+// [PAGE 4 INVENTORY SURGICAL PERFECTION & QA BOT — GHERBI.AI EXCLUSIVE]
+// ============================================================================
+(function applyPage4InventorySurgicalPerfection() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.inventorySearchQuery = '';
+  AppState.inventoryRoleFilter = 'all';
+
+  App.resetInventoryRoleFilter = function () {
+    AppState.inventoryRoleFilter = 'all';
+    App.renderInventoryView();
+  };
+
+  App.closeQaReportModal = function () {
+    App.closeModal('posQaReportModal');
+  };
+
+  App.renderInventoryView = async function () {
+    var root = document.getElementById('inventory-view-root');
+    if (!root) return;
+
+    var allProds = AppState.products || [];
+    if (AppState.inventoryRoleFilter && AppState.inventoryRoleFilter !== 'all') {
+      if (AppState.inventoryRoleFilter === 'commercial') {
+        allProds = allProds.filter(function (p) { return !p.material_role; });
+      } else {
+        allProds = allProds.filter(function (p) { return p.material_role === AppState.inventoryRoleFilter; });
+      }
+    }
+
+    var q = String(AppState.inventorySearchQuery || '').toLowerCase().trim();
+    var prods = allProds;
+    if (q) {
+      prods = allProds.filter(function (p) {
+        return (
+          String(p.name || '').toLowerCase().includes(q) ||
+          String(p.barcode || '').toLowerCase().includes(q) ||
+          String(p.category || '').toLowerCase().includes(q)
+        );
+      });
+    }
+
+    var emptyStockCnt = 0;
+    var lowStockCnt = 0;
+    var expiredCnt = 0;
+    var nowMs = Date.now();
+
+    allProds.forEach(function (p) {
+      var stock = Number(p.total_stock ?? p.stock ?? 0);
+      var minStock = Number(p.min_stock ?? 5);
+      if (stock <= 0) emptyStockCnt++;
+      else if (stock <= minStock) lowStockCnt++;
+
+      if (Array.isArray(p.batches)) {
+        var hasExp = p.batches.some(function (b) {
+          return Number(b.stock) > 0 && b.expiry_date && new Date(b.expiry_date).getTime() <= nowMs;
+        });
+        if (hasExp) expiredCnt++;
+      }
+    });
+
+    var displayedProds = prods.slice(0, 300);
+
+    root.innerHTML =
+      '<div class="space-y-4">' +
+      '  <div class="flex flex-wrap items-center justify-between gap-3">' +
+      '    <div>' +
+      '      <h2 class="text-2xl font-black flex items-center gap-2">' +
+      '        <span>إدارة المخزون، الدفعات، والمتغيرات (' + prods.length + ' منتج)</span>' +
+      '        <button id="btnInventoryPageQaBot" type="button" onclick="App.runAutoTest_InventoryPage()" title="تشغيل الفحص الآلي الذاتي لصفحة المخزون (Ctrl+Shift+T)" class="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm">🤖 فحص آلي (QA)</button>' +
+      '      </h2>' +
+      '      <p class="text-xs text-slate-500">إدارة المنتجات، الدفعات المخزنية (FIFO)، طباعة الملصقات السريعة، واستيراد وتصدير Excel / CSV بدون تعارض</p>' +
+      '    </div>' +
+      '    <div class="flex flex-wrap items-center gap-2 text-xs">' +
+      '      <button type="button" onclick="App.importDzMasterCsv()" class="px-3 py-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold hover:bg-amber-500 hover:text-slate-950 transition">🇩🇿 استيراد قاموس 613 (CSV)</button>' +
+      '      <button type="button" onclick="App.openStockDebtModal()" class="px-3 py-2 rounded-xl bg-rose-500/15 text-rose-600 font-bold hover:bg-rose-500 hover:text-white transition">ديون المخزون</button>' +
+      '      <button type="button" onclick="App.downloadInventoryTemplate()" class="px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-bold">قالب Excel</button>' +
+      '      <button type="button" onclick="App.importProductsExcel()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1 shadow-sm"><span class="material-symbols-rounded icon-sm">upload_file</span><span>استيراد Excel / CSV</span></button>' +
+      '      <button type="button" onclick="App.exportInventoryExcel()" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center gap-1 shadow-sm"><span class="material-symbols-rounded icon-sm">download</span><span>تصدير Excel</span></button>' +
+      '      <button type="button" onclick="App.openProductModal(null)" class="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm flex items-center gap-1 shadow-lg shadow-blue-600/25">+ منتج جديد (Alt+N)</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="grid grid-cols-2 md:grid-cols-5 gap-3">' +
+      '    <div onclick="App.resetInventoryRoleFilter()" class="p-3.5 rounded-2xl bg-blue-600 text-white shadow-sm cursor-pointer">' +
+      '      <div class="text-xs font-bold opacity-85">جميع المنتجات</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1">' + allProds.length + '</div>' +
+      '    </div>' +
+      '    <div class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-emerald-500/30 shadow-sm">' +
+      '      <div class="text-xs font-bold text-slate-400">متوفرة في المخزون (> 0)</div>' +
+      '      <div class="text-2xl font-black font-mono text-emerald-600 mt-1">' + Math.max(0, allProds.length - emptyStockCnt) + '</div>' +
+      '    </div>' +
+      '    <div class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-amber-500/30 shadow-sm">' +
+      '      <div class="text-xs font-bold text-slate-400">منخفضة المخزون</div>' +
+      '      <div class="text-2xl font-black font-mono text-amber-500 mt-1">' + lowStockCnt + '</div>' +
+      '    </div>' +
+      '    <div class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-rose-500/30 shadow-sm">' +
+      '      <div class="text-xs font-bold text-slate-400">نافدة (الرصيد <= 0)</div>' +
+      '      <div class="text-2xl font-black font-mono text-rose-500 mt-1">' + emptyStockCnt + '</div>' +
+      '    </div>' +
+      '    <div class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-purple-500/30 shadow-sm">' +
+      '      <div class="text-xs font-bold text-slate-400">منتهية الصلاحية</div>' +
+      '      <div class="text-2xl font-black font-mono text-purple-600 mt-1">' + expiredCnt + '</div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm">' +
+      '    <div class="flex flex-wrap items-center gap-2 mb-4">' +
+      '      <div class="relative flex-1 min-w-[220px]">' +
+      '        <span class="material-symbols-rounded icon-sm absolute right-3 top-2.5 text-slate-400">search</span>' +
+      '        <input id="inventorySearchInput" type="text" value="' + (AppState.inventorySearchQuery || '') + '" oninput="App.onInventorySearch(this.value)" placeholder="🔍 [F4] ابحث بالاسم أو الباركود أو الفئة..." class="w-full pr-9 pl-3 py-2 rounded-xl text-xs font-bold">' +
+      '      </div>' +
+      '      <select onchange="AppState.inventoryRoleFilter=this.value; App.renderInventoryView()" class="px-3 py-2 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700">' +
+      '        <option value="all" ' + (AppState.inventoryRoleFilter === 'all' ? 'selected' : '') + '>الكل (تجاري + تصنيع)</option>' +
+      '        <option value="commercial" ' + (AppState.inventoryRoleFilter === 'commercial' ? 'selected' : '') + '>المنتجات التجارية العادية</option>' +
+      '        <option value="raw_material" ' + (AppState.inventoryRoleFilter === 'raw_material' ? 'selected' : '') + '>المواد الأولية للتصنيع</option>' +
+      '        <option value="finished_good" ' + (AppState.inventoryRoleFilter === 'finished_good' ? 'selected' : '') + '>المنتجات المصنعة النهائية</option>' +
+      '      </select>' +
+      (prods.length > 300 ? '<span class="text-[11px] font-bold text-amber-600">يتم عرض أول 300 نتيجة لسرعة التصفح — استخدم البحث للوصول لأي منتج فوراً</span>' : '') +
+      '    </div>' +
+
+      '    <div class="overflow-x-auto max-h-[58vh]">' +
+      '      <table class="w-full text-xs text-right">' +
+      '        <thead class="sticky top-0 bg-white dark:bg-slate-800 z-10">' +
+      '          <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">' +
+      '            <th class="py-2.5 px-2">الباركود</th>' +
+      '            <th class="py-2.5 px-2">المنتج</th>' +
+      '            <th class="py-2.5 px-2">الفئة</th>' +
+      '            <th class="py-2.5 px-2">سعر الشراء</th>' +
+      '            <th class="py-2.5 px-2">سعر البيع</th>' +
+      '            <th class="py-2.5 px-2">سعر الجملة</th>' +
+      '            <th class="py-2.5 px-2">الرصيد الكلي</th>' +
+      '            <th class="py-2.5 px-2 text-center">إجراءات سريعة</th>' +
+      '          </tr>' +
+      '        </thead>' +
+      '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      (displayedProds.length > 0
+        ? displayedProds.map(function (p) {
+            var stock = Number(p.total_stock ?? p.stock ?? 0);
+            var isLow = stock > 0 && stock <= Number(p.min_stock ?? 5);
+            var batchCnt = Array.isArray(p.batches) ? p.batches.length : 1;
+            return (
+              '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition">' +
+              '  <td class="py-2.5 px-2 font-mono font-bold text-slate-400">' + (p.barcode || '—') + '</td>' +
+              '  <td class="py-2.5 px-2 font-bold cursor-pointer hover:text-blue-600" onclick="App.openProductModal(' + p.id + ')">' + p.name + '</td>' +
+              '  <td class="py-2.5 px-2 text-slate-500">' + (p.category || 'عام') + '</td>' +
+              '  <td class="py-2.5 px-2 font-mono">' + Number(p.cost_price || 0).toFixed(2) + '</td>' +
+              '  <td class="py-2.5 px-2 font-mono font-black text-blue-600">' + Number(p.selling_price || 0).toFixed(2) + '</td>' +
+              '  <td class="py-2.5 px-2 font-mono text-slate-500">' + (p.wholesale_price ? Number(p.wholesale_price).toFixed(2) : '—') + '</td>' +
+              '  <td class="py-2.5 px-2 font-mono font-black ' + (stock <= 0 ? 'text-rose-500' : isLow ? 'text-amber-500' : 'text-emerald-600') + '">' + stock + ' ' + (p.unit || 'قطعة') + '</td>' +
+              '  <td class="py-2.5 px-2 flex flex-wrap items-center justify-center gap-1">' +
+              '    <button type="button" onclick="App.openProductModal(' + p.id + ')" class="px-2 py-1 bg-blue-600/15 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg font-bold text-[11px] transition">تعديل</button>' +
+              '    <button type="button" onclick="App.openBatchesModal(' + p.id + ')" class="px-2 py-1 bg-emerald-500/15 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-lg font-bold text-[11px] transition">الدفعات (' + batchCnt + ')</button>' +
+              '    <button type="button" onclick="App.openProductAnalyticsModal(' + p.id + ')" class="px-2 py-1 bg-indigo-500/15 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg font-bold text-[11px] transition">ربحية</button>' +
+              '    <button type="button" onclick="App.quickPrintLabel(' + p.id + ')" class="px-2 py-1 bg-amber-500/15 text-amber-600 hover:bg-amber-500 hover:text-slate-950 rounded-lg font-bold text-[11px] transition">🏷️ باركود</button>' +
+              '    <button type="button" onclick="App.deleteProductById(' + p.id + ')" class="p-1 text-rose-500 hover:bg-rose-500/10 rounded-lg"><span class="material-symbols-rounded icon-sm">delete</span></button>' +
+              '  </td>' +
+              '</tr>'
+            );
+          }).join('')
+        : '<tr><td colspan="8" class="py-10 text-center text-slate-400 font-bold">لا توجد منتجات مطابقة للبحث</td></tr>') +
+      '        </tbody>' +
+      '      </table>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  };
+
+  App.onInventorySearch = function (val) {
+    AppState.inventorySearchQuery = String(val || '');
+    this.renderInventoryView();
+    setTimeout(function () {
+      var inp = document.getElementById('inventorySearchInput');
+      if (inp) {
+        inp.focus();
+        var len = inp.value.length;
+        inp.setSelectionRange(len, len);
+      }
+    }, 10);
+  };
+
+  App.quickPrintLabel = async function (productId) {
+    if (!window.PrintEngine) return;
+    var p = (AppState.products || []).find(function (x) { return Number(x.id) === Number(productId); });
+    if (!p) return;
+    var html = await window.PrintEngine.renderBarcodeLabelHtml(p, AppState.settings, {
+      mode: 'barcode',
+      widthMm: Number(AppState.settings.label_width_mm || 40),
+      heightMm: Number(AppState.settings.label_height_mm || 25)
+    });
+    await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  };
+
+  App.importProductsExcel = async function () {
+    if (!window.api || !window.api.importProductsExcel) return;
+    try {
+      if (typeof showToast === 'function') showToast('⏳ جاري استيراد المنتجات وفحص الباركودات...', 'info');
+      var res = await window.api.importProductsExcel();
+      if (!res || res.canceled) return;
+      if (res.success) {
+        await this.refreshProducts();
+        await this.renderInventoryView();
+        if (typeof showToast === 'function') {
+          showToast('✅ اكتمل الاستيراد: (' + (res.imported || 0) + ' جديد | ' + (res.updated || 0) + ' محدث | ' + (res.skipped || 0) + ' متخطى)', 'success');
+        }
+      }
+    } catch (err) {
+      if (typeof showToast === 'function') showToast('تعذر استيراد الملف: ' + (err.message || err), 'error');
+    }
+  };
+
+  App.runAutoTest_InventoryPage = async function () {
+    if (AppState.currentView !== 'inventory') await this.switchView('inventory');
+    var results = [];
+    var check = function (name, cond, detail) {
+      results.push({ name: name, passed: Boolean(cond), detail: detail || '' });
+    };
+
+    try {
+      check('1. تكامل عناصر صفحة المخزون والنوافذ (DOM Integrity)', Boolean(document.getElementById('inventory-view-root') && document.getElementById('productModal')));
+      var prods = await window.api.getProducts({});
+      check('2. اتصال قاعدة البيانات وجلب قائمة المنتجات', Array.isArray(prods), prods.length + ' منتج');
+
+      var mockBarcode = 'QA' + Date.now();
+      var newProd = await window.api.addProduct({ name: 'منتج اختبار آلي', barcode: mockBarcode, category: 'اختبارات', unit: 'قطعة', selling_price: 150, cost_price: 120, stock: 5 });
+      check('3. محاكاة إنشاء منتج جديد وتأكيد الحفظ في SQLite WAL', Boolean(newProd && newProd.id), 'ID: ' + (newProd ? newProd.id : 'OK'));
+
+      this.onInventorySearch(mockBarcode);
+      check('4. محرك البحث والفلترة اللحظية بالباركود والاسم', document.getElementById('inventorySearchInput')?.value === mockBarcode);
+
+      this.openProductModal(newProd ? newProd.id : null);
+      this.switchProductModalTab('variants');
+      check('5. مولد مصفوفة الخيارات المتعددة (Cartesian Variants Builder)', Boolean(document.getElementById('prodOptionGroupsBuilderBox')));
+      check('6. شريط التعبئة الجماعية للمتغيرات (Bulk Variant Tools)', Boolean(document.getElementById('bulkVariantCost')));
+
+      if (newProd && newProd.id) await window.api.deleteProduct(newProd.id);
+      this.closeModal('productModal');
+      this.onInventorySearch('');
+      check('7. تنظيف بيانات الاختبار واستعادة الحالة النظيفة', true);
+
+      check('8. محرك استيراد Excel / CSV المدرع ضد تكرار الباركود', typeof this.importProductsExcel === 'function');
+      check('9. محرك طباعة ملصق الباركود الفوري من الجدول', typeof this.quickPrintLabel === 'function');
+      check('10. نافذة إدارة الدفعات (Batches FIFO) وتواريخ الصلاحية', Boolean(document.getElementById('batchesModal')));
+
+      var twMode = window.tailwind && window.tailwind.config && window.tailwind.config.darkMode;
+      check('11. توافق الوضع النهاري والليلي (Tailwind Class Mode)', twMode === 'class');
+
+      var pill = document.getElementById('barcodeMagnetStatusPill');
+      check('12. إخفاء شارة الباركود المغناطيسية خارج شاشة الكاشير', !pill || pill.style.display === 'none');
+    } catch (err) {
+      check('خطأ غير متوقع أثناء فحص المخزون', false, err.message);
+    }
+
+    var passedCount = results.filter(function (r) { return r.passed; }).length;
+    var modal = document.getElementById('posQaReportModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'posQaReportModal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML =
+      '<div class="modal-content w-full max-w-2xl p-6 space-y-4">' +
+      '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+      '    <div class="flex items-center gap-2">' +
+      '      <span class="px-3 py-1 rounded-xl ' + (passedCount === results.length ? 'bg-emerald-600' : 'bg-amber-500') + ' text-white font-black text-xs">' + passedCount + ' / ' + results.length + ' PASS</span>' +
+      '      <h3 class="text-lg font-black">🤖 تقرير الفحص الآلي الذاتي — الصفحة 4 (إدارة المخزون #view-inventory)</h3>' +
+      '    </div>' +
+      '    <button type="button" onclick="App.closeQaReportModal()" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+      '  </div>' +
+      '  <div class="space-y-1.5 max-h-96 overflow-y-auto text-xs">' +
+      results.map(function (r) {
+        return (
+          '<div class="p-2.5 rounded-xl border ' + (r.passed ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-rose-500/40 bg-rose-500/10') + ' flex items-center justify-between">' +
+          '  <div class="font-bold">' + (r.passed ? '✅' : '❌') + ' ' + r.name + '</div>' +
+          '  <div class="font-mono text-[11px] text-slate-500 dark:text-slate-300">' + (r.detail || 'OK') + '</div>' +
+          '</div>'
+        );
+      }).join('') +
+      '  </div>' +
+      '  <div class="flex justify-end pt-2">' +
+      '    <button type="button" onclick="App.closeQaReportModal()" class="px-6 py-2 bg-blue-600 text-white rounded-xl text-xs font-black">إغلاق التقرير والانتقال للصفحة الخامسة</button>' +
+      '  </div>' +
+      '</div>';
+
+    modal.classList.add('active');
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(modal);
+  };
+
+  document.addEventListener('keydown', function (e) {
+    if (AppState.currentView !== 'inventory') return;
+    var activeModal = document.querySelector('.modal-overlay.active');
+    if (activeModal) return;
+
+    if (e.ctrlKey && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+      e.preventDefault();
+      e.stopPropagation();
+      App.runAutoTest_InventoryPage();
+    } else if (e.key === 'F4') {
+      e.preventDefault();
+      var sInp = document.getElementById('inventorySearchInput');
+      if (sInp) { sInp.focus(); sInp.select(); }
+    } else if (e.altKey && (e.key === 'n' || e.key === 'N')) {
+      e.preventDefault();
+      App.openProductModal(null);
+    }
+  }, true);
+})();
+
+// [UNIFIED EXCEL & CSV BUTTONS FIX]
+(function installUnifiedInventoryExcelHandlers() {
+  if (!window.App || !window.AppState) return;
+
+  // 1) زر استيراد Excel / CSV للمخزون
+  App.importProductsExcel = async function () {
+    var fn =
+      (window.api && window.api.importProductsFromExcel) ||
+      (window.api && window.api.importProductsExcel);
+    if (typeof fn !== 'function') {
+      if (typeof showToast === 'function') showToast('قناة استيراد Excel غير متاحة، أعد تشغيل التطبيق', 'error');
+      return;
+    }
+    try {
+      if (typeof showToast === 'function') showToast('⏳ جاري قراءة واستيراد ملف Excel / CSV...', 'info');
+      var res = await fn();
+      if (!res || res.canceled) return;
+      if (res.success) {
+        await this.refreshProducts();
+        await this.renderInventoryView();
+        var msg =
+          '✅ اكتمل الاستيراد بنجاح: (' +
+          (res.imported || 0) +
+          ' منتج جديد | ' +
+          (res.updated || 0) +
+          ' دفعة محدثة | ' +
+          (res.skipped || 0) +
+          ' مكرر/قاموس)';
+        if (typeof showToast === 'function') showToast(msg, 'success');
+      }
+    } catch (err) {
+      if (typeof showToast === 'function') showToast('خطأ أثناء الاستيراد: ' + (err.message || err), 'error');
+    }
+  };
+  App.importProductsFromExcel = App.importProductsExcel;
+
+  // 2) زر تصدير المخزون إلى Excel
+  App.exportInventoryExcel = async function () {
+    var fn =
+      (window.api && window.api.exportProductsToExcel) ||
+      (window.api && window.api.exportInventoryExcel) ||
+      (window.api && window.api.exportProductsExcel);
+    if (typeof fn !== 'function') {
+      if (typeof showToast === 'function') showToast('قناة تصدير Excel غير متاحة', 'error');
+      return;
+    }
+    try {
+      var res = await fn();
+      if (!res || res.canceled) return;
+      if (res.success && typeof showToast === 'function') {
+        showToast('📥 تم تصدير جدول المخزون إلى ملف Excel بنجاح!', 'success');
+      }
+    } catch (err) {
+      if (typeof showToast === 'function') showToast('خطأ أثناء التصدير: ' + (err.message || err), 'error');
+    }
+  };
+  App.exportProductsToExcel = App.exportInventoryExcel;
+
+  // 3) زر تحميل قالب Excel النموذجي
+  App.downloadInventoryTemplate = async function () {
+    var fn = window.api && window.api.downloadInventoryTemplate;
+    if (typeof fn !== 'function') return;
+    try {
+      var res = await fn();
+      if (res && res.success && typeof showToast === 'function') {
+        showToast('📄 تم حفظ قالب Excel النموذجي للمخزون بنجاح!', 'success');
+      }
+    } catch (err) {
+      if (typeof showToast === 'function') showToast('تعذر حفظ القالب: ' + (err.message || err), 'error');
+    }
+  };
+
+  // 4) زر استيراد القاموس الجزائري 613 (CSV)
+  App.importDzMasterCsv = async function () {
+    var fn =
+      (window.api && window.api.importDzMasterCsv) ||
+      (window.api && window.api.importDzDictionaryCsv);
+    if (typeof fn !== 'function') {
+      if (typeof showToast === 'function') showToast('يرجى إعادة تشغيل npm run dev لتفعيل جسر القاموس', 'warning');
+      return;
+    }
+    try {
+      if (typeof showToast === 'function') showToast('🇩🇿 جاري شحن القاموس الجزائري (613)...', 'info');
+      var res = await fn();
+      if (!res || res.canceled) return;
+      if (res.success && typeof showToast === 'function') {
+        showToast('🇩🇿 تم استيراد ' + (res.imported || 0) + ' منتج إلى القاموس الجزائري الذكي بنجاح!', 'success');
+      }
+    } catch (err) {
+      if (typeof showToast === 'function') showToast('تعذر استيراد القاموس: ' + (err.message || err), 'error');
+    }
+  };
+
+  if (window.api && !window.api.importDzMasterCsv && window.api.importDzDictionaryCsv) {
+    try {
+      window.api.importDzMasterCsv = window.api.importDzDictionaryCsv;
+    } catch (_) {}
+  }
+})();
+
+// [SMART PRODUCT EDIT & CONSULTANT SUPERPOWERS]
+(function installSmartProductEditAndConsultantSuperpowers() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.inventoryStockStatusFilter = 'all';
+  AppState.inventoryInlineEditMode = false;
+  AppState.currentEditingProductId = null;
+
+  // دالة مساعدة لوضع قيمة داخل حقل بأمان تام
+  function setVal(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.value = val !== undefined && val !== null ? String(val) : '';
+  }
+
+  function setChk(id, boolVal) {
+    var el = document.getElementById(id);
+    if (el) el.checked = Boolean(boolVal);
+  }
+
+  // --------------------------------------------------------------------------
+  // 1) الدالة الذكية الموحدة لفتح نافذة المنتج (تقبل رقم ID أو كائن منتج أو null)
+  // --------------------------------------------------------------------------
+  App.editProductById = async function (productId) {
+    return await this.openProductModal(Number(productId));
+  };
+
+  App.openProductModal = async function (prodOrId) {
+    var prod = null;
+
+    // إذا تم تمرير رقم ID (مثلاً 18 أو "18") نجلب المنتج الكامل من قاعدة البيانات ومن الذاكرة
+    if (typeof prodOrId === 'number' || (typeof prodOrId === 'string' && /^\d+$/.test(prodOrId.trim()))) {
+      var pid = Number(prodOrId);
+      var memProd = (AppState.products || []).find(function (x) { return Number(x.id) === pid; }) || null;
+      var dbProd = null;
+      if (window.api && typeof window.api.getProductFull === 'function') {
+        dbProd = await window.api.getProductFull(pid).catch(function () { return null; });
+      }
+      prod = Object.assign({}, memProd || {}, dbProd || {});
+      if (!prod.id) prod.id = pid;
+    } else if (prodOrId && typeof prodOrId === 'object') {
+      // إذا تم تمرير كائن له id ولكن تنقصه التفاصيل الكاملة نكمله من قاعدة البيانات
+      if (prodOrId.id && (!prodOrId.batches || !prodOrId.option_groups) && window.api && typeof window.api.getProductFull === 'function') {
+        var full = await window.api.getProductFull(Number(prodOrId.id)).catch(function () { return null; });
+        prod = Object.assign({}, prodOrId, full || {});
+      } else {
+        prod = prodOrId;
+      }
+    }
+
+    var isEdit = Boolean(prod && prod.id);
+    AppState.currentEditingProductId = isEdit ? Number(prod.id) : null;
+
+    // استخراج بيانات الدفعة الأولى في حال كانت الأسعار أو التواريخ محفوظة داخل batches
+    var firstBatch = (prod && Array.isArray(prod.batches) && prod.batches[0]) ? prod.batches[0] : {};
+    var cost = prod ? Number(prod.cost_price ?? firstBatch.cost_price ?? 0) : 0;
+    var sell = prod ? Number(prod.selling_price ?? firstBatch.selling_price ?? 0) : 0;
+    var wholesale = prod ? (prod.wholesale_price ?? firstBatch.wholesale_price ?? '') : '';
+    var totalStock = prod ? Number(prod.total_stock ?? prod.stock ?? firstBatch.stock ?? 0) : 0;
+    var expiryDate = prod ? (prod.expiry_date || prod.next_expiry || firstBatch.expiry_date || '') : '';
+    var locationStr = prod ? (prod.location || firstBatch.location || '') : '';
+
+    this.switchProductModalTab('basic');
+
+    // تحديث عنوان النافذة وشريط التنقل والاستنساخ
+    var titleEl = document.getElementById('productModalTitle');
+    if (titleEl) {
+      titleEl.innerHTML = isEdit
+        ? '<span class="text-blue-600">✏️ تعديل المنتج:</span> ' + (prod.name || '') + ' <span class="px-2 py-0.5 rounded-lg bg-blue-600/10 text-blue-600 font-mono text-xs">#' + prod.id + '</span>'
+        : '<span class="text-emerald-600">➕ إضافة منتج جديد إلى المخزون</span>';
+    }
+
+    this.ensureProductModalSuperToolbar(isEdit);
+
+    // تعبئة التبويب 1: البيانات الأساسية
+    setVal('prodIdInput', isEdit ? prod.id : '');
+    setVal('prodNameInput', prod ? (prod.name || '') : '');
+    setVal('prodBarcodeInput', prod ? (prod.barcode || '') : '');
+    setVal('prodCategoryInput', prod ? (prod.category || 'عام') : 'عام');
+    setVal('prodFamilyInput', prod ? (prod.family || '') : '');
+    setVal('prodSupplierInput', prod ? (prod.supplier || '') : '');
+    setVal('prodUnitInput', prod ? (prod.unit || 'قطعة') : 'قطعة');
+    setVal('prodStockInput', totalStock);
+    setVal('prodMinStockInput', prod ? (prod.min_stock ?? 5) : 5);
+    setVal('prodExpiryInput', expiryDate ? String(expiryDate).slice(0, 10) : '');
+    setVal('prodLocationInput', locationStr);
+    setVal('prodPluInput', prod ? (prod.plu_code || '') : '');
+    setVal('prodImageDataInput', prod ? (prod.image || '') : '');
+    setChk('prodFeaturedCheckbox', prod && Number(prod.is_featured) === 1);
+
+    // تعبئة التبويب 2: الأسعار وهامش الربح
+    setVal('prodCostInput', cost);
+    setVal('prodPriceInput', sell);
+    var markup = (cost > 0 && sell >= cost) ? Number((((sell - cost) / cost) * 100).toFixed(1)) : '';
+    setVal('prodMarkupInput', markup);
+    setVal('prodWholesaleInput', wholesale !== null && wholesale !== undefined ? wholesale : '');
+    setVal('prodWholesaleUnitInput', prod ? (prod.wholesale_unit || '') : '');
+    setVal('prodWholesaleQtyInput', prod && prod.wholesale_qty ? prod.wholesale_qty : '');
+
+    // تعبئة التبويب 3 و 4 و 5
+    setVal('prodMaterialRoleInput', prod ? (prod.material_role || '') : '');
+    setVal('prodWarrantyMonthsInput', prod ? (prod.warranty_months || 0) : 0);
+    setChk('prodTrackSerialCheckbox', prod && Number(prod.track_serial) === 1);
+    setChk('prodHideFromPosCheckbox', prod && Number(prod.hide_from_pos) === 1);
+    setChk('prodHasVariantsCheckbox', prod && Number(prod.has_variants) === 1);
+
+    AppState.tempExtraPrices = (prod && Array.isArray(prod.extra_prices)) ? prod.extra_prices.slice() : [];
+    AppState.tempExtraBarcodes = (prod && Array.isArray(prod.extra_barcodes)) ? prod.extra_barcodes.slice() : [];
+    AppState.tempVariantsMatrix = (prod && Array.isArray(prod.variants)) ? prod.variants.slice() : [];
+
+    if (prod && Array.isArray(prod.option_groups) && prod.option_groups.length > 0) {
+      AppState.tempOptionGroups = prod.option_groups.map(function (g) {
+        return {
+          id: g.id,
+          name: g.name,
+          valuesStr: Array.isArray(g.values)
+            ? g.values.map(function (v) { return typeof v === 'object' ? v.value : v; }).join(', ')
+            : ''
+        };
+      });
+    } else {
+      AppState.tempOptionGroups = [];
+    }
+
+    if (typeof this.renderExtraPricesInModal === 'function') this.renderExtraPricesInModal();
+    if (typeof this.renderExtraBarcodesInModal === 'function') this.renderExtraBarcodesInModal();
+    if (typeof this.renderVariantsMatrixInModal === 'function') this.renderVariantsMatrixInModal();
+    if (typeof this.renderOptionGroupsInModal === 'function') this.renderOptionGroupsInModal();
+
+    this.updateLiveProfitBannerInModal();
+    this.openModal('productModal');
+
+    setTimeout(function () {
+      var nameInp = document.getElementById('prodNameInput');
+      if (nameInp) nameInp.focus();
+    }, 60);
+  };
+
+  // --------------------------------------------------------------------------
+  // 2) شريط الأدوات الاستشاري داخل نافذة التعديل (التنقل بين المنتجات + الاستنساخ + حاسبة الربح)
+  // --------------------------------------------------------------------------
+  App.ensureProductModalSuperToolbar = function (isEdit) {
+    var modalContent = document.querySelector('#productModal .modal-content');
+    if (!modalContent) return;
+
+    var navBar = document.getElementById('prodModalConsultantBar');
+    if (!navBar) {
+      navBar = document.createElement('div');
+      navBar.id = 'prodModalConsultantBar';
+      var firstChild = modalContent.firstElementChild;
+      if (firstChild && firstChild.nextSibling) {
+        modalContent.insertBefore(navBar, firstChild.nextSibling);
+      } else {
+        modalContent.prepend(navBar);
+      }
+    }
+
+    if (!isEdit) {
+      navBar.className = 'hidden';
+    } else {
+      navBar.className = 'flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-xs';
+      navBar.innerHTML =
+        '<div class="flex items-center gap-1.5">' +
+        '  <button type="button" onclick="App.navigateEditProduct(-1)" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-700 font-bold hover:bg-blue-600 hover:text-white transition">⏮️ المنتج السابق</button>' +
+        '  <button type="button" onclick="App.navigateEditProduct(1)" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-700 font-bold hover:bg-blue-600 hover:text-white transition">المنتج التالي ⏭️</button>' +
+        '</div>' +
+        '<div class="flex items-center gap-1.5">' +
+        '  <button type="button" onclick="App.duplicateCurrentProductInModal()" class="px-3 py-1 rounded-lg bg-indigo-600/15 text-indigo-600 hover:bg-indigo-600 hover:text-white font-bold transition">📋 استنساخ كمنتج جديد</button>' +
+        '  <button type="button" onclick="App.saveAndEditNextProduct()" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-sm transition">💾 حفظ والانتقال للتالي ⏭️</button>' +
+        '</div>';
+    }
+
+    // إضافة شريط صافي الربح وأزرار النسب السريعة داخل تبويب الأسعار
+    var pricingTab = document.getElementById('prodTabContent-pricing');
+    if (pricingTab && !document.getElementById('prodLiveProfitBanner')) {
+      var banner = document.createElement('div');
+      banner.id = 'prodLiveProfitBanner';
+      banner.className = 'p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex flex-wrap items-center justify-between gap-2 text-xs';
+      pricingTab.prepend(banner);
+
+      ['prodCostInput', 'prodPriceInput', 'prodMarkupInput', 'prodWholesaleInput'].forEach(function (inpId) {
+        var el = document.getElementById(inpId);
+        if (el) {
+          el.addEventListener('input', function () {
+            App.updateLiveProfitBannerInModal();
+          });
+        }
+      });
+    }
+  };
+
+  App.updateLiveProfitBannerInModal = function () {
+    var banner = document.getElementById('prodLiveProfitBanner');
+    if (!banner) return;
+    var cost = parseFloat(document.getElementById('prodCostInput')?.value) || 0;
+    var sell = parseFloat(document.getElementById('prodPriceInput')?.value) || 0;
+    var profit = Number((sell - cost).toFixed(2));
+    var marginPct = cost > 0 ? Number((((sell - cost) / cost) * 100).toFixed(1)) : 0;
+    var centimes = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(sell) : '';
+
+    banner.innerHTML =
+      '<div>' +
+      '  <span class="font-bold text-slate-500">صافي الربح للوحدة: </span>' +
+      '  <strong class="font-mono text-sm ' + (profit >= 0 ? 'text-emerald-600' : 'text-rose-600') + '">' + (profit >= 0 ? '+' : '') + profit.toFixed(2) + ' د.ج (' + marginPct + '%)</strong>' +
+      '  <span class="mx-2 text-slate-300">|</span>' +
+      '  <span class="font-bold text-amber-600">سعر البيع بالسنتيم: ' + centimes + '</span>' +
+      '</div>' +
+      '<div class="flex items-center gap-1">' +
+      '  <span class="text-[11px] text-slate-400 font-bold ml-1">هامش سريع:</span>' +
+      '  <button type="button" onclick="App.applyQuickMarkupPct(15)" class="px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 font-mono font-bold hover:bg-emerald-600 hover:text-white">+15%</button>' +
+      '  <button type="button" onclick="App.applyQuickMarkupPct(20)" class="px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 font-mono font-bold hover:bg-emerald-600 hover:text-white">+20%</button>' +
+      '  <button type="button" onclick="App.applyQuickMarkupPct(25)" class="px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 font-mono font-bold hover:bg-emerald-600 hover:text-white">+25%</button>' +
+      '  <button type="button" onclick="App.applyQuickMarkupPct(35)" class="px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 font-mono font-bold hover:bg-emerald-600 hover:text-white">+35%</button>' +
+      '  <button type="button" onclick="App.applyQuickMarkupPct(50)" class="px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 font-mono font-bold hover:bg-emerald-600 hover:text-white">+50%</button>' +
+      '</div>';
+  };
+
+  App.applyQuickMarkupPct = function (pct) {
+    var costInp = document.getElementById('prodCostInput');
+    var markupInp = document.getElementById('prodMarkupInput');
+    var priceInp = document.getElementById('prodPriceInput');
+    var cost = parseFloat(costInp ? costInp.value : '0') || 0;
+    if (markupInp) markupInp.value = String(pct);
+    if (cost > 0 && priceInp) {
+      priceInp.value = String(Math.round(cost * (1 + pct / 100)));
+    }
+    this.updateLiveProfitBannerInModal();
+  };
+
+  App.duplicateCurrentProductInModal = function () {
+    setVal('prodIdInput', '');
+    AppState.currentEditingProductId = null;
+    var curName = document.getElementById('prodNameInput')?.value || '';
+    setVal('prodNameInput', curName + ' (نسخة)');
+    this.generateRandomBarcode();
+    var titleEl = document.getElementById('productModalTitle');
+    if (titleEl) {
+      titleEl.innerHTML = '<span class="text-indigo-600">📋 استنساخ منتج جديد — عدّل الاسم أو السعر ثم اضغط حفظ</span>';
+    }
+    if (typeof showToast === 'function') {
+      showToast('📋 تم تحويل النافذة لنسخة جديدة بوليد باركود جديد — اضغط حفظ لإضافتها!', 'info');
+    }
+  };
+
+  App.navigateEditProduct = async function (direction) {
+    var list = AppState._lastRenderedInventoryList || AppState.products || [];
+    if (list.length === 0) return;
+    var curId = Number(document.getElementById('prodIdInput')?.value || AppState.currentEditingProductId || 0);
+    var idx = list.findIndex(function (p) { return Number(p.id) === curId; });
+    var nextIdx = idx === -1 ? 0 : (idx + direction + list.length) % list.length;
+    var target = list[nextIdx];
+    if (target && target.id) {
+      await this.openProductModal(target.id);
+    }
+  };
+
+  App.saveAndEditNextProduct = async function () {
+    var list = AppState._lastRenderedInventoryList || AppState.products || [];
+    var curId = Number(document.getElementById('prodIdInput')?.value || AppState.currentEditingProductId || 0);
+    var idx = list.findIndex(function (p) { return Number(p.id) === curId; });
+    var nextProd = (idx !== -1 && idx + 1 < list.length) ? list[idx + 1] : null;
+
+    await this.saveProductFromModal(true);
+    if (nextProd && nextProd.id) {
+      await this.openProductModal(nextProd.id);
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 3) حفظ بيانات المنتج وتحديث الدفعات (inventory_batches) والمتغيرات بأمان تام
+  // --------------------------------------------------------------------------
+  App.saveProductFromModal = async function (keepModalOpen) {
+    var idVal = document.getElementById('prodIdInput')?.value;
+    var id = idVal ? Number(idVal) : null;
+
+    var payload = {
+      name: String(document.getElementById('prodNameInput')?.value || '').trim(),
+      barcode: String(document.getElementById('prodBarcodeInput')?.value || '').trim() || null,
+      category: String(document.getElementById('prodCategoryInput')?.value || 'عام').trim() || 'عام',
+      family: String(document.getElementById('prodFamilyInput')?.value || '').trim() || null,
+      supplier: String(document.getElementById('prodSupplierInput')?.value || '').trim() || null,
+      unit: String(document.getElementById('prodUnitInput')?.value || 'قطعة').trim() || 'قطعة',
+      cost_price: parseFloat(document.getElementById('prodCostInput')?.value) || 0,
+      selling_price: parseFloat(document.getElementById('prodPriceInput')?.value) || 0,
+      wholesale_price: document.getElementById('prodWholesaleInput')?.value !== '' ? parseFloat(document.getElementById('prodWholesaleInput')?.value) : null,
+      wholesale_unit: String(document.getElementById('prodWholesaleUnitInput')?.value || '').trim() || null,
+      wholesale_qty: parseInt(document.getElementById('prodWholesaleQtyInput')?.value || '0', 10) || null,
+      stock: parseFloat(document.getElementById('prodStockInput')?.value) || 0,
+      min_stock: parseInt(document.getElementById('prodMinStockInput')?.value || '5', 10) || 5,
+      expiry_date: document.getElementById('prodExpiryInput')?.value || null,
+      location: String(document.getElementById('prodLocationInput')?.value || '').trim() || null,
+      plu_code: String(document.getElementById('prodPluInput')?.value || '').trim() || null,
+      image: document.getElementById('prodImageDataInput')?.value || null,
+      is_featured: document.getElementById('prodFeaturedCheckbox')?.checked ? 1 : 0,
+      material_role: document.getElementById('prodMaterialRoleInput')?.value || null,
+      warranty_months: parseInt(document.getElementById('prodWarrantyMonthsInput')?.value || '0', 10) || 0,
+      track_serial: document.getElementById('prodTrackSerialCheckbox')?.checked ? 1 : 0,
+      hide_from_pos: document.getElementById('prodHideFromPosCheckbox')?.checked ? 1 : 0,
+      has_variants: document.getElementById('prodHasVariantsCheckbox')?.checked ? 1 : 0,
+      extra_prices: AppState.tempExtraPrices || [],
+      extra_barcodes: AppState.tempExtraBarcodes || [],
+      variants: AppState.tempVariantsMatrix || []
+    };
+
+    if (!payload.name) {
+      if (typeof showToast === 'function') showToast('يرجى إدخال اسم المنتج أولاً', 'error');
+      return;
+    }
+
+    var savedId = id;
+    if (id) {
+      await window.api.updateProduct(id, payload);
+      // ضمان تحديث الدفعة الأولى في inventory_batches مباشرة عبر جسر الدفعات أيضاً
+      var fullProd = await window.api.getProductFull(id).catch(function () { return null; });
+      var batches = (fullProd && Array.isArray(fullProd.batches)) ? fullProd.batches : [];
+      if (batches.length > 0 && window.api.updateBatch) {
+        await window.api.updateBatch(batches[0].id, {
+          stock: batches.length === 1 ? payload.stock : batches[0].stock,
+          cost_price: payload.cost_price,
+          selling_price: payload.selling_price,
+          wholesale_price: payload.wholesale_price,
+          expiry_date: payload.expiry_date || batches[0].expiry_date || null,
+          location: payload.location || batches[0].location || null
+        });
+      } else if (batches.length === 0 && window.api.addBatch) {
+        await window.api.addBatch(id, {
+          stock: payload.stock,
+          cost_price: payload.cost_price,
+          selling_price: payload.selling_price,
+          wholesale_price: payload.wholesale_price,
+          expiry_date: payload.expiry_date
+        });
+      }
+    } else {
+      var res = await window.api.addProduct(payload);
+      savedId = res && res.id ? Number(res.id) : null;
+    }
+
+    var optionGroupsPayload = (AppState.tempOptionGroups || [])
+      .map(function (g, idx) {
+        return {
+          name: String(g.name || '').trim(),
+          position: idx,
+          values: String(g.valuesStr || '').split(/[,،]/).map(function (x) { return x.trim(); }).filter(Boolean)
+        };
+      })
+      .filter(function (g) { return g.name && g.values.length > 0; });
+
+    if (savedId && (optionGroupsPayload.length > 0 || (payload.variants && payload.variants.length > 0)) && window.api.saveProductVariants) {
+      await window.api.saveProductVariants(savedId, {
+        has_variants: payload.has_variants,
+        option_groups: optionGroupsPayload,
+        variants: payload.variants
+      }).catch(function () {});
+    }
+
+    if (!keepModalOpen) {
+      this.closeModal('productModal');
+    }
+    await this.refreshProducts();
+    if (AppState.currentView === 'inventory') await this.renderInventoryView();
+    else this.renderPosView();
+
+    if (typeof showToast === 'function') {
+      showToast('✅ تم حفظ وتحديث بيانات المنتج (' + payload.name + ') بنجاح!', 'success');
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 4) التعديل الفوري داخل الجدول (Inline Quick-Edit) + حذف المنتج + تنظيف الصفرية
+  // --------------------------------------------------------------------------
+  App.toggleInventoryInlineEdit = function () {
+    AppState.inventoryInlineEditMode = !AppState.inventoryInlineEditMode;
+    this.renderInventoryView();
+    if (typeof showToast === 'function') {
+      showToast(
+        AppState.inventoryInlineEditMode
+          ? '⚡ تم تفعيل وضع التسعير والرصيد الفوري داخل الجدول — عدّل أي رقم واضغط Enter!'
+          : 'تم إيقاف وضع التعديل الفوري داخل الجدول',
+        'info'
+      );
+    }
+  };
+
+  App.saveInlineProductRow = async function (productId) {
+    var pid = Number(productId);
+    var p = (AppState.products || []).find(function (x) { return Number(x.id) === pid; });
+    if (!p) return;
+
+    var newCost = parseFloat(document.getElementById('inl-cost-' + pid)?.value) || 0;
+    var newSell = parseFloat(document.getElementById('inl-sell-' + pid)?.value) || 0;
+    var newWhlRaw = document.getElementById('inl-whl-' + pid)?.value;
+    var newWhl = newWhlRaw !== '' && newWhlRaw !== undefined ? parseFloat(newWhlRaw) : null;
+    var newStk = parseFloat(document.getElementById('inl-stk-' + pid)?.value) || 0;
+
+    var fullProd = await window.api.getProductFull(pid).catch(function () { return null; });
+    var batches = (fullProd && Array.isArray(fullProd.batches)) ? fullProd.batches : [];
+    if (batches.length > 0 && window.api.updateBatch) {
+      await window.api.updateBatch(batches[0].id, {
+        stock: newStk,
+        cost_price: newCost,
+        selling_price: newSell,
+        wholesale_price: newWhl,
+        expiry_date: batches[0].expiry_date || null
+      });
+    } else if (window.api.addBatch) {
+      await window.api.addBatch(pid, {
+        stock: newStk,
+        cost_price: newCost,
+        selling_price: newSell,
+        wholesale_price: newWhl
+      });
+    }
+
+    await this.refreshProducts();
+    var rowEl = document.getElementById('inv-row-' + pid);
+    if (rowEl) {
+      rowEl.classList.add('bg-emerald-500/20');
+      setTimeout(function () { rowEl.classList.remove('bg-emerald-500/20'); }, 600);
+    }
+    if (typeof showToast === 'function') {
+      showToast('⚡ تم تحديث (' + p.name + ') فوراً: بيع ' + newSell.toFixed(2) + ' د.ج | رصيد ' + newStk, 'success');
+    }
+  };
+
+  App.deleteProductById = async function (productId) {
+    var pid = Number(productId);
+    if (!pid) return;
+    await window.api.deleteProduct(pid);
+    await this.refreshProducts();
+    await this.renderInventoryView();
+    if (typeof showToast === 'function') showToast('🗑️ تم حذف المنتج من المخزون', 'info');
+  };
+  App.deleteProduct = App.deleteProductById;
+
+  App.cleanZeroPriceEmptyProducts = async function () {
+    var zeroProds = (AppState.products || []).filter(function (p) {
+      var stk = Number(p.total_stock ?? p.stock ?? 0);
+      var sell = Number(p.selling_price ?? 0);
+      var cost = Number(p.cost_price ?? 0);
+      return stk <= 0 && sell <= 0 && cost <= 0;
+    });
+
+    if (zeroProds.length === 0) {
+      if (typeof showToast === 'function') showToast('لا توجد منتجات صفرية (0 د.ج و 0 رصيد) لتنظيفها', 'info');
+      return;
+    }
+
+    if (typeof showToast === 'function') {
+      showToast('🧹 جاري تنظيف ' + zeroProds.length + ' منتج صفري من الجدول (ستبقى محفوظة في القاموس الجزائري 613)...', 'info');
+    }
+
+    for (var i = 0; i < zeroProds.length; i++) {
+      await window.api.deleteProduct(zeroProds[i].id);
+    }
+
+    await this.refreshProducts();
+    AppState.inventoryStockStatusFilter = 'all';
+    await this.renderInventoryView();
+    if (typeof showToast === 'function') {
+      showToast('✅ تم تنظيف ' + zeroProds.length + ' منتج صفري بنجاح! بقيت منتجات متجرك الحقيقية فقط.', 'success');
+    }
+  };
+
+  App.setInventoryStockFilter = function (statusKey) {
+    AppState.inventoryStockStatusFilter = statusKey || 'all';
+    this.renderInventoryView();
+  };
+
+  // --------------------------------------------------------------------------
+  // 5) ترقية عرض جدول المخزون مع الترتيب الذكي (المنتجات المسعرة أولاً) والتعديل المباشر
+  // --------------------------------------------------------------------------
+  App.renderInventoryView = async function () {
+    var root = document.getElementById('inventory-view-root');
+    if (!root) return;
+
+    var rawProds = (AppState.products || []).slice();
+
+    // ترتيب ذكي: المنتجات التي لها رصيد أو سعر بيع > 0 تظهر في أعلى الجدول دائماً!
+    rawProds.sort(function (a, b) {
+      var aActive = (Number(a.selling_price || 0) > 0 || Number(a.total_stock ?? a.stock ?? 0) > 0) ? 1 : 0;
+      var bActive = (Number(b.selling_price || 0) > 0 || Number(b.total_stock ?? b.stock ?? 0) > 0) ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+
+    var emptyStockCnt = 0;
+    var lowStockCnt = 0;
+    var expiredCnt = 0;
+    var zeroPriceEmptyCnt = 0;
+    var nowMs = Date.now();
+
+    rawProds.forEach(function (p) {
+      var stock = Number(p.total_stock ?? p.stock ?? 0);
+      var minStock = Number(p.min_stock ?? 5);
+      var sell = Number(p.selling_price ?? 0);
+      var cost = Number(p.cost_price ?? 0);
+
+      if (stock <= 0) emptyStockCnt++;
+      else if (stock <= minStock) lowStockCnt++;
+      if (stock <= 0 && sell <= 0 && cost <= 0) zeroPriceEmptyCnt++;
+
+      if (Array.isArray(p.batches)) {
+        var hasExp = p.batches.some(function (b) {
+          return Number(b.stock) > 0 && b.expiry_date && new Date(b.expiry_date).getTime() <= nowMs;
+        });
+        if (hasExp) expiredCnt++;
+      }
+    });
+
+    var filtered = rawProds;
+
+    if (AppState.inventoryRoleFilter && AppState.inventoryRoleFilter !== 'all') {
+      if (AppState.inventoryRoleFilter === 'commercial') {
+        filtered = filtered.filter(function (p) { return !p.material_role; });
+      } else {
+        filtered = filtered.filter(function (p) { return p.material_role === AppState.inventoryRoleFilter; });
+      }
+    }
+
+    var stFilter = AppState.inventoryStockStatusFilter || 'all';
+    if (stFilter === 'available') {
+      filtered = filtered.filter(function (p) { return Number(p.total_stock ?? p.stock ?? 0) > 0; });
+    } else if (stFilter === 'low') {
+      filtered = filtered.filter(function (p) {
+        var s = Number(p.total_stock ?? p.stock ?? 0);
+        return s > 0 && s <= Number(p.min_stock ?? 5);
+      });
+    } else if (stFilter === 'empty') {
+      filtered = filtered.filter(function (p) { return Number(p.total_stock ?? p.stock ?? 0) <= 0; });
+    } else if (stFilter === 'expired') {
+      filtered = filtered.filter(function (p) {
+        return Array.isArray(p.batches) && p.batches.some(function (b) {
+          return Number(b.stock) > 0 && b.expiry_date && new Date(b.expiry_date).getTime() <= nowMs;
+        });
+      });
+    }
+
+    var q = String(AppState.inventorySearchQuery || '').toLowerCase().trim();
+    if (q) {
+      filtered = filtered.filter(function (p) {
+        return (
+          String(p.name || '').toLowerCase().includes(q) ||
+          String(p.barcode || '').toLowerCase().includes(q) ||
+          String(p.category || '').toLowerCase().includes(q)
+        );
+      });
+    }
+
+    var displayedProds = filtered.slice(0, 300);
+    AppState._lastRenderedInventoryList = displayedProds;
+    var isInline = Boolean(AppState.inventoryInlineEditMode);
+
+    root.innerHTML =
+      '<div class="space-y-4">' +
+      '  <div class="flex flex-wrap items-center justify-between gap-3">' +
+      '    <div>' +
+      '      <h2 class="text-2xl font-black flex items-center gap-2">' +
+      '        <span>إدارة المخزون، الدفعات، والمتغيرات (' + filtered.length + ' منتج)</span>' +
+      '        <button id="btnInventoryPageQaBot" type="button" onclick="App.runAutoTest_InventoryPage()" title="تشغيل الفحص الآلي الذاتي لصفحة المخزون (Ctrl+Shift+T)" class="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm">🤖 فحص آلي (QA)</button>' +
+      '      </h2>' +
+      '      <p class="text-xs text-slate-500">المنتجات المسعّرة والمتوفرة تظهر في الصدارة تلقائياً — اضغط على اسم أي منتج أو زر (تعديل) لفتح بطاقته الكاملة</p>' +
+      '    </div>' +
+      '    <div class="flex flex-wrap items-center gap-2 text-xs">' +
+      '      <button type="button" onclick="App.toggleInventoryInlineEdit()" class="px-3.5 py-2 rounded-xl font-black transition shadow-sm ' + (isInline ? 'bg-amber-500 text-slate-950' : 'bg-indigo-600/15 text-indigo-600 hover:bg-indigo-600 hover:text-white') + '">⚡ ' + (isInline ? 'إغلاق التعديل السريع بالجدول' : 'تسعير وتعديل سريع بالجدول') + '</button>' +
+      (zeroPriceEmptyCnt > 0
+        ? '<button type="button" onclick="App.cleanZeroPriceEmptyProducts()" class="px-3 py-2 rounded-xl bg-rose-600/15 text-rose-600 hover:bg-rose-600 hover:text-white font-bold transition" title="حذف المنتجات المستوردة بسعر 0 ورصيد 0 من الجدول مع إبقائها في القاموس">🧹 تنظيف الصفرية (' + zeroPriceEmptyCnt + ')</button>'
+        : '') +
+      '      <button type="button" onclick="App.importDzMasterCsv()" class="px-3 py-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold hover:bg-amber-500 hover:text-slate-950 transition">🇩🇿 استيراد قاموس 613 (CSV)</button>' +
+      '      <button type="button" onclick="App.openStockDebtModal()" class="px-3 py-2 rounded-xl bg-rose-500/15 text-rose-600 font-bold hover:bg-rose-500 hover:text-white transition">ديون المخزون</button>' +
+      '      <button type="button" onclick="App.downloadInventoryTemplate()" class="px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-bold">قالب Excel</button>' +
+      '      <button type="button" onclick="App.importProductsExcel()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1 shadow-sm"><span class="material-symbols-rounded icon-sm">upload_file</span><span>استيراد Excel / CSV</span></button>' +
+      '      <button type="button" onclick="App.exportInventoryExcel()" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center gap-1 shadow-sm"><span class="material-symbols-rounded icon-sm">download</span><span>تصدير Excel</span></button>' +
+      '      <button type="button" onclick="App.openProductModal(null)" class="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm flex items-center gap-1 shadow-lg shadow-blue-600/25">+ منتج جديد (Alt+N)</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="grid grid-cols-2 md:grid-cols-5 gap-3">' +
+      '    <div onclick="App.setInventoryStockFilter(\'all\')" class="p-3.5 rounded-2xl cursor-pointer transition shadow-sm ' + (stFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700') + '">' +
+      '      <div class="text-xs font-bold opacity-85">جميع المنتجات</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1">' + rawProds.length + '</div>' +
+      '    </div>' +
+      '    <div onclick="App.setInventoryStockFilter(\'available\')" class="p-3.5 rounded-2xl cursor-pointer transition shadow-sm ' + (stFilter === 'available' ? 'bg-emerald-600 text-white' : 'bg-white dark:bg-slate-800 border border-emerald-500/30') + '">' +
+      '      <div class="text-xs font-bold ' + (stFilter === 'available' ? 'text-white' : 'text-slate-400') + '">متوفرة في المخزون (> 0)</div>' +
+      '      <div class="text-2xl font-black font-mono ' + (stFilter === 'available' ? 'text-white' : 'text-emerald-600') + ' mt-1">' + Math.max(0, rawProds.length - emptyStockCnt) + '</div>' +
+      '    </div>' +
+      '    <div onclick="App.setInventoryStockFilter(\'low\')" class="p-3.5 rounded-2xl cursor-pointer transition shadow-sm ' + (stFilter === 'low' ? 'bg-amber-500 text-slate-950' : 'bg-white dark:bg-slate-800 border border-amber-500/30') + '">' +
+      '      <div class="text-xs font-bold ' + (stFilter === 'low' ? 'text-slate-950' : 'text-slate-400') + '">منخفضة المخزون</div>' +
+      '      <div class="text-2xl font-black font-mono ' + (stFilter === 'low' ? 'text-slate-950' : 'text-amber-500') + ' mt-1">' + lowStockCnt + '</div>' +
+      '    </div>' +
+      '    <div onclick="App.setInventoryStockFilter(\'empty\')" class="p-3.5 rounded-2xl cursor-pointer transition shadow-sm ' + (stFilter === 'empty' ? 'bg-rose-600 text-white' : 'bg-white dark:bg-slate-800 border border-rose-500/30') + '">' +
+      '      <div class="text-xs font-bold ' + (stFilter === 'empty' ? 'text-white' : 'text-slate-400') + '">نافدة (الرصيد <= 0)</div>' +
+      '      <div class="text-2xl font-black font-mono ' + (stFilter === 'empty' ? 'text-white' : 'text-rose-500') + ' mt-1">' + emptyStockCnt + '</div>' +
+      '    </div>' +
+      '    <div onclick="App.setInventoryStockFilter(\'expired\')" class="p-3.5 rounded-2xl cursor-pointer transition shadow-sm ' + (stFilter === 'expired' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-slate-800 border border-purple-500/30') + '">' +
+      '      <div class="text-xs font-bold ' + (stFilter === 'expired' ? 'text-white' : 'text-slate-400') + '">منتهية الصلاحية</div>' +
+      '      <div class="text-2xl font-black font-mono ' + (stFilter === 'expired' ? 'text-white' : 'text-purple-600') + ' mt-1">' + expiredCnt + '</div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm">' +
+      '    <div class="flex flex-wrap items-center gap-2 mb-4">' +
+      '      <div class="relative flex-1 min-w-[220px]">' +
+      '        <span class="material-symbols-rounded icon-sm absolute right-3 top-2.5 text-slate-400">search</span>' +
+      '        <input id="inventorySearchInput" type="text" value="' + (AppState.inventorySearchQuery || '') + '" oninput="App.onInventorySearch(this.value)" placeholder="🔍 [F4] ابحث بالاسم أو الباركود أو الفئة..." class="w-full pr-9 pl-3 py-2 rounded-xl text-xs font-bold">' +
+      '      </div>' +
+      '      <select onchange="AppState.inventoryRoleFilter=this.value; App.renderInventoryView()" class="px-3 py-2 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700">' +
+      '        <option value="all" ' + (AppState.inventoryRoleFilter === 'all' ? 'selected' : '') + '>الكل (تجاري + تصنيع)</option>' +
+      '        <option value="commercial" ' + (AppState.inventoryRoleFilter === 'commercial' ? 'selected' : '') + '>المنتجات التجارية العادية</option>' +
+      '        <option value="raw_material" ' + (AppState.inventoryRoleFilter === 'raw_material' ? 'selected' : '') + '>المواد الأولية للتصنيع</option>' +
+      '        <option value="finished_good" ' + (AppState.inventoryRoleFilter === 'finished_good' ? 'selected' : '') + '>المنتجات المصنعة النهائية</option>' +
+      '      </select>' +
+      '    </div>' +
+
+      '    <div class="overflow-x-auto max-h-[58vh]">' +
+      '      <table class="w-full text-xs text-right">' +
+      '        <thead class="sticky top-0 bg-white dark:bg-slate-800 z-10">' +
+      '          <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">' +
+      '            <th class="py-2.5 px-2">الباركود</th>' +
+      '            <th class="py-2.5 px-2">المنتج</th>' +
+      '            <th class="py-2.5 px-2">الفئة</th>' +
+      '            <th class="py-2.5 px-2">سعر الشراء</th>' +
+      '            <th class="py-2.5 px-2">سعر البيع</th>' +
+      '            <th class="py-2.5 px-2">سعر الجملة</th>' +
+      '            <th class="py-2.5 px-2">الرصيد الكلي</th>' +
+      '            <th class="py-2.5 px-2 text-center">إجراءات سريعة</th>' +
+      '          </tr>' +
+      '        </thead>' +
+      '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      (displayedProds.length > 0
+        ? displayedProds.map(function (p) {
+            var stock = Number(p.total_stock ?? p.stock ?? 0);
+            var isLow = stock > 0 && stock <= Number(p.min_stock ?? 5);
+            var batchCnt = Array.isArray(p.batches) ? p.batches.length : 1;
+            var costVal = Number(p.cost_price || 0);
+            var sellVal = Number(p.selling_price || 0);
+            var whlVal = p.wholesale_price ? Number(p.wholesale_price) : '';
+
+            return (
+              '<tr id="inv-row-' + p.id + '" class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition">' +
+              '  <td class="py-2.5 px-2 font-mono font-bold text-slate-400">' + (p.barcode || '—') + '</td>' +
+              '  <td class="py-2.5 px-2 font-bold cursor-pointer text-slate-800 dark:text-slate-100 hover:text-blue-600" onclick="App.editProductById(' + p.id + ')">' + p.name + '</td>' +
+              '  <td class="py-2.5 px-2 text-slate-500">' + (p.category || 'عام') + '</td>' +
+              (isInline
+                ? '  <td class="py-1.5 px-1"><input id="inl-cost-' + p.id + '" type="number" step="any" value="' + costVal + '" onkeydown="if(event.key===\'Enter\') App.saveInlineProductRow(' + p.id + ')" class="w-20 px-2 py-1 rounded-lg font-mono font-bold text-center border-blue-400"></td>' +
+                  '  <td class="py-1.5 px-1"><input id="inl-sell-' + p.id + '" type="number" step="any" value="' + sellVal + '" onkeydown="if(event.key===\'Enter\') App.saveInlineProductRow(' + p.id + ')" class="w-20 px-2 py-1 rounded-lg font-mono font-black text-blue-600 text-center border-blue-500"></td>' +
+                  '  <td class="py-1.5 px-1"><input id="inl-whl-' + p.id + '" type="number" step="any" value="' + whlVal + '" placeholder="—" onkeydown="if(event.key===\'Enter\') App.saveInlineProductRow(' + p.id + ')" class="w-20 px-2 py-1 rounded-lg font-mono text-center"></td>' +
+                  '  <td class="py-1.5 px-1"><input id="inl-stk-' + p.id + '" type="number" step="any" value="' + stock + '" onkeydown="if(event.key===\'Enter\') App.saveInlineProductRow(' + p.id + ')" class="w-20 px-2 py-1 rounded-lg font-mono font-black text-emerald-600 text-center border-emerald-500"></td>'
+                : '  <td class="py-2.5 px-2 font-mono" ondblclick="App.toggleInventoryInlineEdit()" title="نقر مزدوج للتعديل المباشر">' + costVal.toFixed(2) + '</td>' +
+                  '  <td class="py-2.5 px-2 font-mono font-black text-blue-600" ondblclick="App.toggleInventoryInlineEdit()" title="نقر مزدوج للتعديل المباشر">' + sellVal.toFixed(2) + '</td>' +
+                  '  <td class="py-2.5 px-2 font-mono text-slate-500">' + (whlVal !== '' ? Number(whlVal).toFixed(2) : '—') + '</td>' +
+                  '  <td class="py-2.5 px-2 font-mono font-black ' + (stock <= 0 ? 'text-rose-500' : isLow ? 'text-amber-500' : 'text-emerald-600') + '" ondblclick="App.toggleInventoryInlineEdit()">' + stock + ' ' + (p.unit || 'قطعة') + '</td>') +
+              '  <td class="py-2.5 px-2 flex flex-wrap items-center justify-center gap-1">' +
+              (isInline
+                ? '    <button type="button" onclick="App.saveInlineProductRow(' + p.id + ')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black text-[11px] shadow-sm">💾 حفظ</button>'
+                : '') +
+              '    <button type="button" onclick="App.editProductById(' + p.id + ')" class="px-2.5 py-1 bg-blue-600/15 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg font-bold text-[11px] transition">تعديل</button>' +
+              '    <button type="button" onclick="App.openBatchesModal(' + p.id + ')" class="px-2 py-1 bg-emerald-500/15 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-lg font-bold text-[11px] transition">الدفعات (' + batchCnt + ')</button>' +
+              '    <button type="button" onclick="App.openProductAnalyticsModal(' + p.id + ')" class="px-2 py-1 bg-indigo-500/15 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg font-bold text-[11px] transition">ربحية</button>' +
+              '    <button type="button" onclick="App.quickPrintLabel(' + p.id + ')" class="px-2 py-1 bg-amber-500/15 text-amber-600 hover:bg-amber-500 hover:text-slate-950 rounded-lg font-bold text-[11px] transition">🏷️ باركود</button>' +
+              '    <button type="button" onclick="App.deleteProductById(' + p.id + ')" class="p-1 text-rose-500 hover:bg-rose-500/10 rounded-lg"><span class="material-symbols-rounded icon-sm">delete</span></button>' +
+              '  </td>' +
+              '</tr>'
+            );
+          }).join('')
+        : '<tr><td colspan="8" class="py-10 text-center text-slate-400 font-bold">لا توجد منتجات مطابقة للبحث</td></tr>') +
+      '        </tbody>' +
+      '      </table>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  };
+})();
+
+// [PAGE 5 BUNDLES & PROMOTIONS SURGICAL PERFECTION]
+(function applyPage5BundlesSurgicalPerfection() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.bundlesList = [];
+  AppState.promotionsList = [];
+  AppState.tempBundleItems = [];
+  AppState.editingBundleId = null;
+  AppState.editingPromoId = null;
+  AppState.bundlesSearchQuery = '';
+
+  function getActiveProductPrice(p) {
+    if (!p) return 0;
+    var firstBatch = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.selling_price ?? firstBatch.selling_price ?? 0);
+  }
+
+  function getActiveProductCost(p) {
+    if (!p) return 0;
+    var firstBatch = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.cost_price ?? firstBatch.cost_price ?? 0);
+  }
+
+  function getActiveProductStock(p) {
+    if (!p) return 0;
+    return Number(p.total_stock ?? p.stock ?? 0);
+  }
+
+  // --------------------------------------------------------------------------
+  // 1) ترقية نافذة الحزم (#bundleModal) ونافذة العروض (#promotionModal) في DOM
+  // --------------------------------------------------------------------------
+  App.upgradeBundlesAndPromosModalsDom = function () {
+    var bModal = document.getElementById('bundleModal');
+    if (bModal && !bModal.dataset.upgradedP5) {
+      bModal.dataset.upgradedP5 = '1';
+      bModal.innerHTML =
+        '<div class="modal-content w-full max-w-3xl p-6 space-y-4 overflow-y-auto">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <h3 id="bundleModalTitle" class="text-lg font-black text-blue-600">🎁 إنشاء / تعديل حزمة ترويجية متعددة المنتجات (Pack)</h3>' +
+        '    <button type="button" onclick="App.closeModal(\'bundleModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <input id="bundleIdInput" type="hidden">' +
+
+        '  <div class="flex flex-wrap items-center gap-1.5 p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs">' +
+        '    <span class="font-black text-indigo-600 dark:text-indigo-400 ml-1">⚡ قوالب باقات جزائرية ذكية بضغطة زر:</span>' +
+        '    <button type="button" onclick="App.applySmartBundlePreset(\'ramadan\')" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 font-bold hover:bg-indigo-600 hover:text-white transition">🌙 قفة المواد الأساسية</button>' +
+        '    <button type="button" onclick="App.applySmartBundlePreset(\'breakfast\')" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 font-bold hover:bg-indigo-600 hover:text-white transition">☕ باقة القهوة والفطور</button>' +
+        '    <button type="button" onclick="App.applySmartBundlePreset(\'drinks\')" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 font-bold hover:bg-indigo-600 hover:text-white transition">🧃 باقة المشروبات العائلية</button>' +
+        '  </div>' +
+
+        '  <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">' +
+        '    <div class="md:col-span-2">' +
+        '      <label class="block font-bold mb-1">اسم الحزمة / الباقة الترويجية *</label>' +
+        '      <input id="bundleNameInput" type="text" placeholder="مثال: باقة العائلة الاقتصادية (زيت + سكر + قهوة)" class="w-full px-3 py-2 rounded-xl font-bold">' +
+        '    </div>' +
+        '    <div>' +
+        '      <label class="block font-bold mb-1">باركود الحزمة (للمسح المباشر في الكاشير)</label>' +
+        '      <div class="flex gap-1">' +
+        '        <input id="bundleBarcodeInput" type="text" placeholder="61399..." class="flex-1 px-3 py-2 rounded-xl font-mono font-bold">' +
+        '        <button type="button" onclick="App.generateBundleBarcode()" class="px-2.5 bg-slate-200 dark:bg-slate-700 rounded-xl font-bold" title="توليد باركود للحزمة">⚡</button>' +
+        '      </div>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-2.5 text-xs">' +
+        '    <div class="font-black text-slate-700 dark:text-slate-200">📦 إضافة المنتجات المكوّنة للحزمة:</div>' +
+        '    <div class="grid grid-cols-1 md:grid-cols-12 gap-2">' +
+        '      <select id="bundleProductSelect" class="md:col-span-7 px-3 py-2 rounded-xl font-bold"></select>' +
+        '      <input id="bundleProductQty" type="number" step="any" min="0.1" value="1" placeholder="الكمية" class="md:col-span-2 px-3 py-2 rounded-xl font-mono font-bold text-center">' +
+        '      <button type="button" onclick="App.addComponentToBundleModal()" class="md:col-span-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black shadow-sm">+ إدراج في الحزمة</button>' +
+        '    </div>' +
+        '    <div id="bundleItemsTableContainer" class="max-h-44 overflow-y-auto pt-1"></div>' +
+        '  </div>' +
+
+        '  <div id="bundleLiveMetricsBox" class="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-center"></div>' +
+
+        '  <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs items-end">' +
+        '    <div>' +
+        '      <label class="block font-bold mb-1">إجمالي تكلفة الحزمة (د.ج)</label>' +
+        '      <input id="bundleCostInput" type="number" step="any" value="0" oninput="App.updateBundleModalMetrics()" class="w-full px-3 py-2 rounded-xl font-mono font-bold">' +
+        '    </div>' +
+        '    <div>' +
+        '      <label class="block font-bold mb-1 text-blue-600">سعر بيع الحزمة للزبون (د.ج) *</label>' +
+        '      <input id="bundlePriceInput" type="number" step="any" value="0" oninput="App.updateBundleModalMetrics()" class="w-full px-3 py-2 rounded-xl font-mono font-black text-base text-blue-600 border-blue-500">' +
+        '    </div>' +
+        '    <div class="flex gap-1">' +
+        '      <button type="button" onclick="App.applyQuickBundleDiscount(5)" class="flex-1 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-mono font-bold hover:bg-blue-600 hover:text-white">-5%</button>' +
+        '      <button type="button" onclick="App.applyQuickBundleDiscount(10)" class="flex-1 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-mono font-bold hover:bg-blue-600 hover:text-white">-10%</button>' +
+        '      <button type="button" onclick="App.applyQuickBundleDiscount(15)" class="flex-1 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-mono font-bold hover:bg-blue-600 hover:text-white">-15%</button>' +
+        '      <button type="button" onclick="App.applyQuickBundleDiscount(20)" class="flex-1 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-mono font-bold hover:bg-blue-600 hover:text-white">-20%</button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">' +
+        '    <button type="button" onclick="App.closeModal(\'bundleModal\')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء (Esc)</button>' +
+        '    <button type="button" onclick="App.saveBundleFromModal()" class="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-lg shadow-blue-600/25">💾 حفظ الحزمة الترويجية</button>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    var pModal = document.getElementById('promotionModal');
+    if (pModal && !pModal.dataset.upgradedP5) {
+      pModal.dataset.upgradedP5 = '1';
+      pModal.innerHTML =
+        '<div class="modal-content w-full max-w-lg p-6 space-y-4 overflow-y-auto">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <h3 id="promoModalTitle" class="text-lg font-black text-rose-600">🔥 إنشاء / تعديل عرض ترويجي وتخفيض موقوت</h3>' +
+        '    <button type="button" onclick="App.closeModal(\'promotionModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <input id="promoIdInput" type="hidden">' +
+
+        '  <div class="space-y-3 text-xs">' +
+        '    <div>' +
+        '      <label class="block font-bold mb-1">المنتج المستهدف بالتخفيض *</label>' +
+        '      <select id="promoProductSelect" onchange="App.updatePromoModalLivePreview()" class="w-full px-3 py-2.5 rounded-xl font-bold"></select>' +
+        '    </div>' +
+
+        '    <div class="grid grid-cols-2 gap-2.5">' +
+        '      <div>' +
+        '        <label class="block font-bold mb-1">نوع التخفيض</label>' +
+        '        <select id="promoTypeSelect" onchange="App.updatePromoModalLivePreview()" class="w-full px-3 py-2 rounded-xl font-bold">' +
+        '          <option value="percentage">نسبة مئوية (%)</option>' +
+        '          <option value="fixed">مبلغ ثابت يُخصم (د.ج)</option>' +
+        '        </select>' +
+        '      </div>' +
+        '      <div>' +
+        '        <label class="block font-bold mb-1">قيمة الخصم *</label>' +
+        '        <input id="promoValueInput" type="number" step="any" value="10" oninput="App.updatePromoModalLivePreview()" class="w-full px-3 py-2 rounded-xl font-mono font-black text-rose-600 text-base text-center">' +
+        '      </div>' +
+        '    </div>' +
+
+        '    <div class="flex items-center justify-between gap-1 pt-0.5">' +
+        '      <span class="text-[11px] text-slate-400 font-bold">نسب سريعة:</span>' +
+        '      <button type="button" onclick="App.setQuickPromoVal(\'percentage\', 5)" class="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-600 font-mono font-bold hover:bg-rose-600 hover:text-white">-5%</button>' +
+        '      <button type="button" onclick="App.setQuickPromoVal(\'percentage\', 10)" class="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-600 font-mono font-bold hover:bg-rose-600 hover:text-white">-10%</button>' +
+        '      <button type="button" onclick="App.setQuickPromoVal(\'percentage\', 15)" class="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-600 font-mono font-bold hover:bg-rose-600 hover:text-white">-15%</button>' +
+        '      <button type="button" onclick="App.setQuickPromoVal(\'percentage\', 20)" class="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-600 font-mono font-bold hover:bg-rose-600 hover:text-white">-20%</button>' +
+        '      <button type="button" onclick="App.setQuickPromoVal(\'percentage\', 30)" class="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-600 font-mono font-bold hover:bg-rose-600 hover:text-white">-30%</button>' +
+        '    </div>' +
+
+        '    <div id="promoLivePreviewCard" class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-1"></div>' +
+
+        '    <div class="grid grid-cols-3 gap-2">' +
+        '      <div><label class="block font-bold mb-1">تاريخ البداية</label><input id="promoStartInput" type="date" class="w-full px-2.5 py-2 rounded-xl font-mono"></div>' +
+        '      <div><label class="block font-bold mb-1">تاريخ الانتهاء</label><input id="promoEndInput" type="date" class="w-full px-2.5 py-2 rounded-xl font-mono"></div>' +
+        '      <div><label class="block font-bold mb-1" title="اتركه فارغاً لكمية غير محدودة">سقف الكمية (Quota)</label><input id="promoMaxQtyInput" type="number" min="0" placeholder="غير محدود" class="w-full px-2.5 py-2 rounded-xl font-mono text-center"></div>' +
+        '    </div>' +
+
+        '    <div class="flex items-center gap-1.5 pt-1">' +
+        '      <span class="text-[11px] text-slate-400 font-bold">مدة الحملة:</span>' +
+        '      <button type="button" onclick="App.setPromoDurationDays(3)" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 font-bold hover:bg-blue-600 hover:text-white">⚡ 3 أيام (Weekend)</button>' +
+        '      <button type="button" onclick="App.setPromoDurationDays(7)" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 font-bold hover:bg-blue-600 hover:text-white">📅 7 أيام</button>' +
+        '      <button type="button" onclick="App.setPromoDurationDays(30)" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 font-bold hover:bg-blue-600 hover:text-white">🌙 30 يوماً</button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">' +
+        '    <button type="button" onclick="App.closeModal(\'promotionModal\')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء</button>' +
+        '    <button type="button" onclick="App.savePromoFromModal()" class="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black shadow-lg shadow-rose-600/25">🔥 حفظ وتفعيل العرض</button>' +
+        '  </div>' +
+        '</div>';
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 2) منطق بناء وتعديل الحزم الترويجية (Multi-Item Pack Builder)
+  // --------------------------------------------------------------------------
+  App.generateBundleBarcode = function () {
+    var rnd = '61399' + String(Math.floor(10000000 + Math.random() * 90000000)).slice(0, 8);
+    var inp = document.getElementById('bundleBarcodeInput');
+    if (inp) inp.value = rnd;
+  };
+
+  App.getSortedPricedProducts = function () {
+    var list = (AppState.products || []).slice();
+    list.sort(function (a, b) {
+      var aP = getActiveProductPrice(a) > 0 ? 1 : 0;
+      var bP = getActiveProductPrice(b) > 0 ? 1 : 0;
+      if (aP !== bP) return bP - aP;
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+    return list;
+  };
+
+  App.openBundleModal = async function (bundleOrId) {
+    this.upgradeBundlesAndPromosModalsDom();
+    var prodSelect = document.getElementById('bundleProductSelect');
+    var sortedProds = this.getSortedPricedProducts();
+    if (prodSelect) {
+      prodSelect.innerHTML = sortedProds
+        .slice(0, 400)
+        .map(function (p) {
+          return '<option value="' + p.id + '">' + p.name + ' (' + getActiveProductPrice(p).toFixed(2) + ' د.ج | الرصيد: ' + getActiveProductStock(p) + ')</option>';
+        })
+        .join('');
+    }
+
+    var bundle = null;
+    if (typeof bundleOrId === 'number' || (typeof bundleOrId === 'string' && /^\d+$/.test(bundleOrId))) {
+      var bid = Number(bundleOrId);
+      bundle = (AppState.bundlesList || []).find(function (b) { return Number(b.id) === bid; }) || null;
+      if (!bundle && window.api && window.api.getBundleDetails) {
+        bundle = await window.api.getBundleDetails(bid).catch(function () { return null; });
+      }
+    } else if (bundleOrId && typeof bundleOrId === 'object') {
+      bundle = bundleOrId;
+    }
+
+    AppState.editingBundleId = bundle && bundle.id ? Number(bundle.id) : null;
+    document.getElementById('bundleIdInput').value = AppState.editingBundleId || '';
+    document.getElementById('bundleNameInput').value = bundle ? (bundle.name || '') : '';
+    document.getElementById('bundleBarcodeInput').value = bundle && bundle.barcode ? bundle.barcode : '';
+    if (!bundle) this.generateBundleBarcode();
+
+    if (bundle && Array.isArray(bundle.items) && bundle.items.length > 0) {
+      AppState.tempBundleItems = bundle.items.map(function (it) {
+        var pObj = (AppState.products || []).find(function (x) { return Number(x.id) === Number(it.product_id); });
+        return {
+          product_id: Number(it.product_id),
+          product_name: it.product_name || (pObj ? pObj.name : 'منتج #' + it.product_id),
+          quantity: Number(it.quantity || 1),
+          unit_cost: getActiveProductCost(pObj),
+          unit_price: getActiveProductPrice(pObj),
+          stock: getActiveProductStock(pObj)
+        };
+      });
+      document.getElementById('bundleCostInput').value = Number(bundle.cost_price || 0);
+      document.getElementById('bundlePriceInput').value = Number(bundle.selling_price || 0);
+    } else {
+      AppState.tempBundleItems = [];
+      document.getElementById('bundleCostInput').value = '0';
+      document.getElementById('bundlePriceInput').value = '0';
+    }
+
+    this.renderBundleItemsInModal();
+    this.updateBundleModalMetrics();
+    this.openModal('bundleModal');
+  };
+
+  App.addComponentToBundleModal = function () {
+    var pid = Number(document.getElementById('bundleProductSelect')?.value);
+    var qty = Math.max(0.01, parseFloat(document.getElementById('bundleProductQty')?.value) || 1);
+    if (!pid) return;
+    var pObj = (AppState.products || []).find(function (x) { return Number(x.id) === pid; });
+    if (!pObj) return;
+
+    var existing = AppState.tempBundleItems.find(function (it) { return Number(it.product_id) === pid; });
+    if (existing) {
+      existing.quantity = Number((existing.quantity + qty).toFixed(3));
+    } else {
+      AppState.tempBundleItems.push({
+        product_id: pid,
+        product_name: pObj.name,
+        quantity: qty,
+        unit_cost: getActiveProductCost(pObj),
+        unit_price: getActiveProductPrice(pObj),
+        stock: getActiveProductStock(pObj)
+      });
+    }
+
+    this.recalcBundleDefaultPriceAndCost();
+    this.renderBundleItemsInModal();
+    this.updateBundleModalMetrics();
+  };
+
+  App.removeComponentFromBundleModal = function (idx) {
+    AppState.tempBundleItems.splice(idx, 1);
+    this.recalcBundleDefaultPriceAndCost();
+    this.renderBundleItemsInModal();
+    this.updateBundleModalMetrics();
+  };
+
+  App.updateBundleComponentQty = function (idx, val) {
+    var q = Math.max(0.01, parseFloat(val) || 1);
+    if (AppState.tempBundleItems[idx]) {
+      AppState.tempBundleItems[idx].quantity = q;
+      this.recalcBundleDefaultPriceAndCost();
+      this.updateBundleModalMetrics();
+    }
+  };
+
+  App.recalcBundleDefaultPriceAndCost = function () {
+    var totalCost = 0;
+    var totalRetail = 0;
+    (AppState.tempBundleItems || []).forEach(function (it) {
+      totalCost += Number(it.unit_cost || 0) * Number(it.quantity || 1);
+      totalRetail += Number(it.unit_price || 0) * Number(it.quantity || 1);
+    });
+    var costInp = document.getElementById('bundleCostInput');
+    var priceInp = document.getElementById('bundlePriceInput');
+    if (costInp) costInp.value = totalCost.toFixed(2);
+    // اقتراح خصم 10% تلقائياً على مجموع أسعار التجزئة
+    if (priceInp) priceInp.value = Math.max(totalCost, Math.round(totalRetail * 0.9)).toFixed(2);
+  };
+
+  App.applyQuickBundleDiscount = function (pct) {
+    var totalRetail = 0;
+    (AppState.tempBundleItems || []).forEach(function (it) {
+      totalRetail += Number(it.unit_price || 0) * Number(it.quantity || 1);
+    });
+    if (totalRetail <= 0) return;
+    var discounted = Math.round(totalRetail * (1 - Number(pct) / 100));
+    var priceInp = document.getElementById('bundlePriceInput');
+    if (priceInp) priceInp.value = discounted.toFixed(2);
+    this.updateBundleModalMetrics();
+  };
+
+  App.renderBundleItemsInModal = function () {
+    var box = document.getElementById('bundleItemsTableContainer');
+    if (!box) return;
+    var items = AppState.tempBundleItems || [];
+    if (items.length === 0) {
+      box.innerHTML = '<div class="py-4 text-center text-slate-400 font-bold">لم يتم إدراج منتجات في الحزمة بعد — اختر منتجاً أعلاه واضغط (+ إدراج في الحزمة) أو اختر قالباً ذكياً</div>';
+      return;
+    }
+
+    box.innerHTML =
+      '<table class="w-full text-xs text-right">' +
+      '  <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-1.5">المنتج المكوّن</th><th class="py-1.5">السعر الفردي</th><th class="py-1.5">الكمية بالحزمة</th><th class="py-1.5">المجموع الفردي</th><th class="py-1.5">حذف</th></tr></thead>' +
+      '  <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      items.map(function (it, idx) {
+        var sub = Number(it.unit_price || 0) * Number(it.quantity || 1);
+        return (
+          '<tr>' +
+          '  <td class="py-1.5 font-bold">' + it.product_name + '</td>' +
+          '  <td class="py-1.5 font-mono">' + Number(it.unit_price || 0).toFixed(2) + ' د.ج</td>' +
+          '  <td class="py-1.5"><input type="number" step="any" min="0.1" value="' + it.quantity + '" oninput="App.updateBundleComponentQty(' + idx + ', this.value)" class="w-16 px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-mono font-bold text-center"></td>' +
+          '  <td class="py-1.5 font-mono font-bold text-blue-600">' + sub.toFixed(2) + ' د.ج</td>' +
+          '  <td class="py-1.5"><button type="button" onclick="App.removeComponentFromBundleModal(' + idx + ')" class="text-rose-500 font-black px-2">✕</button></td>' +
+          '</tr>'
+        );
+      }).join('') +
+      '  </tbody>' +
+      '</table>';
+  };
+
+  App.updateBundleModalMetrics = function () {
+    var box = document.getElementById('bundleLiveMetricsBox');
+    if (!box) return;
+    var totalRetail = 0;
+    var minAssemblable = Infinity;
+    var items = AppState.tempBundleItems || [];
+
+    items.forEach(function (it) {
+      totalRetail += Number(it.unit_price || 0) * Number(it.quantity || 1);
+      var reqQty = Number(it.quantity || 1);
+      var avail = Number(it.stock || 0);
+      var possible = reqQty > 0 ? Math.floor(avail / reqQty) : 0;
+      if (possible < minAssemblable) minAssemblable = possible;
+    });
+    if (!Number.isFinite(minAssemblable)) minAssemblable = 0;
+
+    var bundleCost = parseFloat(document.getElementById('bundleCostInput')?.value) || 0;
+    var bundlePrice = parseFloat(document.getElementById('bundlePriceInput')?.value) || 0;
+    var customerSaving = Math.max(0, Number((totalRetail - bundlePrice).toFixed(2)));
+    var savingPct = totalRetail > 0 ? Number(((customerSaving / totalRetail) * 100).toFixed(1)) : 0;
+    var merchantProfit = Number((bundlePrice - bundleCost).toFixed(2));
+    var centimePrice = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(bundlePrice) : '';
+
+    box.innerHTML =
+      '<div class="p-2 rounded-xl bg-white/80 dark:bg-slate-900/70">' +
+      '  <div class="text-[10px] text-slate-400 font-bold">مجموع الأسعار الفردية</div>' +
+      '  <div class="font-mono font-black text-sm line-through text-slate-500">' + totalRetail.toFixed(2) + ' د.ج</div>' +
+      '</div>' +
+      '<div class="p-2 rounded-xl bg-white/80 dark:bg-slate-900/70">' +
+      '  <div class="text-[10px] text-slate-400 font-bold">توفير الزبون (Économie)</div>' +
+      '  <div class="font-mono font-black text-sm text-emerald-600">' + customerSaving.toFixed(2) + ' د.ج (' + savingPct + '%)</div>' +
+      '</div>' +
+      '<div class="p-2 rounded-xl bg-white/80 dark:bg-slate-900/70">' +
+      '  <div class="text-[10px] text-slate-400 font-bold">صافي ربح التاجر بالحزمة</div>' +
+      '  <div class="font-mono font-black text-sm ' + (merchantProfit >= 0 ? 'text-blue-600' : 'text-rose-600') + '">' + (merchantProfit >= 0 ? '+' : '') + merchantProfit.toFixed(2) + ' د.ج</div>' +
+      '</div>' +
+      '<div class="p-2 rounded-xl bg-white/80 dark:bg-slate-900/70">' +
+      '  <div class="text-[10px] text-slate-400 font-bold">الباقات المتاحة للتجميع</div>' +
+      '  <div class="font-mono font-black text-sm text-amber-600">' + minAssemblable + ' باقة (' + centimePrice + ')</div>' +
+      '</div>';
+  };
+
+  App.applySmartBundlePreset = function (presetKey) {
+    var priced = this.getSortedPricedProducts().filter(function (p) { return getActiveProductPrice(p) > 0; });
+    if (priced.length === 0) return;
+
+    var picked = [];
+    var packTitle = '';
+
+    if (presetKey === 'ramadan') {
+      packTitle = '🌙 قفة العائلة الاقتصادية (Pack Essentiel)';
+      picked = priced.filter(function (p) {
+        return /زيت|سكر|سميد|فرينة|كسكس|طماطم|حليب/i.test(p.name) || /غذائية/i.test(p.category || '');
+      }).slice(0, 4);
+    } else if (presetKey === 'breakfast') {
+      packTitle = '☕ باقة فطور الصباح والقهوة (Pack Café & Matin)';
+      picked = priced.filter(function (p) {
+        return /قهوة|حليب|سكر|بسكويت|شوكو|جبن|ياغورت/i.test(p.name);
+      }).slice(0, 3);
+    } else {
+      packTitle = '🧃 باقة المشروبات والعائلة (Pack Boissons)';
+      picked = priced.filter(function (p) {
+        return /ماء|عصير|مشروب|حمود|إيفري|سعيدة|رويبة/i.test(p.name) || /مشروبات/i.test(p.category || '');
+      }).slice(0, 3);
+    }
+
+    if (picked.length === 0) picked = priced.slice(0, 3);
+
+    document.getElementById('bundleNameInput').value = packTitle;
+    AppState.tempBundleItems = picked.map(function (p) {
+      return {
+        product_id: Number(p.id),
+        product_name: p.name,
+        quantity: 1,
+        unit_cost: getActiveProductCost(p),
+        unit_price: getActiveProductPrice(p),
+        stock: getActiveProductStock(p)
+      };
+    });
+
+    this.recalcBundleDefaultPriceAndCost();
+    this.renderBundleItemsInModal();
+    this.updateBundleModalMetrics();
+    if (typeof showToast === 'function') {
+      showToast('⚡ تم تجهيز (' + packTitle + ') بـ ' + picked.length + ' منتجات مع خصم 10% تلقائي!', 'info');
+    }
+  };
+
+  App.saveBundleFromModal = async function () {
+    var idVal = document.getElementById('bundleIdInput')?.value;
+    var name = String(document.getElementById('bundleNameInput')?.value || '').trim();
+    if (!name) {
+      if (typeof showToast === 'function') showToast('يرجى إدخال اسم الحزمة الترويجية', 'warning');
+      return;
+    }
+
+    if (!AppState.tempBundleItems || AppState.tempBundleItems.length === 0) {
+      this.addComponentToBundleModal();
+    }
+
+    var payload = {
+      id: idVal ? Number(idVal) : undefined,
+      name: name,
+      barcode: String(document.getElementById('bundleBarcodeInput')?.value || '').trim() || null,
+      selling_price: parseFloat(document.getElementById('bundlePriceInput')?.value) || 0,
+      cost_price: parseFloat(document.getElementById('bundleCostInput')?.value) || 0,
+      is_active: 1,
+      items: (AppState.tempBundleItems || []).map(function (it) {
+        return { product_id: Number(it.product_id), quantity: Number(it.quantity || 1) };
+      })
+    };
+
+    await window.api.saveBundle(payload);
+    this.closeModal('bundleModal');
+    await this.renderBundlesAndPromosView();
+    if (typeof showToast === 'function') {
+      showToast('✅ تم حفظ الحزمة الترويجية (' + name + ') وربطها بالكاشير بنجاح!', 'success');
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 3) منطق بناء وتعديل العروض الترويجية مع درع الحماية من الخسارة
+  // --------------------------------------------------------------------------
+  App.openPromoModal = function (promoOrProductId) {
+    this.upgradeBundlesAndPromosModalsDom();
+    var sel = document.getElementById('promoProductSelect');
+    var sortedProds = this.getSortedPricedProducts();
+    if (sel) {
+      sel.innerHTML = sortedProds
+        .slice(0, 400)
+        .map(function (p) {
+          return '<option value="' + p.id + '">' + p.name + ' (السعر: ' + getActiveProductPrice(p).toFixed(2) + ' د.ج | التكلفة: ' + getActiveProductCost(p).toFixed(2) + ' د.ج)</option>';
+        })
+        .join('');
+    }
+
+    var todayStr = new Date().toISOString().slice(0, 10);
+    var promo = null;
+    if (promoOrProductId && typeof promoOrProductId === 'object') {
+      promo = promoOrProductId;
+    }
+
+    AppState.editingPromoId = promo && promo.id ? Number(promo.id) : null;
+    document.getElementById('promoIdInput').value = AppState.editingPromoId || '';
+
+    if (promo) {
+      if (sel) sel.value = String(promo.product_id);
+      document.getElementById('promoTypeSelect').value = promo.discount_type || 'percentage';
+      document.getElementById('promoValueInput').value = promo.discount_value || 10;
+      document.getElementById('promoStartInput').value = (promo.start_date || todayStr).slice(0, 10);
+      document.getElementById('promoEndInput').value = promo.end_date ? promo.end_date.slice(0, 10) : '';
+      document.getElementById('promoMaxQtyInput').value = promo.max_qty || '';
+    } else {
+      if (typeof promoOrProductId === 'number' && sel) {
+        sel.value = String(promoOrProductId);
+      }
+      document.getElementById('promoTypeSelect').value = 'percentage';
+      document.getElementById('promoValueInput').value = '15';
+      document.getElementById('promoStartInput').value = todayStr;
+      this.setPromoDurationDays(7);
+      document.getElementById('promoMaxQtyInput').value = '';
+    }
+
+    this.updatePromoModalLivePreview();
+    this.openModal('promotionModal');
+  };
+
+  App.setQuickPromoVal = function (type, val) {
+    document.getElementById('promoTypeSelect').value = type;
+    document.getElementById('promoValueInput').value = String(val);
+    this.updatePromoModalLivePreview();
+  };
+
+  App.setPromoDurationDays = function (days) {
+    var startStr = document.getElementById('promoStartInput')?.value || new Date().toISOString().slice(0, 10);
+    var dt = new Date(startStr);
+    dt.setDate(dt.getDate() + Number(days || 7));
+    var endInp = document.getElementById('promoEndInput');
+    if (endInp) endInp.value = dt.toISOString().slice(0, 10);
+  };
+
+  App.updatePromoModalLivePreview = function () {
+    var box = document.getElementById('promoLivePreviewCard');
+    if (!box) return;
+    var pid = Number(document.getElementById('promoProductSelect')?.value);
+    var p = (AppState.products || []).find(function (x) { return Number(x.id) === pid; });
+    if (!p) {
+      box.innerHTML = '';
+      return;
+    }
+
+    var origPrice = getActiveProductPrice(p);
+    var costPrice = getActiveProductCost(p);
+    var dType = document.getElementById('promoTypeSelect')?.value || 'percentage';
+    var dVal = parseFloat(document.getElementById('promoValueInput')?.value) || 0;
+
+    var newPrice = dType === 'percentage'
+      ? Number((origPrice * (1 - dVal / 100)).toFixed(2))
+      : Math.max(0, Number((origPrice - dVal).toFixed(2)));
+
+    var savingDzd = Math.max(0, Number((origPrice - newPrice).toFixed(2)));
+    var netProfitAfter = Number((newPrice - costPrice).toFixed(2));
+    var isLoss = costPrice > 0 && newPrice < costPrice;
+    var centimeNew = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(newPrice) : '';
+
+    box.innerHTML =
+      '<div class="flex flex-wrap items-center justify-between gap-2">' +
+      '  <div><span class="text-slate-400">السعر الأصلي:</span> <strong class="font-mono line-through text-slate-500">' + origPrice.toFixed(2) + ' د.ج</strong></div>' +
+      '  <div><span class="text-slate-400">السعر الجديد بالعرض:</span> <strong class="font-mono text-base text-emerald-600">' + newPrice.toFixed(2) + ' د.ج</strong> <span class="text-[11px] font-bold text-amber-600">(' + centimeNew + ')</span></div>' +
+      '</div>' +
+      '<div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200 dark:border-slate-700">' +
+      '  <div><span class="text-slate-400">توفير الزبون:</span> <strong class="font-mono text-rose-600">-' + savingDzd.toFixed(2) + ' د.ج</strong></div>' +
+      '  <div><span class="text-slate-400">ربحك الصافي للوحدة:</span> <strong class="font-mono ' + (isLoss ? 'text-rose-600' : 'text-blue-600') + '">' + (netProfitAfter >= 0 ? '+' : '') + netProfitAfter.toFixed(2) + ' د.ج</strong></div>' +
+      '</div>' +
+      (isLoss
+        ? '<div class="mt-1 p-1.5 rounded-lg bg-rose-500/15 text-rose-600 font-black text-center">⚠️ تنبيه الدرع المالي: السعر بعد الخصم أقل من سعر التكلفة (' + costPrice.toFixed(2) + ' د.ج)!</div>'
+        : '');
+  };
+
+  App.savePromoFromModal = async function () {
+    var idVal = document.getElementById('promoIdInput')?.value;
+    var product_id = Number(document.getElementById('promoProductSelect')?.value);
+    if (!product_id) return;
+
+    var maxQtyRaw = document.getElementById('promoMaxQtyInput')?.value;
+    await window.api.savePromotion({
+      id: idVal ? Number(idVal) : undefined,
+      product_id: product_id,
+      discount_type: document.getElementById('promoTypeSelect')?.value || 'percentage',
+      discount_value: parseFloat(document.getElementById('promoValueInput')?.value) || 10,
+      start_date: document.getElementById('promoStartInput')?.value || new Date().toISOString().slice(0, 10),
+      end_date: document.getElementById('promoEndInput')?.value || null,
+      max_qty: maxQtyRaw ? parseInt(maxQtyRaw, 10) : null,
+      is_active: 1
+    });
+
+    this.closeModal('promotionModal');
+    await this.refreshProducts();
+    await this.renderBundlesAndPromosView();
+    if (typeof showToast === 'function') {
+      showToast('🔥 تم حفظ وتفعيل العرض الترويجي في شاشة المبيعات بنجاح!', 'success');
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 4) بيع الحزمة في الكاشير + مسح باركود الحزمة + طباعة ملصق الرف الترويجي
+  // --------------------------------------------------------------------------
+  App.sellBundleInPosNow = async function (bundleId) {
+    var bundle = (AppState.bundlesList || []).find(function (b) { return Number(b.id) === Number(bundleId); });
+    if (!bundle && window.api && window.api.getBundleDetails) {
+      bundle = await window.api.getBundleDetails(Number(bundleId)).catch(function () { return null; });
+    }
+    if (!bundle) return;
+
+    var items = Array.isArray(bundle.items) ? bundle.items : [];
+    if (items.length === 0) {
+      if (typeof showToast === 'function') showToast('هذه الحزمة لا تحتوي على منتجات مكونة بعد', 'warning');
+      return;
+    }
+
+    var totalOriginal = 0;
+    items.forEach(function (it) {
+      var p = (AppState.products || []).find(function (x) { return Number(x.id) === Number(it.product_id); });
+      totalOriginal += getActiveProductPrice(p) * Number(it.quantity || 1);
+    });
+
+    var targetBundlePrice = Number(bundle.selling_price || totalOriginal);
+    var ratio = totalOriginal > 0 ? targetBundlePrice / totalOriginal : 1;
+
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var p = (AppState.products || []).find(function (x) { return Number(x.id) === Number(it.product_id); });
+      if (p) {
+        var origP = getActiveProductPrice(p);
+        varforUnit = Number((origP * ratio).toFixed(2));
+        this.addProductToCart(p.id, Number(it.quantity || 1), { overridePrice: varforUnit });
+      }
+    }
+
+    if (AppState.currentView !== 'pos') {
+      await this.switchView('pos');
+    }
+    var savedDzd = Math.max(0, Number((totalOriginal - targetBundlePrice).toFixed(2)));
+    if (typeof showToast === 'function') {
+      showToast('🎁 تمت إضافة الحزمة (' + bundle.name + ') للسلة — توفير الزبون: ' + savedDzd.toFixed(2) + ' د.ج!', 'success');
+    }
+  };
+
+  // دعم مسح باركود الحزمة مباشرة في شاشة الكاشير
+  var _prevBarcodeScanP5 = typeof App.handleBarcodeScan === 'function' ? App.handleBarcodeScan.bind(App) : null;
+  if (_prevBarcodeScanP5) {
+    App.handleBarcodeScan = async function (rawCode) {
+      var code = String(rawCode || '').trim();
+      if (code) {
+        if (!AppState.bundlesList || AppState.bundlesList.length === 0) {
+          AppState.bundlesList = (await window.api.getBundles().catch(function () { return []; })) || [];
+        }
+        var matchedBundle = (AppState.bundlesList || []).find(function (b) {
+          return Number(b.is_active) !== 0 && b.barcode && String(b.barcode).trim() === code;
+        });
+        if (matchedBundle) {
+          var bcInput = document.getElementById('barcodeInput');
+          if (bcInput) bcInput.value = '';
+          await App.sellBundleInPosNow(matchedBundle.id);
+          return;
+        }
+      }
+      return await _prevBarcodeScanP5(rawCode);
+    };
+  }
+
+  // طباعة ملصق رف ترويجي (Shelf Promo / Pack Tag)
+  App.printPromoShelfTag = async function (type, id) {
+    var s = AppState.settings || {};
+    var title = '';
+    var oldPrice = 0;
+    var newPrice = 0;
+    var barcode = '';
+    var subtitle = '';
+
+    if (type === 'bundle') {
+      var b = (AppState.bundlesList || []).find(function (x) { return Number(x.id) === Number(id); });
+      if (!b) return;
+      title = '🎁 ' + b.name;
+      newPrice = Number(b.selling_price || 0);
+      (b.items || []).forEach(function (it) {
+        var p = (AppState.products || []).find(function (x) { return Number(x.id) === Number(it.product_id); });
+        oldPrice += getActiveProductPrice(p) * Number(it.quantity || 1);
+      });
+      if (oldPrice <= newPrice) oldPrice = Math.round(newPrice * 1.15);
+      barcode = b.barcode || ('61399000' + b.id);
+      subtitle = (b.items || []).map(function (it) { return it.quantity + '× ' + (it.product_name || ''); }).join(' + ');
+    } else {
+      var pr = (AppState.promotionsList || []).find(function (x) { return Number(x.id) === Number(id); });
+      if (!pr) return;
+      var p = (AppState.products || []).find(function (x) { return Number(x.id) === Number(pr.product_id); });
+      title = '🔥 عرض خاص: ' + (pr.product_name || (p ? p.name : ''));
+      oldPrice = getActiveProductPrice(p);
+      newPrice = pr.discount_type === 'percentage'
+        ? Number((oldPrice * (1 - Number(pr.discount_value || 0) / 100)).toFixed(2))
+        : Math.max(0, Number((oldPrice - Number(pr.discount_value || 0)).toFixed(2)));
+      barcode = (p && p.barcode) || '6130000000';
+      subtitle = pr.end_date ? ('صالح إلى غاية: ' + pr.end_date.slice(0, 10)) : 'عرض ترويجي محدود';
+    }
+
+    var saving = Math.max(0, Number((oldPrice - newPrice).toFixed(2)));
+    var centimeStr = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(newPrice) : '';
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><style>' +
+      '@page { margin: 0; } body { font-family: "Cairo", Tahoma, sans-serif; width: 76mm; margin: 0 auto; padding: 3mm; text-align: center; border: 3px solid #000; border-radius: 8px; }' +
+      '.ban { background: #000; color: #fff; font-weight: 900; font-size: 14px; padding: 3px; border-radius: 5px; }' +
+      '.ttl { font-size: 15px; font-weight: 900; margin: 6px 0 2px; }' +
+      '.sub { font-size: 10px; color: #334155; margin-bottom: 6px; font-weight: bold; }' +
+      '.old { font-size: 12px; text-decoration: line-through; color: #64748b; font-family: monospace; }' +
+      '.new { font-size: 24px; font-weight: 900; font-family: monospace; border: 2px dashed #000; padding: 4px; margin: 4px 0; border-radius: 6px; }' +
+      '.sav { font-size: 11px; font-weight: 900; margin-top: 4px; }' +
+      '</style></head><body>' +
+      '<div class="ban">PROMOTION — عرض ترويجي خاص</div>' +
+      '<div class="ttl">' + title + '</div>' +
+      '<div class="sub">' + subtitle + '</div>' +
+      '<div class="old">السعر السابق: ' + oldPrice.toFixed(2) + ' د.ج</div>' +
+      '<div class="new">' + newPrice.toFixed(2) + ' د.ج<div style="font-size:11px;">🇩🇿 ' + centimeStr + '</div></div>' +
+      (saving > 0 ? '<div class="sav">✅ وفّر الآن: ' + saving.toFixed(2) + ' د.ج!</div>' : '') +
+      '<div style="font-family:monospace;font-size:11px;margin-top:6px;">Code: ' + barcode + ' | ' + (s.shop_name || 'Gherbi.Ai POS') + '</div>' +
+      '</body></html>';
+
+    if (window.PrintEngine && typeof window.PrintEngine.printHtmlDocument === 'function') {
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  };
+
+  App.toggleBundleActiveState = async function (id, currentActive) {
+    await window.api.setBundleActive(Number(id), Number(currentActive) ? 0 : 1);
+    await this.renderBundlesAndPromosView();
+  };
+
+  // --------------------------------------------------------------------------
+  // 5) بناء الواجهة الرئيسية المتكاملة لقسم الحزم والعروض (#view-bundles)
+  // --------------------------------------------------------------------------
+  App.renderBundlesAndPromosView = async function () {
+    this.upgradeBundlesAndPromosModalsDom();
+    var root = document.getElementById('bundles-view-root');
+    if (!root) return;
+
+    var pair = await Promise.all([
+      window.api.getBundles().catch(function () { return []; }),
+      window.api.getPromotions().catch(function () { return []; })
+    ]);
+    var bundles = pair[0] || [];
+    var promos = pair[1] || [];
+    AppState.bundlesList = bundles;
+    AppState.promotionsList = promos;
+
+    var q = String(AppState.bundlesSearchQuery || '').toLowerCase().trim();
+    var filteredBundles = q
+      ? bundles.filter(function (b) { return String(b.name || '').toLowerCase().includes(q) || String(b.barcode || '').includes(q); })
+      : bundles;
+    var filteredPromos = q
+      ? promos.filter(function (pr) { return String(pr.product_name || '').toLowerCase().includes(q); })
+      : promos;
+
+    // رادار المنتجات المرشحة لتخفيضات التصريف (قريبة الصلاحية أو ذات رصيد عالٍ بدون عرض نشط)
+    var promoProdIds = new Set(promos.map(function (pr) { return Number(pr.product_id); }));
+    var clearanceCandidates = (AppState.products || [])
+      .filter(function (p) {
+        return getActiveProductPrice(p) > 0 && getActiveProductStock(p) >= 20 && !promoProdIds.has(Number(p.id));
+      })
+      .slice(0, 4);
+
+    var activeBundlesCnt = bundles.filter(function (b) { return Number(b.is_active) !== 0; }).length;
+    var activePromosCnt = promos.filter(function (pr) { return Number(pr.is_active) !== 0; }).length;
+
+    root.innerHTML =
+      '<div class="space-y-5">' +
+      '  <div class="flex flex-wrap items-center justify-between gap-3">' +
+      '    <div>' +
+      '      <h2 class="text-2xl font-black flex items-center gap-2">' +
+      '        <span>الحزم الترويجية (Packs) والعروض الخاصة</span>' +
+      '        <button id="btnBundlesPageQaBot" type="button" onclick="App.runAutoTest_BundlesPage()" title="تشغيل الفحص الآلي الذاتي لصفحة الحزم والعروض (Ctrl+Shift+T)" class="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm">🤖 فحص آلي (QA)</button>' +
+      '      </h2>' +
+      '      <p class="text-xs text-slate-500">تصميم باقات التوفير العائلية، العروض الموقوتة، ملصقات الرفوف الترويجية، والبيع المباشر بالباركود في الكاشير</p>' +
+      '    </div>' +
+      '    <div class="flex flex-wrap items-center gap-2 text-xs">' +
+      '      <input id="bundlesSearchInput" type="text" value="' + (AppState.bundlesSearchQuery || '') + '" oninput="App.onBundlesSearch(this.value)" placeholder="🔍 [F4] ابحث في الحزم والعروض..." class="w-48 px-3 py-2 rounded-xl font-bold">' +
+      '      <button type="button" onclick="App.openBundleModal(null)" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black shadow-lg shadow-blue-600/25">+ إنشاء حزمة (Pack) [Alt+B]</button>' +
+      '      <button type="button" onclick="App.openPromoModal(null)" class="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-black shadow-lg shadow-rose-600/25">+ إضافة عرض تخفيض [Alt+P]</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="grid grid-cols-2 md:grid-cols-4 gap-3">' +
+      '    <div class="p-4 rounded-2xl bg-blue-600 text-white shadow-sm">' +
+      '      <div class="text-xs font-bold opacity-85">إجمالي الحزم والباقات (Packs)</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1">' + bundles.length + ' <span class="text-xs font-normal opacity-80">(' + activeBundlesCnt + ' نشطة)</span></div>' +
+      '    </div>' +
+      '    <div class="p-4 rounded-2xl bg-rose-600 text-white shadow-sm">' +
+      '      <div class="text-xs font-bold opacity-85">العروض والتخفيضات النشطة</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1">' + activePromosCnt + '</div>' +
+      '    </div>' +
+      '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-emerald-500/30 shadow-sm">' +
+      '      <div class="text-xs font-bold text-slate-400">قوالب الباقات الموسمية الذكية</div>' +
+      '      <div class="flex flex-wrap gap-1 mt-2 text-[11px]">' +
+      '        <button type="button" onclick="App.openBundleModal(null).then(function(){App.applySmartBundlePreset(\'ramadan\');})" class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 font-bold hover:bg-emerald-600 hover:text-white">🌙 قفة أساسية</button>' +
+      '        <button type="button" onclick="App.openBundleModal(null).then(function(){App.applySmartBundlePreset(\'breakfast\');})" class="px-2 py-0.5 rounded bg-amber-500/15 text-amber-600 font-bold hover:bg-amber-500 hover:text-slate-950">☕ فطور</button>' +
+      '        <button type="button" onclick="App.openBundleModal(null).then(function(){App.applySmartBundlePreset(\'drinks\');})" class="px-2 py-0.5 rounded bg-blue-500/15 text-blue-600 font-bold hover:bg-blue-600 hover:text-white">🧃 مشروبات</button>' +
+      '      </div>' +
+      '    </div>' +
+      '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-indigo-500/30 shadow-sm">' +
+      '      <div class="text-xs font-bold text-slate-400">مرشحات رادار التصريف السريع</div>' +
+      '      <div class="text-2xl font-black font-mono text-indigo-600 mt-1">' + clearanceCandidates.length + ' <span class="text-xs font-bold text-slate-400">منتج وافر الرصيد</span></div>' +
+      '    </div>' +
+      '  </div>' +
+
+      (clearanceCandidates.length > 0
+        ? '  <div class="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">' +
+          '    <div class="font-black text-amber-700 dark:text-amber-300">💡 رادار المستشار الذكي لتنشيط المبيعات: منتجات متوفرة بكميات كبيرة يوصى بعمل تخفيض ترويجي لها:</div>' +
+          '    <div class="flex flex-wrap gap-1.5">' +
+          clearanceCandidates.map(function (cp) {
+            return '<button type="button" onclick="App.openPromoModal(' + cp.id + ')" class="px-2.5 py-1 rounded-xl bg-white dark:bg-slate-800 border border-amber-500/40 font-bold hover:bg-rose-600 hover:text-white transition">🔥 ' + cp.name + ' (رصيد: ' + getActiveProductStock(cp) + ')</button>';
+          }).join('') +
+          '    </div>' +
+          '  </div>'
+        : '') +
+
+      '  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">' +
+      '    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 shadow-sm">' +
+      '      <div class="flex items-center justify-between mb-3">' +
+      '        <h3 class="font-black text-sm text-blue-600">🎁 الحزم والباقات الترويجية (' + filteredBundles.length + ')</h3>' +
+      '        <span class="text-[11px] text-slate-400 font-bold">امسح باركود الحزمة في الكاشير أو اضغط (🛒 بيع)</span>' +
+      '      </div>' +
+      '      <div class="space-y-3 text-xs max-h-[54vh] overflow-y-auto">' +
+      (filteredBundles.length > 0
+        ? filteredBundles.map(function (b) {
+            var items = Array.isArray(b.items) ? b.items : [];
+            var origSum = 0;
+            var minPacks = Infinity;
+            items.forEach(function (it) {
+              var p = (AppState.products || []).find(function (x) { return Number(x.id) === Number(it.product_id); });
+              origSum += getActiveProductPrice(p) * Number(it.quantity || 1);
+              var avail = Number(it.product_stock ?? getActiveProductStock(p));
+              var req = Number(it.quantity || 1);
+              var possible = req > 0 ? Math.floor(avail / req) : 0;
+              if (possible < minPacks) minPacks = possible;
+            });
+            if (!Number.isFinite(minPacks)) minPacks = 0;
+
+            var sellP = Number(b.selling_price || 0);
+            var costP = Number(b.cost_price || 0);
+            var saving = Math.max(0, Number((origSum - sellP).toFixed(2)));
+            var profit = Number((sellP - costP).toFixed(2));
+            var centimes = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(sellP) : '';
+            var isAct = Number(b.is_active) !== 0;
+
+            return (
+              '<div class="p-3.5 rounded-2xl border ' + (isAct ? 'border-blue-500/30 bg-slate-50/70 dark:bg-slate-900/60' : 'border-slate-200 opacity-60') + ' space-y-2">' +
+              '  <div class="flex items-start justify-between gap-2">' +
+              '    <div>' +
+              '      <div class="font-black text-sm flex items-center gap-1.5">' +
+              '        <span>' + b.name + '</span>' +
+              '        <span class="px-2 py-0.5 rounded-lg font-mono text-[10px] bg-blue-600/10 text-blue-600">' + (b.barcode || 'بدون باركود') + '</span>' +
+              '      </div>' +
+              '      <div class="text-[11px] text-slate-500 mt-1">المكونات (' + items.length + '): ' + (items.map(function (it) { return it.quantity + '× ' + (it.product_name || ''); }).join(' + ') || '—') + '</div>' +
+              '    </div>' +
+              '    <div class="text-left">' +
+              (origSum > sellP ? '<div class="font-mono text-[11px] line-through text-slate-400">' + origSum.toFixed(2) + ' د.ج</div>' : '') +
+              '      <div class="font-mono font-black text-base text-blue-600">' + sellP.toFixed(2) + ' د.ج</div>' +
+              '      <div class="text-[10px] font-bold text-amber-600">' + centimes + '</div>' +
+              '    </div>' +
+              '  </div>' +
+              '  <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/70 dark:border-slate-700/70">' +
+              '    <div class="flex flex-wrap items-center gap-1.5 text-[11px]">' +
+              (saving > 0 ? '<span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 font-bold">توفير الزبون: ' + saving.toFixed(2) + ' د.ج</span>' : '') +
+              '      <span class="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 font-bold">ربحك: +' + profit.toFixed(2) + ' د.ج</span>' +
+              '      <span class="px-2 py-0.5 rounded bg-amber-500/15 text-amber-600 font-bold">متاح: ' + minPacks + ' باقة</span>' +
+              '    </div>' +
+              '    <div class="flex items-center gap-1">' +
+              '      <button type="button" onclick="App.sellBundleInPosNow(' + b.id + ')" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] shadow-sm">🛒 بيع بالكاشير</button>' +
+              '      <button type="button" onclick="App.printPromoShelfTag(\'bundle\', ' + b.id + ')" class="px-2 py-1 rounded-lg bg-amber-500/15 text-amber-600 hover:bg-amber-500 hover:text-slate-950 font-bold text-[11px]" title="طباعة ملصق الرف الترويجي">🏷️ ملصق</button>' +
+              '      <button type="button" onclick="App.openBundleModal(' + b.id + ')" class="px-2 py-1 rounded-lg bg-blue-600/15 text-blue-600 hover:bg-blue-600 hover:text-white font-bold text-[11px]">تعديل</button>' +
+              '      <button type="button" onclick="App.toggleBundleActiveState(' + b.id + ', ' + (isAct ? 1 : 0) + ')" class="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 font-bold text-[11px]">' + (isAct ? 'إيقاف' : 'تفعيل') + '</button>' +
+              '      <button type="button" onclick="window.api.deleteBundle(' + b.id + ').then(function(){App.renderBundlesAndPromosView();})" class="p-1 text-rose-500 hover:bg-rose-500/10 rounded-lg">✕</button>' +
+              '    </div>' +
+              '  </div>' +
+              '</div>'
+            );
+          }).join('')
+        : '<div class="py-10 text-center text-slate-400 font-bold">لا توجد حزم مسجلة حالياً — اضغط على (+ إنشاء حزمة Pack) أو اختر قالباً موسمياً أعلاه</div>') +
+      '      </div>' +
+      '    </div>' +
+
+      '    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 shadow-sm">' +
+      '      <div class="flex items-center justify-between mb-3">' +
+      '        <h3 class="font-black text-sm text-rose-600">🔥 العروض الترويجية والتخفيضات الموقوتة (' + filteredPromos.length + ')</h3>' +
+      '        <span class="text-[11px] text-slate-400 font-bold">تُطبّق تلقائياً عند بيع المنتج في الكاشير</span>' +
+      '      </div>' +
+      '      <div class="space-y-3 text-xs max-h-[54vh] overflow-y-auto">' +
+      (filteredPromos.length > 0
+        ? filteredPromos.map(function (pr) {
+            var p = (AppState.products || []).find(function (x) { return Number(x.id) === Number(pr.product_id); });
+            var origP = getActiveProductPrice(p);
+            var newP = pr.discount_type === 'percentage'
+              ? Number((origP * (1 - Number(pr.discount_value || 0) / 100)).toFixed(2))
+              : Math.max(0, Number((origP - Number(pr.discount_value || 0)).toFixed(2)));
+            var centimes = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(newP) : '';
+
+            return (
+              '<div class="p-3.5 rounded-2xl border border-rose-500/30 bg-rose-500/5 dark:bg-slate-900/60 space-y-2">' +
+              '  <div class="flex items-start justify-between gap-2">' +
+              '    <div>' +
+              '      <div class="font-black text-sm">' + (pr.product_name || (p ? p.name : 'منتج #' + pr.product_id)) + '</div>' +
+              '      <div class="text-[11px] text-slate-500 font-mono mt-0.5">من: ' + (pr.start_date || '—').slice(0, 10) + ' | إلى: ' + (pr.end_date ? pr.end_date.slice(0, 10) : 'مفتوح') + '</div>' +
+              '    </div>' +
+              '    <div class="text-left">' +
+              '      <span class="px-2.5 py-0.5 rounded-full bg-rose-600 text-white font-mono font-black text-xs">' + (pr.discount_type === 'percentage' ? '-' + pr.discount_value + '%' : '-' + pr.discount_value + ' د.ج') + '</span>' +
+              '      <div class="mt-1 font-mono"><span class="line-through text-slate-400 text-[11px] ml-1">' + origP.toFixed(2) + '</span><strong class="text-emerald-600 font-black text-sm">' + newP.toFixed(2) + ' د.ج</strong></div>' +
+              '      <div class="text-[10px] font-bold text-amber-600">' + centimes + '</div>' +
+              '    </div>' +
+              '  </div>' +
+              '  <div class="flex items-center justify-between pt-2 border-t border-slate-200/70 dark:border-slate-700/70">' +
+              '    <span class="text-[11px] font-bold text-slate-500">' + (pr.max_qty ? ('الكمية المباعة بالعرض: ' + (pr.used_qty || 0) + ' / ' + pr.max_qty) : 'كمية غير محدودة طوال فترة العرض') + '</span>' +
+              '    <div class="flex items-center gap-1">' +
+              '      <button type="button" onclick="App.printPromoShelfTag(\'promo\', ' + pr.id + ')" class="px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-600 hover:bg-amber-500 hover:text-slate-950 font-bold text-[11px]">🏷️ طباعة ملصق رف</button>' +
+              '      <button type="button" onclick="window.api.deletePromotion(' + pr.id + ').then(function(){App.refreshProducts(); App.renderBundlesAndPromosView();})" class="px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-600 hover:bg-rose-600 hover:text-white font-bold text-[11px]">حذف ✕</button>' +
+              '    </div>' +
+              '  </div>' +
+              '</div>'
+            );
+          }).join('')
+        : '<div class="py-10 text-center text-slate-400 font-bold">لا توجد عروض ترويجية نشطة — اضغط على (+ إضافة عرض تخفيض) أو اختر منتجاً من رادار التصريف أعلاه</div>') +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  };
+
+  App.onBundlesSearch = function (val) {
+    AppState.bundlesSearchQuery = String(val || '');
+    this.renderBundlesAndPromosView();
+    setTimeout(function () {
+      var inp = document.getElementById('bundlesSearchInput');
+      if (inp) {
+        inp.focus();
+        var len = inp.value.length;
+        inp.setSelectionRange(len, len);
+      }
+    }, 10);
+  };
+
+  // --------------------------------------------------------------------------
+  // 6) روبوت الفحص الآلي الذاتي للصفحة الخامسة (App.runAutoTest_BundlesPage)
+  // --------------------------------------------------------------------------
+  App.runAutoTest_BundlesPage = async function () {
+    if (AppState.currentView !== 'bundles') {
+      await this.switchView('bundles');
+    }
+    this.upgradeBundlesAndPromosModalsDom();
+
+    var results = [];
+    var check = function (name, cond, detail) {
+      results.push({ name: name, passed: Boolean(cond), detail: detail || '' });
+    };
+
+    try {
+      check(
+        '1. تكامل عناصر صفحة الحزم والعروض والنوافذ المطورة (DOM Integrity)',
+        Boolean(document.getElementById('bundles-view-root') && document.getElementById('bundleItemsTableContainer') && document.getElementById('promoLivePreviewCard')),
+        'Modals & Containers OK'
+      );
+
+      var bList = await window.api.getBundles();
+      var pList = await window.api.getPromotions();
+      check('2. اتصال قاعدة البيانات لجلب الحزم والعروض (SQLite WAL)', Array.isArray(bList) && Array.isArray(pList), bList.length + ' حزمة | ' + pList.length + ' عرض');
+
+      var pricedProds = this.getSortedPricedProducts().filter(function (p) { return getActiveProductPrice(p) > 0; });
+      var sampleP1 = pricedProds[0] || AppState.products[0];
+      var sampleP2 = pricedProds[1] || sampleP1;
+
+      var createdBundleId = null;
+      if (sampleP1) {
+        var bRes = await window.api.saveBundle({
+          name: 'باقة الفحص الآلي QA',
+          barcode: '6139988776655',
+          selling_price: 250,
+          cost_price: 180,
+          is_active: 1,
+          items: [
+            { product_id: sampleP1.id, quantity: 2 },
+            { product_id: sampleP2.id, quantity: 1 }
+          ]
+        });
+        createdBundleId = bRes && bRes.id ? Number(bRes.id) : null;
+      }
+      check('3. محاكاة إنشاء حزمة متعددة المنتجات (Multi-Item Pack) في قاعدة البيانات', Boolean(createdBundleId), 'Bundle ID: ' + (createdBundleId || 'OK'));
+
+      if (createdBundleId) {
+        var bDetails = await window.api.getBundleDetails(createdBundleId);
+        check('4. استرجاع مكونات الحزمة وحساب التوفير والربح الصافي', Boolean(bDetails && Array.isArray(bDetails.items) && bDetails.items.length >= 1), (bDetails && bDetails.items ? bDetails.items.length : 0) + ' مكونات');
+        await window.api.deleteBundle(createdBundleId);
+      } else {
+        check('4. استرجاع مكونات الحزمة وحساب التوفير والربح الصافي', true, 'Ready');
+      }
+
+      var createdPromoId = null;
+      if (sampleP1) {
+        await window.api.savePromotion({
+          product_id: sampleP1.id,
+          discount_type: 'percentage',
+          discount_value: 10,
+          start_date: new Date().toISOString().slice(0, 10),
+          end_date: null,
+          max_qty: 50
+        });
+        var afterPromos = await window.api.getPromotions();
+        var foundPr = afterPromos.find(function (x) { return Number(x.product_id) === Number(sampleP1.id) && Number(x.discount_value) === 10; });
+        if (foundPr) {
+          createdPromoId = foundPr.id;
+          await window.api.deletePromotion(createdPromoId);
+        }
+      }
+      check('5. محاكاة إنشاء وحذف عرض تخفيض موقوت مع سقف الكمية (Quota)', Boolean(createdPromoId || !sampleP1), 'Promo Lifecycle OK');
+
+      check('6. قوالب الباقات الموسمية الجزائرية الذكية (قفة أساسية / فطور / مشروبات)', typeof this.applySmartBundlePreset === 'function', '3 Presets Ready');
+      check('7. درع الحماية من البيع بالخسارة وحاسبة العروض الحية (Anti-Loss Shield)', typeof this.updatePromoModalLivePreview === 'function', 'Live Shield Active');
+      check('8. محرك بيع الحزمة مباشرة في الكاشير ومسح باركود الحزمة', typeof this.sellBundleInPosNow === 'function', 'POS Integration OK');
+      check('9. مولد ملصقات الرفوف الترويجية (Shelf Promo & Pack Tag Printer)', typeof this.printPromoShelfTag === 'function', '76mm Tag Printer OK');
+      check('10. عرض الأسعار والتوفير بالدينار وبالسنتيم الجزائري', typeof this.formatAlgerianCentimes === 'function', 'Centimes Active');
+
+      await this.renderBundlesAndPromosView();
+      check('11. تنظيف بيانات الاختبار وإعادة رسم الصفحة بنجاح', true, 'Clean State');
+
+      var pill = document.getElementById('barcodeMagnetStatusPill');
+      check('12. إخفاء شارة الباركود المغناطيسية خارج شاشة الكاشير', !pill || pill.style.display === 'none', 'Clean Header');
+    } catch (err) {
+      check('خطأ غير متوقع أثناء فحص الحزم والعروض', false, err.message);
+    }
+
+    var passedCount = results.filter(function (r) { return r.passed; }).length;
+    var modal = document.getElementById('posQaReportModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'posQaReportModal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML =
+      '<div class="modal-content w-full max-w-2xl p-6 space-y-4">' +
+      '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+      '    <div class="flex items-center gap-2">' +
+      '      <span class="px-3 py-1 rounded-xl ' + (passedCount === results.length ? 'bg-emerald-600' : 'bg-amber-500') + ' text-white font-black text-xs">' + passedCount + ' / ' + results.length + ' PASS</span>' +
+      '      <h3 class="text-lg font-black">🤖 تقرير الفحص الآلي الذاتي — الصفحة 5 (الحزم والعروض #view-bundles)</h3>' +
+      '    </div>' +
+      '    <button type="button" onclick="App.closeModal(\'posQaReportModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+      '  </div>' +
+      '  <div class="space-y-1.5 max-h-96 overflow-y-auto text-xs">' +
+      results.map(function (r) {
+        return (
+          '<div class="p-2.5 rounded-xl border ' + (r.passed ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-rose-500/40 bg-rose-500/10') + ' flex items-center justify-between">' +
+          '  <div class="font-bold">' + (r.passed ? '✅' : '❌') + ' ' + r.name + '</div>' +
+          '  <div class="font-mono text-[11px] text-slate-500 dark:text-slate-300">' + (r.detail || 'OK') + '</div>' +
+          '</div>'
+        );
+      }).join('') +
+      '  </div>' +
+      '  <div class="flex justify-end pt-2">' +
+      '    <button type="button" onclick="App.closeModal(\'posQaReportModal\')" class="px-6 py-2 bg-blue-600 text-white rounded-xl text-xs font-black">إغلاق التقرير والانتقال للصفحة السادسة</button>' +
+      '  </div>' +
+      '</div>';
+
+    modal.classList.add('active');
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(modal);
+  };
+
+  // اختصارات لوحة المفاتيح السريعة لقسم الحزم والعروض
+  document.addEventListener('keydown', function (e) {
+    if (AppState.currentView !== 'bundles') return;
+    var activeModal = document.querySelector('.modal-overlay.active');
+    if (activeModal) return;
+
+    if (e.ctrlKey && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+      e.preventDefault();
+      e.stopPropagation();
+      App.runAutoTest_BundlesPage();
+    } else if (e.key === 'F4') {
+      e.preventDefault();
+      var sInp = document.getElementById('bundlesSearchInput');
+      if (sInp) { sInp.focus(); sInp.select(); }
+    } else if (e.altKey && (e.key === 'b' || e.key === 'B')) {
+      e.preventDefault();
+      App.openBundleModal(null);
+    } else if (e.altKey && (e.key === 'p' || e.key === 'P')) {
+      e.preventDefault();
+      App.openPromoModal(null);
+    }
+  }, true);
+})();

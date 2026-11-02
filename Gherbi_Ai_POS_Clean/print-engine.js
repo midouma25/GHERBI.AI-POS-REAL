@@ -1213,34 +1213,42 @@ if (typeof window === 'undefined') {
       const silent = Boolean(options.silent);
 
       if (silent && window.api && typeof window.api.printSilent === 'function') {
-        return await window.api.printSilent({
+        const res = await window.api.printSilent({
           html: htmlContent,
           silent: true,
           printerName: options.printerName || undefined
         });
+        if (res && res.success) return res;
       }
 
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = '0';
-      document.body.appendChild(iframe);
+      // استخدام إطار طباعة دائم ومستقر في الصفحة حتى لا يُحذف أثناء فتح نافذة طباعة ويندوز
+      let iframe = document.getElementById('gherbiPersistentPrintFrame');
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'gherbiPersistentPrintFrame';
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '1px';
+        iframe.style.height = '1px';
+        iframe.style.opacity = '0.01';
+        iframe.style.pointerEvents = 'none';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+      }
 
       const doc = iframe.contentWindow.document;
       doc.open();
       doc.write(htmlContent);
       doc.close();
 
-      await new Promise((r) => setTimeout(r, 400));
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-
-      setTimeout(() => {
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-      }, 2000);
+      await new Promise((r) => setTimeout(r, 450));
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch (err) {
+        console.warn('[PrintEngine] iframe print fallback:', err);
+      }
 
       return { success: true };
     }

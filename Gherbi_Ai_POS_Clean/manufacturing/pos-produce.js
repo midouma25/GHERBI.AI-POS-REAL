@@ -6,56 +6,57 @@
 'use strict';
 
 (function (root) {
-  const isNode = typeof require === 'function' && typeof module !== 'undefined' && module.exports;
-  const productionGuard = isNode ? require('./production-guard') : null;
+  var isNode = typeof require === 'function' && typeof module !== 'undefined' && module.exports;
+  var productionGuard = isNode ? require('./production-guard') : null;
 
-  async function autoProduceShortfallsForSale(db, saleItems = [], options = {}) {
+  async function autoProduceShortfallsForSale(db, saleItems, options) {
     if (!isNode || !productionGuard || !db) return [];
-    const globalAutoSetting = await db.getSetting('manufacturing_auto_on_sale', 'false');
-    const isGlobalAutoEnabled =
+    saleItems = Array.isArray(saleItems) ? saleItems : [];
+    options = options || {};
+
+    var globalAutoSetting = await db.getSetting('manufacturing_auto_on_sale', 'false');
+    var isGlobalAutoEnabled =
       String(globalAutoSetting).toLowerCase() === 'true' || globalAutoSetting === '1';
 
-    const producedOrders = [];
+    var producedOrders = [];
 
-    for (const item of Array.isArray(saleItems) ? saleItems : []) {
-      const productId = Number(item.product_id || item.productId);
-      const requestedQty = Number(item.quantity || 0);
+    for (var i = 0; i < saleItems.length; i++) {
+      var item = saleItems[i];
+      var productId = Number(item.product_id || item.productId);
+      var requestedQty = Number(item.quantity || 0);
       if (!productId || requestedQty <= 0) continue;
 
-      const stockRow = await db.dbGet(
+      var stockRow = await db.dbGet(
         'SELECT COALESCE(SUM(stock), 0) AS current_stock FROM inventory_batches WHERE product_id = ? AND deleted_at IS NULL',
         [productId]
       );
-      const currentStock = Number((stockRow && stockRow.current_stock) || 0);
-      const shortfall = Number((requestedQty - currentStock).toFixed(6));
+      var currentStock = Number((stockRow && stockRow.current_stock) || 0);
+      var shortfall = Number((requestedQty - currentStock).toFixed(6));
 
       if (shortfall <= 0.0001) continue;
 
-      const recipe = await db.dbGet(
-        `SELECT * FROM bom_recipes
-         WHERE product_id = ? AND is_active = 1 AND deleted_at IS NULL
-         ORDER BY is_default DESC, id DESC
-         LIMIT 1`,
+      var recipe = await db.dbGet(
+        'SELECT * FROM bom_recipes WHERE product_id = ? AND is_active = 1 AND deleted_at IS NULL ORDER BY is_default DESC, id DESC LIMIT 1',
         [productId]
       );
 
       if (!recipe) continue;
       if (!isGlobalAutoEnabled && !Number(recipe.auto_on_sale)) continue;
 
-      let qtyToProduce = shortfall;
+      var qtyToProduce = shortfall;
       if (recipe.auto_round === 'batch' && Number(recipe.output_qty) > 0) {
-        const batchesNeeded = Math.ceil(shortfall / Number(recipe.output_qty));
+        var batchesNeeded = Math.ceil(shortfall / Number(recipe.output_qty));
         qtyToProduce = batchesNeeded * Number(recipe.output_qty);
       }
 
       try {
-        const avail = await productionGuard.computeRecipeAvailability(db, {
+        var avail = await productionGuard.computeRecipeAvailability(db, {
           recipeId: recipe.id,
           plannedQty: qtyToProduce
         });
 
         if (avail && avail.can_produce) {
-          const order = await productionGuard.createProductionOrder(db, {
+          var order = await productionGuard.createProductionOrder(db, {
             recipe_id: recipe.id,
             planned_qty: qtyToProduce,
             produced_qty: qtyToProduce,
@@ -76,7 +77,7 @@
   }
 
   if (isNode) {
-    module.exports = { autoProduceShortfallsForSale };
+    module.exports = { autoProduceShortfallsForSale: autoProduceShortfallsForSale };
   } else if (root) {
     root.PosProduce = {
       openQuickProduceModal: function () {

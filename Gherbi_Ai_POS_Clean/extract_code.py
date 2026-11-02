@@ -6,7 +6,7 @@ import os
 
 OUTPUT_FILE = "project_structuregherbiaiposCLEANnew3.md"
 MAX_DEPTH = 3                 # أقصى عمق للشجرة
-MAX_FILE_SIZE = 200 * 1024    # 200KB
+MAX_FILE_SIZE = 5000 * 1024    # 200KB
 
 IGNORE_DIRS = {
     ".git",

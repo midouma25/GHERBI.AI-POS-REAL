@@ -2726,30 +2726,35 @@ function registerIpcHandlers() {
     const htmlContent = options.html || options.content || '';
     if (!htmlContent) return { success: false, error: 'empty_html' };
 
+    const isSilent = Boolean(options.silent ?? true);
     const printWin = new BrowserWindow({
-      show: false,
+      width: 820,
+      height: 720,
+      show: !isSilent,
+      autoHideMenuBar: true,
+      title: 'طباعة المستند — Gherbi.Ai POS',
       webPreferences: { contextIsolation: true }
     });
 
     try {
       await printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
-      await new Promise((r) => setTimeout(r, 350));
+      await new Promise((r) => setTimeout(r, 400));
 
       return await new Promise((resolve) => {
         printWin.webContents.print(
           {
-            silent: Boolean(options.silent ?? true),
+            silent: isSilent,
             printBackground: true,
             deviceName: options.printerName || options.deviceName || undefined
           },
           (success, failureReason) => {
-            printWin.close();
+            if (!printWin.isDestroyed()) printWin.close();
             resolve({ success, error: failureReason || null });
           }
         );
       });
     } catch (err) {
-      printWin.close();
+      if (!printWin.isDestroyed()) printWin.close();
       return { success: false, error: err.message };
     }
   });
@@ -2888,52 +2893,109 @@ function registerIpcHandlers() {
 
   ipcMain.handle('import-products-excel', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: 'اختر ملف المنتجات (Excel .xlsx / .xls أو .csv)',
       properties: ['openFile'],
       filters: [{ name: 'Excel / CSV', extensions: ['xlsx', 'xls', 'csv'] }]
     });
     if (canceled || !filePaths || filePaths.length === 0) return { canceled: true };
 
-    const wb = XLSX.readFile(filePaths[0]);
+    const chosenPath = filePaths[0];
+    let wb;
+    if (chosenPath.toLowerCase().endsWith('.csv')) {
+      const csvText = fs.readFileSync(chosenPath, 'utf8');
+      wb = XLSX.read(csvText, { type: 'string', raw: false });
+    } else {
+      wb = XLSX.readFile(chosenPath, { codepage: 65001, raw: false });
+    }
+
     const sheet = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet);
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+    await dbRun('UPDATE products SET barcode = NULL WHERE deleted_at IS NOT NULL AND barcode IS NOT NULL');
+    const existingRows = await dbAll('SELECT id, barcode FROM products WHERE deleted_at IS NULL AND barcode IS NOT NULL');
+    const barcodeToIdMap = new Map();
+    for (const er of existingRows) {
+      if (er.barcode) barcodeToIdMap.set(String(er.barcode).trim(), Number(er.id));
+    }
+
     let imported = 0;
+    let updated = 0;
+    let skipped = 0;
 
-    await db.withTransaction(async () => {
-      for (const r of rows) {
-        const name = String(r.name || r['الاسم'] || r['اسم المنتج'] || r.Designation || '').trim();
-        if (!name) continue;
-        const barcode = String(r.barcode || r['الباركود'] || r.Code || '').trim() || null;
-        if (barcode) await productWriter.freeTombstonedProductBarcode(barcode);
-        const supplier = String(r.supplier || r['المورد'] || '').trim() || null;
-        if (supplier) await ensureSupplierByName(supplier);
+    await stockLedger.withSkipStockLedger(db, async () => {
+      await db.withTransaction(async () => {
+        const dzStmt = db._rawPrepare(
+          'INSERT OR IGNORE INTO dz_product_dictionary (barcode, name, category, brand, unit, suggested_price) VALUES (?, ?, ?, ?, ?, ?)'
+        );
+        const prodStmt = db._rawPrepare(
+          'INSERT OR IGNORE INTO products (barcode, name, category, family, supplier, unit, min_stock) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        );
+        const batchStmt = db._rawPrepare(
+          'INSERT INTO inventory_batches (product_id, stock, cost_price, selling_price, wholesale_price, expiry_date) VALUES (?, ?, ?, ?, ?, ?)'
+        );
 
-        const ins = await dbRun(
-          'INSERT INTO products (barcode, name, category, family, supplier, unit, min_stock) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [
-            barcode,
-            name,
-            String(r.category || r['الفئة'] || 'عام').trim(),
-            String(r.family || r['العائلة'] || '').trim() || null,
-            supplier,
-            String(r.unit || r['الوحدة'] || 'قطعة').trim(),
-            Number(r.min_stock ?? 5)
-          ]
-        );
-        await dbRun(
-          'INSERT INTO inventory_batches (product_id, stock, cost_price, selling_price, wholesale_price, expiry_date) VALUES (?, ?, ?, ?, ?, ?)',
-          [
-            ins.lastID,
-            Number(r.stock ?? r['الكمية'] ?? 0),
-            Number(r.cost_price ?? r['سعر الشراء'] ?? 0),
-            Number(r.selling_price ?? r['سعر البيع'] ?? 0),
-            r.wholesale_price ? Number(r.wholesale_price) : null,
-            r.expiry_date || null
-          ]
-        );
-        imported += 1;
-      }
+        for (const r of rows) {
+          const name = String(r.name || r.Name || r.product_name || r['الاسم'] || r['اسم المنتج'] || r.Designation || '').trim();
+          if (!name) {
+            skipped++;
+            continue;
+          }
+
+          const rawBc = String(r.barcode || r.Barcode || r.code || r['الباركود'] || '').replace(/^"|"$/g, '').trim();
+          const barcode = rawBc.length > 0 ? rawBc : null;
+          const category = String(r.category || r.Category || r['الفئة'] || 'عام').trim() || 'عام';
+          const family = String(r.family || r.Family || r['العائلة'] || '').trim() || null;
+          const supplier = String(r.supplier || r.Supplier || r.brand || r['المورد'] || '').trim() || null;
+          const unit = String(r.unit || r.Unit || r['الوحدة'] || 'قطعة').trim() || 'قطعة';
+          const minStock = Math.max(0, Number(r.min_stock ?? r['الحد الأدنى'] ?? 5) || 5);
+          const stockQty = Math.max(0, Number(r.stock ?? r.Stock ?? r['الكمية'] ?? 0) || 0);
+          const cost = Math.max(0, Number(r.cost_price ?? r.Cost ?? r['سعر الشراء'] ?? 0) || 0);
+          const sell = Math.max(0, Number(r.selling_price ?? r.Price ?? r['سعر البيع'] ?? 0) || 0);
+          const wsPrice = r.wholesale_price !== undefined && r.wholesale_price !== '' ? Number(r.wholesale_price) : null;
+          const expiry = r.expiry_date ? String(r.expiry_date).trim() : null;
+
+          if (barcode && barcode.length >= 6) {
+            dzStmt.run(barcode, name.slice(0, 120), category.slice(0, 60), supplier || '', unit, sell);
+          }
+
+          // إذا كان الملف هو القاموس الضخم (أكثر من 2000 سطر وأسعاره وكمياته 0) نكتفي بشحنه في القاموس الذكي + أول 500 منتج للمعاينة حتى لا يثقل جدول الكاشير بـ 31 ألف منتج صفري
+          if (rows.length > 2000 && sell === 0 && cost === 0 && stockQty === 0 && imported >= 500) {
+            skipped++;
+            continue;
+          }
+
+          const existingId = barcode ? barcodeToIdMap.get(barcode) : null;
+          if (existingId) {
+            if (stockQty > 0 || cost > 0 || sell > 0) {
+              batchStmt.run(existingId, stockQty, cost, sell, wsPrice, expiry);
+              updated++;
+            } else {
+              skipped++;
+            }
+          } else {
+            await new Promise((resolve) => {
+              prodStmt.run([barcode, name, category, family, supplier, unit, minStock], function (err) {
+                const newId = !err && this && this.lastID ? Number(this.lastID) : 0;
+                if (newId > 0) {
+                  if (barcode) barcodeToIdMap.set(barcode, newId);
+                  batchStmt.run(newId, stockQty, cost, sell, wsPrice, expiry);
+                  imported++;
+                } else {
+                  skipped++;
+                }
+                resolve();
+              });
+            });
+          }
+        }
+
+        dzStmt.finalize();
+        prodStmt.finalize();
+        batchStmt.finalize();
+      });
     });
-    return { success: true, imported };
+
+    return { success: true, imported, updated, skipped, totalRows: rows.length };
   });
 
   ipcMain.handle('download-inventory-template', async () => {

@@ -1238,6 +1238,9 @@
             <div class="flex items-center gap-1"><span class="w-16 font-bold text-amber-600">200×</span><input type="number" min="0" placeholder="0" oninput="App.recalcCloseShiftDenoms()" data-denom="200" class="denom-inp w-full px-2 py-1 rounded text-center font-bold"></div>
             <div class="flex items-center gap-1"><span class="w-16 font-bold text-sky-600">100×</span><input type="number" min="0" placeholder="0" oninput="App.recalcCloseShiftDenoms()" data-denom="100" class="denom-inp w-full px-2 py-1 rounded text-center font-bold"></div>
             <div class="flex items-center gap-1"><span class="w-16 font-bold text-slate-500">50×</span><input type="number" min="0" placeholder="0" oninput="App.recalcCloseShiftDenoms()" data-denom="50" class="denom-inp w-full px-2 py-1 rounded text-center font-bold"></div>
+            <div class="flex items-center gap-1"><span class="w-16 font-bold text-amber-600">20×</span><input type="number" min="0" placeholder="0" oninput="App.recalcCloseShiftDenoms()" data-denom="20" class="denom-inp w-full px-2 py-1 rounded text-center font-bold"></div>
+            <div class="flex items-center gap-1"><span class="w-16 font-bold text-slate-500">10×</span><input type="number" min="0" placeholder="0" oninput="App.recalcCloseShiftDenoms()" data-denom="10" class="denom-inp w-full px-2 py-1 rounded text-center font-bold"></div>
+            <div class="flex items-center gap-1"><span class="w-16 font-bold text-slate-400">5×</span><input type="number" min="0" placeholder="0" oninput="App.recalcCloseShiftDenoms()" data-denom="5" class="denom-inp w-full px-2 py-1 rounded text-center font-bold"></div>
           </div>
         </div>
 
@@ -1262,12 +1265,12 @@
 
   <!-- نافذة مراجعة تفاصيل المناوبة (#reviewCaisseModal) -->
   <div id="reviewCaisseModal" class="modal-overlay">
-    <div class="modal-content w-full max-w-2xl p-6 space-y-4">
+    <div class="modal-content w-full max-w-4xl p-6 space-y-4 overflow-y-auto">
       <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
-        <h3 id="reviewCaisseModalTitle" class="text-lg font-black">تفاصيل وحركات المناوبة</h3>
+        <h3 id="reviewCaisseModalTitle" class="text-lg font-black text-blue-600">تفاصيل وحركات المناوبة وتقرير Z-Report</h3>
         <button onclick="App.closeModal('reviewCaisseModal')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>
       </div>
-      <div id="reviewCaisseModalBody" class="space-y-3 text-xs max-h-96 overflow-y-auto"></div>
+      <div id="reviewCaisseModalBody" class="space-y-3 text-xs max-h-[78vh] overflow-y-auto"></div>
     </div>
   </div>
 
