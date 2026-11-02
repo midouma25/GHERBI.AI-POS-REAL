@@ -284,3 +284,22 @@ html[dir="ltr"] #barcodeInput {
   padding-left: 2.25rem !important;
 }
 
+/* [CASHIER TURBO HUD STYLES] */
+#barcodeInput:focus {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25) !important;
+}
+#globalPosSearch:focus {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25) !important;
+}
+.cart-row-selected {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22) !important;
+}
+.cart-price-input:focus {
+  border-color: #f59e0b !important;
+  background-color: rgba(245, 158, 11, 0.12) !important;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.3) !important;
+}
+

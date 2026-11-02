@@ -170,14 +170,14 @@
             <span class="material-symbols-rounded icon-sm absolute right-3 top-2.5 text-slate-400">search</span>
             <input id="globalPosSearch" type="text"
               oninput="App.onPosSearchInput(this.value)"
-              placeholder="ابحث بالاسم، الباركود، الفئة، العائلة، أو كود PLU..."
+              placeholder="[F4] ابحث بالاسم، الباركود، الفئة، أو اضغط Enter للإضافة..."
               class="w-full pr-9 pl-3 py-2 rounded-xl text-xs font-bold">
           </div>
           <div class="relative w-52">
             <span class="material-symbols-rounded icon-sm absolute right-3 top-2.5 text-blue-600">barcode_scanner</span>
             <input id="barcodeInput" type="text"
               onkeydown="if(event.key==='Enter') App.handleBarcodeScan(this.value)"
-              placeholder="امسح الباركود (Enter)..."
+              placeholder="[F5] امسح الباركود هنا دائماً..."
               class="w-full pr-9 pl-3 py-2 rounded-xl text-xs font-mono font-bold border-blue-500/40">
           </div>
         </div>
@@ -284,6 +284,9 @@
                   <span class="material-symbols-rounded icon-sm">keyboard_return</span>
                   <span>إرجاع</span>
                 </button>
+                <button id="btnPosHeaderQaBot" onclick="App.runAutoTest_PosPage()" title="تشغيل الفحص الآلي الشامل للصفحة (Ctrl+Shift+T)" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black flex items-center gap-1 shadow-md">
+                  <span>🤖 فحص آلي (QA)</span>
+                </button>
                 <button onclick="App.openProductModal()" class="px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold flex items-center gap-1 shadow">
                   <span class="material-symbols-rounded icon-sm">add</span>
                   <span>إضافة منتج</span>
@@ -361,7 +364,7 @@
               </div>
 
               <div class="grid grid-cols-5 gap-1 text-[11px] font-bold">
-                <button onclick="App.clearCurrentCart()" class="py-2 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500/20">إلغاء (F4)</button>
+                <button onclick="App.clearCurrentCart()" class="py-2 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500/20">إلغاء (Shift+F4)</button>
                 <button onclick="App.holdCurrentCart()" class="py-2 rounded-xl bg-amber-500/10 text-amber-600 hover:bg-amber-500/20">تعليق (F2)</button>
                 <button onclick="App.openDraftsModal()" class="py-2 rounded-xl bg-slate-200 dark:bg-slate-800">مسودات (<span id="draftsCountBadge">0</span>)</button>
                 <button onclick="App.saveCartAsProforma()" class="py-2 rounded-xl bg-indigo-500/10 text-indigo-600 hover:bg-indigo-500/20">كمبدئية</button>

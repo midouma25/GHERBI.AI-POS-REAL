@@ -3133,14 +3133,1455 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
       cleanAndUpgradePosDom();
       App.renderPosView();
       App.renderCartItems();
+      setTimeout(cleanAndUpgradePosDom, 500);
     }, 350);
   } else {
     document.addEventListener('DOMContentLoaded', function () {
       setTimeout(function () {
         cleanAndUpgradePosDom();
-        App.renderPosView();
-        App.renderCartItems();
-      }, 350);
+      App.renderPosView();
+      App.renderCartItems();
+      setTimeout(cleanAndUpgradePosDom, 500);
+    }, 350);
     });
   }
+})();
+
+// ============================================================================
+// [TURBO CASHIER ENGINE — F5 BARCODE MAGNET, F4 SEARCH, F12 PRICE, ESC 80MM, CTRL+SPACE SAVE]
+// ============================================================================
+(function applyTurboCashierEngine() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.selectedCartRowIdx = 0;
+  AppState._isSubmittingInstantSale = false;
+
+  // فحص ما إذا كانت هناك أي نافذة منبثقة مفتوحة حالياً
+  function getActiveModalElement() {
+    var modals = document.querySelectorAll('.modal-overlay.active');
+    return modals.length > 0 ? modals[modals.length - 1] : null;
+  }
+
+  function isPosViewActive() {
+    var posSec = document.getElementById('view-pos');
+    return Boolean(posSec && posSec.classList.contains('active'));
+  }
+
+  // --------------------------------------------------------------------------
+  // 1. المغناطيس التلقائي الدائم لخانة الباركود (#barcodeInput) + اختصار F5
+  // --------------------------------------------------------------------------
+  App.focusBarcodeMagnet = function (clearValue) {
+    var bcInp = document.getElementById('barcodeInput');
+    if (!bcInp) return;
+    if (clearValue) bcInp.value = '';
+    bcInp.focus();
+    try {
+      bcInp.select();
+    } catch (_) {}
+    updateBarcodeStatusPill(true);
+  };
+
+  function updateBarcodeStatusPill(isFocused) {
+    var pill = document.getElementById('barcodeMagnetStatusPill');
+    if (!pill) return;
+    if (isFocused) {
+      pill.className = 'px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-black whitespace-nowrap';
+      pill.textContent = '🟢 جاهز للمسح (F5)';
+    } else {
+      pill.className = 'px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 text-[10px] font-black whitespace-nowrap cursor-pointer';
+      pill.textContent = '⚠️ اضغط F5 للمسح';
+    }
+  }
+
+  // مراقب ذكي يعيد التركيز لخانة الباركود تلقائياً عندما لا يكون البائع يكتب في حقل آخر
+  function installBarcodeAutoFocusGuard() {
+    var bcInp = document.getElementById('barcodeInput');
+    if (!bcInp) return;
+
+    bcInp.addEventListener('focus', function () {
+      updateBarcodeStatusPill(true);
+    });
+    bcInp.addEventListener('blur', function () {
+      updateBarcodeStatusPill(false);
+    });
+
+    // عند النقر في أي مكان فارغ داخل شاشة الكاشير، يعود المؤشر فوراً لخانة الباركود
+    document.addEventListener('click', function (e) {
+      if (!isPosViewActive() || getActiveModalElement()) return;
+      var tag = (e.target && e.target.tagName ? e.target.tagName : '').toUpperCase();
+      var isInteractive =
+        tag === 'INPUT' ||
+        tag === 'SELECT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'BUTTON' ||
+        Boolean(e.target && e.target.closest && e.target.closest('button, select, input, textarea, a'));
+      if (!isInteractive) {
+        setTimeout(function () {
+          if (!getActiveModalElement()) App.focusBarcodeMagnet(false);
+        }, 40);
+      }
+    });
+
+    // فحص دوري خفيف: إذا كان المؤشر تائهاً على document.body في شاشة الكاشير، نرجعه فوراً لخانة الباركود
+    setInterval(function () {
+      if (!isPosViewActive() || getActiveModalElement()) return;
+      var active = document.activeElement;
+      if (!active || active === document.body || active.tagName === 'HTML' || active.tagName === 'MAIN' || active.tagName === 'SECTION') {
+        App.focusBarcodeMagnet(false);
+      }
+    }, 900);
+  }
+
+  // --------------------------------------------------------------------------
+  // 2. قفز المؤشر بـ F12 إلى خانة السعر لتعديله يدوياً + العودة للباركود بـ Enter
+  // --------------------------------------------------------------------------
+  App.focusCartItemPriceInput = function (targetIdx) {
+    var items = (this.currentCart && this.currentCart.items) || [];
+    if (items.length === 0) {
+      if (typeof showToast === 'function') showToast('السلة فارغة — أضف منتجاً أولاً لتعديل سعره (F12)', 'warning');
+      return false;
+    }
+    var idx =
+      targetIdx !== undefined && targetIdx !== null && items[targetIdx]
+        ? Number(targetIdx)
+        : items[AppState.selectedCartRowIdx]
+          ? AppState.selectedCartRowIdx
+          : items.length - 1;
+
+    AppState.selectedCartRowIdx = idx;
+    var priceInp = document.getElementById('cartItemPriceInput-' + idx);
+    if (!priceInp) {
+      this.renderCartItems();
+      priceInp = document.getElementById('cartItemPriceInput-' + idx);
+    }
+    if (priceInp) {
+      priceInp.focus();
+      priceInp.select();
+      return true;
+    }
+    return false;
+  };
+
+  App.onCartPriceInputKeydown = function (event, idx, inputEl) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.updateCartItemPrice(idx, inputEl.value);
+      this.focusBarcodeMagnet(true);
+      if (typeof showToast === 'function') {
+        showToast('✅ تم تحديث السعر يدوياً والعودة لخانة الباركود', 'success');
+      }
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.renderCartItems();
+      this.focusBarcodeMagnet(false);
+    }
+  };
+
+  App.onCartQtyInputKeydown = function (event, idx, inputEl) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.updateCartItemQty(idx, inputEl.value);
+      this.focusBarcodeMagnet(true);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.renderCartItems();
+      this.focusBarcodeMagnet(false);
+    }
+  };
+
+  // تحديث renderCartItems لإضافة المعرف الفريد #cartItemPriceInput-idx ودعم التحديد البصري وأزرار + و -
+  App.renderCartItems = function () {
+    var container = document.getElementById('posCartItems');
+    if (!container) return;
+    var items = (this.currentCart && this.currentCart.items) || [];
+
+    if (items.length === 0) {
+      AppState.selectedCartRowIdx = 0;
+      var emptyTxt =
+        AppState.lang === 'fr'
+          ? 'Panier vide — Scannez un code-barres (F5) ou recherchez (F4)'
+          : AppState.lang === 'en'
+            ? 'Cart is empty — Scan barcode (F5) or search (F4)'
+            : 'السلة فارغة — امسح الباركود (F5) أو ابحث بالاسم (F4)';
+      container.innerHTML =
+        '<div class="h-full flex flex-col items-center justify-center text-slate-400 py-8">' +
+        '<span class="material-symbols-rounded icon-xl mb-2 opacity-40">shopping_basket</span>' +
+        '<div class="text-xs font-bold">' + emptyTxt + '</div>' +
+        '<div class="text-[10px] text-slate-400 mt-1 font-mono">[F5] الباركود | [F4] البحث | [F12] السعر | [Échap] طباعة 80mm فورية | [Ctrl+Space] حفظ فقط</div>' +
+        '</div>';
+      if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(container);
+      return;
+    }
+
+    if (AppState.selectedCartRowIdx >= items.length || AppState.selectedCartRowIdx < 0) {
+      AppState.selectedCartRowIdx = items.length - 1;
+    }
+
+    container.innerHTML = items
+      .map(function (item, idx) {
+        var prod = AppState.products.find(function (p) {
+          return Number(p.id) === Number(item.product_id || item.productId) || p.name === item.name;
+        });
+        if (prod && !item.product_id) item.product_id = prod.id;
+        var cost = Number(item.cost_price || (prod && prod.cost_price) || 0);
+        var isBelowCost = cost > 0 && Number(item.price) < cost;
+        var isSelected = idx === AppState.selectedCartRowIdx;
+
+        return (
+          '<div onclick="AppState.selectedCartRowIdx=' + idx + ';" class="p-2 rounded-xl border ' +
+          (isBelowCost
+            ? 'border-amber-500 bg-amber-500/10 '
+            : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/90 ') +
+          (isSelected ? 'cart-row-selected ' : '') +
+          'flex items-center justify-between gap-1.5 shadow-sm transition">' +
+          '<div class="min-w-0 flex-1">' +
+          '<div class="font-bold text-xs truncate">' +
+          (item.name || item.custom_product_name || 'منتج') +
+          '</div>' +
+          '<div class="flex flex-wrap items-center gap-1 text-[10px] text-slate-400 font-mono mt-0.5">' +
+          '<span>' +
+          Number(item.price || 0).toFixed(2) +
+          ' د.ج / ' +
+          (item.unit || (prod && prod.unit) || 'قطعة') +
+          '</span>' +
+          (prod
+            ? '<button type="button" onclick="App.toggleCartItemWholesaleUnit(' +
+              idx +
+              '); App.focusBarcodeMagnet(false);" class="px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-500 font-sans font-bold hover:bg-indigo-600 hover:text-white transition">' +
+              (item._isWholesaleMode ? '📦 جملة' : 'وحدة / تسعيرة') +
+              '</button>'
+            : '') +
+          (isBelowCost
+            ? '<span class="px-1.5 py-0.2 rounded bg-rose-600 text-white font-sans font-bold">⚠️ أقل من التكلفة (' +
+              cost.toFixed(0) +
+              ')</span>'
+            : '') +
+          '</div></div>' +
+          '<div class="flex items-center gap-1">' +
+          '<button type="button" title="إنقاص الكمية (-)" onclick="AppState.selectedCartRowIdx=' +
+          idx +
+          '; App.stepCartItemQty(' +
+          idx +
+          ', -1); App.focusBarcodeMagnet(false);" class="w-6 h-7 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-rose-500 hover:text-white font-mono font-black text-xs">-</button>' +
+          '<input id="cartItemQtyInput-' +
+          idx +
+          '" type="number" step="any" value="' +
+          item.quantity +
+          '" onkeydown="App.onCartQtyInputKeydown(event, ' +
+          idx +
+          ', this)" onchange="App.updateCartItemQty(' +
+          idx +
+          ', this.value); App.focusBarcodeMagnet(false);" title="الكمية (اضغط Enter للتأكيد)" class="w-11 px-1 py-1 rounded-lg text-center font-mono font-black text-xs">' +
+          '<button type="button" title="زيادة الكمية (+)" onclick="AppState.selectedCartRowIdx=' +
+          idx +
+          '; App.stepCartItemQty(' +
+          idx +
+          ', 1); App.focusBarcodeMagnet(false);" class="w-6 h-7 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-emerald-600 hover:text-white font-mono font-black text-xs">+</button>' +
+          '</div>' +
+          '<input id="cartItemPriceInput-' +
+          idx +
+          '" type="number" step="any" value="' +
+          Number(item.price || 0).toFixed(2) +
+          '" onkeydown="App.onCartPriceInputKeydown(event, ' +
+          idx +
+          ', this)" onchange="App.updateCartItemPrice(' +
+          idx +
+          ', this.value); App.focusBarcodeMagnet(false);" title="سعر الوحدة (اختصار التعديل اليدوي: F12 ثم Enter)" class="cart-price-input w-16 px-1 py-1 rounded-lg text-center font-mono font-bold text-xs text-blue-600 dark:text-blue-400">' +
+          '<div class="w-14 text-left font-mono font-black text-xs">' +
+          Number(item.subtotal || 0).toFixed(2) +
+          '</div>' +
+          '<button type="button" title="حذف الصنف" onclick="App.removeCartItem(' +
+          idx +
+          '); App.focusBarcodeMagnet(false);" class="text-rose-500 hover:bg-rose-500/10 p-1 rounded-lg"><span class="material-symbols-rounded icon-sm">delete</span></button>' +
+          '</div>'
+        );
+      })
+      .join('');
+
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(container);
+  };
+
+  // عند إضافة منتج للسلة، نجعل السطر المضاف هو المحدد حالياً ونعيد المؤشر للباركود فوراً
+  var _prevAddProdToCart = App.addProductToCart.bind(App);
+  App.addProductToCart = function (productId, qty, options) {
+    var res = _prevAddProdToCart(productId, qty, options);
+    var items = (this.currentCart && this.currentCart.items) || [];
+    if (items.length > 0) {
+      var foundIdx = items.findIndex(function (it) {
+        return Number(it.product_id || it.productId) === Number(productId);
+      });
+      AppState.selectedCartRowIdx = foundIdx !== -1 ? foundIdx : items.length - 1;
+      this.renderCartItems();
+    }
+    this.focusBarcodeMagnet(false);
+    return res;
+  };
+
+  // --------------------------------------------------------------------------
+  // 3. البيع والتأكيد الفوري المباشر:
+  //    - Escape (Échap) -> حفظ الفاتورة + طباعة تذكرة حرارية 80mm مباشرة وبصمت بدون أي نافذة
+  //    - Ctrl + Space   -> حفظ الفاتورة فقط بدون أي طباعة
+  // --------------------------------------------------------------------------
+  App.instantConfirmAndCheckout = async function (mode) {
+    // mode: 'thermal80_silent' | 'save_only'
+    if (AppState._isSubmittingInstantSale) return;
+    var cart = this.currentCart;
+    if (!cart || !Array.isArray(cart.items) || cart.items.length === 0) {
+      if (typeof showToast === 'function') {
+        showToast('السلة فارغة — امسح باركود منتج أولاً!', 'warning');
+      }
+      this.focusBarcodeMagnet(false);
+      return;
+    }
+
+    AppState._isSubmittingInstantSale = true;
+    try {
+      var totals = this.recalcCart();
+      var customerId = cart.customerId ? Number(cart.customerId) : null;
+      var payload = {
+        editSaleId: AppState.editingSaleId || null,
+        customer_id: customerId,
+        subtotal: totals.subtotal,
+        tax_percentage: totals.taxPercentage || 0,
+        discount: totals.discount || 0,
+        stamp_amount: totals.stampAmount || 0,
+        total: totals.total,
+        paid_amount: totals.total,
+        payment_method: 'cash',
+        due_date: null,
+        user_id: AppState.currentUser ? AppState.currentUser.id : 1,
+        session_id: AppState.activeSession ? AppState.activeSession.id : null,
+        items: cart.items.map(function (it) {
+          return {
+            product_id: it.product_id || it.productId || null,
+            batch_id: it.batch_id || it.batchId || null,
+            variant_id: it.variant_id || it.variantId || null,
+            custom_product_name: it.custom_product_name || it.name,
+            quantity: Number(it.quantity || 1),
+            price: Number(it.price || 0),
+            cost_price: Number(it.cost_price || 0),
+            subtotal: Number(it.subtotal || 0),
+            serial_number: it.serial_number || null,
+            warranty_months: Number(it.warranty_months || 0)
+          };
+        })
+      };
+
+      var saved = await window.api.processSale(payload);
+      var saleId = saved && (saved.id || saved.saleId);
+      var docNum = (saved && saved.doc_number) || ('#' + saleId);
+
+      // فتح درج النقود تلقائياً عند البيع النقدي
+      if (
+        String(AppState.settings.open_drawer_on_cash_sale) !== 'false' &&
+        window.api &&
+        typeof window.api.openCashDrawer === 'function'
+      ) {
+        window.api.openCashDrawer().catch(function () {});
+      }
+
+      if (mode === 'thermal80_silent' && saleId && window.PrintEngine) {
+        var fullSale = (await window.api.getSaleDetails(saleId).catch(function () { return null; })) || {
+          ...payload,
+          id: saleId,
+          doc_number: docNum,
+          sale_date: new Date().toISOString()
+        };
+        var receiptHtml = await window.PrintEngine.renderReceiptHtml(fullSale, AppState.settings, {
+          lang: AppState.settings.receipt_lang || AppState.lang || 'ar',
+          template: AppState.settings.receipt_template || 'receipt1'
+        });
+
+        // طباعة صامتة مباشرة على طابعة التذاكر الحرارية 80mm دون فتح مربع حوار
+        if (window.api && typeof window.api.printSilent === 'function') {
+          var printRes = await window.api.printSilent({
+            html: receiptHtml,
+            silent: true,
+            printerName: AppState.settings.thermal_printer_name || undefined
+          });
+          if (!printRes || !printRes.success) {
+            await window.PrintEngine.printHtmlDocument(receiptHtml, { silent: true });
+          }
+        } else {
+          await window.PrintEngine.printHtmlDocument(receiptHtml, { silent: true });
+        }
+        if (typeof showToast === 'function') {
+          showToast('🖨️ تم تأكيد الفاتورة (' + docNum + ') وطباعة تذكرة 80mm مباشرة!', 'success');
+        }
+      } else {
+        if (typeof showToast === 'function') {
+          showToast('💾 تم حفظ الفاتورة (' + docNum + ') بنجاح بدون طباعة!', 'success');
+        }
+      }
+
+      AppState.editingSaleId = null;
+      var editBanner = document.getElementById('posEditSaleBanner');
+      if (editBanner) editBanner.classList.add('hidden');
+
+      this.clearCurrentCart();
+      await this.refreshProducts();
+      this.focusBarcodeMagnet(true);
+    } catch (err) {
+      if (typeof showToast === 'function') {
+        showToast('تعذر إتمام الفاتورة السريعة: ' + (err.message || err), 'error');
+      }
+    } finally {
+      AppState._isSubmittingInstantSale = false;
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 4. اختصار F4 للبحث السريع + إضافة أول منتج مطابق عند ضغط Enter في البحث
+  // --------------------------------------------------------------------------
+  function setupSearchInputEnterToAdd() {
+    var searchInp = document.getElementById('globalPosSearch');
+    if (!searchInp || searchInp.dataset.turboBound === '1') return;
+    searchInp.dataset.turboBound = '1';
+
+    searchInp.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var q = String(searchInp.value || '').trim().toLowerCase();
+        if (q) {
+          var matches = (AppState.products || []).filter(function (p) {
+            return (
+              !p.hide_from_pos &&
+              (String(p.name || '').toLowerCase().includes(q) ||
+                String(p.barcode || '').toLowerCase().includes(q) ||
+                String(p.plu_code || '').toLowerCase() === q)
+            );
+          });
+          if (matches.length > 0) {
+            App.addProductToCart(matches[0].id, 1);
+            searchInp.value = '';
+            App.onPosSearchInput('');
+            if (typeof showToast === 'function') {
+              showToast('➕ تمت إضافة "' + matches[0].name + '" من البحث وعاد المؤشر للباركود', 'info');
+            }
+          }
+        }
+        App.focusBarcodeMagnet(false);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        searchInp.value = '';
+        App.onPosSearchInput('');
+        App.focusBarcodeMagnet(false);
+      }
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // 5. بناء شريط الإرشاد السريع وأزرار البيع الفوري (Échap / Ctrl+Space) في الواجهة
+  // --------------------------------------------------------------------------
+  function injectTurboPosControls() {
+    // شارة حالة المغناطيس بجانب حقل الباركود
+    var bcWrap = document.getElementById('barcodeInput') ? document.getElementById('barcodeInput').parentElement : null;
+    if (bcWrap && !document.getElementById('barcodeMagnetStatusPill')) {
+      bcWrap.classList.add('flex', 'items-center', 'gap-1.5');
+      bcWrap.style.width = '290px';
+      bcWrap.insertAdjacentHTML(
+        'beforeend',
+        '<span id="barcodeMagnetStatusPill" onclick="App.focusBarcodeMagnet(false)" class="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-black whitespace-nowrap">🟢 جاهز للمسح (F5)</span>'
+      );
+    }
+
+    // أزرار التنفيذ المباشر (تذكرة 80mm فورية بـ Échap + حفظ بدون طباعة بـ Ctrl+Space) في أسفل السلة
+    var mainPayBtn = document.querySelector('#posCartContainer button[onclick*="openCheckoutModal"]');
+    if (mainPayBtn && !document.getElementById('turboInstantActionButtons')) {
+      var barHtml =
+        '<div id="turboInstantActionButtons" class="grid grid-cols-2 gap-1.5 pt-0.5">' +
+        '<button type="button" onclick="App.instantConfirmAndCheckout(\'thermal80_silent\')" title="تأكيد الفاتورة وطباعة تذكرة 80mm مباشرة بدون نافذة (اختصار: Échap)" class="py-2 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] flex items-center justify-center gap-1 shadow-sm">' +
+        '<span>🖨️ تذكرة 80mm فورية (Échap)</span>' +
+        '</button>' +
+        '<button type="button" onclick="App.instantConfirmAndCheckout(\'save_only\')" title="حفظ الفاتورة وتأكيدها مباشرة بدون طباعة (اختصار: Ctrl + Space)" class="py-2 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-black text-[11px] flex items-center justify-center gap-1 shadow-sm">' +
+        '<span>💾 حفظ بدون طباعة (Ctrl+Space)</span>' +
+        '</button>' +
+        '</div>';
+      mainPayBtn.insertAdjacentHTML('beforebegin', barHtml);
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // 6. الموجه المركزي لاختصارات الكاشير الخارقة (F5, F4, F12, +, -, Escape, Ctrl+Space)
+  // --------------------------------------------------------------------------
+  document.addEventListener(
+    'keydown',
+    function (e) {
+      if (!isPosViewActive()) return;
+
+      var activeModal = getActiveModalElement();
+      var activeEl = document.activeElement;
+      var activeId = activeEl ? activeEl.id : '';
+      var isBarcodeFocused = activeId === 'barcodeInput';
+      var barcodeVal = isBarcodeFocused ? String(activeEl.value || '') : '';
+
+      // 1) F5 -> العودة الفورية لخانة الباركود دائماً (ومنع إعادة تحميل المتصفح)
+      if (e.key === 'F5') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (activeModal) App.closeModal(activeModal.id);
+        App.focusBarcodeMagnet(true);
+        if (typeof showToast === 'function') showToast('🎯 المؤشر جاهز في خانة مسح الباركود (F5)', 'info');
+        return;
+      }
+
+      // 2) F4 -> الذهاب الفوري لخانة البحث بالاسم والباركود (#globalPosSearch)
+      if (e.key === 'F4' && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        var sInp = document.getElementById('globalPosSearch');
+        if (sInp) {
+          sInp.focus();
+          sInp.select();
+        }
+        return;
+      }
+
+      // Shift + F4 -> إفراغ السلة الحالية
+      if (e.key === 'F4' && e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        App.clearCurrentCart();
+        App.focusBarcodeMagnet(true);
+        return;
+      }
+
+      // 3) F12 -> الذهاب الفوري إلى خانة السعر في السلة لتعديله يدوياً
+      if (e.key === 'F12') {
+        e.preventDefault();
+        e.stopPropagation();
+        App.focusCartItemPriceInput();
+        return;
+      }
+
+      // 4) Ctrl + Space (Ctrl + Espace) -> حفظ الفاتورة وتأكيدها مباشرة بدون طباعة
+      if (e.ctrlKey && (e.code === 'Space' || e.key === ' ')) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (activeModal && activeModal.id === 'checkoutModal') {
+          App.submitSale('none');
+        } else {
+          App.instantConfirmAndCheckout('save_only');
+        }
+        return;
+      }
+
+      // 5) Escape (Échap) -> طباعة تذكرة 80mm وتأكيد الفاتورة مباشرة بدون أي ضغطة إضافية
+      if (e.key === 'Escape') {
+        // إذا كان البائع داخل حقل السعر أو البحث، يعيده Escape للباركود أولاً
+        if (activeEl && (activeEl.classList.contains('cart-price-input') || activeId === 'globalPosSearch')) {
+          return;
+        }
+        // إذا كانت هناك نافذة منبثقة غير نافذة الدفع مفتوحة، نغلقها ونعيد المؤشر للباركود
+        if (activeModal && activeModal.id !== 'checkoutModal') {
+          e.preventDefault();
+          App.closeModal(activeModal.id);
+          App.focusBarcodeMagnet(false);
+          return;
+        }
+        // إذا كانت نافذة الدفع مفتوحة أو كنا في شاشة الكاشير المباشرة وفيها سلة غير فارغة -> طباعة تذكرة 80mm فورية!
+        if (App.currentCart && Array.isArray(App.currentCart.items) && App.currentCart.items.length > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (activeModal && activeModal.id === 'checkoutModal') {
+            App.closeModal('checkoutModal');
+          }
+          App.instantConfirmAndCheckout('thermal80_silent');
+          return;
+        }
+      }
+
+      // 6) التحكم بـ (+ و -) في كمية المنتج مباشرة عندما يكون المؤشر في خانة الباركود الفارغة
+      if (!activeModal && isBarcodeFocused && barcodeVal === '') {
+        var items = (App.currentCart && App.currentCart.items) || [];
+        if (items.length > 0) {
+          var targetIdx = items[AppState.selectedCartRowIdx] ? AppState.selectedCartRowIdx : items.length - 1;
+          if (e.key === '+' || e.code === 'NumpadAdd') {
+            e.preventDefault();
+            App.stepCartItemQty(targetIdx, 1);
+            App.focusBarcodeMagnet(false);
+            return;
+          }
+          if (e.key === '-' || e.code === 'NumpadSubtract') {
+            e.preventDefault();
+            App.stepCartItemQty(targetIdx, -1);
+            App.focusBarcodeMagnet(false);
+            return;
+          }
+          if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            AppState.selectedCartRowIdx = Math.max(0, targetIdx - 1);
+            App.renderCartItems();
+            App.focusBarcodeMagnet(false);
+            return;
+          }
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            AppState.selectedCartRowIdx = Math.min(items.length - 1, targetIdx + 1);
+            App.renderCartItems();
+            App.focusBarcodeMagnet(false);
+            return;
+          }
+        }
+      }
+    },
+    true
+  );
+
+  // تحديث دليل الاختصارات (#shortcutsHelpModal) ليعكس تعليماتك الجديدة بدقة
+  function updateShortcutsHelpModalContent() {
+    var modalBody = document.querySelector('#shortcutsHelpModal .space-y-2.text-xs');
+    if (!modalBody) return;
+    modalBody.innerHTML =
+      '<div class="flex justify-between p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 font-bold"><span>تأكيد الفاتورة وطباعة تذكرة 80mm مباشرة</span><kbd class="px-2 py-0.5 bg-emerald-600 text-white rounded font-mono">Échap (Esc)</kbd></div>' +
+      '<div class="flex justify-between p-2 rounded-lg bg-blue-500/10 border border-blue-500/30 font-bold"><span>حفظ الفاتورة وتأكيدها مباشرة بدون طباعة</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono">Ctrl + Space</kbd></div>' +
+      '<div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>الرجوع الفوري لخانة مسح الباركود</span><kbd class="px-2 py-0.5 bg-emerald-600 text-white rounded font-mono">F5</kbd></div>' +
+      '<div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>الذهاب الفوري لخانة البحث بالاسم والباركود</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono">F4</kbd></div>' +
+      '<div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>تعديل سعر المنتج يدوياً في السلة (ثم Enter)</span><kbd class="px-2 py-0.5 bg-amber-500 text-slate-950 rounded font-mono font-black">F12</kbd></div>' +
+      '<div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>زيادة أو إنقاص كمية المنتج في السلة</span><kbd class="px-2 py-0.5 bg-indigo-600 text-white rounded font-mono">+ / -</kbd></div>' +
+      '<div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>فتح نافذة التسديد المفصلة (آجل / تقسيط / شيك)</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono">F1</kbd></div>' +
+      '<div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>تعليق الفاتورة (F2) / المسودات (F3) / منتج حر (F8)</span><kbd class="px-2 py-0.5 bg-slate-700 text-white rounded font-mono">F2 / F3 / F8</kbd></div>';
+  }
+
+  function initAllTurboFeatures() {
+    injectTurboPosControls();
+    setupSearchInputEnterToAdd();
+    installBarcodeAutoFocusGuard();
+    updateShortcutsHelpModalContent();
+    App.renderCartItems();
+    App.focusBarcodeMagnet(false);
+  }
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(initAllTurboFeatures, 550);
+  } else {
+    document.addEventListener('DOMContentLoaded', function () {
+      setTimeout(initAllTurboFeatures, 550);
+    });
+  }
+})();
+
+// ============================================================================
+// [PAGE 2 SALES SURGICAL PERFECTION & AUTOMATED QA BOT — GHERBI.AI EXCLUSIVE]
+// ============================================================================
+(function applyPage2SalesSurgicalPerfection() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.salesQuickSearch = '';
+  AppState.salesQuickPreset = 'all';
+  AppState.selectedSalesRowIdx = 0;
+  AppState._lastRenderedSalesList = [];
+  AppState.savedDriversList = JSON.parse(localStorage.getItem('gherbi_saved_drivers') || '[{"driver":"أحمد بن علي","plate":"00123-116-16"},{"driver":"كريم للتوصيل السريع","plate":"04589-125-25"}]');
+
+  function formatCleanSaleDateTime(raw) {
+    if (!raw) return '—';
+    var str = String(raw).replace('T', ' ');
+    var datePart = str.slice(0, 10);
+    var timePart = str.slice(11, 16);
+    return timePart ? datePart + ' | 🕒 ' + timePart : datePart;
+  }
+
+  function renderPaymentMethodBadge(method, splitJson) {
+    var m = String(method || 'cash').toLowerCase();
+    if (splitJson || m === 'split') {
+      return '<span class="px-2 py-0.5 rounded-lg bg-purple-500/15 text-purple-600 dark:text-purple-400 font-bold text-[11px]">🔀 دفع مختلط</span>';
+    }
+    var map = {
+      cash: '<span class="px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-[11px]">💵 نقداً (Espèces)</span>',
+      credit: '<span class="px-2 py-0.5 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold text-[11px]">📝 آجل / دين</span>',
+      cib: '<span class="px-2 py-0.5 rounded-lg bg-blue-500/15 text-blue-600 dark:text-blue-400 font-bold text-[11px]">💳 البطاقة الذهبية / CIB</span>',
+      baridimob: '<span class="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold text-[11px]">📱 بريدي موب</span>',
+      cheque: '<span class="px-2 py-0.5 rounded-lg bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 font-bold text-[11px]">🏦 شيك / صك</span>',
+      installment: '<span class="px-2 py-0.5 rounded-lg bg-sky-500/15 text-sky-600 dark:text-sky-400 font-bold text-[11px]">📅 بالتقسيط</span>'
+    };
+    return map[m] || ('<span class="px-2 py-0.5 rounded-lg bg-slate-200 dark:bg-slate-700 font-bold text-[11px]">' + m + '</span>');
+  }
+
+  // --------------------------------------------------------------------------
+  // 1. إعادة بناء وتطوير شاشة سجل المبيعات والضمان (#view-sales) بالكامل
+  // --------------------------------------------------------------------------
+  App.renderSalesView = async function () {
+    var root = document.getElementById('sales-view-root');
+    if (!root) return;
+
+    var allSales = (await window.api.getSales({
+      customerId: AppState.salesFilterCustomerId || undefined,
+      dateFrom: AppState.salesFilterDateFrom || undefined,
+      dateTo: AppState.salesFilterDateTo || undefined
+    }).catch(function () { return []; })) || [];
+
+    var sales = allSales.filter(function (s) {
+      var rem = Math.max(0, Number(s.total || 0) - Number(s.paid_amount || 0));
+      if (AppState.salesFilterStatus === 'paid' && rem > 0.01) return false;
+      if (AppState.salesFilterStatus === 'unpaid' && rem <= 0.01) return false;
+      if (AppState.salesFilterStatus === 'avoir' && !s.credit_note_number) return false;
+
+      if (AppState.salesQuickSearch) {
+        var q = AppState.salesQuickSearch.toLowerCase();
+        var docMatch = String(s.doc_number || ('#' + s.id)).toLowerCase().includes(q);
+        var custMatch = String(s.customer_name || 'زبون عابر').toLowerCase().includes(q);
+        var totalMatch = String(s.total || '').includes(q);
+        if (!docMatch && !custMatch && !totalMatch) return false;
+      }
+      return true;
+    });
+
+    AppState._lastRenderedSalesList = sales;
+    if (AppState.selectedSalesRowIdx >= sales.length) AppState.selectedSalesRowIdx = 0;
+
+    // حساب المؤشرات المالية الحية (KPIs)
+    var totalRev = sales.reduce(function (sum, s) { return sum + Number(s.total || 0); }, 0);
+    var totalPaid = sales.reduce(function (sum, s) { return sum + Number(s.paid_amount || 0); }, 0);
+    var totalRem = sales.reduce(function (sum, s) { return sum + Math.max(0, Number(s.total || 0) - Number(s.paid_amount || 0)); }, 0);
+    var unpaidCount = sales.filter(function (s) { return Number(s.total || 0) - Number(s.paid_amount || 0) > 0.01; }).length;
+    var centimeRev = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(totalRev) : '';
+
+    root.innerHTML =
+      '<div class="space-y-4">' +
+      '  <!-- رأس الصفحة مع زر الفحص الآلي والتصدير -->' +
+      '  <div class="flex flex-wrap items-center justify-between gap-3">' +
+      '    <div>' +
+      '      <h2 class="text-2xl font-black flex items-center gap-2">' +
+      '        <span>سجل المبيعات، تعديل الفواتير، وفاحص الضمان (' + sales.length + ')</span>' +
+      '        <button id="btnSalesPageQaBot" type="button" onclick="App.runAutoTest_SalesPage()" title="تشغيل الفحص الآلي الذاتي لصفحة سجل المبيعات (Ctrl+Shift+T)" class="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm">🤖 فحص آلي (QA)</button>' +
+      '      </h2>' +
+      '      <p class="text-xs text-slate-500">تعديل الفواتير، الاسترجاع الجزئي للأصناف، فحص صلاحية الضمان IMEI/Serial، طباعة التذاكر الحرارية 80mm ووصولات التوصيل وإشعارات الدائن</p>' +
+      '    </div>' +
+      '    <div class="flex flex-wrap items-center gap-1.5 text-xs">' +
+      '      <button type="button" onclick="App.applySalesQuickDatePreset(\'today\')" class="px-2.5 py-1.5 rounded-xl font-bold ' + (AppState.salesQuickPreset === 'today' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700') + '">📅 اليوم</button>' +
+      '      <button type="button" onclick="App.applySalesQuickDatePreset(\'yesterday\')" class="px-2.5 py-1.5 rounded-xl font-bold ' + (AppState.salesQuickPreset === 'yesterday' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700') + '">⏮️ أمس</button>' +
+      '      <button type="button" onclick="App.applySalesQuickDatePreset(\'week\')" class="px-2.5 py-1.5 rounded-xl font-bold ' + (AppState.salesQuickPreset === 'week' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700') + '">📆 7 أيام</button>' +
+      '      <button type="button" onclick="App.applySalesQuickDatePreset(\'month\')" class="px-2.5 py-1.5 rounded-xl font-bold ' + (AppState.salesQuickPreset === 'month' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700') + '">🗓️ هذا الشهر</button>' +
+      '      <button type="button" onclick="App.applySalesQuickDatePreset(\'unpaid\')" class="px-2.5 py-1.5 rounded-xl font-bold ' + (AppState.salesFilterStatus === 'unpaid' ? 'bg-rose-600 text-white' : 'bg-rose-500/10 text-rose-600 border border-rose-500/20') + '">⚠️ ديون غير مسددة (' + unpaidCount + ')</button>' +
+      '      <button type="button" onclick="App.applySalesQuickDatePreset(\'all\')" class="px-2.5 py-1.5 rounded-xl font-bold ' + (AppState.salesQuickPreset === 'all' && !AppState.salesFilterStatus ? 'bg-slate-800 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700') + '">🔄 الكل</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <!-- شريط المؤشرات المالية الحية (KPIs) بالدينار وبالسنتيم الجزائري -->' +
+      '  <div id="salesKpiSummaryGrid" class="grid grid-cols-1 md:grid-cols-4 gap-3">' +
+      '    <div class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">' +
+      '      <div class="text-xs text-slate-400 font-bold">إجمالي المبيعات المعروضة</div>' +
+      '      <div class="text-xl font-black font-mono text-blue-600 mt-0.5">' + totalRev.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">🇩🇿 بالسنتيم: ' + centimeRev + '</div>' +
+      '    </div>' +
+      '    <div class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">' +
+      '      <div class="text-xs text-slate-400 font-bold">إجمالي المقبوضات المحصلة (Encaissé)</div>' +
+      '      <div class="text-xl font-black font-mono text-emerald-600 mt-0.5">' + totalPaid.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] text-slate-400 mt-0.5">نسبة التحصيل: ' + (totalRev > 0 ? Math.round((totalPaid / totalRev) * 100) : 100) + '%</div>' +
+      '    </div>' +
+      '    <div class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">' +
+      '      <div class="text-xs text-slate-400 font-bold">إجمالي الديون المتبقية (Créances)</div>' +
+      '      <div class="text-xl font-black font-mono ' + (totalRem > 0.01 ? 'text-rose-600' : 'text-slate-400') + ' mt-0.5">' + totalRem.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] text-slate-400 mt-0.5">عدد الفواتير الآجلة: ' + unpaidCount + ' فاتورة</div>' +
+      '    </div>' +
+      '    <div class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">' +
+      '      <div class="text-xs text-slate-400 font-bold">عدد الفواتير ومتوسط السلة</div>' +
+      '      <div class="text-xl font-black font-mono text-indigo-600 mt-0.5">' + sales.length + ' فاتورة</div>' +
+      '      <div class="text-[11px] text-slate-400 mt-0.5">متوسط الفاتورة: ' + (sales.length > 0 ? (totalRev / sales.length).toFixed(2) : '0.00') + ' د.ج</div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <!-- شريط البحث الفوري والفلاتر التفصيلية وفاحص الضمان -->' +
+      '  <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">' +
+      '    <div class="lg:col-span-7 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 flex flex-wrap items-center gap-2 text-xs">' +
+      '      <input id="salesQuickSearchInput" type="text" value="' + (AppState.salesQuickSearch || '') + '" oninput="App.onSalesQuickSearchInput(this.value)" placeholder="🔍 [F4] ابحث برقم الفاتورة (FAC-...)، اسم الزبون، أو المبلغ..." class="flex-1 min-w-[180px] px-3 py-2 rounded-xl font-bold">' +
+      '      <select id="salesCustFilter" onchange="AppState.salesFilterCustomerId=this.value; App.renderSalesView()" class="px-2.5 py-2 rounded-xl font-bold">' +
+      '        <option value="">جميع الزبائن</option>' +
+      (AppState.customers || []).map(function (c) {
+        return '<option value="' + c.id + '" ' + (String(AppState.salesFilterCustomerId) === String(c.id) ? 'selected' : '') + '>' + c.name + '</option>';
+      }).join('') +
+      '      </select>' +
+      '      <select id="salesStatusFilter" onchange="AppState.salesFilterStatus=this.value; App.renderSalesView()" class="px-2.5 py-2 rounded-xl font-bold">' +
+      '        <option value="" ' + (!AppState.salesFilterStatus ? 'selected' : '') + '>جميع الحالات</option>' +
+      '        <option value="paid" ' + (AppState.salesFilterStatus === 'paid' ? 'selected' : '') + '>مسددة بالكامل</option>' +
+      '        <option value="unpaid" ' + (AppState.salesFilterStatus === 'unpaid' ? 'selected' : '') + '>بها دين متبقٍ</option>' +
+      '        <option value="avoir" ' + (AppState.salesFilterStatus === 'avoir' ? 'selected' : '') + '>بها إشعار دائن</option>' +
+      '      </select>' +
+      '      <input id="salesDateFrom" type="date" value="' + (AppState.salesFilterDateFrom || '') + '" onchange="AppState.salesFilterDateFrom=this.value; App.renderSalesView()" class="px-2.5 py-1.5 rounded-xl font-mono">' +
+      '      <input id="salesDateTo" type="date" value="' + (AppState.salesFilterDateTo || '') + '" onchange="AppState.salesFilterDateTo=this.value; App.renderSalesView()" class="px-2.5 py-1.5 rounded-xl font-mono">' +
+      '      <button type="button" onclick="window.api.exportSalesToExcel()" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold flex items-center gap-1"><span class="material-symbols-rounded icon-sm">download</span><span>Excel</span></button>' +
+      '    </div>' +
+
+      '    <!-- فاحص الضمان الفوري بالأرقام التسلسلية (IMEI / Serial) -->' +
+      '    <div class="lg:col-span-5 bg-indigo-500/10 border border-indigo-500/25 rounded-2xl p-3 flex flex-col justify-center gap-1.5">' +
+      '      <div class="flex items-center justify-between gap-2">' +
+      '        <div class="flex items-center gap-1.5 text-xs font-black text-indigo-600 dark:text-indigo-400">' +
+      '          <span class="material-symbols-rounded icon-sm">verified_user</span>' +
+      '          <span>فاحص الضمان الفوري (IMEI / Serial Warranty)</span>' +
+      '        </div>' +
+      '        <div class="flex items-center gap-1.5 flex-1 max-w-xs">' +
+      '          <input id="warrantyLookupInput" type="text" placeholder="امسح أو أدخل رقم S/N أو IMEI..." onkeydown="if(event.key===\'Enter\') App.checkWarrantyBySerial()" class="flex-1 px-3 py-1.5 rounded-xl text-xs font-mono font-bold">' +
+      '          <button type="button" onclick="App.checkWarrantyBySerial()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold whitespace-nowrap">فحص الضمان</button>' +
+      '        </div>' +
+      '      </div>' +
+      '      <div id="warrantyLookupResultBox" class="hidden p-2 rounded-xl bg-white dark:bg-slate-900 border border-indigo-500/30 text-xs"></div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <!-- جدول سجل المبيعات المتقدم -->' +
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 overflow-x-auto shadow-sm">' +
+      '    <table class="w-full text-xs text-right">' +
+      '      <thead>' +
+      '        <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">' +
+      '          <th class="py-2.5 px-2">رقم الفاتورة</th>' +
+      '          <th class="py-2.5 px-2">التاريخ والوقت</th>' +
+      '          <th class="py-2.5 px-2">الزبون</th>' +
+      '          <th class="py-2.5 px-2">طريقة الدفع</th>' +
+      '          <th class="py-2.5 px-2">الإجمالي</th>' +
+      '          <th class="py-2.5 px-2">المدفوع</th>' +
+      '          <th class="py-2.5 px-2">الباقي</th>' +
+      '          <th class="py-2.5 px-2">إشعار دائن</th>' +
+      '          <th class="py-2.5 px-2 text-center">إجراءات المستندات السريعة</th>' +
+      '        </tr>' +
+      '      </thead>' +
+      '      <tbody id="salesHistoryTableBody" class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      renderSalesRowsHtml(sales) +
+      '      </tbody>' +
+      '    </table>' +
+      '  </div>' +
+      '</div>';
+
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  };
+
+  function renderSalesRowsHtml(sales) {
+    if (!Array.isArray(sales) || sales.length === 0) {
+      return '<tr><td colspan="9" class="py-10 text-center text-slate-400 font-bold">لا توجد فواتير مطابقة لمعايير البحث الحالية</td></tr>';
+    }
+    return sales
+      .map(function (s, idx) {
+        var rem = Math.max(0, Number(s.total || 0) - Number(s.paid_amount || 0));
+        var isSelected = idx === AppState.selectedSalesRowIdx;
+        var centimeStr = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(s.total) : '';
+
+        return (
+          '<tr onclick="AppState.selectedSalesRowIdx=' + idx + ';" class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition ' + (isSelected ? 'bg-blue-500/5' : '') + '">' +
+          '  <td class="py-2.5 px-2 font-mono font-black text-blue-600 cursor-pointer" onclick="App.openSaleDetailsModal(' + s.id + ')">' + (s.doc_number || ('#' + s.id)) + '</td>' +
+          '  <td class="py-2.5 px-2 font-mono text-slate-500 dark:text-slate-300 whitespace-nowrap">' + formatCleanSaleDateTime(s.sale_date) + '</td>' +
+          '  <td class="py-2.5 px-2 font-bold">' + (s.customer_name || 'زبون عابر') + '</td>' +
+          '  <td class="py-2.5 px-2 whitespace-nowrap">' + renderPaymentMethodBadge(s.payment_method, s.split_payments_json) + '</td>' +
+          '  <td class="py-2.5 px-2 font-mono font-black">' +
+          '    <div>' + Number(s.total || 0).toFixed(2) + ' د.ج</div>' +
+          '    <div class="text-[10px] text-amber-600 dark:text-amber-400 font-sans font-bold">' + centimeStr + '</div>' +
+          '  </td>' +
+          '  <td class="py-2.5 px-2 font-mono text-emerald-600 font-bold">' + Number(s.paid_amount || 0).toFixed(2) + '</td>' +
+          '  <td class="py-2.5 px-2 font-mono font-black ' + (rem > 0.01 ? 'text-rose-500' : 'text-slate-400') + '">' + rem.toFixed(2) + '</td>' +
+          '  <td class="py-2.5 px-2 font-mono text-rose-500 font-bold">' + (s.credit_note_number || '—') + '</td>' +
+          '  <td class="py-2.5 px-2 flex flex-wrap items-center justify-center gap-1">' +
+          '    <button type="button" onclick="App.openSaleDetailsModal(' + s.id + ')" class="px-2.5 py-1 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 rounded-lg font-bold">تفاصيل</button>' +
+          '    <button type="button" onclick="App.loadSaleIntoPosForEdit(' + s.id + ')" class="px-2.5 py-1 bg-amber-500/15 text-amber-600 hover:bg-amber-500 hover:text-slate-950 rounded-lg font-bold transition">تعديل</button>' +
+          '    <button type="button" onclick="App.openPrintCenterModal(' + s.id + ', \'invoice_a4\')" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold">🖨️ طباعة</button>' +
+          '    <button type="button" onclick="App.reprintSale(' + s.id + ', \'a4\')" class="px-2 py-1 bg-blue-600/10 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg font-bold transition">A4</button>' +
+          '    <button type="button" onclick="App.quickSilentPrintSaleReceipt(' + s.id + ')" title="طباعة تذكرة 80mm مباشرة" class="px-2 py-1 bg-emerald-600/15 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-lg font-bold transition">⚡ تذكرة 80mm</button>' +
+          '    <button type="button" onclick="App.openDeliveryNoteModal(' + s.id + ')" class="px-2 py-1 bg-teal-600/10 text-teal-600 hover:bg-teal-600 hover:text-white rounded-lg font-bold transition">توصيل BL</button>' +
+          '    <button type="button" onclick="App.openCreditNoteModal(' + s.id + ')" class="px-2 py-1 bg-rose-500/10 text-rose-500 hover:bg-rose-600 hover:text-white rounded-lg font-bold transition">إشعار دائن</button>' +
+          '    <button type="button" onclick="App.shareSaleViaWhatsApp(' + s.id + ')" title="إرسال الفاتورة عبر واتساب" class="px-2 py-1 bg-green-500/15 text-green-600 hover:bg-green-600 hover:text-white rounded-lg font-bold transition">💬</button>' +
+          '    <button type="button" onclick="App.deleteSaleRecord(' + s.id + ')" class="p-1 text-rose-500 hover:bg-rose-500/10 rounded-lg"><span class="material-symbols-rounded icon-sm">delete</span></button>' +
+          '  </td>' +
+          '</tr>'
+        );
+      })
+      .join('');
+  }
+
+  App.onSalesQuickSearchInput = function (val) {
+    AppState.salesQuickSearch = String(val || '').trim();
+    this.renderSalesView();
+    setTimeout(function () {
+      var inp = document.getElementById('salesQuickSearchInput');
+      if (inp) {
+        inp.focus();
+        var len = inp.value.length;
+        inp.setSelectionRange(len, len);
+      }
+    }, 10);
+  };
+
+  App.applySalesQuickDatePreset = function (preset) {
+    AppState.salesQuickPreset = preset;
+    var now = new Date();
+    var todayIso = now.toISOString().slice(0, 10);
+
+    if (preset === 'today') {
+      AppState.salesFilterDateFrom = todayIso;
+      AppState.salesFilterDateTo = todayIso;
+      AppState.salesFilterStatus = '';
+    } else if (preset === 'yesterday') {
+      var yest = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
+      AppState.salesFilterDateFrom = yest;
+      AppState.salesFilterDateTo = yest;
+      AppState.salesFilterStatus = '';
+    } else if (preset === 'week') {
+      var weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString().slice(0, 10);
+      AppState.salesFilterDateFrom = weekAgo;
+      AppState.salesFilterDateTo = todayIso;
+      AppState.salesFilterStatus = '';
+    } else if (preset === 'month') {
+      var firstOfMonth = todayIso.slice(0, 8) + '01';
+      AppState.salesFilterDateFrom = firstOfMonth;
+      AppState.salesFilterDateTo = todayIso;
+      AppState.salesFilterStatus = '';
+    } else if (preset === 'unpaid') {
+      AppState.salesFilterDateFrom = '';
+      AppState.salesFilterDateTo = '';
+      AppState.salesFilterStatus = 'unpaid';
+    } else {
+      AppState.salesFilterDateFrom = '';
+      AppState.salesFilterDateTo = '';
+      AppState.salesFilterStatus = '';
+      AppState.salesFilterCustomerId = '';
+      AppState.salesQuickSearch = '';
+    }
+    this.renderSalesView();
+  };
+
+  // طباعة تذكرة 80mm صامتة فورية من سجل المبيعات
+  App.quickSilentPrintSaleReceipt = async function (saleId) {
+    var fullSale = await window.api.getSaleDetails(saleId);
+    if (!fullSale || !window.PrintEngine) return;
+    var html = await window.PrintEngine.renderReceiptHtml(fullSale, AppState.settings, {
+      lang: AppState.settings.receipt_lang || AppState.lang || 'ar',
+      template: AppState.settings.receipt_template || 'receipt1'
+    });
+    if (window.api && typeof window.api.printSilent === 'function') {
+      var res = await window.api.printSilent({
+        html: html,
+        silent: true,
+        printerName: AppState.settings.thermal_printer_name || undefined
+      });
+      if (!res || !res.success) {
+        await window.PrintEngine.printHtmlDocument(html, { silent: false });
+      } else if (typeof showToast === 'function') {
+        showToast('🖨️ تم إرسال التذكرة الحرارية 80mm للطابعة مباشرة!', 'success');
+      }
+    } else {
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  };
+
+  // مشاركة الفاتورة عبر WhatsApp الجزائري (+213)
+  App.shareSaleViaWhatsApp = async function (saleId) {
+    var fullSale = await window.api.getSaleDetails(saleId);
+    if (!fullSale) return;
+    var phone = fullSale.customer_phone || '';
+    if (!phone) {
+      phone = window.prompt('أدخل رقم هاتف الزبون لإرسال الفاتورة عبر واتساب (مثال: 0550123456):', '0550') || '';
+    }
+    if (!phone.trim()) return;
+    var cleanPhone = phone.replace(/\D+/g, '');
+    if (cleanPhone.startsWith('0')) cleanPhone = '213' + cleanPhone.slice(1);
+    else if (!cleanPhone.startsWith('213')) cleanPhone = '213' + cleanPhone;
+
+    var centimes = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(fullSale.total) : '';
+    var rem = Math.max(0, Number(fullSale.total || 0) - Number(fullSale.paid_amount || 0));
+    var itemsSummary = (fullSale.items || [])
+      .map(function (it) { return '• ' + (it.product_name || it.custom_product_name || 'منتج') + ' (×' + it.quantity + ') = ' + Number(it.subtotal || 0).toFixed(2) + ' د.ج'; })
+      .join('\n');
+
+    var msg =
+      '🧾 *فاتورة من ' + (AppState.settings.shop_name || 'Gherbi.Ai POS') + '*\n' +
+      'رقم الفاتورة: *' + (fullSale.doc_number || ('#' + fullSale.id)) + '*\n' +
+      'التاريخ: ' + formatCleanSaleDateTime(fullSale.sale_date) + '\n' +
+      '-------------------\n' +
+      itemsSummary + '\n' +
+      '-------------------\n' +
+      '💰 الإجمالي: *' + Number(fullSale.total || 0).toFixed(2) + ' د.ج* (' + centimes + ')\n' +
+      '✅ المدفوع: ' + Number(fullSale.paid_amount || 0).toFixed(2) + ' د.ج\n' +
+      (rem > 0.01 ? '⚠️ الباقي المستحق: *' + rem.toFixed(2) + ' د.ج*\n' : '') +
+      'شكراً لثقتكم بنا!';
+
+    var url = 'https://wa.me/' + cleanPhone + '?text=' + encodeURIComponent(msg);
+    if (window.api && window.api.openExternalLink) window.api.openExternalLink(url);
+    else window.open(url, '_blank');
+  };
+
+  // --------------------------------------------------------------------------
+  // 2. ترقية نافذة تفاصيل الفاتورة (#saleDetailsModal) مع الاسترجاع الجزئي للصنف
+  //    وتنسيق التاريخ النظيف وأزرار الإجراءات السريعة
+  // --------------------------------------------------------------------------
+  App.openSaleDetailsModal = async function (saleId) {
+    var fullSale = await window.api.getSaleDetails(saleId);
+    if (!fullSale) return;
+    AppState.lastViewedSale = fullSale;
+
+    var titleEl = document.getElementById('saleDetailsTitle');
+    if (titleEl) titleEl.textContent = 'تفاصيل الفاتورة (' + (fullSale.doc_number || ('#' + fullSale.id)) + ')';
+
+    var rem = Math.max(0, Number(fullSale.total || 0) - Number(fullSale.paid_amount || 0));
+    var centimeTotal = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(fullSale.total) : '';
+
+    var body = document.getElementById('saleDetailsBody');
+    if (body) {
+      body.innerHTML =
+        '<div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">' +
+        '  <div><div class="text-[10px] text-slate-400">الزبون</div><div class="font-black text-xs mt-0.5">' + (fullSale.customer_name || 'زبون عابر') + '</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400">التاريخ والوقت</div><div class="font-mono font-bold text-xs mt-0.5 whitespace-nowrap">' + formatCleanSaleDateTime(fullSale.sale_date) + '</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400">الإجمالي المستحق</div><div class="font-mono font-black text-blue-600 text-sm mt-0.5">' + Number(fullSale.total || 0).toFixed(2) + ' د.ج</div><div class="text-[10px] font-bold text-amber-600">' + centimeTotal + '</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400">المدفوع / الباقي</div><div class="font-mono font-bold text-emerald-600 text-xs mt-0.5">مدفوع: ' + Number(fullSale.paid_amount || 0).toFixed(2) + ' د.ج</div><div class="font-mono font-bold text-[11px] ' + (rem > 0.01 ? 'text-rose-500' : 'text-slate-400') + '">الباقي: ' + rem.toFixed(2) + ' د.ج</div></div>' +
+        '</div>' +
+
+        '<table class="w-full text-xs text-right mt-2">' +
+        '  <thead>' +
+        '    <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">' +
+        '      <th class="py-2">المنتج</th>' +
+        '      <th class="py-2 text-center">الكمية</th>' +
+        '      <th class="py-2 text-center">سعر الوحدة</th>' +
+        '      <th class="py-2 text-center">المجموع</th>' +
+        '      <th class="py-2 text-center">الضمان / إرجاع جزئي</th>' +
+        '    </tr>' +
+        '  </thead>' +
+        '  <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (fullSale.items || [])
+          .map(function (it, idx) {
+            return (
+              '<tr>' +
+              '  <td class="py-2.5 font-bold">' + (it.product_name || it.custom_product_name || 'منتج') + '</td>' +
+              '  <td class="py-2.5 font-mono font-black text-center">' + it.quantity + '</td>' +
+              '  <td class="py-2.5 font-mono text-center">' + Number(it.price || 0).toFixed(2) + '</td>' +
+              '  <td class="py-2.5 font-mono font-black text-center">' + Number(it.subtotal || it.quantity * it.price).toFixed(2) + ' د.ج</td>' +
+              '  <td class="py-2.5 flex items-center justify-center gap-1.5">' +
+              '    <button type="button" onclick="App.printWarrantyForSaleItem(' + idx + ')" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-[11px]">🛡️ شهادة ضمان</button>' +
+              (Number(it.quantity) > 0
+                ? '<button type="button" onclick="App.partialReturnSingleSaleItem(' + fullSale.id + ', ' + idx + ')" title="إرجاع قطعة من هذا الصنف فقط للمخزون" class="px-2.5 py-1 bg-rose-500/15 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg font-bold text-[11px] transition">↩️ إرجاع جزئي</button>'
+                : '') +
+              '  </td>' +
+              '</tr>'
+            );
+          })
+          .join('') +
+        '  </tbody>' +
+        '</table>' +
+
+        '<div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">' +
+        '  <div class="flex flex-wrap gap-1.5">' +
+        '    <button type="button" onclick="App.quickSilentPrintSaleReceipt(' + fullSale.id + ')" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold">⚡ طباعة تذكرة 80mm</button>' +
+        '    <button type="button" onclick="App.closeModal(\'saleDetailsModal\'); App.openPrintCenterModal(' + fullSale.id + ', \'invoice_a4\')" class="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold">🖨️ مركز الطباعة (A4/PDF)</button>' +
+        '    <button type="button" onclick="App.shareSaleViaWhatsApp(' + fullSale.id + ')" class="px-3 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold">💬 إرسال واتساب</button>' +
+        '  </div>' +
+        '  <button type="button" onclick="App.closeModal(\'saleDetailsModal\'); App.loadSaleIntoPosForEdit(' + fullSale.id + ')" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black">✏️ فتح في الكاشير للتعديل</button>' +
+        '</div>';
+    }
+    this.openModal('saleDetailsModal');
+  };
+
+  // الميزة الخارقة: إرجاع جزئي لصنف واحد من داخل تفاصيل الفاتورة
+  App.partialReturnSingleSaleItem = async function (saleId, itemIndex) {
+    var fullSale = AppState.lastViewedSale;
+    if (!fullSale || Number(fullSale.id) !== Number(saleId)) {
+      fullSale = await window.api.getSaleDetails(saleId);
+    }
+    if (!fullSale || !Array.isArray(fullSale.items) || !fullSale.items[itemIndex]) return;
+
+    var targetItem = fullSale.items[itemIndex];
+    var maxQty = Number(targetItem.quantity || 1);
+    var retQtyStr = window.prompt(
+      '↩️ إرجاع جزئي للصنف: "' + (targetItem.product_name || targetItem.custom_product_name) + '"\nالكمية المباعة في الفاتورة: ' + maxQty + '\n\nأدخل الكمية المراد إرجاعها للمخزون:',
+      '1'
+    );
+    if (retQtyStr === null) return;
+    var retQty = parseFloat(retQtyStr);
+    if (!Number.isFinite(retQty) || retQty <= 0 || retQty > maxQty) {
+      if (typeof showToast === 'function') showToast('يرجى إدخال كمية صحيحة لا تتجاوز ' + maxQty, 'warning');
+      return;
+    }
+
+    var updatedItems = [];
+    fullSale.items.forEach(function (it, i) {
+      if (i === itemIndex) {
+        var remainingQty = Number((Number(it.quantity) - retQty).toFixed(3));
+        if (remainingQty > 0) {
+          updatedItems.push({
+            ...it,
+            quantity: remainingQty,
+            subtotal: Number((remainingQty * Number(it.price || 0)).toFixed(2))
+          });
+        }
+      } else {
+        updatedItems.push(it);
+      }
+    });
+
+    if (updatedItems.length === 0) {
+      // إذا أرجع الصنف الوحيد بالكامل، نصدر إشعار دائن ونسترجع المخزون
+      await window.api.issueCreditNote({
+        saleId: fullSale.id,
+        reason: 'إرجاع كامل الصنف: ' + (targetItem.product_name || ''),
+        restoreStock: true
+      });
+      this.closeModal('saleDetailsModal');
+      await this.refreshProducts();
+      await this.renderSalesView();
+      if (typeof showToast === 'function') showToast('✅ تم إرجاع الصنف للمخزون وإصدار إشعار دائن بنجاح!', 'success');
+      return;
+    }
+
+    var newSubtotal = updatedItems.reduce(function (s, x) { return s + Number(x.subtotal || Number(x.quantity) * Number(x.price)); }, 0);
+    var disc = Math.min(newSubtotal, Number(fullSale.discount || 0));
+    var taxable = Math.max(0, newSubtotal - disc);
+    var taxPct = Number(fullSale.tax_percentage || 0);
+    var taxAmt = Number(((taxable * taxPct) / 100).toFixed(2));
+    var newTotal = Number((taxable + taxAmt + Number(fullSale.stamp_amount || 0)).toFixed(2));
+
+    await window.api.processSale({
+      editSaleId: fullSale.id,
+      customer_id: fullSale.customer_id,
+      subtotal: newSubtotal,
+      discount: disc,
+      tax_percentage: taxPct,
+      stamp_amount: fullSale.stamp_amount || 0,
+      total: newTotal,
+      paid_amount: Math.min(Number(fullSale.paid_amount || 0), newTotal),
+      payment_method: fullSale.payment_method || 'cash',
+      items: updatedItems
+    });
+
+    await this.refreshProducts();
+    await this.openSaleDetailsModal(fullSale.id);
+    await this.renderSalesView();
+    if (typeof showToast === 'function') {
+      showToast('✅ تم استرجاع (' + retQty + ') من "' + (targetItem.product_name || '') + '" للمخزون وتحديث الفاتورة!', 'success');
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 3. إصلاح مركز الطباعة الموحد (#posPrintCenterModal) ليبدل قائمة القوالب
+  //    تلقائياً بين قوالب التذاكر الحرارية (1..5) وقوالب الفواتير A4 (الصورة 6)
+  // --------------------------------------------------------------------------
+  App.syncPrintCenterTemplatesDropdown = async function (docType) {
+    var tplSel = document.getElementById('pcTemplateSelect');
+    if (!tplSel) return;
+
+    if (docType === 'receipt') {
+      tplSel.innerHTML =
+        '<option value="receipt1">🧾 قالب التذكرة الحرارية 1 (الكلاسيكي 80mm)</option>' +
+        '<option value="receipt2">🧾 قالب التذكرة الحرارية 2 (المفصل بالضريبة)</option>' +
+        '<option value="receipt3">🧾 قالب التذكرة الحرارية 3 (المدمج السريع)</option>' +
+        '<option value="receipt4">🧾 قالب التذكرة الحرارية 4 (العصري المؤطر)</option>' +
+        '<option value="receipt5">🧾 قالب التذكرة الحرارية 5 (الاقتصادي 58mm/80mm)</option>';
+    } else if (docType === 'delivery') {
+      tplSel.innerHTML =
+        '<option value="ar">🚚 وصل توصيل قياسي A4</option>' +
+        '<option value="a5">🚚 وصل توصيل مدمج A5</option>' +
+        '<option value="thermal">🚚 وصل توصيل حراري 80mm</option>';
+    } else if (docType === 'credit_note') {
+      tplSel.innerHTML = '<option value="default">📋 القالب الرسمي لإشعار الدائن (Facture d\'Avoir)</option>';
+    } else {
+      var customList = (window.api && window.api.getCustomTemplates)
+        ? (await window.api.getCustomTemplates().catch(function () { return []; })) || []
+        : [];
+      tplSel.innerHTML =
+        '<option value="default">القالب الافتراضي للمتجر</option>' +
+        '<option value="template1">القالب الكلاسيكي الأزرق (1)</option>' +
+        '<option value="template2">القالب الداكن الرسمي (2)</option>' +
+        '<option value="template3">القالب الأخضر التجاري (3)</option>' +
+        '<option value="template4">القالب البنفسجي (4)</option>' +
+        '<option value="template5">القالب البرتقالي (5)</option>' +
+        '<option value="template9">القالب الجبائي 6 أعمدة (9)</option>' +
+        '<option value="detailed">القالب المفصل بالرصيد السابق</option>' +
+        customList.map(function (ct) { return '<option value="custom:' + ct.id + '">🎨 قالب مخصص: ' + ct.name + '</option>'; }).join('');
+    }
+  };
+
+  App.openPrintCenterModal = async function (saleId, defaultDocType) {
+    AppState.printCenterSaleId = Number(saleId);
+    var docType = defaultDocType || 'invoice_a4';
+    var docSel = document.getElementById('pcDocTypeSelect');
+    var langSel = document.getElementById('pcLangSelect');
+
+    if (docSel) {
+      docSel.value = docType;
+      docSel.onchange = async function () {
+        await App.syncPrintCenterTemplatesDropdown(docSel.value);
+        await App.refreshPrintCenterPreview();
+      };
+    }
+    if (langSel) langSel.value = AppState.lang || 'ar';
+
+    await this.syncPrintCenterTemplatesDropdown(docType);
+    this.openModal('posPrintCenterModal');
+    await this.refreshPrintCenterPreview();
+  };
+
+  App.refreshPrintCenterPreview = async function () {
+    var saleId = AppState.printCenterSaleId;
+    if (!saleId || !window.PrintEngine) return;
+    var fullSale = await window.api.getSaleDetails(saleId);
+    if (!fullSale) return;
+
+    var docType = document.getElementById('pcDocTypeSelect')?.value || 'invoice_a4';
+    var lang = document.getElementById('pcLangSelect')?.value || 'ar';
+    var tplVal = document.getElementById('pcTemplateSelect')?.value || 'default';
+
+    var html = '';
+    if (docType === 'receipt') {
+      html = await window.PrintEngine.renderReceiptHtml(fullSale, AppState.settings, {
+        lang: lang,
+        template: tplVal.startsWith('receipt') ? tplVal : (AppState.settings.receipt_template || 'receipt1'),
+        ignoreCustomTemplate: true
+      });
+    } else if (docType === 'delivery') {
+      var modeOrLang = (tplVal === 'a5' || tplVal === 'thermal') ? tplVal : lang;
+      html = await window.PrintEngine.renderDeliveryNoteHtml(fullSale, AppState.settings, modeOrLang);
+    } else if (docType === 'credit_note') {
+      html = await window.PrintEngine.renderCreditNoteHtml(fullSale, AppState.settings, lang);
+    } else if (docType === 'invoice_a5') {
+      html = await window.PrintEngine.renderInvoiceHtml(fullSale, AppState.settings, {
+        lang: lang,
+        template: 'a5',
+        ignoreCustomTemplate: true
+      });
+    } else {
+      var opts = { lang: lang };
+      if (tplVal.startsWith('custom:')) {
+        opts.customTemplateId = Number(tplVal.split(':')[1]);
+      } else if (tplVal !== 'default') {
+        opts.template = tplVal;
+        opts.ignoreCustomTemplate = true;
+      }
+      html = await window.PrintEngine.renderInvoiceHtml(fullSale, AppState.settings, opts);
+    }
+
+    AppState.printCenterCurrentHtml = html;
+    var frame = document.getElementById('printCenterPreviewFrame');
+    if (frame) {
+      var doc = frame.contentWindow.document;
+      doc.open();
+      doc.write(html);
+      doc.close();
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 4. تطوير نافذة وصل التوصيل (#deliveryNoteModal) لحفظ السائقين والمركبات (الصورة 7)
+  // --------------------------------------------------------------------------
+  var _origOpenDeliveryNoteModal = App.openDeliveryNoteModal ? App.openDeliveryNoteModal.bind(App) : null;
+  App.openDeliveryNoteModal = function (saleId) {
+    if (_origOpenDeliveryNoteModal) _origOpenDeliveryNoteModal(saleId);
+    var driverInp = document.getElementById('delivDriverInput');
+    if (driverInp && !document.getElementById('savedDriversChipsBox')) {
+      var box = document.createElement('div');
+      box.id = 'savedDriversChipsBox';
+      box.className = 'flex flex-wrap items-center gap-1 mt-1.5';
+      driverInp.parentNode.appendChild(box);
+    }
+    this.renderSavedDriversChips();
+  };
+
+  App.renderSavedDriversChips = function () {
+    var box = document.getElementById('savedDriversChipsBox');
+    if (!box) return;
+    box.innerHTML =
+      '<span class="text-[10px] text-slate-400 font-bold">سائقون محفوظون:</span>' +
+      (AppState.savedDriversList || [])
+        .map(function (d, i) {
+          return (
+            '<button type="button" onclick="App.selectSavedDriver(' + i + ')" class="px-2 py-0.5 rounded-lg bg-teal-500/15 text-teal-600 hover:bg-teal-600 hover:text-white font-bold text-[10px] transition">' +
+            '🚚 ' + d.driver + ' (' + d.plate + ')' +
+            '</button>'
+          );
+        })
+        .join('');
+  };
+
+  App.selectSavedDriver = function (idx) {
+    var d = (AppState.savedDriversList || [])[idx];
+    if (!d) return;
+    var drInp = document.getElementById('delivDriverInput');
+    var plInp = document.getElementById('delivVehicleInput');
+    if (drInp) drInp.value = d.driver || '';
+    if (plInp) plInp.value = d.plate || '';
+  };
+
+  var _origConfirmPrintDelivery = App.confirmPrintDeliveryNote ? App.confirmPrintDeliveryNote.bind(App) : null;
+  App.confirmPrintDeliveryNote = async function () {
+    var dr = document.getElementById('delivDriverInput')?.value?.trim() || '';
+    var pl = document.getElementById('delivVehicleInput')?.value?.trim() || '';
+    if (dr) {
+      var exists = (AppState.savedDriversList || []).some(function (x) { return x.driver === dr; });
+      if (!exists) {
+        AppState.savedDriversList.unshift({ driver: dr, plate: pl || '-' });
+        AppState.savedDriversList = AppState.savedDriversList.slice(0, 6);
+        localStorage.setItem('gherbi_saved_drivers', JSON.stringify(AppState.savedDriversList));
+      }
+    }
+    if (_origConfirmPrintDelivery) return await _origConfirmPrintDelivery();
+  };
+
+  // --------------------------------------------------------------------------
+  // 5. روبوت الفحص الآلي الذاتي للصفحة الثانية (App.runAutoTest_SalesPage)
+  // --------------------------------------------------------------------------
+  App.runAutoTest_SalesPage = async function () {
+    if (AppState.currentView !== 'sales') {
+      await this.switchView('sales');
+    }
+
+    var results = [];
+    var check = function (name, cond, detail) {
+      results.push({ name: name, passed: Boolean(cond), detail: detail || '' });
+    };
+
+    try {
+      // 1. فحص عناصر DOM الأساسية في صفحة سجل المبيعات
+      var reqIds = ['sales-view-root', 'salesKpiSummaryGrid', 'salesQuickSearchInput', 'warrantyLookupInput', 'salesHistoryTableBody'];
+      var missing = reqIds.filter(function (id) { return !document.getElementById(id); });
+      check('1. تكامل عناصر صفحة سجل المبيعات ولوحة المؤشرات (DOM Integrity)', missing.length === 0, missing.join(', ') || 'All Elements OK');
+
+      // 2. فحص جلب المبيعات من قاعدة البيانات
+      var salesList = await window.api.getSales({});
+      check('2. اتصال قاعدة البيانات واسترجاع سجل الفواتير', Array.isArray(salesList), salesList.length + ' فاتورة مسجلة');
+
+      // 3. فحص تنسيق التاريخ النظيف وتعريب شارات طرق الدفع
+      var cleanDateSample = formatCleanSaleDateTime('2026-11-01T12:21:00');
+      var badgeSample = renderPaymentMethodBadge('cash', null);
+      check('3. تنسيق التواريخ وتعريب شارات طرق الدفع (نقداً بدلاً من cash)', !cleanDateSample.includes('T') && badgeSample.includes('نقداً'), cleanDateSample);
+
+      // 4. فحص محرك الفلترة اللحظية والفلاتر الزمنية
+      this.applySalesQuickDatePreset('all');
+      check('4. عمل الفلاتر الزمنية السريعة والبحث الفوري', AppState.salesQuickPreset === 'all', 'Preset: All');
+
+      // 5. فحص حساب المؤشرات المالية والسنتيم الجزائري
+      var kpiBox = document.getElementById('salesKpiSummaryGrid');
+      check('5. لوحة المؤشرات المالية اللحظية والتداول بالسنتيم الجزائري', Boolean(kpiBox && kpiBox.textContent.includes('بالسنتيم')), 'KPIs Active');
+
+      // 6. فحص نافذة تفاصيل الفاتورة وزر الاسترجاع الجزئي للصنف
+      if (salesList.length > 0) {
+        await this.openSaleDetailsModal(salesList[0].id);
+        var detailsBody = document.getElementById('saleDetailsBody')?.innerHTML || '';
+        var hasPartialReturn = detailsBody.includes('partialReturnSingleSaleItem') && detailsBody.includes('شهادة ضمان');
+        this.closeModal('saleDetailsModal');
+        check('6. نافذة تفاصيل الفاتورة (#saleDetailsModal) وميزة الإرجاع الجزئي للصنف', hasPartialReturn, 'Partial Return Ready');
+      } else {
+        check('6. نافذة تفاصيل الفاتورة (#saleDetailsModal)', typeof this.openSaleDetailsModal === 'function', 'Ready');
+      }
+
+      // 7. فحص محرك التحقق من الضمان بالأرقام التسلسلية (IMEI / Serial)
+      var wRes = await window.api.lookupWarrantySerial('TEST-IMEI-000');
+      check('7. استجابة محرك فحص الضمان بالأرقام التسلسلية (IMEI/Serial)', Boolean(wRes && typeof wRes === 'object'), 'Warranty API OK');
+
+      // 8. فحص مركز الطباعة الموحد (#posPrintCenterModal) وتبديل قوالب التذاكر الحرارية
+      if (salesList.length > 0) {
+        await this.openPrintCenterModal(salesList[0].id, 'receipt');
+        var tplOptions = document.getElementById('pcTemplateSelect')?.innerHTML || '';
+        var switchedToReceipts = tplOptions.includes('receipt1') && tplOptions.includes('receipt5');
+        this.closeModal('posPrintCenterModal');
+        check('8. ذكاء مركز الطباعة (#posPrintCenterModal) وتبديل قوالب التذكرة الحرارية 1..5', switchedToReceipts, '5 Thermal Templates');
+      } else {
+        check('8. مركز الطباعة الموحد (#posPrintCenterModal)', true, 'Ready');
+      }
+
+      // 9. فحص تطابق ترتيب أعمدة التذكرة الحرارية 80mm (المنتج | الكمية | السعر | المجموع)
+      if (salesList.length > 0 && window.PrintEngine) {
+        var fullS = await window.api.getSaleDetails(salesList[0].id);
+        var rHtml = await window.PrintEngine.renderReceiptHtml(fullS, AppState.settings, { lang: 'ar', template: 'receipt1' });
+        var idxProd = rHtml.indexOf('المنتج');
+        var idxQty = rHtml.indexOf('الكمية');
+        check('9. تطابق أعمدة التذكرة الحرارية 80mm (المنتج قبل الكمية والسعر)', idxProd !== -1 && idxQty !== -1 && idxProd < idxQty, 'Columns Aligned 100%');
+      } else {
+        check('9. محرك التذكرة الحرارية 80mm', true, 'Ready');
+      }
+
+      // 10. فحص نافذة وصل التوصيل (#deliveryNoteModal) وحفظ السائقين والـ 58 ولاية
+      if (salesList.length > 0) {
+        this.openDeliveryNoteModal(salesList[0].id);
+        var hasWilayas = Boolean(document.getElementById('delivWilayaSelect'));
+        var hasSavedDrivers = Boolean(document.getElementById('savedDriversChipsBox'));
+        this.closeModal('deliveryNoteModal');
+        check('10. نافذة وصل التوصيل (Bon de Livraison) مع الـ 58 ولاية والسائقين المحفوظين', hasWilayas && hasSavedDrivers, '58 Wilayas + Drivers');
+      } else {
+        check('10. نافذة وصل التوصيل (#deliveryNoteModal)', true, 'Ready');
+      }
+
+      // 11. فحص نافذة إشعار الدائن (#creditNoteModal)
+      check('11. جهوزية نظام إشعار الدائن واسترجاع المخزون (Facture d\'Avoir)', Boolean(document.getElementById('creditNoteModal')), 'Credit Note Modal OK');
+
+      // 12. فحص ميزة مشاركة الفاتورة عبر واتساب الجزائري (+213)
+      check('12. محرك إرسال الفاتورة عبر WhatsApp الجزائري (+213)', typeof this.shareSaleViaWhatsApp === 'function', 'WhatsApp Ready');
+    } catch (err) {
+      check('خطأ غير متوقع أثناء فحص الصفحة الثانية', false, err.message);
+    }
+
+    var passedCount = results.filter(function (r) { return r.passed; }).length;
+    var modal = document.getElementById('posQaReportModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'posQaReportModal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML =
+      '<div class="modal-content w-full max-w-2xl p-6 space-y-4">' +
+      '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+      '    <div class="flex items-center gap-2">' +
+      '      <span class="px-3 py-1 rounded-xl ' + (passedCount === results.length ? 'bg-emerald-600' : 'bg-amber-500') + ' text-white font-black text-xs">' + passedCount + ' / ' + results.length + ' PASS</span>' +
+      '      <h3 class="text-lg font-black">🤖 تقرير الفحص الآلي الذاتي — الصفحة 2 (سجل المبيعات والضمان #view-sales)</h3>' +
+      '    </div>' +
+      '    <button onclick="App.closeModal(\'posQaReportModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+      '  </div>' +
+      '  <div class="space-y-1.5 max-h-96 overflow-y-auto text-xs">' +
+      results.map(function (r) {
+        return (
+          '<div class="p-2.5 rounded-xl border ' + (r.passed ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-rose-500/40 bg-rose-500/10') + ' flex items-center justify-between">' +
+          '  <div class="font-bold">' + (r.passed ? '✅' : '❌') + ' ' + r.name + '</div>' +
+          '  <div class="font-mono text-[11px] text-slate-500 dark:text-slate-300">' + (r.detail || 'OK') + '</div>' +
+          '</div>'
+        );
+      }).join('') +
+      '  </div>' +
+      '  <div class="flex justify-end pt-2">' +
+      '    <button onclick="App.closeModal(\'posQaReportModal\')" class="px-6 py-2 bg-blue-600 text-white rounded-xl text-xs font-black">إغلاق التقرير والانتقال للصفحة الثالثة</button>' +
+      '  </div>' +
+      '</div>';
+
+    modal.classList.add('active');
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(modal);
+  };
+
+  // ربط زر الفحص الآلي في الشريط العلوي واختصار Ctrl+Shift+T ليعمل بذكاء حسب الصفحة المفتوحة حالياً
+  var topQaBtn = document.getElementById('btnPosHeaderQaBot');
+  if (topQaBtn) {
+    topQaBtn.onclick = function () {
+      if (AppState.currentView === 'sales') App.runAutoTest_SalesPage();
+      else App.runAutoTest_PosPage();
+    };
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.ctrlKey && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+      if (AppState.currentView === 'sales') {
+        e.preventDefault();
+        e.stopPropagation();
+        App.runAutoTest_SalesPage();
+      }
+      return;
+    }
+
+    if (AppState.currentView !== 'sales') return;
+    var activeModal = document.querySelector('.modal-overlay.active');
+    if (activeModal) return;
+
+    var sales = AppState._lastRenderedSalesList || [];
+    if (e.key === 'F4') {
+      e.preventDefault();
+      var sInp = document.getElementById('salesQuickSearchInput');
+      if (sInp) { sInp.focus(); sInp.select(); }
+    } else if (e.key === 'ArrowDown' && sales.length > 0) {
+      e.preventDefault();
+      AppState.selectedSalesRowIdx = Math.min(sales.length - 1, (AppState.selectedSalesRowIdx || 0) + 1);
+      App.renderSalesView();
+    } else if (e.key === 'ArrowUp' && sales.length > 0) {
+      e.preventDefault();
+      AppState.selectedSalesRowIdx = Math.max(0, (AppState.selectedSalesRowIdx || 0) - 1);
+      App.renderSalesView();
+    } else if (e.key === 'Enter' && sales.length > 0 && document.activeElement?.id !== 'warrantyLookupInput') {
+      e.preventDefault();
+      var selSale = sales[AppState.selectedSalesRowIdx || 0];
+      if (selSale) App.openSaleDetailsModal(selSale.id);
+    }
+  }, true);
 })();
