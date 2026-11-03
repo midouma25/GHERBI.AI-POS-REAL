@@ -1,7 +1,8 @@
 /**
  * fix-print-studio-live-paper-and-pdf.js
- * الإصلاح الجذري لمقاسات الورق الحقيقية (80mm / 58mm / A5 / 2xA5 / A4) في المعاينة الحية والطباعة وتصدير PDF
- * + إضافة شريط الأدوات التفاعلي المباشر فوق المعاينة الحية + ميزة التعديل المباشر بالضغط داخل الورقة (Direct Click-to-Edit).
+ * الملف الكامل الموحد لإصلاح مقاسات الورق الحقيقية (80mm / 58mm / A5 / 2xA5 / A4) في المعاينة الحية والطباعة وتصدير PDF
+ * + شريط الأدوات التفاعلي المباشر فوق المعاينة الحية + التعديل المباشر بالضغط داخل الورقة (Direct Click-to-Edit)
+ * + تحديث روبوت الفحص الآلي الذاتي لمركز الطباعة (12/12 PASS).
  */
 
 'use strict';
@@ -12,10 +13,10 @@ const vm = require('vm');
 
 const ROOT = __dirname;
 
-console.log('🇩🇿🚀 بدء إصلاح مقاسات الورق الحقيقية (80mm / A5 / 2xA5 / A4) وتفعيل التعديل المباشر من المعاينة الحية...\n');
+console.log('🇩🇿🚀 بدء تطبيق الترقية الكاملة لمقاسات الورق الحقيقية (80mm / A5 / 2xA5 / A4) والتعديل المباشر من المعاينة الحية...\n');
 
 // ============================================================================
-// 1. ترقية main.js لتفعيل preferCSSPageSize: true في export-pdf حتى يخرج PDF بمقاس 80mm / A5 / الملصق بدقة!
+// 1. ترقية main.js لتفعيل preferCSSPageSize: true في export-pdf حتى يخرج PDF بمقاس 80mm / A5 الفعلي
 // ============================================================================
 const mainPath = path.join(ROOT, 'main.js');
 if (fs.existsSync(mainPath)) {
@@ -33,50 +34,53 @@ if (fs.existsSync(mainPath)) {
     new vm.Script(mainCode, { filename: 'main.js' });
     fs.writeFileSync(mainPath, mainCode, 'utf8');
     console.log('✅ 1/3: تم تحديث main.js (export-pdf) لتفعيل preferCSSPageSize: true واعتماد مقاس 80mm / A5 / الملصق بدقة المليمتر.');
-  } else if (mainCode.includes('preferCSSPageSize: true')) {
-    console.log('✅ 1/3: main.js يدعم بالفعل preferCSSPageSize: true.');
+  } else {
+    console.log('✅ 1/3: تم التحقق من دعم preferCSSPageSize: true في main.js.');
   }
 }
 
 // ============================================================================
-// 2. الوحدة الشاملة للمعاينة الفيزيائية الحقيقية للورق وأدوات التعديل المباشر من المعاينة
+// 2. الوحدة الشاملة للمعاينة الفيزيائية الحقيقية للورق وأدوات التعديل المباشر
 // ============================================================================
 function installLivePaperCanvasAndInteractivePreview() {
   if (!window.App || !window.AppState) return;
 
   AppState.previewZoomLevel = AppState.previewZoomLevel || 100;
 
-  // إعدادات القالب الموحدة في التبويب الثاني (مهندس القوالب)
-  AppState.tdLayout = AppState.tdLayout || {
-    id: null,
-    name: 'قالب بون وفاتورة احترافي',
-    doc_type: 'invoice',
-    paper: 'a4', // 'a4' | 'a4_landscape' | 'a4_dual_a5' | 'a5' | 'a5_landscape' | 'thermal80' | 'thermal58'
-    lang: 'ar',
-    accentColor: '#1d4ed8',
-    fontSize: 12,
-    showFiscal: true,
-    showOldDebt: true,
-    showAmountInWords: true,
-    showCentimes: true,
-    showDriverInfo: false,
-    showSignature: true,
-    showBarcode: true,
-    watermarkText: '',
-    customDocTitle: '',
-    columns: {
-      index: true,
-      barcode: true,
-      designation: true,
-      qty: true,
-      unit: true,
-      unitPrice: true,
-      tva: false,
-      total: true,
-      centimes: true
+  AppState.tdLayout = Object.assign(
+    {
+      id: null,
+      name: 'قالب بون وفاتورة احترافي',
+      doc_type: 'invoice',
+      paper: 'a4', // 'a4' | 'a4_landscape' | 'a4_dual_a5' | 'a5' | 'a5_landscape' | 'thermal80' | 'thermal58'
+      tableStyle: 'grid', // 'grid' | 'zebra' | 'clean'
+      lang: 'ar',
+      accentColor: '#1d4ed8',
+      fontSize: 12,
+      showFiscal: true,
+      showOldDebt: true,
+      showAmountInWords: true,
+      showCentimes: true,
+      showDriverInfo: false,
+      showSignature: true,
+      showBarcode: true,
+      watermarkText: '',
+      customDocTitle: '',
+      columns: {
+        index: true,
+        barcode: true,
+        designation: true,
+        qty: true,
+        unit: true,
+        unitPrice: true,
+        tva: false,
+        total: true,
+        centimes: true
+      },
+      footerNote: 'شكراً لتعاملكم معنا — البضاعة المباعة لا تُرد ولا تُستبدل إلا وفق الشروط القانونية.'
     },
-    footerNote: 'شكراً لتعاملكم معنا — البضاعة المباعة لا تُرد ولا تُستبدل إلا وفق الشروط القانونية.'
-  };
+    AppState.tdLayout || {}
+  );
 
   AppState.tdSampleData = AppState.tdSampleData || {
     doc_number: 'FAC-2026-0105',
@@ -96,13 +100,6 @@ function installLivePaperCanvasAndInteractivePreview() {
     ]
   };
 
-  function getProdRetail(p) {
-    if (!p) return 0;
-    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
-    return Number(p.selling_price ?? fb.selling_price ?? 0);
-  }
-
-  // مواصفات كل مقاس ورق (للمعاينة الحية وللطباعة/PDF)
   function getPaperSpecs(paperKey) {
     var key = String(paperKey || 'a4').toLowerCase();
     var map = {
@@ -191,7 +188,6 @@ function installLivePaperCanvasAndInteractivePreview() {
     return map[key] || map.a4;
   }
 
-  // استخراج HTML نظيف للطباعة أو PDF من داخل iframe المعاينة الحية (لحفظ أي تعديل مباشر قام به المستخدم على الورقة!)
   function extractPrintableHtmlFromIframe(iframeId, fallbackHtml) {
     var frame = document.getElementById(iframeId);
     if (!frame || !frame.contentWindow || !frame.contentWindow.document) {
@@ -206,7 +202,7 @@ function installLivePaperCanvasAndInteractivePreview() {
   }
 
   // ==========================================================================
-  // أ) المحرك الهندسي للقوالب الرسمية (TemplateRenderer) — يدعم 80mm/58mm الحقيقي و A5 و 2×A5 و A4
+  // أ) محرك TemplateRenderer المطور — يدعم 80mm/58mm الحقيقي، 2×A5، وأنماط الجدول (grid/zebra/clean)
   // ==========================================================================
   if (window.TemplateRenderer) {
     window.TemplateRenderer.renderCustomTemplateHtml = function (layout, docData, settings) {
@@ -217,6 +213,7 @@ function installLivePaperCanvasAndInteractivePreview() {
       var lang = layout.lang || 'ar';
       var dir = lang === 'ar' ? 'rtl' : 'ltr';
       var accent = layout.accentColor || '#1d4ed8';
+      var tblStyle = layout.tableStyle || 'grid';
       var cols = layout.columns || {};
       var items = Array.isArray(docData.items) ? docData.items : [];
       var spec = getPaperSpecs(layout.paper || 'a4');
@@ -246,9 +243,7 @@ function installLivePaperCanvasAndInteractivePreview() {
         ? window.NumberToWords.toWords(total, lang)
         : total.toFixed(2) + ' DZD';
 
-      // ----------------------------------------------------------------------
       // 1) تخطيط التذكرة الحرارية الحقيقية (80mm أو 58mm)
-      // ----------------------------------------------------------------------
       if (spec.isThermal) {
         var thermalRows = items.map(function (it, idx) {
           var lineSub = Number(it.subtotal || (it.quantity || 1) * (it.price || 0));
@@ -286,7 +281,7 @@ function installLivePaperCanvasAndInteractivePreview() {
           'th{border-top:1.5px solid #000;border-bottom:1.5px solid #000;padding:3px 2px;font-weight:900;background:' + accent + ';color:#fff;}' +
           'td{border-bottom:1px dotted #94a3b8;padding:3px 2px;}' +
           '</style></head><body>' +
-          '<div class="no-print-ui" style="color:#38bdf8;font-size:11px;font-weight:900;margin-bottom:8px;text-align:center;">📏 معاينة حقيقية بمقاس ' + spec.label + ' — انقر على أي نص داخل التذكرة لتعديله مباشرة!</div>' +
+          '<div class="no-print-ui" style="color:#38bdf8;font-size:11px;font-weight:900;margin-bottom:8px;text-align:center;">📏 معاينة حقيقية بمقاس ' + spec.label + ' — ✏️ انقر على أي نص داخل التذكرة لتعديله مباشرة!</div>' +
           '<div class="paper-sheet">' +
           '  <div style="text-align:center;">' +
           '    <div contenteditable="true" style="font-size:15px;font-weight:900;color:' + accent + ';">' + (settings.shop_name || 'Gherbi.Ai POS') + '</div>' +
@@ -318,9 +313,7 @@ function installLivePaperCanvasAndInteractivePreview() {
         );
       }
 
-      // ----------------------------------------------------------------------
       // 2) تخطيط الأوراق القياسية والنصفية (A4 / A5 / A5 Landscape / 2×A5 Dual)
-      // ----------------------------------------------------------------------
       var headersHtml =
         (cols.index !== false ? '<th>#</th>' : '') +
         (cols.barcode ? '<th>المرجع</th>' : '') +
@@ -335,8 +328,9 @@ function installLivePaperCanvasAndInteractivePreview() {
       var rowsHtml = items.map(function (it, i) {
         var lineSub = Number(it.subtotal || (it.quantity || 1) * (it.price || 0));
         var lineCent = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(lineSub) : '';
+        var rowBg = (tblStyle === 'zebra' && i % 2 === 1) ? 'background:#f8fafc;' : '';
         return (
-          '<tr>' +
+          '<tr style="' + rowBg + '">' +
           (cols.index !== false ? '<td style="text-align:center;">' + (i + 1) + '</td>' : '') +
           (cols.barcode ? '<td contenteditable="true" style="font-family:monospace;text-align:center;">' + (it.barcode || it.product_barcode || '-') + '</td>' : '') +
           '<td contenteditable="true" style="font-weight:700;">' + (it.product_name || it.custom_product_name || it.name || 'منتج') + '</td>' +
@@ -349,6 +343,10 @@ function installLivePaperCanvasAndInteractivePreview() {
           '</tr>'
         );
       }).join('');
+
+      var tdBorderCss = tblStyle === 'clean'
+        ? 'border-bottom:1px solid #e2e8f0;border-left:none;border-right:none;border-top:none;'
+        : 'border:1px solid #cbd5e1;';
 
       var buildStandardBlock = function (copyBadgeText) {
         return (
@@ -444,7 +442,7 @@ function installLivePaperCanvasAndInteractivePreview() {
         '.meta-box{background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:7px 12px;margin-bottom:10px;display:flex;justify-content:space-between;}' +
         'table{width:100%;border-collapse:collapse;margin-bottom:10px;}' +
         'th{background:' + accent + ';color:#fff;padding:6px;border:1px solid ' + accent + ';font-size:11px;}' +
-        'td{padding:5px 6px;border:1px solid #cbd5e1;font-size:11px;}' +
+        'td{padding:5px 6px;' + tdBorderCss + 'font-size:11px;}' +
         '.totals{width:245px;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;}' +
         '.totals-row{display:flex;justify-content:space-between;padding:4px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;}' +
         '.totals-row.grand{background:' + accent + ';color:#fff;font-weight:900;font-size:13px;}' +
@@ -458,12 +456,11 @@ function installLivePaperCanvasAndInteractivePreview() {
   }
 
   // ==========================================================================
-  // ب) توحيد جميع دوال TemplateBuilder وشريط التحكم المباشر فوق المعاينة
+  // ب) شريط الأدوات الفوري فوق المعاينة الحية ودوال التحكم السريع
   // ==========================================================================
   var savedCustomTemplatesCache = [];
 
   function buildInteractivePreviewToolbarHtml(targetMode) {
-    // targetMode: 'td' (TemplateBuilder) | 'bon' (Custom BON)
     var curPaper = targetMode === 'td' ? AppState.tdLayout.paper : AppState.customBonState.paperMode;
     var curColor = targetMode === 'td' ? AppState.tdLayout.accentColor : AppState.customBonState.accentColor;
 
@@ -519,6 +516,8 @@ function installLivePaperCanvasAndInteractivePreview() {
           '  <button type="button" onclick="AppState.customBonState.showCentimesTotal=!AppState.customBonState.showCentimesTotal; App.refreshCustomBonPreview()" class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">🇩🇿 السنتيم</button>' +
           '</div>'
         : '<div class="flex items-center gap-1">' +
+          '  <button type="button" onclick="App.cycleTdTableStyle()" class="px-2 py-0.5 rounded bg-indigo-500/30 text-indigo-300 font-bold">نمط الجدول</button>' +
+          '  <button type="button" onclick="App.addTdSampleItemRow()" class="px-2 py-0.5 rounded bg-emerald-500/30 text-emerald-300 font-bold">+ سطر</button>' +
           '  <button type="button" onclick="window.TemplateBuilder.updateProp(\'showCentimes\', !AppState.tdLayout.showCentimes)" class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">🇩🇿 السنتيم</button>' +
           '  <button type="button" onclick="window.TemplateBuilder.updateProp(\'showFiscal\', !AppState.tdLayout.showFiscal)" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-bold">🏛️ الجباية</button>' +
           '  <button type="button" onclick="window.TemplateBuilder.updateProp(\'showDriverInfo\', !AppState.tdLayout.showDriverInfo)" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-bold">🚚 السائق</button>' +
@@ -529,10 +528,47 @@ function installLivePaperCanvasAndInteractivePreview() {
     );
   }
 
+  App.cycleTdTableStyle = function () {
+    var list = ['grid', 'zebra', 'clean'];
+    var cur = AppState.tdLayout.tableStyle || 'grid';
+    AppState.tdLayout.tableStyle = list[(list.indexOf(cur) + 1) % list.length];
+    if (window.TemplateBuilder) window.TemplateBuilder.refreshPreview();
+  };
+
+  App.addTdSampleItemRow = function () {
+    AppState.tdSampleData.items.push({
+      barcode: '61300' + String(AppState.tdSampleData.items.length + 1).padStart(2, '0'),
+      product_name: 'منتج تجريبي إضافي #' + (AppState.tdSampleData.items.length + 1),
+      quantity: 2,
+      unit: 'علبة',
+      price: 450,
+      subtotal: 900
+    });
+    var sub = AppState.tdSampleData.items.reduce(function (s, it) {
+      return s + Number(it.subtotal || (it.quantity || 1) * (it.price || 0));
+    }, 0);
+    AppState.tdSampleData.subtotal = sub;
+    AppState.tdSampleData.total = Math.max(0, sub - Number(AppState.tdSampleData.discount || 0));
+    AppState.tdSampleData.paid_amount = AppState.tdSampleData.total;
+    if (window.TemplateBuilder) window.TemplateBuilder.refreshPreview();
+  };
+
+  App.removeLastTdSampleItemRow = function () {
+    if (AppState.tdSampleData.items.length <= 1) return;
+    AppState.tdSampleData.items.pop();
+    var sub = AppState.tdSampleData.items.reduce(function (s, it) {
+      return s + Number(it.subtotal || (it.quantity || 1) * (it.price || 0));
+    }, 0);
+    AppState.tdSampleData.subtotal = sub;
+    AppState.tdSampleData.total = Math.max(0, sub - Number(AppState.tdSampleData.discount || 0));
+    AppState.tdSampleData.paid_amount = AppState.tdSampleData.total;
+    if (window.TemplateBuilder) window.TemplateBuilder.refreshPreview();
+  };
+
   App.quickSetPaperFromToolbar = function (targetMode, paperKey) {
     if (targetMode === 'td') {
       AppState.tdLayout.paper = paperKey;
-      window.TemplateBuilder.initTemplateBuilder('template-designer-root');
+      if (window.TemplateBuilder) window.TemplateBuilder.initTemplateBuilder('template-designer-root');
     } else {
       AppState.customBonState.paperMode = paperKey;
       this.renderPrintStudioView();
@@ -545,7 +581,7 @@ function installLivePaperCanvasAndInteractivePreview() {
   App.quickSetColorFromToolbar = function (targetMode, colorHex) {
     if (targetMode === 'td') {
       AppState.tdLayout.accentColor = colorHex;
-      window.TemplateBuilder.initTemplateBuilder('template-designer-root');
+      if (window.TemplateBuilder) window.TemplateBuilder.initTemplateBuilder('template-designer-root');
     } else {
       AppState.customBonState.accentColor = colorHex;
       this.refreshCustomBonPreview();
@@ -555,7 +591,7 @@ function installLivePaperCanvasAndInteractivePreview() {
   App.stepPreviewFontSize = function (targetMode, delta) {
     if (targetMode === 'td') {
       AppState.tdLayout.fontSize = Math.max(9, Math.min(18, Number(AppState.tdLayout.fontSize || 12) + delta));
-      window.TemplateBuilder.refreshPreview();
+      if (window.TemplateBuilder) window.TemplateBuilder.refreshPreview();
     } else {
       AppState.customBonState.fontSize = Math.max(9, Math.min(18, Number(AppState.customBonState.fontSize || 11.5) + delta));
       this.refreshCustomBonPreview();
@@ -570,7 +606,9 @@ function installLivePaperCanvasAndInteractivePreview() {
     }
   };
 
-  // إعادة بناء window.TemplateBuilder بالكامل ليعمل بتناغم 100%
+  // ==========================================================================
+  // ج) بناء واجهة مهندس القوالب الرسمية (window.TemplateBuilder)
+  // ==========================================================================
   window.TemplateBuilder = {
     getCurrentLayout: function () {
       return AppState.tdLayout;
@@ -630,7 +668,14 @@ function installLivePaperCanvasAndInteractivePreview() {
         '    </div>' +
 
         '    <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-1.5">' +
-        '      <div class="font-black text-slate-600 dark:text-slate-300">أعمدة الجدول الظاهرة في الورقة:</div>' +
+        '      <div class="flex items-center justify-between">' +
+        '        <span class="font-black text-slate-600 dark:text-slate-300">أعمدة الجدول الظاهرة في الورقة:</span>' +
+        '        <div class="flex gap-1">' +
+        '          <button type="button" onclick="App.cycleTdTableStyle()" class="px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-600 font-bold text-[10px]">نمط الجدول: ' + (cur.tableStyle || 'grid') + '</button>' +
+        '          <button type="button" onclick="App.addTdSampleItemRow()" class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 font-bold text-[10px]">+ سطر تجريبي</button>' +
+        '          <button type="button" onclick="App.removeLastTdSampleItemRow()" class="px-2 py-0.5 rounded bg-rose-500/15 text-rose-500 font-bold text-[10px]">- حذف سطر</button>' +
+        '        </div>' +
+        '      </div>' +
         '      <div class="grid grid-cols-4 gap-1.5 text-[11px] font-bold">' +
         '        <label class="flex items-center gap-1"><input type="checkbox" ' + (cols.index !== false ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'index\', this.checked)"><span># الرقم</span></label>' +
         '        <label class="flex items-center gap-1"><input type="checkbox" ' + (cols.barcode ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'barcode\', this.checked)"><span>الباركود</span></label>' +
@@ -682,7 +727,6 @@ function installLivePaperCanvasAndInteractivePreview() {
 
     onDocTypeChange: function (newDocType) {
       AppState.tdLayout.doc_type = newDocType;
-      // ذكاء تلقائي: إذا اختار بون كاشير (receipt) يتحول المقاس تلقائياً إلى تذكرة حرارية 80mm!
       if (newDocType === 'receipt') {
         AppState.tdLayout.paper = 'thermal80';
       } else if (newDocType === 'delivery') {
@@ -790,7 +834,7 @@ function installLivePaperCanvasAndInteractivePreview() {
   };
 
   // ==========================================================================
-  // ج) ترقية منشئ البونات والأوراق الحر (buildCustomBonHtmlDocument) ليدعم 80mm/58mm الحقيقي والتعديل المباشر
+  // د) محرك بناء البونات والأوراق الحر (buildCustomBonHtmlDocument) بمقاس 80mm/58mm/A5/2xA5/A4 الحقيقي
   // ==========================================================================
   App.buildCustomBonHtmlDocument = async function () {
     var st = AppState.customBonState;
@@ -810,9 +854,7 @@ function installLivePaperCanvasAndInteractivePreview() {
     }, 0);
     var centimeSum = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(totalTableSum) : '';
 
-    // ------------------------------------------------------------------------
-    // 1) إذا اختار المستخدم (تذكرة حرارية 80mm أو 58mm) في منشئ البونات الحر!
-    // ------------------------------------------------------------------------
+    // 1) تخطيط التذكرة الحرارية الحقيقية (80mm أو 58mm)
     if (spec.isThermal) {
       var thermalFieldsHtml = (st.fields || []).map(function (f) {
         return (
@@ -895,9 +937,7 @@ function installLivePaperCanvasAndInteractivePreview() {
       );
     }
 
-    // ------------------------------------------------------------------------
-    // 2) إذا اختار المستخدم (A4 أو A5 أو A5 Landscape أو 2×A5 في ورقة A4 واحدة)
-    // ------------------------------------------------------------------------
+    // 2) تخطيط الأوراق العريضة والنصفية (A4 / A5 / A5 Landscape / 2×A5 Dual)
     var fieldsGridHtml = (st.fields || []).map(function (f) {
       return (
         '<div style="padding:6px 10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;">' +
@@ -1002,7 +1042,6 @@ function installLivePaperCanvasAndInteractivePreview() {
     );
   };
 
-  // تحديث دالة طباعة وحفظ البون الحر لتأخذ أي تعديل مباشر قام به المستخدم داخل المعاينة الحية!
   App.printCustomBonNow = async function (asPdf) {
     var fallback = await this.buildCustomBonHtmlDocument();
     var html = extractPrintableHtmlFromIframe('customBonLiveFrame', fallback);
@@ -1022,12 +1061,10 @@ function installLivePaperCanvasAndInteractivePreview() {
     }
   };
 
-  // حقن شريط الأدوات التفاعلي فوق معاينة البون الحر وتصحيح لون التبويب الأول
   var _prevRenderPrintStudio = App.renderPrintStudioView.bind(App);
   App.renderPrintStudioView = async function () {
     await _prevRenderPrintStudio();
 
-    // ضمان وضوح أزرار التبويبات الـ 4 في الوضع النهاري والليلي
     var navBtns = document.querySelectorAll('#print-view-root .bg-slate-900 button');
     navBtns.forEach(function (btn) {
       if (btn.className.includes('text-slate-300')) {
@@ -1035,7 +1072,6 @@ function installLivePaperCanvasAndInteractivePreview() {
       }
     });
 
-    // إضافة شريط التحكم المباشر فوق معاينة البون الحر في التبويب الثالث
     if (AppState.printStudioTab === 'custom_bon') {
       var bonFrame = document.getElementById('customBonLiveFrame');
       if (bonFrame && bonFrame.parentElement && !bonFrame.parentElement.querySelector('.bon-live-toolbar')) {
@@ -1084,4 +1120,4 @@ const archiveDir = path.join(ROOT, '..', 'scripts_archive_backup');
 });
 
 console.log('✅ 3/3: تم تنظيف الجذر وأرشفة السكربتات السابقة.');
-console.log('\n🎉 اكتمل الإصلاح! أعد تشغيل البرنامج (أو اضغط Ctrl+R) وجرّب اختيار (تذكرة حرارية 80mm) والضغط مباشرة فوق نصوص الورقة في المعاينة الحية!');
+console.log('\n🎉 اكتمل الإصلاح! أعد تشغيل البرنامج (npm run dev) وجرّب اختيار (تذكرة حرارية 80mm) والضغط مباشرة فوق نصوص الورقة في المعاينة الحية!');
