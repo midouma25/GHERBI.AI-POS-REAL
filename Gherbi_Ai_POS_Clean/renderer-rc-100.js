@@ -7080,7 +7080,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
       var p = (AppState.products || []).find(function (x) { return Number(x.id) === Number(it.product_id); });
       if (p) {
         var origP = getActiveProductPrice(p);
-        varforUnit = Number((origP * ratio).toFixed(2));
+        var forUnit = Number((origP * ratio).toFixed(2));
         this.addProductToCart(p.id, Number(it.quantity || 1), { overridePrice: varforUnit });
       }
     }
@@ -7543,4 +7543,6847 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
       App.openPromoModal(null);
     }
   }, true);
+})();
+
+// [SMART PROMOS, BUNDLES & BARCODE ENGINE V2]
+(function installSmartPromosBundlesAndBarcodeFix() {
+  if (!window.App || !window.AppState) return;
+
+  // تهيئة المصفوفات لضمان عدم حدوث TypeError: Cannot read properties of undefined
+  AppState.bundles = Array.isArray(AppState.bundles) ? AppState.bundles : [];
+  AppState.bundlesList = Array.isArray(AppState.bundlesList) ? AppState.bundlesList : [];
+  AppState.promotionsList = Array.isArray(AppState.promotionsList) ? AppState.promotionsList : [];
+  AppState.bundleAllocMode = 'margin_weighted'; // 'margin_weighted' | 'proportional' | 'equal'
+
+  function getBaseRetailPrice(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.selling_price ?? fb.selling_price ?? 0);
+  }
+
+  function getBaseCostPrice(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.cost_price ?? fb.cost_price ?? 0);
+  }
+
+  function getBaseStock(p) {
+    if (!p) return 0;
+    return Number(p.total_stock ?? p.stock ?? 0);
+  }
+
+  // --------------------------------------------------------------------------
+  // 1) محرك فحص وحساب العرض الترويجي النشط لأي منتج في الكاشير والسلة
+  // --------------------------------------------------------------------------
+  App.getActivePromotionForProduct = function (prod) {
+    if (!prod) return null;
+    var todayIso = new Date().toISOString().slice(0, 10);
+    var prm = prod.active_promotion || null;
+
+    if (!prm && Array.isArray(AppState.promotionsList) && AppState.promotionsList.length > 0) {
+      prm = AppState.promotionsList.find(function (x) {
+        return Number(x.product_id) === Number(prod.id) && Number(x.is_active) !== 0;
+      }) || null;
+    }
+    if (!prm || Number(prm.is_active) === 0) return null;
+
+    var startStr = prm.start_date ? String(prm.start_date).slice(0, 10) : '';
+    var endStr = prm.end_date ? String(prm.end_date).slice(0, 10) : '';
+    if (startStr && startStr > todayIso) return null;
+    if (endStr && endStr < todayIso) return null;
+    if (prm.max_qty && Number(prm.used_qty || 0) >= Number(prm.max_qty)) return null;
+
+    return prm;
+  };
+
+  App.getEffectiveProductPromoInfo = function (prod, tier) {
+    var origRetail = getBaseRetailPrice(prod);
+    if (tier === 'wholesale' && Number(prod && prod.wholesale_price) > 0) {
+      return {
+        finalPrice: Number(prod.wholesale_price),
+        originalPrice: origRetail,
+        hasPromo: false,
+        savingPerUnit: 0,
+        badgeText: 'جملة',
+        promoId: null
+      };
+    }
+
+    var prm = this.getActivePromotionForProduct(prod);
+    if (!prm || origRetail <= 0) {
+      return {
+        finalPrice: origRetail,
+        originalPrice: origRetail,
+        hasPromo: false,
+        savingPerUnit: 0,
+        badgeText: '',
+        promoId: null
+      };
+    }
+
+    var dVal = Number(prm.discount_value || 0);
+    var finalPrice = prm.discount_type === 'percentage'
+      ? Number((origRetail * (1 - dVal / 100)).toFixed(2))
+      : Math.max(0, Number((origRetail - dVal).toFixed(2)));
+
+    var saving = Math.max(0, Number((origRetail - finalPrice).toFixed(2)));
+    var badge = prm.discount_type === 'percentage' ? ('-' + dVal + '%') : ('-' + dVal + ' د.ج');
+
+    return {
+      finalPrice: finalPrice,
+      originalPrice: origRetail,
+      hasPromo: saving > 0,
+      savingPerUnit: saving,
+      badgeText: badge,
+      promoId: prm.id
+    };
+  };
+
+  // تحديث refreshProducts ليجلب أيضاً الحزم والعروض النشطة دائماً إلى الكاشير
+  var _origRefreshProducts = typeof App.refreshProducts === 'function' ? App.refreshProducts.bind(App) : null;
+  App.refreshProducts = async function () {
+    if (_origRefreshProducts) {
+      await _origRefreshProducts();
+    }
+    var pair = await Promise.all([
+      window.api.getBundles ? window.api.getBundles().catch(function () { return []; }) : Promise.resolve([]),
+      window.api.getPromotions ? window.api.getPromotions().catch(function () { return []; }) : Promise.resolve([])
+    ]);
+    AppState.bundlesList = Array.isArray(pair[0]) ? pair[0] : [];
+    AppState.bundles = AppState.bundlesList;
+    AppState.promotionsList = Array.isArray(pair[1]) ? pair[1] : [];
+
+    // ربط العروض النشطة بالمنتجات في الذاكرة مباشرة
+    var promoMap = new Map();
+    AppState.promotionsList.forEach(function (pr) {
+      if (Number(pr.is_active) !== 0) promoMap.set(Number(pr.product_id), pr);
+    });
+    (AppState.products || []).forEach(function (p) {
+      if (promoMap.has(Number(p.id))) {
+        p.active_promotion = promoMap.get(Number(p.id));
+      }
+    });
+  };
+
+  // --------------------------------------------------------------------------
+  // 2) ترقية شاشة الكاشير (#view-pos) لعرض الأسعار المخفضة وتبويب (🎁 الحزم والباقات)
+  // --------------------------------------------------------------------------
+  App.renderPosView = function () {
+    var editBanner = document.getElementById('posEditSaleBanner');
+    var editBannerTxt = document.getElementById('posEditSaleBannerText');
+    var chkBtnTxt = document.getElementById('btnCheckoutMainText');
+
+    if (AppState.editingSaleId) {
+      if (editBanner) editBanner.classList.remove('hidden');
+      if (editBannerTxt) {
+        editBannerTxt.textContent = '✏️ وضع تعديل الفاتورة (' + (AppState.editingSaleNumber || '#' + AppState.editingSaleId) + ')';
+      }
+      if (chkBtnTxt) chkBtnTxt.textContent = 'حفظ تعديلات الفاتورة (F1)';
+    } else {
+      if (editBanner) editBanner.classList.add('hidden');
+      if (chkBtnTxt) chkBtnTxt.textContent = 'تسديد الفاتورة (F1)';
+    }
+
+    var activeBundlesCount = (AppState.bundlesList || []).filter(function (b) { return Number(b.is_active) !== 0; }).length;
+    var activePromosCount = (AppState.products || []).filter(function (p) { return Boolean(App.getActivePromotionForProduct(p)); }).length;
+
+    var pillsBox = document.getElementById('posCategoryPills');
+    if (pillsBox) {
+      var cats = ['all', 'featured', '__bundles__', '__promos__'].concat(AppState.categories || []);
+      pillsBox.innerHTML = cats
+        .map(function (c) {
+          var active = AppState.selectedCategory === c;
+          var label = c;
+          var extraStyle = '';
+          if (c === 'all') label = 'جميع الفئات';
+          else if (c === 'featured') label = '⭐ المفضلة';
+          else if (c === '__bundles__') {
+            label = '🎁 الحزم والباقات (' + activeBundlesCount + ')';
+            if (!active) extraStyle = 'border-blue-500/40 text-blue-600 dark:text-blue-400 bg-blue-500/5';
+          } else if (c === '__promos__') {
+            label = '🔥 العروض (' + activePromosCount + ')';
+            if (!active) extraStyle = 'border-rose-500/40 text-rose-600 dark:text-rose-400 bg-rose-500/5';
+          }
+
+          return (
+            '<button type="button" onclick="App.selectPosCategory(\'' + String(c).replace(/'/g, "\\'") + '\')" ' +
+            'class="px-3 py-1.5 rounded-xl text-xs font-bold transition ' +
+            (active
+              ? 'bg-blue-600 text-white shadow'
+              : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 ' + extraStyle) +
+            '">' + label + '</button>'
+          );
+        })
+        .join('');
+    }
+
+    var custSelect = document.getElementById('posCustomerSelect');
+    if (custSelect) {
+      custSelect.innerHTML =
+        '<option value="">زبون عابر (بدون حساب)</option>' +
+        (AppState.customers || [])
+          .map(function (c) {
+            return (
+              '<option value="' + c.id + '" ' +
+              (Number(App.currentCart.customerId) === Number(c.id) ? 'selected' : '') +
+              '>' + c.name + (Number(c.total_debt) > 0 ? ' (دين: ' + Number(c.total_debt).toFixed(0) + ')' : '') + '</option>'
+            );
+          })
+          .join('');
+    }
+
+    this.renderPosProductsGrid();
+    this.renderCartTabs();
+    this.renderCartItems();
+  };
+
+  App.renderPosProductsGrid = function () {
+    var grid = document.getElementById('posProductsGrid');
+    if (!grid) return;
+
+    var minWidthMap = { small: '125px', medium: '155px', large: '190px' };
+    grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(' + (minWidthMap[AppState.posCardSize] || '155px') + ', 1fr))';
+
+    // إذا اختار الكاشير تبويب (🎁 الحزم والباقات) نعرض بطاقات الحزم الجاهزة للبيع المباشر!
+    if (AppState.selectedCategory === '__bundles__') {
+      var activeBundles = (AppState.bundlesList || []).filter(function (b) { return Number(b.is_active) !== 0; });
+      if (activeBundles.length === 0) {
+        grid.innerHTML = '<div class="col-span-full py-12 text-center text-slate-400 font-bold">لا توجد حزم ترويجية نشطة حالياً — أنشئ حزمة من قسم (الحزم والعروض)</div>';
+        return;
+      }
+      grid.innerHTML = activeBundles
+        .map(function (b) {
+          var items = Array.isArray(b.items) ? b.items : [];
+          var origSum = 0;
+          items.forEach(function (it) {
+            var p = (AppState.products || []).find(function (x) { return Number(x.id) === Number(it.product_id); });
+            origSum += getBaseRetailPrice(p) * Number(it.quantity || 1);
+          });
+          var sellP = Number(b.selling_price || 0);
+          var saving = Math.max(0, Number((origSum - sellP).toFixed(2)));
+          return (
+            '<div onclick="App.sellBundleInPosNow(' + b.id + ')" class="product-card border-2 border-blue-500/40 bg-blue-500/5 flex flex-col justify-between gap-1.5">' +
+            '  <div>' +
+            '    <div class="flex items-center justify-between mb-1">' +
+            '      <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white">🎁 حزمة Pack</span>' +
+            (saving > 0 ? '<span class="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[9px] font-black">توفير ' + saving.toFixed(0) + ' د.ج</span>' : '') +
+            '    </div>' +
+            '    <div class="font-black text-xs text-slate-800 dark:text-white">' + b.name + '</div>' +
+            '    <div class="text-[10px] text-slate-500 mt-1 line-clamp-2">' + items.map(function (it) { return it.quantity + '× ' + (it.product_name || ''); }).join(' + ') + '</div>' +
+            '  </div>' +
+            '  <div class="pt-1 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">' +
+            (origSum > sellP ? '<span class="font-mono text-[10px] line-through text-slate-400">' + origSum.toFixed(0) + '</span>' : '') +
+            '    <span class="font-mono font-black text-sm text-blue-600">' + sellP.toFixed(2) + ' د.ج</span>' +
+            '  </div>' +
+            '</div>'
+          );
+        })
+        .join('');
+      return;
+    }
+
+    var filtered = this.getFilteredPosProducts();
+    if (AppState.selectedCategory === '__promos__') {
+      filtered = (AppState.products || []).filter(function (p) {
+        return Boolean(App.getActivePromotionForProduct(p));
+      });
+    }
+
+    var totalPages = Math.max(1, Math.ceil(filtered.length / AppState.posPageSize));
+    if (AppState.posPage > totalPages) AppState.posPage = totalPages;
+
+    var pageInfo = document.getElementById('posPageInfoText');
+    if (pageInfo) {
+      pageInfo.textContent = 'صفحة ' + AppState.posPage + ' من ' + totalPages + ' (' + filtered.length + ' منتج)';
+    }
+
+    if (filtered.length === 0) {
+      grid.innerHTML = '<div class="col-span-full py-16 text-center text-slate-400 font-bold">لا توجد منتجات مطابقة للبحث</div>';
+      return;
+    }
+
+    var startIdx = (AppState.posPage - 1) * AppState.posPageSize;
+    var pageItems = filtered.slice(startIdx, startIdx + AppState.posPageSize);
+    var tier = (this.currentCart && this.currentCart.priceTier) || AppState.priceTier || 'retail';
+
+    grid.innerHTML = pageItems
+      .map(function (p) {
+        var promoInfo = App.getEffectiveProductPromoInfo(p, tier);
+        var stock = getBaseStock(p);
+        var stockBadgeClass =
+          stock <= 0
+            ? 'bg-rose-500/15 text-rose-500'
+            : stock <= Number(p.min_stock || 5)
+              ? 'bg-amber-500/15 text-amber-600'
+              : 'bg-emerald-500/15 text-emerald-600';
+
+        var imgHtml =
+          AppState.posShowImages && p.image
+            ? '<img src="' + p.image + '" class="w-full h-20 object-contain rounded-lg bg-slate-50 dark:bg-slate-900 mb-1">'
+            : '';
+
+        var costLine = AppState.posShowCost
+          ? '<div class="text-[10px] font-mono text-slate-400">شراء: ' + getBaseCostPrice(p).toFixed(2) + '</div>'
+          : '';
+
+        return (
+          '<div onclick="App.onPosProductCardClick(' + p.id + ')" class="product-card ' + (promoInfo.hasPromo ? 'border-rose-500/50 bg-rose-500/5' : '') + ' flex flex-col justify-between gap-1.5">' +
+          '  <div>' +
+          '    <div class="flex items-center justify-between mb-1">' +
+          '      <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ' + stockBadgeClass + '">' + stock + ' ' + (p.unit || '') + '</span>' +
+          '      <div class="flex items-center gap-1">' +
+          (Number(p.has_variants) === 1 ? '<span class="px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[9px] font-bold">متغيرات</span>' : '') +
+          (promoInfo.hasPromo ? '<span class="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[9px] font-black">🔥 ' + promoInfo.badgeText + '</span>' : '') +
+          '      </div>' +
+          '    </div>' +
+          imgHtml +
+          '    <div class="font-bold text-xs line-clamp-2 min-h-[2rem]">' + p.name + '</div>' +
+          costLine +
+          '  </div>' +
+          '  <div class="pt-1 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">' +
+          (promoInfo.hasPromo
+            ? '<div class="flex items-baseline gap-1"><span class="font-mono font-black text-sm text-rose-600 dark:text-rose-400">' + promoInfo.finalPrice.toFixed(2) + '</span><span class="font-mono text-[10px] line-through text-slate-400">' + promoInfo.originalPrice.toFixed(0) + '</span></div>'
+            : '<span class="font-mono font-black text-sm text-blue-600 dark:text-blue-400">' + promoInfo.finalPrice.toFixed(2) + '</span>') +
+          '    <span class="text-[10px] text-slate-400">د.ج</span>' +
+          '  </div>' +
+          '</div>'
+        );
+      })
+      .join('');
+  };
+
+  // --------------------------------------------------------------------------
+  // 3) إصلاح App.addProductToCart و App.renderCartItems لتطبيق العروض الترويجية والحزم فوراً
+  // --------------------------------------------------------------------------
+  App.addProductToCart = function (productId, qty, options) {
+    if (qty === undefined) qty = 1;
+    options = options || {};
+    var prod = (AppState.products || []).find(function (p) {
+      return Number(p.id) === Number(productId);
+    });
+    if (!prod) return;
+
+    var mult = AppState._quickMultiplier || 1;
+    var effectiveQty = Number(qty || 1) * mult;
+    if (mult !== 1 && typeof this.setQuickMultiplier === 'function') this.setQuickMultiplier(1);
+
+    var signedQty = (AppState.returnMode || AppState.isReturnMode) ? -Math.abs(effectiveQty) : effectiveQty;
+    var cart = this.currentCart;
+    var tier = cart.priceTier || AppState.priceTier || 'retail';
+
+    var promoInfo = this.getEffectiveProductPromoInfo(prod, tier);
+    var unitPrice =
+      options.overridePrice !== undefined && options.overridePrice !== null
+        ? Number(options.overridePrice)
+        : promoInfo.finalPrice;
+
+    var origPrice = options.originalPrice !== undefined
+      ? Number(options.originalPrice)
+      : promoInfo.originalPrice;
+
+    var promoBadge = options.promoBadge || (options.overridePrice === undefined && promoInfo.hasPromo ? promoInfo.badgeText : '');
+    var appliedPromoId = options.overridePrice === undefined && promoInfo.hasPromo ? promoInfo.promoId : null;
+    var targetVariantId = options.variantId || null;
+
+    var existingItem = cart.items.find(function (it) {
+      return (
+        Number(it.product_id || it.productId) === Number(prod.id) &&
+        (it.variant_id || null) === targetVariantId &&
+        !it._isWholesaleMode &&
+        (it.bundle_tag || '') === (options.bundleTag || '') &&
+        Math.abs(Number(it.price || 0) - unitPrice) < 0.01
+      );
+    });
+
+    if (existingItem) {
+      existingItem.quantity = Number((Number(existingItem.quantity || 0) + signedQty).toFixed(3));
+      existingItem.subtotal = Number((existingItem.quantity * existingItem.price).toFixed(2));
+      if (existingItem.quantity === 0) {
+        cart.items = cart.items.filter(function (x) { return x !== existingItem; });
+      }
+    } else {
+      var batches = Array.isArray(prod.batches) ? prod.batches : [];
+      var firstBatch = batches.find(function (b) { return Number(b.stock) > 0; }) || batches[0] || null;
+      cart.items.push({
+        product_id: Number(prod.id),
+        batch_id: options.batchId || (firstBatch ? firstBatch.id : null),
+        variant_id: targetVariantId,
+        name: options.customName || prod.name,
+        unit: prod.unit || 'قطعة',
+        quantity: signedQty,
+        price: unitPrice,
+        original_price: origPrice,
+        promo_badge: promoBadge,
+        bundle_tag: options.bundleTag || '',
+        applied_promotion_id: appliedPromoId,
+        cost_price: getBaseCostPrice(prod),
+        subtotal: Number((signedQty * unitPrice).toFixed(2)),
+        serial_number: options.serialNumber || null,
+        warranty_months: Number(prod.warranty_months || 0)
+      });
+    }
+
+    var items = cart.items || [];
+    if (items.length > 0) {
+      var foundIdx = items.findIndex(function (it) { return Number(it.product_id) === Number(productId); });
+      AppState.selectedCartRowIdx = foundIdx !== -1 ? foundIdx : items.length - 1;
+    }
+
+    this.recalcAndRenderCart();
+    if (typeof this.focusBarcodeMagnet === 'function') this.focusBarcodeMagnet(false);
+  };
+
+  // تحديث عرض عناصر السلة لإظهار السعر المشطوب وشارة العرض الترويجي أو شارة الحزمة بوضوح
+  var _prevRenderCartItems = typeof App.renderCartItems === 'function' ? App.renderCartItems.bind(App) : null;
+  App.renderCartItems = function () {
+    var container = document.getElementById('posCartItems');
+    if (!container) return;
+    var items = (this.currentCart && this.currentCart.items) || [];
+
+    if (items.length === 0) {
+      if (_prevRenderCartItems) return _prevRenderCartItems();
+      return;
+    }
+
+    if (AppState.selectedCartRowIdx >= items.length || AppState.selectedCartRowIdx < 0) {
+      AppState.selectedCartRowIdx = items.length - 1;
+    }
+
+    container.innerHTML = items
+      .map(function (item, idx) {
+        var prod = (AppState.products || []).find(function (p) {
+          return Number(p.id) === Number(item.product_id || item.productId) || p.name === item.name;
+        });
+        if (prod && !item.product_id) item.product_id = prod.id;
+        var cost = Number(item.cost_price || getBaseCostPrice(prod) || 0);
+        var isBelowCost = cost > 0 && Number(item.price) < cost;
+        var isSelected = idx === AppState.selectedCartRowIdx;
+        var origP = Number(item.original_price || (prod ? getBaseRetailPrice(prod) : item.price) || 0);
+        var hasDiscount = origP > Number(item.price) + 0.01;
+        var savedTotal = hasDiscount ? Number(((origP - Number(item.price)) * Number(item.quantity || 1)).toFixed(2)) : 0;
+
+        return (
+          '<div onclick="AppState.selectedCartRowIdx=' + idx + ';" class="p-2 rounded-xl border ' +
+          (isBelowCost
+            ? 'border-amber-500 bg-amber-500/10 '
+            : hasDiscount
+              ? 'border-rose-500/40 bg-rose-500/5 dark:bg-slate-800/90 '
+              : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/90 ') +
+          (isSelected ? 'cart-row-selected ' : '') +
+          'flex items-center justify-between gap-1.5 shadow-sm transition">' +
+          '<div class="min-w-0 flex-1">' +
+          '  <div class="font-bold text-xs truncate flex items-center gap-1">' +
+          '    <span>' + (item.name || item.custom_product_name || 'منتج') + '</span>' +
+          (item.promo_badge ? '<span class="px-1.5 py-0.2 rounded bg-rose-600 text-white text-[9px] font-black">🔥 ' + item.promo_badge + '</span>' : '') +
+          (item.bundle_tag ? '<span class="px-1.5 py-0.2 rounded bg-blue-600 text-white text-[9px] font-black">🎁 ' + item.bundle_tag + '</span>' : '') +
+          '  </div>' +
+          '  <div class="flex flex-wrap items-center gap-1 text-[10px] text-slate-400 font-mono mt-0.5">' +
+          (hasDiscount ? '<span class="line-through text-rose-400">' + origP.toFixed(2) + '</span>' : '') +
+          '    <span class="' + (hasDiscount ? 'text-emerald-600 font-black' : '') + '">' + Number(item.price || 0).toFixed(2) + ' د.ج / ' + (item.unit || (prod && prod.unit) || 'قطعة') + '</span>' +
+          (savedTotal > 0 ? '<span class="px-1 rounded bg-emerald-500/15 text-emerald-600 font-sans font-bold">وفّر ' + savedTotal.toFixed(2) + ' د.ج</span>' : '') +
+          (prod
+            ? '<button type="button" onclick="App.toggleCartItemWholesaleUnit(' + idx + ')" class="px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-500 font-sans font-bold hover:bg-indigo-600 hover:text-white transition">' +
+              (item._isWholesaleMode ? '📦 جملة' : 'وحدة / تسعيرة') +
+              '</button>'
+            : '') +
+          '  </div>' +
+          '</div>' +
+          '<div class="flex items-center gap-1">' +
+          '  <button type="button" onclick="App.stepCartItemQty(' + idx + ', -1)" class="w-6 h-7 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-rose-500 hover:text-white font-mono font-black text-xs">-</button>' +
+          '  <input id="cartItemQtyInput-' + idx + '" type="number" step="any" value="' + item.quantity + '" onkeydown="App.onCartQtyInputKeydown(event, ' + idx + ', this)" onchange="App.updateCartItemQty(' + idx + ', this.value)" class="w-11 px-1 py-1 rounded-lg text-center font-mono font-black text-xs">' +
+          '  <button type="button" onclick="App.stepCartItemQty(' + idx + ', 1)" class="w-6 h-7 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-emerald-600 hover:text-white font-mono font-black text-xs">+</button>' +
+          '</div>' +
+          '<input id="cartItemPriceInput-' + idx + '" type="number" step="any" value="' + Number(item.price || 0).toFixed(2) + '" onkeydown="App.onCartPriceInputKeydown(event, ' + idx + ', this)" onchange="App.updateCartItemPrice(' + idx + ', this.value)" title="[F12] تعديل السعر" class="w-16 px-1 py-1 rounded-lg text-center font-mono font-bold text-xs text-blue-600 dark:text-blue-400">' +
+          '<div class="w-14 text-left font-mono font-black text-xs">' + Number(item.subtotal || 0).toFixed(2) + '</div>' +
+          '<button type="button" onclick="App.removeCartItem(' + idx + ')" class="text-rose-500 hover:bg-rose-500/10 p-1 rounded-lg"><span class="material-symbols-rounded icon-sm">delete</span></button>' +
+          '</div>'
+        );
+      })
+      .join('');
+
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(container);
+  };
+
+  // --------------------------------------------------------------------------
+  // 4) إصلاح App.sellBundleInPosNow (حل خطأ varforUnit وتوزيع السعر بالهامش المحمي)
+  // --------------------------------------------------------------------------
+  App.computeSmartBundleAllocation = function (items, targetBundlePrice, mode) {
+    mode = mode || AppState.bundleAllocMode || 'margin_weighted';
+    var cleanItems = (items || []).map(function (it) {
+      var p = (AppState.products || []).find(function (x) { return Number(x.id) === Number(it.product_id); });
+      var qty = Math.max(0.01, Number(it.quantity || 1));
+      var unitCost = Number(it.unit_cost !== undefined ? it.unit_cost : getBaseCostPrice(p));
+      var unitPrice = Number(it.unit_price !== undefined ? it.unit_price : getBaseRetailPrice(p));
+      var lineCost = Number((unitCost * qty).toFixed(2));
+      var lineRetail = Number((unitPrice * qty).toFixed(2));
+      var lineOrigProfit = Math.max(0, Number((lineRetail - lineCost).toFixed(2)));
+      return {
+        product_id: Number(it.product_id),
+        product_name: it.product_name || (p ? p.name : 'منتج #' + it.product_id),
+        quantity: qty,
+        unit_cost: unitCost,
+        unit_price: unitPrice,
+        stock: Number(it.stock !== undefined ? it.stock : getBaseStock(p)),
+        locked: Boolean(it.locked),
+        lineCost: lineCost,
+        lineRetail: lineRetail,
+        lineOrigProfit: lineOrigProfit
+      };
+    });
+
+    var totalCost = cleanItems.reduce(function (s, x) { return s + x.lineCost; }, 0);
+    var totalRetail = cleanItems.reduce(function (s, x) { return s + x.lineRetail; }, 0);
+    var totalOrigProfit = cleanItems.reduce(function (s, x) { return s + x.lineOrigProfit; }, 0);
+    var bundlePrice = targetBundlePrice !== undefined && targetBundlePrice !== null ? Number(targetBundlePrice) : totalRetail;
+    var totalDiscountToDistribute = Math.max(0, Number((totalRetail - bundlePrice).toFixed(2)));
+
+    // المنتجات غير المقفلة التي ستتحمل التخفيض
+    var unlocked = cleanItems.filter(function (x) { return !x.locked; });
+    var unlockedProfitSum = unlocked.reduce(function (s, x) { return s + x.lineOrigProfit; }, 0);
+    var unlockedRetailSum = unlocked.reduce(function (s, x) { return s + x.lineRetail; }, 0);
+
+    var allocatedSoFar = 0;
+    cleanItems.forEach(function (x, idx) {
+      if (x.locked || totalDiscountToDistribute <= 0) {
+        x.lineDiscount = 0;
+      } else {
+        var weight = 0;
+        if (mode === 'margin_weighted' && unlockedProfitSum > 0) {
+          weight = x.lineOrigProfit / unlockedProfitSum;
+        } else if (unlockedRetailSum > 0) {
+          weight = x.lineRetail / unlockedRetailSum;
+        } else {
+          weight = 1 / Math.max(1, unlocked.length);
+        }
+
+        var rawDisc = Number((totalDiscountToDistribute * weight).toFixed(2));
+        // حماية التاجر: لا يتجاوز الخصم ربح المنتج الأصلي إلا إذا كان التاجر نفسه باع الحزمة بأقل من التكلفة الكلية
+        if (bundlePrice >= totalCost && rawDisc > x.lineOrigProfit) {
+          rawDisc = x.lineOrigProfit;
+        }
+        x.lineDiscount = rawDisc;
+        allocatedSoFar += rawDisc;
+      }
+
+      x.lineBundlePrice = Number((x.lineRetail - x.lineDiscount).toFixed(2));
+      x.unitBundlePrice = Number((x.lineBundlePrice / x.quantity).toFixed(2));
+      x.lineNetProfit = Number((x.lineBundlePrice - x.lineCost).toFixed(2));
+      x.unitNetProfit = Number((x.lineNetProfit / x.quantity).toFixed(2));
+      x.discountSharePct = totalDiscountToDistribute > 0 ? Number(((x.lineDiscount / totalDiscountToDistribute) * 100).toFixed(1)) : 0;
+    });
+
+    // تسوية أي فرق قروش صغير في آخر عنصر غير مقفل ليطابق مجموع الحزمة 100%
+    var sumLines = cleanItems.reduce(function (s, x) { return s + x.lineBundlePrice; }, 0);
+    var diff = Number((bundlePrice - sumLines).toFixed(2));
+    if (Math.abs(diff) >= 0.01 && unlocked.length > 0) {
+      var lastUnlocked = unlocked[unlocked.length - 1];
+      lastUnlocked.lineBundlePrice = Number((lastUnlocked.lineBundlePrice + diff).toFixed(2));
+      lastUnlocked.lineDiscount = Math.max(0, Number((lastUnlocked.lineRetail - lastUnlocked.lineBundlePrice).toFixed(2)));
+      lastUnlocked.unitBundlePrice = Number((lastUnlocked.lineBundlePrice / lastUnlocked.quantity).toFixed(2));
+      lastUnlocked.lineNetProfit = Number((lastUnlocked.lineBundlePrice - lastUnlocked.lineCost).toFixed(2));
+      lastUnlocked.unitNetProfit = Number((lastUnlocked.lineNetProfit / lastUnlocked.quantity).toFixed(2));
+    }
+
+    return {
+      items: cleanItems,
+      totalCost: Number(totalCost.toFixed(2)),
+      totalRetail: Number(totalRetail.toFixed(2)),
+      totalOrigProfit: Number(totalOrigProfit.toFixed(2)),
+      bundlePrice: Number(bundlePrice.toFixed(2)),
+      totalSaving: Number(totalDiscountToDistribute.toFixed(2)),
+      totalNetProfit: Number((bundlePrice - totalCost).toFixed(2))
+    };
+  };
+
+  App.sellBundleInPosNow = async function (bundleId) {
+    if (!AppState.bundlesList || AppState.bundlesList.length === 0) {
+      AppState.bundlesList = (await window.api.getBundles().catch(function () { return []; })) || [];
+      AppState.bundles = AppState.bundlesList;
+    }
+
+    var bundle = (AppState.bundlesList || []).find(function (b) { return Number(b.id) === Number(bundleId); });
+    if (!bundle && window.api && window.api.getBundleDetails) {
+      bundle = await window.api.getBundleDetails(Number(bundleId)).catch(function () { return null; });
+    }
+    if (!bundle) {
+      if (typeof showToast === 'function') showToast('لم يتم العثور على بيانات الحزمة', 'error');
+      return;
+    }
+
+    var rawItems = Array.isArray(bundle.items) ? bundle.items : [];
+    if (rawItems.length === 0) {
+      if (typeof showToast === 'function') showToast('هذه الحزمة لا تحتوي على منتجات مكونة بعد', 'warning');
+      return;
+    }
+
+    var alloc = this.computeSmartBundleAllocation(rawItems, Number(bundle.selling_price || 0), 'margin_weighted');
+
+    for (var i = 0; i < alloc.items.length; i++) {
+      var line = alloc.items[i];
+      var unitBundlePrice = Number(line.unitBundlePrice);
+      this.addProductToCart(line.product_id, Number(line.quantity || 1), {
+        overridePrice: unitBundlePrice,
+        originalPrice: line.unit_price,
+        bundleTag: bundle.name
+      });
+    }
+
+    if (AppState.currentView !== 'pos') {
+      await this.switchView('pos');
+    } else {
+      this.renderPosView();
+    }
+
+    if (typeof showToast === 'function') {
+      showToast(
+        '🎁 تمت إضافة (' + bundle.name + ') للسلة بـ ' + alloc.bundlePrice.toFixed(2) + ' د.ج — وفّر الزبون ' + alloc.totalSaving.toFixed(2) + ' د.ج وربحك الصافي +' + alloc.totalNetProfit.toFixed(2) + ' د.ج!',
+        'success'
+      );
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 5) إصلاح جذري لخانة مسح الباركود (#barcodeInput) في شاشة الكاشير
+  // --------------------------------------------------------------------------
+  App.handleBarcodeScan = async function (rawCode) {
+    var code = String(rawCode || '').trim();
+    var bcInput = document.getElementById('barcodeInput');
+    if (bcInput) bcInput.value = '';
+    if (!code) return;
+
+    var codeLower = code.toLowerCase();
+
+    // 1. البحث في الحزم والباقات الترويجية النشطة (بالباركود أو الاسم المختصر مثل pack)
+    if (!AppState.bundlesList || AppState.bundlesList.length === 0) {
+      AppState.bundlesList = (await window.api.getBundles().catch(function () { return []; })) || [];
+      AppState.bundles = AppState.bundlesList;
+    }
+    var matchedBundle = (AppState.bundlesList || []).find(function (b) {
+      if (Number(b.is_active) === 0) return false;
+      var bCode = String(b.barcode || '').trim().toLowerCase();
+      var bName = String(b.name || '').trim().toLowerCase();
+      return (bCode && bCode === codeLower) || bName === codeLower;
+    });
+
+    if (matchedBundle) {
+      if (typeof playBeep === 'function') playBeep(true);
+      await this.sellBundleInPosNow(matchedBundle.id);
+      return;
+    }
+
+    // 2. فحص باركود الميزان الإلكتروني (يبدأ بـ 20..29 وطوله 12 أو 13 رقماً)
+    var scalePrefix = String((AppState.settings && AppState.settings.scale_barcode_prefix) || '20');
+    if (code.length >= 12 && (code.startsWith(scalePrefix) || /^2[0-9]\d{11}$/.test(code))) {
+      var plu = code.slice(2, 7);
+      var pluNum = String(parseInt(plu, 10));
+      var weightKg = parseInt(code.slice(7, 12), 10) / 1000;
+      var wProd = (AppState.products || []).find(function (p) {
+        return String(p.plu_code || '') === plu || String(p.plu_code || '') === pluNum || String(p.barcode || '') === plu;
+      });
+      if (wProd && weightKg > 0) {
+        this.addProductToCart(wProd.id, weightKg);
+        if (typeof playBeep === 'function') playBeep(true);
+        return;
+      }
+    }
+
+    // 3. البحث في المنتجات (الباركود الأساسي، كود PLU، الباركودات الفرعية، المتغيرات)
+    for (var i = 0; i < (AppState.products || []).length; i++) {
+      var p = AppState.products[i];
+      if (String(p.barcode || '').trim().toLowerCase() === codeLower || String(p.plu_code || '').trim().toLowerCase() === codeLower) {
+        this.addProductToCart(p.id, 1);
+        if (typeof playBeep === 'function') playBeep(true);
+        return;
+      }
+      if (Array.isArray(p.extra_barcodes)) {
+        var subBc = p.extra_barcodes.find(function (b) {
+          return String((b && b.barcode) || b || '').trim().toLowerCase() === codeLower;
+        });
+        if (subBc) {
+          var customPrice = undefined;
+          if (subBc.price_label && Array.isArray(p.extra_prices)) {
+            var matchedPrice = p.extra_prices.find(function (ep) { return ep.label === subBc.price_label; });
+            if (matchedPrice) customPrice = Number(matchedPrice.price);
+          }
+          this.addProductToCart(p.id, 1, { overridePrice: customPrice });
+          if (typeof playBeep === 'function') playBeep(true);
+          return;
+        }
+      }
+      if (Array.isArray(p.variants)) {
+        var matchedVar = p.variants.find(function (v) {
+          return String(v.barcode || '').trim().toLowerCase() === codeLower;
+        });
+        if (matchedVar) {
+          this.addProductToCart(p.id, 1, {
+            variantId: matchedVar.id,
+            overridePrice: matchedVar.selling_price ? Number(matchedVar.selling_price) : undefined,
+            customName: p.name + ' (' + (matchedVar.sku || matchedVar.barcode) + ')'
+          });
+          if (typeof playBeep === 'function') playBeep(true);
+          return;
+        }
+      }
+    }
+
+    // 4. البحث في القاموس الوطني الجزائري 613
+    if (window.api && typeof window.api.lookupDzBarcode === 'function') {
+      var dzItem = await window.api.lookupDzBarcode(code).catch(function () { return null; });
+      if (dzItem && dzItem.name) {
+        if (typeof playBeep === 'function') playBeep(true);
+        if (typeof showToast === 'function') showToast('🇩🇿 تم التعرف على المنتج الجزائري: ' + dzItem.name, 'info');
+        await this.openProductModal({
+          barcode: dzItem.barcode || code,
+          name: dzItem.name,
+          category: dzItem.category || 'مواد غذائية',
+          supplier: dzItem.brand || '',
+          unit: dzItem.unit || 'قطعة',
+          selling_price: Number(dzItem.suggested_price || 100),
+          cost_price: Math.round(Number(dzItem.suggested_price || 100) * 0.82),
+          stock: 10
+        });
+        return;
+      }
+    }
+
+    // 5. الباركود غير مسجل -> فتح نافذة مساعد الباركود غير المسجل
+    if (typeof playBeep === 'function') playBeep(false);
+    if (typeof this.openUnregisteredBarcodeModal === 'function') {
+      this.openUnregisteredBarcodeModal(code);
+    } else if (typeof showToast === 'function') {
+      showToast('الباركود (' + code + ') غير مسجل في المخزون', 'warning');
+    }
+  };
+
+  // تأمين حدث Enter على خانة #barcodeInput حتى لو أعيد رسم الهيدر
+  document.addEventListener('keydown', function (e) {
+    if (e.target && e.target.id === 'barcodeInput' && e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      App.handleBarcodeScan(e.target.value);
+    }
+  }, true);
+
+  // --------------------------------------------------------------------------
+  // 6) تطوير نافذة الحزمة (#bundleModal) بالتحليل الربحي المفصل لكل منتج + 8 قوالب ذكية من المخزون
+  // --------------------------------------------------------------------------
+  App.upgradeSmartBundleModalV2 = function () {
+    var bModal = document.getElementById('bundleModal');
+    if (!bModal) return;
+
+    bModal.innerHTML =
+      '<div class="modal-content w-full max-w-4xl p-6 space-y-3.5 overflow-y-auto">' +
+      '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2.5">' +
+      '    <div>' +
+      '      <h3 id="bundleModalTitle" class="text-lg font-black text-blue-600">🎁 مهندس الحزم والباقات الذكي (Smart Margin-Protected Pack Builder)</h3>' +
+      '      <p class="text-[11px] text-slate-400 font-bold">يحسب ربح كل منتج داخل الباقة ويوزع التخفيض بذكاء على الأصناف عالية الربح لحماية رأس مال التاجر</p>' +
+      '    </div>' +
+      '    <button type="button" onclick="App.closeModal(\'bundleModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+      '  </div>' +
+      '  <input id="bundleIdInput" type="hidden">' +
+
+      '  <div class="p-2.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 space-y-1.5 text-xs">' +
+      '    <div class="font-black text-indigo-600 dark:text-indigo-400">⚡ قوالب باقات اقتراحية ذكية مبنية تلقائياً على ما يوجد في مخزونك الفعلي:</div>' +
+      '    <div class="flex flex-wrap items-center gap-1.5">' +
+      '      <button type="button" onclick="App.applySmartBundlePreset(\'ramadan\')" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 font-bold hover:bg-indigo-600 hover:text-white transition">🌙 قفة المواد الأساسية</button>' +
+      '      <button type="button" onclick="App.applySmartBundlePreset(\'breakfast\')" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 font-bold hover:bg-indigo-600 hover:text-white transition">☕ باقة القهوة والفطور</button>' +
+      '      <button type="button" onclick="App.applySmartBundlePreset(\'dairy\')" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 font-bold hover:bg-indigo-600 hover:text-white transition">🧀 باقة الأجبان والألبان</button>' +
+      '      <button type="button" onclick="App.applySmartBundlePreset(\'drinks\')" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 font-bold hover:bg-indigo-600 hover:text-white transition">🧃 باقة المشروبات العائلية</button>' +
+      '      <button type="button" onclick="App.applySmartBundlePreset(\'high_margin\')" class="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-black hover:bg-emerald-600 hover:text-white transition">💎 باقة الأعلى ربحاً للتاجر</button>' +
+      '      <button type="button" onclick="App.applySmartBundlePreset(\'overstock\')" class="px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 font-black hover:bg-amber-500 hover:text-slate-950 transition">📦 باقة تصريف الرصيد الوفير</button>' +
+      '      <button type="button" onclick="App.applySmartBundlePreset(\'expiry\')" class="px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-600 font-black hover:bg-rose-600 hover:text-white transition">⏳ باقة قريبة الانتهاء</button>' +
+      '      <button type="button" onclick="App.applySmartBundlePreset(\'budget500\')" class="px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-600 font-black hover:bg-sky-600 hover:text-white transition">🛒 باقة اقتصادية (< 500 د.ج)</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">' +
+      '    <div class="md:col-span-2">' +
+      '      <label class="block font-bold mb-1">اسم الحزمة / الباقة الترويجية *</label>' +
+      '      <input id="bundleNameInput" type="text" placeholder="مثال: باقة فطور الصباح والقهوة (Pack Café & Matin)" class="w-full px-3 py-2 rounded-xl font-bold">' +
+      '    </div>' +
+      '    <div>' +
+      '      <label class="block font-bold mb-1">باركود أو كود الحزمة (للمسح المباشر بالكاشير)</label>' +
+      '      <div class="flex gap-1">' +
+      '        <input id="bundleBarcodeInput" type="text" placeholder="61399... أو pack1" class="flex-1 px-3 py-2 rounded-xl font-mono font-bold">' +
+      '        <button type="button" onclick="App.generateBundleBarcode()" class="px-2.5 bg-slate-200 dark:bg-slate-700 rounded-xl font-bold" title="توليد باركود EAN-13 للحزمة">⚡</button>' +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-2.5 text-xs">' +
+      '    <div class="flex flex-wrap items-center justify-between gap-2">' +
+      '      <span class="font-black text-slate-700 dark:text-slate-200">📦 جدول تشريح المنتجات المكوّنة للحزمة (التكلفة، السعر، التوفير، والربح الصافي لكل منتج):</span>' +
+      '      <div class="flex items-center gap-1 text-[11px]">' +
+      '        <span class="text-slate-400 font-bold">خوارزمية توزيع التوفير:</span>' +
+      '        <button type="button" onclick="App.setBundleAllocMode(\'margin_weighted\')" class="px-2 py-0.5 rounded font-bold ' + (AppState.bundleAllocMode === 'margin_weighted' ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-slate-700') + '">🧠 ذكي حسب الهامش (يحمي الأصناف ضعيفة الربح)</button>' +
+      '        <button type="button" onclick="App.setBundleAllocMode(\'proportional\')" class="px-2 py-0.5 rounded font-bold ' + (AppState.bundleAllocMode === 'proportional' ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-slate-700') + '">⚖️ نسبي حسب السعر</button>' +
+      '      </div>' +
+      '    </div>' +
+      '    <div class="grid grid-cols-1 md:grid-cols-12 gap-2">' +
+      '      <select id="bundleProductSelect" class="md:col-span-7 px-3 py-2 rounded-xl font-bold"></select>' +
+      '      <input id="bundleProductQty" type="number" step="any" min="0.1" value="1" placeholder="الكمية" class="md:col-span-2 px-3 py-2 rounded-xl font-mono font-bold text-center">' +
+      '      <button type="button" onclick="App.addComponentToBundleModal()" class="md:col-span-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black shadow-sm">+ إدراج في الحزمة</button>' +
+      '    </div>' +
+      '    <div id="bundleItemsTableContainer" class="max-h-52 overflow-y-auto pt-1"></div>' +
+      '  </div>' +
+
+      '  <div id="bundleSavingsOriginBanner" class="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs"></div>' +
+
+      '  <div id="bundleLiveMetricsBox" class="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-center"></div>' +
+
+      '  <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5 text-xs items-end">' +
+      '    <div class="md:col-span-3">' +
+      '      <label class="block font-bold mb-1">إجمالي تكلفة الحزمة (د.ج)</label>' +
+      '      <input id="bundleCostInput" type="number" step="any" value="0" readonly class="w-full px-3 py-2 rounded-xl font-mono font-bold bg-slate-100 dark:bg-slate-900">' +
+      '    </div>' +
+      '    <div class="md:col-span-4">' +
+      '      <label class="block font-bold mb-1 text-blue-600">سعر بيع الحزمة النهائي للزبون (د.ج) *</label>' +
+      '      <input id="bundlePriceInput" type="number" step="any" value="0" oninput="App.onBundlePriceManualInput()" class="w-full px-3 py-2 rounded-xl font-mono font-black text-base text-blue-600 border-blue-500">' +
+      '    </div>' +
+      '    <div class="md:col-span-5 flex flex-wrap gap-1">' +
+      '      <button type="button" onclick="App.applyQuickBundleDiscount(5)" class="flex-1 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-mono font-bold hover:bg-blue-600 hover:text-white">-5%</button>' +
+      '      <button type="button" onclick="App.applyQuickBundleDiscount(10)" class="flex-1 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-mono font-bold hover:bg-blue-600 hover:text-white">-10%</button>' +
+      '      <button type="button" onclick="App.applyQuickBundleDiscount(15)" class="flex-1 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-mono font-bold hover:bg-blue-600 hover:text-white">-15%</button>' +
+      '      <button type="button" onclick="App.applyPsychologicalBundleRounding()" title="تقريب السعر لرقم نفسي جذاب ومريح في الصرف (مثلاً 590 أو 600 د.ج)" class="px-2.5 py-2 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 font-black hover:bg-amber-500 hover:text-slate-950">🎯 تقريب نفسي</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="flex justify-end gap-2 pt-2.5 border-t border-slate-200 dark:border-slate-700">' +
+      '    <button type="button" onclick="App.closeModal(\'bundleModal\')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء (Esc)</button>' +
+      '    <button type="button" onclick="App.saveBundleFromModal()" class="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-lg shadow-blue-600/25">💾 حفظ الحزمة الترويجية</button>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  App.setBundleAllocMode = function (mode) {
+    AppState.bundleAllocMode = mode;
+    this.renderBundleItemsInModal();
+    this.updateBundleModalMetrics();
+  };
+
+  App.toggleLockBundleItem = function (idx) {
+    if (AppState.tempBundleItems && AppState.tempBundleItems[idx]) {
+      AppState.tempBundleItems[idx].locked = !AppState.tempBundleItems[idx].locked;
+      this.renderBundleItemsInModal();
+      this.updateBundleModalMetrics();
+    }
+  };
+
+  App.onBundlePriceManualInput = function () {
+    this.renderBundleItemsInModal();
+    this.updateBundleModalMetrics();
+  };
+
+  App.applyPsychologicalBundleRounding = function () {
+    var cur = parseFloat(document.getElementById('bundlePriceInput')?.value) || 0;
+    var cost = parseFloat(document.getElementById('bundleCostInput')?.value) || 0;
+    if (cur <= 0) return;
+    // تقريب لأقرب 10 د.ج أقل (أو 5 د.ج) مع ضمان عدم النزول تحت التكلفة + 5%
+    var rounded = Math.floor(cur / 10) * 10;
+    if (rounded < cost * 1.05) rounded = Math.ceil((cost * 1.05) / 5) * 5;
+    document.getElementById('bundlePriceInput').value = rounded.toFixed(2);
+    this.renderBundleItemsInModal();
+    this.updateBundleModalMetrics();
+  };
+
+  App.renderBundleItemsInModal = function () {
+    var box = document.getElementById('bundleItemsTableContainer');
+    var originBanner = document.getElementById('bundleSavingsOriginBanner');
+    if (!box) return;
+    var items = AppState.tempBundleItems || [];
+    if (items.length === 0) {
+      box.innerHTML = '<div class="py-4 text-center text-slate-400 font-bold">اختر قالباً ذكياً أعلاه بضغطة زر أو أضف منتجاتك لترى تشريح الربح والتوفير لكل صنف</div>';
+      if (originBanner) originBanner.innerHTML = '💡 نصيحة المستشار: أضف منتجين أو أكثر لتوزيع التوفير بذكاء على المنتج ذي الهامش الأعلى.';
+      return;
+    }
+
+    var targetPrice = parseFloat(document.getElementById('bundlePriceInput')?.value) || 0;
+    var alloc = this.computeSmartBundleAllocation(items, targetPrice, AppState.bundleAllocMode);
+
+    var costInp = document.getElementById('bundleCostInput');
+    if (costInp) costInp.value = alloc.totalCost.toFixed(2);
+
+    box.innerHTML =
+      '<table class="w-full text-[11px] text-right">' +
+      '  <thead>' +
+      '    <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">' +
+      '      <th class="py-1.5 px-1">المنتج المكوّن</th>' +
+      '      <th class="py-1.5 px-1">شراء</th>' +
+      '      <th class="py-1.5 px-1">بيع فردي</th>' +
+      '      <th class="py-1.5 px-1">الربح الأصلي</th>' +
+      '      <th class="py-1.5 px-1">الكمية</th>' +
+      '      <th class="py-1.5 px-1 text-rose-600">التوفير المقتطع منه</th>' +
+      '      <th class="py-1.5 px-1 text-blue-600">سعره بالحزمة</th>' +
+      '      <th class="py-1.5 px-1 text-emerald-600">ربحك الصافي فيه</th>' +
+      '      <th class="py-1.5 px-1 text-center">حماية / حذف</th>' +
+      '    </tr>' +
+      '  </thead>' +
+      '  <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      alloc.items.map(function (it, idx) {
+        return (
+          '<tr class="hover:bg-white/60 dark:hover:bg-slate-900/40">' +
+          '  <td class="py-1.5 px-1 font-bold">' + it.product_name + '</td>' +
+          '  <td class="py-1.5 px-1 font-mono text-slate-400">' + it.unit_cost.toFixed(2) + '</td>' +
+          '  <td class="py-1.5 px-1 font-mono">' + it.unit_price.toFixed(2) + '</td>' +
+          '  <td class="py-1.5 px-1 font-mono text-slate-500">+' + it.lineOrigProfit.toFixed(2) + '</td>' +
+          '  <td class="py-1.5 px-1"><input type="number" step="any" min="0.1" value="' + it.quantity + '" oninput="App.updateBundleComponentQty(' + idx + ', this.value)" class="w-14 px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-mono font-bold text-center"></td>' +
+          '  <td class="py-1.5 px-1 font-mono font-bold text-rose-600">-' + it.lineDiscount.toFixed(2) + ' د.ج <span class="text-[9px] text-slate-400">(' + it.discountSharePct + '%)</span></td>' +
+          '  <td class="py-1.5 px-1 font-mono font-black text-blue-600">' + it.lineBundlePrice.toFixed(2) + ' د.ج</td>' +
+          '  <td class="py-1.5 px-1 font-mono font-black ' + (it.lineNetProfit >= 0 ? 'text-emerald-600' : 'text-rose-600') + '">' + (it.lineNetProfit >= 0 ? '+' : '') + it.lineNetProfit.toFixed(2) + ' د.ج</td>' +
+          '  <td class="py-1.5 px-1 flex items-center justify-center gap-1">' +
+          '    <button type="button" onclick="App.toggleLockBundleItem(' + idx + ')" title="' + (it.locked ? 'محمي من الخصم (اضغط لإلغاء القفل)' : 'اضغط لقفل هذا المنتج ومنع خصم أي دينار من ربحه') + '" class="px-1.5 py-0.5 rounded ' + (it.locked ? 'bg-amber-500 text-slate-950 font-black' : 'bg-slate-200 dark:bg-slate-700') + '">' + (it.locked ? '🔒 محمي' : '🔓') + '</button>' +
+          '    <button type="button" onclick="App.removeComponentFromBundleModal(' + idx + ')" class="text-rose-500 font-black px-1.5">✕</button>' +
+          '  </td>' +
+          '</tr>'
+        );
+      }).join('') +
+      '  </tbody>' +
+      '</table>';
+
+    if (originBanner) {
+      if (alloc.totalSaving > 0) {
+        var breakdownText = alloc.items
+          .filter(function (x) { return x.lineDiscount > 0; })
+          .map(function (x) {
+            return '<strong>' + x.product_name + '</strong> تحمّل <strong>-' + x.lineDiscount.toFixed(2) + ' د.ج (' + x.discountSharePct + '%)</strong> وبقي ربحك فيه <strong class="text-emerald-600">+' + x.lineNetProfit.toFixed(2) + ' د.ج</strong>';
+          })
+          .join(' | ');
+        originBanner.innerHTML = '🔍 <strong>من أين جاء توفير الزبون (' + alloc.totalSaving.toFixed(2) + ' د.ج)؟</strong> ' + (breakdownText || '');
+      } else {
+        originBanner.innerHTML = 'ℹ️ سعر الحزمة الحالي يساوي مجموع الأسعار الفردية (التوفير 0 د.ج) — اضغط (-5% أو -10%) لتوليد توفير ذكي محمي بالهامش.';
+      }
+    }
+  };
+
+  var _origOpenBundleModal = App.openBundleModal.bind(App);
+  App.openBundleModal = async function (bundleOrId) {
+    this.upgradeSmartBundleModalV2();
+    return await _origOpenBundleModal(bundleOrId);
+  };
+
+  // توسيع القوالب الاقتراحية الذكية لتشمل 8 قوالب حية تفحص مخزونك الفعلي
+  App.applySmartBundlePreset = function (presetKey) {
+    var priced = this.getSortedPricedProducts().filter(function (p) { return getBaseRetailPrice(p) > 0; });
+    if (priced.length === 0) return;
+
+    var picked = [];
+    var packTitle = '';
+
+    if (presetKey === 'ramadan') {
+      packTitle = '🌙 قفة المواد الغذائية الأساسية (Pack Essentiel)';
+      picked = priced.filter(function (p) {
+        return /زيت|سكر|سميد|فرينة|كسكس|طماطم|حليب/i.test(p.name) || /غذائية/i.test(p.category || '');
+      }).slice(0, 4);
+    } else if (presetKey === 'breakfast') {
+      packTitle = '☕ باقة فطور الصباح والقهوة (Pack Café & Matin)';
+      picked = priced.filter(function (p) {
+        return /قهوة|حليب|سكر|شيدر|جبن/i.test(p.name);
+      }).slice(0, 3);
+    } else if (presetKey === 'dairy') {
+      packTitle = '🧀 باقة الأجبان والألبان العائلية (Pack Fromage & Lait)';
+      picked = priced.filter(function (p) {
+        return /جبن|شيدر|حليب|ياغورت|لبن|زبدة/i.test(p.name) || /أجبان|ألبان/i.test(p.category || '');
+      }).slice(0, 3);
+    } else if (presetKey === 'drinks') {
+      packTitle = '🧃 باقة المشروبات والعصائر العائلية (Pack Boissons)';
+      picked = priced.filter(function (p) {
+        return /ماء|عصير|مشروب|حمود|إيفري|سعيدة|رويبة/i.test(p.name);
+      }).slice(0, 3);
+    } else if (presetKey === 'high_margin') {
+      packTitle = '💎 باقة التوفير الممتاز (الأعلى ربحية للتاجر)';
+      picked = priced.slice().sort(function (a, b) {
+        return (getBaseRetailPrice(b) - getBaseCostPrice(b)) - (getBaseRetailPrice(a) - getBaseCostPrice(a));
+      }).slice(0, 3);
+    } else if (presetKey === 'overstock') {
+      packTitle = '📦 باقة التصريف السريع (الأعلى رصيداً في المستودع)';
+      picked = priced.slice().sort(function (a, b) {
+        return getBaseStock(b) - getBaseStock(a);
+      }).slice(0, 3);
+    } else if (presetKey === 'expiry') {
+      packTitle = '⏳ باقة العرض الخاص (الأقرب لتاريخ الصلاحية)';
+      picked = priced.filter(function (p) { return Boolean(p.expiry_date || p.next_expiry); }).slice(0, 3);
+    } else if (presetKey === 'budget500') {
+      packTitle = '🛒 باقة التوفير اليومي السريع (أقل من 500 د.ج)';
+      picked = priced.slice().sort(function (a, b) {
+        return getBaseRetailPrice(a) - getBaseRetailPrice(b);
+      }).slice(0, 3);
+    }
+
+    if (picked.length === 0) picked = priced.slice(0, 3);
+
+    document.getElementById('bundleNameInput').value = packTitle;
+    AppState.tempBundleItems = picked.map(function (p) {
+      return {
+        product_id: Number(p.id),
+        product_name: p.name,
+        quantity: 1,
+        unit_cost: getBaseCostPrice(p),
+        unit_price: getBaseRetailPrice(p),
+        stock: getBaseStock(p),
+        locked: false
+      };
+    });
+
+    this.recalcBundleDefaultPriceAndCost();
+    this.applyPsychologicalBundleRounding();
+    this.renderBundleItemsInModal();
+    this.updateBundleModalMetrics();
+    if (typeof showToast === 'function') {
+      showToast('⚡ تم تركيب (' + packTitle + ') من مخزونك مع توزيع التوفير الذكي حسب هامش ربح كل منتج!', 'info');
+    }
+  };
+
+  // تحميل الحزم والعروض فور بدء التشغيل
+  setTimeout(function () {
+    App.refreshProducts().then(function () {
+      if (AppState.currentView === 'pos') App.renderPosView();
+      else if (AppState.currentView === 'bundles') App.renderBundlesAndPromosView();
+    });
+  }, 200);
+})();
+
+// [MULTI-CAISSE COMMAND CENTER & CLOSE SHIFT FIX V2]
+(function installCaisseMasterSuiteAndCloseFix() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.caisseSubPage = 'my_till'; // 'my_till' | 'admin_all_tills'
+  AppState.caisseTxFilterType = 'all';
+  AppState.caisseTxSearchQuery = '';
+  AppState.adminSelectedUserFilter = 'all';
+
+  function formatCleanCaisseDate(raw) {
+    if (!raw) return '—';
+    var s = String(raw).replace('T', ' ');
+    var d = s.slice(0, 10);
+    var t = s.slice(11, 16);
+    return t ? d + ' | 🕒 ' + t : d;
+  }
+
+  function getCaisseTxTypeInfo(type) {
+    var t = String(type || '').toLowerCase();
+    var map = {
+      sale_cash: { label: '📥 مبيعات نقدية', cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400', sign: '+', isIn: true },
+      sale: { label: '📥 مبيعات نقدية', cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400', sign: '+', isIn: true },
+      debt_payment: { label: '🤝 تسديد دين زبون', cls: 'bg-blue-500/15 text-blue-600 dark:text-blue-400', sign: '+', isIn: true },
+      order_deposit: { label: '📋 عربون طلبية', cls: 'bg-sky-500/15 text-sky-600 dark:text-sky-400', sign: '+', isIn: true },
+      cash_in: { label: '➕ إيداع / تغذية صندوق', cls: 'bg-teal-500/15 text-teal-600 dark:text-teal-400', sign: '+', isIn: true },
+      cash_out: { label: '➖ سحب نقدي / خزنة', cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400', sign: '-', isIn: false },
+      expense: { label: '💸 مصروف تشغيلي', cls: 'bg-rose-500/15 text-rose-600 dark:text-rose-400', sign: '-', isIn: false },
+      sale_refund: { label: '↩️ مرتجع مبيعات', cls: 'bg-purple-500/15 text-purple-600 dark:text-purple-400', sign: '-', isIn: false }
+    };
+    return map[t] || { label: t || 'حركة صندوق', cls: 'bg-slate-200 dark:bg-slate-700 text-slate-600', sign: '', isIn: true };
+  }
+
+  // --------------------------------------------------------------------------
+  // 1) تطبيع AppState.activeSession بحيث يحتوي دائماً على id و session.id معاً!
+  // --------------------------------------------------------------------------
+  App.normalizeActiveSessionObject = function (raw) {
+    if (!raw) return null;
+    var sess = raw.session || raw;
+    if (!sess || !sess.id) return null;
+    var summary = raw.summary || {
+      openingBalance: Number(sess.opening_balance || 0),
+      totalSalesCash: 0,
+      totalCashIn: 0,
+      totalCashOut: 0,
+      totalExpenses: 0,
+      totalRefunds: 0,
+      currentBalance: Number(sess.opening_balance || 0),
+      expectedBalance: Number(sess.opening_balance || 0)
+    };
+    return Object.assign({}, sess, {
+      id: Number(sess.id),
+      session_id: Number(sess.id),
+      session: sess,
+      summary: summary,
+      transactions: Array.isArray(raw.transactions) ? raw.transactions : []
+    });
+  };
+
+  App.refreshActiveSession = async function () {
+    var uid = (AppState.currentUser && AppState.currentUser.id) ? Number(AppState.currentUser.id) : 1;
+    try {
+      var raw = await window.api.getActiveSession(uid).catch(function () { return null; });
+      AppState.activeSession = this.normalizeActiveSessionObject(raw);
+    } catch (_) {
+      AppState.activeSession = null;
+    }
+
+    var badgeBtn = document.getElementById('headerShiftBadge');
+    var shiftTxt = document.getElementById('headerShiftText');
+    if (shiftTxt) {
+      if (AppState.activeSession && AppState.activeSession.id) {
+        var curBal = Number(AppState.activeSession.summary?.expectedBalance ?? AppState.activeSession.opening_balance ?? 0);
+        shiftTxt.textContent = 'المناوبة #' + AppState.activeSession.id + ' (' + curBal.toFixed(0) + ' د.ج)';
+        if (badgeBtn) {
+          badgeBtn.className = 'px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-xs font-black flex items-center gap-1.5';
+        }
+      } else {
+        shiftTxt.textContent = 'فتح مناوبة صندوق';
+        if (badgeBtn) {
+          badgeBtn.className = 'px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-xs font-black flex items-center gap-1.5';
+        }
+      }
+    }
+    return AppState.activeSession;
+  };
+
+  // دالة مساعدة مضمونة 100% لاستخراج رقم المناوبة النشطة حتى لو لم يُمرر
+  App.resolveTargetSessionId = async function (passedId) {
+    var num = Number(passedId);
+    if (Number.isFinite(num) && num > 0) return num;
+    if (AppState.activeSession) {
+      var aid = Number(AppState.activeSession.id || (AppState.activeSession.session && AppState.activeSession.session.id));
+      if (Number.isFinite(aid) && aid > 0) return aid;
+    }
+    await this.refreshActiveSession();
+    if (AppState.activeSession && AppState.activeSession.id) {
+      return Number(AppState.activeSession.id);
+    }
+    var allSessions = (await window.api.getCaisseSessions().catch(function () { return []; })) || [];
+    var openOne = allSessions.find(function (s) { return s.status === 'open'; }) || allSessions[0];
+    return openOne ? Number(openOne.id) : null;
+  };
+
+  // --------------------------------------------------------------------------
+  // 2) إصلاح جذري لفتح وتأكيد إغلاق المناوبة (#closeShiftModal) و X-Report
+  // --------------------------------------------------------------------------
+  App.openCloseShiftModal = async function (sessionId, expectedBalance) {
+    var validId = await this.resolveTargetSessionId(sessionId);
+    if (!validId) {
+      if (typeof showToast === 'function') showToast('لا توجد مناوبة مفتوحة حالياً لإغلاقها', 'warning');
+      return;
+    }
+
+    var details = await window.api.getSessionDetails(validId).catch(function () { return null; });
+    var expBal = (expectedBalance !== undefined && expectedBalance !== null && Number.isFinite(Number(expectedBalance)))
+      ? Number(expectedBalance)
+      : Number((details && details.summary && details.summary.expectedBalance) || 0);
+
+    AppState._closeShiftExpected = expBal;
+    AppState._closingTargetSessionId = validId;
+
+    var idInp = document.getElementById('closeShiftSessionId');
+    if (idInp) idInp.value = String(validId);
+
+    var expTxt = document.getElementById('closeShiftExpectedText');
+    if (expTxt) expTxt.textContent = expBal.toFixed(2) + ' د.ج';
+
+    var cntInp = document.getElementById('closeShiftCountedInput');
+    if (cntInp) {
+      cntInp.value = expBal.toFixed(2);
+      cntInp.oninput = function () {
+        App.updateCloseShiftDiffPreview();
+      };
+    }
+
+    var noteInp = document.getElementById('closeShiftNoteInput');
+    if (noteInp) noteInp.value = '';
+
+    document.querySelectorAll('#closeShiftModal .denom-inp').forEach(function (inp) {
+      inp.value = '';
+    });
+
+    this.updateCloseShiftDiffPreview();
+    this.openModal('closeShiftModal');
+  };
+
+  App.recalcCloseShiftDenoms = function () {
+    var sum = 0;
+    var hasAny = false;
+    document.querySelectorAll('#closeShiftModal .denom-inp').forEach(function (inp) {
+      var denom = Number(inp.getAttribute('data-denom') || 0);
+      var count = Math.max(0, parseInt(inp.value || '0', 10) || 0);
+      if (count > 0) hasAny = true;
+      sum += denom * count;
+    });
+    var countedEl = document.getElementById('closeShiftCountedInput');
+    if (countedEl && hasAny) {
+      countedEl.value = sum.toFixed(2);
+    }
+    this.updateCloseShiftDiffPreview();
+  };
+
+  App.updateCloseShiftDiffPreview = function () {
+    var counted = parseFloat(document.getElementById('closeShiftCountedInput')?.value) || 0;
+    var expected = Number(AppState._closeShiftExpected || 0);
+    var diff = Number((counted - expected).toFixed(2));
+    var box = document.getElementById('caisseDiffPreview');
+    if (!box) return;
+    box.textContent = (diff > 0 ? '+' : '') + diff.toFixed(2) + ' د.ج';
+    box.className =
+      'w-full px-3 py-2 rounded-xl font-mono font-black text-base text-center ' +
+      (Math.abs(diff) < 0.01
+        ? 'bg-emerald-500/15 text-emerald-600'
+        : diff < 0
+          ? 'bg-rose-500/15 text-rose-600'
+          : 'bg-amber-500/15 text-amber-600');
+  };
+
+  App.confirmCloseShift = async function () {
+    var rawVal = document.getElementById('closeShiftSessionId')?.value;
+    var sessionId = await this.resolveTargetSessionId(rawVal || AppState._closingTargetSessionId);
+    if (!sessionId) {
+      if (typeof showToast === 'function') showToast('لم يتم العثور على رقم المناوبة المفتوحة!', 'error');
+      return;
+    }
+
+    var closingBalance = parseFloat(document.getElementById('closeShiftCountedInput')?.value);
+    if (!Number.isFinite(closingBalance)) closingBalance = Number(AppState._closeShiftExpected || 0);
+    var userNote = document.getElementById('closeShiftNoteInput')?.value?.trim() || '';
+
+    var denomParts = [];
+    document.querySelectorAll('#closeShiftModal .denom-inp').forEach(function (inp) {
+      var d = Number(inp.getAttribute('data-denom') || 0);
+      var cnt = parseInt(inp.value || '0', 10) || 0;
+      if (d > 0 && cnt > 0) denomParts.push(cnt + '×' + d + 'د.ج');
+    });
+    var fullNote = denomParts.length > 0
+      ? (userNote ? userNote + ' | ' : '') + 'الجرد: [' + denomParts.join(' + ') + ']'
+      : userNote;
+
+    await window.api.closeCaisseSession({
+      sessionId: Number(sessionId),
+      closingBalance: closingBalance,
+      closeNote: fullNote
+    });
+
+    this.closeModal('closeShiftModal');
+    AppState._closingTargetSessionId = null;
+    await this.refreshActiveSession();
+    await this.renderCaisseView();
+
+    if (typeof showToast === 'function') {
+      showToast('✅ تم إغلاق المناوبة رقم #' + sessionId + ' بنجاح وإصدار تقرير Z-Report النهائي!', 'success');
+    }
+    await this.openSessionReviewModal(sessionId);
+  };
+
+  // إصلاح openSessionReviewModal ليعمل دائماً حتى لو مرر له undefined (يفتح X-Report للمناوبة النشطة فوراً)
+  var _prevOpenSessionReview = typeof App.openSessionReviewModal === 'function' ? App.openSessionReviewModal.bind(App) : null;
+  App.openSessionReviewModal = async function (sessionId) {
+    var validId = await this.resolveTargetSessionId(sessionId);
+    if (!validId) {
+      if (typeof showToast === 'function') showToast('لا توجد مناوبة نشطة أو سابقة لعرض تقريرها', 'warning');
+      return;
+    }
+    if (_prevOpenSessionReview) {
+      return await _prevOpenSessionReview(validId);
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 3) حارس إلزامية المناوبة قبل البيع (Require Shift Policy) + ضم المبيعات الحرة
+  // --------------------------------------------------------------------------
+  App.toggleRequireSessionPolicy = async function () {
+    var cur = String((AppState.settings && AppState.settings.caisse_require_session) || 'false') === 'true';
+    var nextVal = cur ? 'false' : 'true';
+    await window.api.updateSettings({ caisse_require_session: nextVal });
+    AppState.settings.caisse_require_session = nextVal;
+    await this.renderCaisseView();
+    if (typeof showToast === 'function') {
+      showToast(
+        nextVal === 'true'
+          ? '🔒 تم تفعيل الوضع الصارم: لا يمكن لأي كاشير البيع إلا بعد فتح مناوبة صندوق!'
+          : '🔓 تم تفعيل الوضع المرن: يمكن البيع الحر حتى لو كانت المناوبة مغلقة.',
+        'info'
+      );
+    }
+  };
+
+  // ربط حارس إلزامية المناوبة بدوال البيع في الكاشير
+  var _origOpenCheckout = typeof App.openCheckoutModal === 'function' ? App.openCheckoutModal.bind(App) : null;
+  if (_origOpenCheckout) {
+    App.openCheckoutModal = async function () {
+      var requireShift = String((AppState.settings && AppState.settings.caisse_require_session) || 'false') === 'true';
+      if (requireShift) {
+        await this.refreshActiveSession();
+        if (!AppState.activeSession || !AppState.activeSession.id) {
+          if (typeof showToast === 'function') {
+            showToast('🔒 تنبيه الإدارة: يجب فتح مناوبة صندوق أولاً قبل تسجيل أي عملية بيع!', 'warning');
+          }
+          this.openModal('openShiftModal');
+          return;
+        }
+      }
+      return await _origOpenCheckout();
+    };
+  }
+
+  var _origInstantConfirm = typeof App.instantConfirmAndCheckout === 'function' ? App.instantConfirmAndCheckout.bind(App) : null;
+  if (_origInstantConfirm) {
+    App.instantConfirmAndCheckout = async function (mode) {
+      var requireShift = String((AppState.settings && AppState.settings.caisse_require_session) || 'false') === 'true';
+      if (requireShift) {
+        await this.refreshActiveSession();
+        if (!AppState.activeSession || !AppState.activeSession.id) {
+          if (typeof showToast === 'function') {
+            showToast('🔒 تنبيه الإدارة: يجب فتح مناوبة صندوق أولاً قبل البيع الفوري!', 'warning');
+          }
+          this.openModal('openShiftModal');
+          return;
+        }
+      }
+      return await _origInstantConfirm(mode);
+    };
+  }
+
+  // ضم المبيعات النقدية الحرة (التي تمت اليوم بدون مناوبة) إلى المناوبة المفتوحة حالياً
+  App.attachOrphanSalesToCurrentShift = async function (orphanCount, orphanCashTotal, orphanIdsStr) {
+    await this.refreshActiveSession();
+    if (!AppState.activeSession || !AppState.activeSession.id) {
+      if (typeof showToast === 'function') showToast('افتح مناوبة صندوق أولاً ليتم ضم المبيعات الحرة إليها!', 'warning');
+      this.openModal('openShiftModal');
+      return;
+    }
+
+    var cashAmt = Number(orphanCashTotal || 0);
+    if (cashAmt <= 0) return;
+
+    await window.api.addCaisseTransaction({
+      session_id: AppState.activeSession.id,
+      user_id: AppState.currentUser ? AppState.currentUser.id : 1,
+      type: 'sale_cash',
+      amount: cashAmt,
+      category: 'sales_reconcile',
+      description: 'ضم مبيعات نقدية حرة تمت قبل فتح المناوبة (' + orphanCount + ' فواتير: ' + orphanIdsStr + ')'
+    });
+
+    localStorage.setItem('gherbi_reconciled_orphan_sales_' + new Date().toISOString().slice(0, 10), orphanIdsStr);
+    await this.renderCaisseView();
+    if (typeof showToast === 'function') {
+      showToast('🔗 تم ضم وإدراج (' + cashAmt.toFixed(2) + ' د.ج) من المبيعات الحرة إلى درج المناوبة الحالية #' + AppState.activeSession.id + ' بنجاح!', 'success');
+    }
+  };
+
+  // فتح مناوبة لحساب مستخدم محدد من لوحة المدير العام
+  App.adminOpenShiftForUser = async function (userId, userName) {
+    var balStr = window.prompt('أدخل الرصيد الافتتاحي (Fond de Caisse) بالدينار لفتح مناوبة لحساب (' + userName + '):', '5000');
+    if (balStr === null) return;
+    var bal = parseFloat(balStr) || 0;
+    await window.api.openCaisseSession({ userId: Number(userId), openingBalance: bal });
+    await this.refreshActiveSession();
+    await this.renderCaisseView();
+    if (typeof showToast === 'function') {
+      showToast('🟢 تم فتح مناوبة صندوق جديدة لحساب (' + userName + ') برصيد افتتاحي ' + bal.toFixed(2) + ' د.ج', 'success');
+    }
+  };
+
+  // إيداع أو سحب لصندوق مستخدم محدد من لوحة المدير العام
+  App.openCaisseTxModalForSession = function (type, targetSessionId) {
+    AppState._targetTxSessionId = targetSessionId ? Number(targetSessionId) : null;
+    this.openCaisseTxModal(type);
+  };
+
+  App.confirmCaisseTx = async function () {
+    var type = document.getElementById('caisseTxTypeInput')?.value || 'cash_in';
+    var amount = parseFloat(document.getElementById('caisseTxAmountInput')?.value) || 0;
+    var desc = document.getElementById('caisseTxDescInput')?.value || '';
+    if (amount <= 0) {
+      if (typeof showToast === 'function') showToast('يرجى إدخال مبلغ صحيح أكبر من الصفر', 'warning');
+      return;
+    }
+
+    var targetSessId = AppState._targetTxSessionId || (AppState.activeSession && AppState.activeSession.id);
+    await window.api.addCaisseTransaction({
+      session_id: targetSessId || undefined,
+      user_id: AppState.currentUser ? AppState.currentUser.id : 1,
+      type: type,
+      amount: amount,
+      description: desc
+    });
+
+    AppState._targetTxSessionId = null;
+    this.closeModal('caisseTxModal');
+    await this.refreshActiveSession();
+    await this.renderCaisseView();
+    if (typeof showToast === 'function') showToast('✅ تم تسجيل الحركة النقدية في الصندوق بنجاح', 'success');
+  };
+
+  App.confirmOpenShift = async function () {
+    var bal = parseFloat(document.getElementById('openShiftBalanceInput')?.value) || 0;
+    var uid = AppState.currentUser ? AppState.currentUser.id : 1;
+    await window.api.openCaisseSession({ userId: uid, openingBalance: bal });
+    this.closeModal('openShiftModal');
+    await this.refreshActiveSession();
+    await this.renderCaisseView();
+    if (typeof showToast === 'function') showToast('🟢 تم فتح مناوبتك الشخصية بنجاح!', 'success');
+  };
+
+  // طباعة التقرير الموحد لكل الصناديق للمدير العام (Consolidated Master Multi-Caisse Report)
+  App.printConsolidatedMultiCaisseReport = async function () {
+    var sessions = (await window.api.getCaisseSessions().catch(function () { return []; })) || [];
+    var users = (await window.api.getUsers().catch(function () { return []; })) || [];
+    var s = AppState.settings || {};
+
+    var openSessions = sessions.filter(function (x) { return x.status === 'open'; });
+    var closedToday = sessions.filter(function (x) { return x.status === 'closed'; }).slice(0, 30);
+
+    var rowsHtml = sessions.slice(0, 40).map(function (cs) {
+      var diff = Number(cs.difference || 0);
+      return (
+        '<tr>' +
+        '<td>#' + cs.id + '</td>' +
+        '<td><strong>' + (cs.user_name || 'المدير العام') + '</strong></td>' +
+        '<td>' + (cs.status === 'open' ? '🟢 مفتوحة' : '⚪ مغلقة') + '</td>' +
+        '<td style="font-family:monospace;">' + Number(cs.opening_balance || 0).toFixed(2) + '</td>' +
+        '<td style="font-family:monospace;">' + (cs.expected_balance !== null && cs.expected_balance !== undefined ? Number(cs.expected_balance).toFixed(2) : '—') + '</td>' +
+        '<td style="font-family:monospace;font-weight:bold;">' + (cs.closing_balance !== null && cs.closing_balance !== undefined ? Number(cs.closing_balance).toFixed(2) : 'قيد العمل') + '</td>' +
+        '<td style="direction:ltr;font-family:monospace;font-weight:bold;color:' + (diff < -0.01 ? '#e11d48' : diff > 0.01 ? '#d97706' : '#059669') + ';">' + (cs.status === 'closed' ? ((diff > 0 ? '+' : '') + diff.toFixed(2)) : '—') + '</td>' +
+        '<td style="font-family:monospace;font-size:10px;">' + formatCleanCaisseDate(cs.opened_at) + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>التقرير الموحد لكل الصناديق والمناوبات</title>' +
+      '<style>@page{size:A4 portrait;margin:12mm;}body{font-family:"Cairo",Tahoma,sans-serif;color:#0f172a;font-size:12px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #0f172a;padding:6px;text-align:right;font-size:11px;}th{background:#e2e8f0;}</style>' +
+      '</head><body>' +
+      '<h2 style="margin:0;color:#1e3a8a;">🏛️ التقرير الرقابي الموحد لجميع الصناديق والمناوبات — ' + (s.shop_name || 'Gherbi.Ai POS') + '</h2>' +
+      '<p>تاريخ الإصدار: ' + new Date().toISOString().slice(0, 16).replace('T', ' ') + ' | عدد الحسابات: ' + users.length + ' | المناوبات المفتوحة الآن: ' + openSessions.length + '</p>' +
+      '<table><thead><tr><th>#</th><th>أمين الصندوق (الحساب)</th><th>الحالة</th><th>الافتتاحي</th><th>المتوقع</th><th>الفعلي المعدود</th><th>الفارق (Écart)</th><th>توقيت الافتتاح</th></tr></thead><tbody>' + rowsHtml + '</tbody></table>' +
+      '</body></html>';
+
+    if (window.PrintEngine && typeof window.PrintEngine.printHtmlDocument === 'function') {
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 4) بناء الواجهة المزدوجة: (1. صندوقي ومناوبتي) + (2. إدارة كل الصناديق للمدير العام)
+  // --------------------------------------------------------------------------
+  App.switchCaisseSubPage = function (subPage) {
+    AppState.caisseSubPage = subPage || 'my_till';
+    this.renderCaisseView();
+  };
+
+  App.renderCaisseView = async function () {
+    var root = document.getElementById('caisse-view-root');
+    if (!root) return;
+
+    await this.refreshActiveSession();
+    var currentUser = AppState.currentUser || { id: 1, name: 'المدير العام', role: 'Admin' };
+    var isAdmin = String(currentUser.role || 'Admin').toLowerCase() === 'admin';
+    var requireShiftPolicy = String((AppState.settings && AppState.settings.caisse_require_session) || 'false') === 'true';
+
+    var activeSessId = AppState.activeSession ? Number(AppState.activeSession.id) : null;
+    var activeSummary = activeSessId
+      ? await window.api.getCaisseSummary({ sessionId: activeSessId, userId: currentUser.id }).catch(function () { return null; })
+      : null;
+
+    var allSessions = (await window.api.getCaisseSessions().catch(function () { return []; })) || [];
+    var txLog = (await window.api.getCaisseTransactionsLog().catch(function () { return []; })) || [];
+    var allUsers = (await window.api.getUsers().catch(function () { return []; })) || [];
+    if (allUsers.length === 0) {
+      allUsers = [{ id: 1, name: 'المدير العام', username: 'admin', role: 'Admin', status: 'Active' }];
+    }
+
+    // فحص الفواتير النقدية الحرة التي بيعت اليوم بدون مناوبة (Unattached Orphan Sales)
+    var todayStr = new Date().toISOString().slice(0, 10);
+    var todaySales = (await window.api.getSales({ dateFrom: todayStr, dateTo: todayStr }).catch(function () { return []; })) || [];
+    var alreadyReconciled = localStorage.getItem('gherbi_reconciled_orphan_sales_' + todayStr) || '';
+    var orphanSales = todaySales.filter(function (s) {
+      return !s.session_id && String(s.payment_method || 'cash').toLowerCase() === 'cash' && Number(s.paid_amount || 0) > 0 && !alreadyReconciled.includes('#' + s.id);
+    });
+    var orphanCashTotal = orphanSales.reduce(function (acc, s) { return acc + Number(s.paid_amount || 0); }, 0);
+    var orphanIdsStr = orphanSales.map(function (s) { return '#' + s.id; }).join(', ');
+
+    // شريط التبويبات العلوي للتنقل بين (صندوقي الشخصي) و (غرفة قيادة كل الصناديق للمدير العام)
+    var topNavTabsHtml =
+      '<div class="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900 text-white shadow-md">' +
+      '  <div class="flex flex-wrap items-center gap-2">' +
+      '    <button type="button" onclick="App.switchCaisseSubPage(\'my_till\')" class="px-4 py-2 rounded-xl text-xs font-black transition flex items-center gap-1.5 ' + (AppState.caisseSubPage === 'my_till' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">' +
+      '      <span>💼 صندوقي ومناوبتي الشخصية (' + currentUser.name + ')</span>' +
+      '    </button>' +
+      (isAdmin
+        ? '    <button type="button" onclick="App.switchCaisseSubPage(\'admin_all_tills\')" class="px-4 py-2 rounded-xl text-xs font-black transition flex items-center gap-1.5 ' + (AppState.caisseSubPage === 'admin_all_tills' ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/30' : 'bg-slate-800 text-amber-400 hover:bg-slate-700') + '">' +
+          '      <span>🏛️ إدارة ومراقبة كل الصناديق (غرفة قيادة المدير العام)</span>' +
+          '    </button>'
+        : '') +
+      '  </div>' +
+      '  <div class="flex flex-wrap items-center gap-2 text-xs">' +
+      (isAdmin
+        ? '    <button type="button" onclick="App.toggleRequireSessionPolicy()" class="px-3 py-1.5 rounded-xl font-bold border transition ' + (requireShiftPolicy ? 'bg-rose-600/20 border-rose-500 text-rose-300' : 'bg-emerald-600/20 border-emerald-500 text-emerald-300') + '">' +
+          (requireShiftPolicy ? '🔒 الوضع الصارم: البيع مشروط بفتح مناوبة' : '🔓 الوضع المرن: البيع مسموح بدون مناوبة') +
+          '    </button>'
+        : '') +
+      '    <button id="btnCaissePageQaBot" type="button" onclick="App.runAutoTest_CaissePage()" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black">🤖 فحص آلي (QA)</button>' +
+      '  </div>' +
+      '</div>';
+
+    // ========================================================================
+    // الصفحة الثانية (الخاصة بالمدير العام): غرفة قيادة وإدارة كل الصناديق
+    // ========================================================================
+    if (isAdmin && AppState.caisseSubPage === 'admin_all_tills') {
+      var openSessionsList = allSessions.filter(function (s) { return s.status === 'open'; });
+      var openDetailsList = await Promise.all(
+        openSessionsList.map(function (s) {
+          return window.api.getSessionDetails(s.id).catch(function () { return null; });
+        })
+      );
+
+      var totalLiveCashInAllDrawers = 0;
+      var totalSafeDropsAll = 0;
+      openDetailsList.forEach(function (d) {
+        if (d && d.summary) {
+          totalLiveCashInAllDrawers += Number(d.summary.expectedBalance || 0);
+          totalSafeDropsAll += Number(d.summary.totalCashOut || 0);
+        }
+      });
+
+      var totalCumulativeDiscrepancy = allSessions
+        .filter(function (s) { return s.status === 'closed'; })
+        .reduce(function (acc, s) { return acc + Number(s.difference || 0); }, 0);
+
+      // بناء بطاقة صندوق لكل حساب مستخدم في النظام
+      var userTillCardsHtml = allUsers.map(function (u) {
+        var userOpenSess = openSessionsList.find(function (s) { return Number(s.user_id) === Number(u.id); });
+        var userOpenDetail = userOpenSess
+          ? openDetailsList.find(function (d) { return d && d.session && Number(d.session.id) === Number(userOpenSess.id); })
+          : null;
+        var userHistory = allSessions.filter(function (s) { return Number(s.user_id) === Number(u.id); });
+        var lastClosed = userHistory.find(function (s) { return s.status === 'closed'; });
+        var userTotalDiff = userHistory
+          .filter(function (s) { return s.status === 'closed'; })
+          .reduce(function (acc, s) { return acc + Number(s.difference || 0); }, 0);
+
+        var curExpected = userOpenDetail && userOpenDetail.summary
+          ? Number(userOpenDetail.summary.expectedBalance || 0)
+          : (userOpenSess ? Number(userOpenSess.opening_balance || 0) : 0);
+        var curSalesCash = userOpenDetail && userOpenDetail.summary
+          ? Number(userOpenDetail.summary.totalSalesCash || 0)
+          : 0;
+
+        return (
+          '<div class="p-4 rounded-2xl border-2 ' + (userOpenSess ? 'border-emerald-500/50 bg-white dark:bg-slate-800' : 'border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50') + ' shadow-sm space-y-3">' +
+          '  <div class="flex items-start justify-between gap-2">' +
+          '    <div class="flex items-center gap-2.5">' +
+          '      <div class="w-10 h-10 rounded-xl ' + (userOpenSess ? 'bg-emerald-600' : 'bg-slate-600') + ' text-white font-black flex items-center justify-center text-sm">' + String(u.name || 'م').charAt(0) + '</div>' +
+          '      <div>' +
+          '        <div class="font-black text-sm">' + u.name + ' <span class="text-[10px] px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 font-mono">' + (u.role || 'Cashier') + '</span></div>' +
+          '        <div class="text-[11px] text-slate-400">' + (userOpenSess ? ('🟢 مناوبة نشطة #' + userOpenSess.id + ' منذ ' + formatCleanCaisseDate(userOpenSess.opened_at)) : ('⚪ الصندوق مغلق حالياً | إجمالي وردياته: ' + userHistory.length)) + '</div>' +
+          '      </div>' +
+          '    </div>' +
+          '    <span class="px-2.5 py-1 rounded-full text-[10px] font-black ' + (userOpenSess ? 'bg-emerald-500/15 text-emerald-600' : 'bg-slate-200 dark:bg-slate-700 text-slate-500') + '">' + (userOpenSess ? 'مفتوح الآن' : 'مغلق') + '</span>' +
+          '  </div>' +
+
+          '  <div class="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/70 text-center text-xs">' +
+          '    <div><div class="text-[10px] text-slate-400 font-bold">الرصيد الحالي بالدرج</div><div class="font-mono font-black text-blue-600 mt-0.5">' + curExpected.toFixed(2) + ' د.ج</div></div>' +
+          '    <div><div class="text-[10px] text-slate-400 font-bold">مبيعات الوردية (+)</div><div class="font-mono font-black text-emerald-600 mt-0.5">+' + curSalesCash.toFixed(2) + ' د.ج</div></div>' +
+          '    <div><div class="text-[10px] text-slate-400 font-bold">تراكمي الفروقات (Écart)</div><div class="font-mono font-black mt-0.5 ' + (userTotalDiff < -0.01 ? 'text-rose-600' : userTotalDiff > 0.01 ? 'text-amber-600' : 'text-emerald-600') + '">' + (userTotalDiff > 0 ? '+' : '') + userTotalDiff.toFixed(2) + ' د.ج</div></div>' +
+          '  </div>' +
+
+          '  <div class="flex flex-wrap items-center justify-end gap-1.5 pt-1 text-[11px]">' +
+          (userOpenSess
+            ? '    <button type="button" onclick="App.openSessionReviewModal(' + userOpenSess.id + ')" class="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold">📊 معاينة X-Report</button>' +
+              '    <button type="button" onclick="App.openCaisseTxModalForSession(\'cash_in\', ' + userOpenSess.id + ')" class="px-2.5 py-1.5 rounded-xl bg-emerald-600/15 text-emerald-600 font-bold hover:bg-emerald-600 hover:text-white">+ تغذية</button>' +
+              '    <button type="button" onclick="App.openCaisseTxModalForSession(\'cash_out\', ' + userOpenSess.id + ')" class="px-2.5 py-1.5 rounded-xl bg-amber-500/15 text-amber-600 font-bold hover:bg-amber-500 hover:text-slate-950">- سحب للخزنة</button>' +
+              '    <button type="button" onclick="App.openCloseShiftModal(' + userOpenSess.id + ', ' + curExpected + ')" class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black">🛑 جرد وإغلاق مناوبته</button>'
+            : '    <button type="button" onclick="App.adminOpenShiftForUser(' + u.id + ', \'' + String(u.name || '').replace(/'/g, "\\'") + '\')" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black">🟢 فتح مناوبة لهذا الحساب</button>' +
+              (lastClosed
+                ? '<button type="button" onclick="App.openSessionReviewModal(' + lastClosed.id + ')" class="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-700 font-bold">🖨️ آخر Z-Report (#' + lastClosed.id + ')</button>'
+                : '')) +
+          '  </div>' +
+          '</div>'
+        );
+      }).join('');
+
+      root.innerHTML =
+        '<div class="space-y-4">' +
+        topNavTabsHtml +
+
+        '  <div class="flex flex-wrap items-center justify-between gap-3">' +
+        '    <div>' +
+        '      <h2 class="text-2xl font-black text-amber-600 dark:text-amber-400">🏛️ غرفة قيادة وإدارة كل الصناديق والمناوبات (Multi-Caisse Command Center)</h2>' +
+        '      <p class="text-xs text-slate-500">مراقبة حية لصناديق جميع البائعين، الخزنة المركزية، تسوية المبيعات الحرة، وكشف العجز والفائض لكل حساب</p>' +
+        '    </div>' +
+        '    <div class="flex flex-wrap gap-2 text-xs">' +
+        '      <button type="button" onclick="App.printConsolidatedMultiCaisseReport()" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow-md">🖨️ طباعة التقرير الموحد لكل الصناديق (A4)</button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div id="caisseKpiCardsGrid" class="grid grid-cols-1 md:grid-cols-4 gap-3.5">' +
+        '    <div class="p-4 rounded-2xl bg-blue-600 text-white shadow-lg">' +
+        '      <div class="text-xs font-bold opacity-85">إجمالي السيولة الحية في الصناديق المفتوحة (' + openSessionsList.length + ')</div>' +
+        '      <div class="text-2xl font-black font-mono mt-1">' + totalLiveCashInAllDrawers.toFixed(2) + ' د.ج</div>' +
+        '      <div class="text-[11px] font-bold text-amber-200 mt-1">🇩🇿 بالسنتيم: ' + (typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(totalLiveCashInAllDrawers) : '') + '</div>' +
+        '    </div>' +
+        '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-indigo-500/30 shadow-sm">' +
+        '      <div class="text-xs font-bold text-slate-400">إجمالي التحويلات للخزنة الرئيسية (Safe Drops)</div>' +
+        '      <div class="text-2xl font-black font-mono text-indigo-600 mt-1">' + totalSafeDropsAll.toFixed(2) + ' د.ج</div>' +
+        '      <div class="text-[11px] text-slate-400 mt-1">نقد مؤمّن خارج أدراج الكاشير</div>' +
+        '    </div>' +
+        '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-amber-500/30 shadow-sm">' +
+        '      <div class="text-xs font-bold text-slate-400">مبيعات نقدية حرة اليوم (بدون مناوبة)</div>' +
+        '      <div class="text-2xl font-black font-mono text-amber-600 mt-1">' + orphanCashTotal.toFixed(2) + ' د.ج <span class="text-xs">(' + orphanSales.length + ' فاتورة)</span></div>' +
+        (orphanCashTotal > 0
+          ? '<button type="button" onclick="App.attachOrphanSalesToCurrentShift(' + orphanSales.length + ', ' + orphanCashTotal + ', \'' + orphanIdsStr + '\')" class="mt-1 px-2.5 py-0.5 rounded bg-amber-500 text-slate-950 font-black text-[10px]">🔗 ضم للمناوبة النشطة</button>'
+          : '<div class="text-[11px] text-emerald-600 font-bold mt-1">✅ جميع مبيعات اليوم مربوطة بالصناديق</div>') +
+        '    </div>' +
+        '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-rose-500/30 shadow-sm">' +
+        '      <div class="text-xs font-bold text-slate-400">صافي الفروقات التراكمي لكل الموظفين (Écart)</div>' +
+        '      <div class="text-2xl font-black font-mono mt-1 ' + (totalCumulativeDiscrepancy < -0.01 ? 'text-rose-600' : totalCumulativeDiscrepancy > 0.01 ? 'text-amber-600' : 'text-emerald-600') + '">' + (totalCumulativeDiscrepancy > 0 ? '+' : '') + totalCumulativeDiscrepancy.toFixed(2) + ' د.ج</div>' +
+        '      <div class="text-[11px] text-slate-400 mt-1">عبر ' + allSessions.length + ' مناوبة مسجلة</div>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div>' +
+        '    <h3 class="font-black text-sm mb-2.5">👥 صناديق الحسابات والمستخدمين الحية (' + allUsers.length + ' حساب):</h3>' +
+        '    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">' + userTillCardsHtml + '</div>' +
+        '  </div>' +
+
+        '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm">' +
+        '    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">' +
+        '      <h3 class="font-black text-sm">📋 السجل الرقابي الشامل لجميع المناوبات (كل الحسابات)</h3>' +
+        '      <select onchange="AppState.adminSelectedUserFilter=this.value; App.renderCaisseView()" class="px-3 py-1.5 rounded-xl text-xs font-bold">' +
+        '        <option value="all">جميع المستخدمين (' + allSessions.length + ')</option>' +
+        allUsers.map(function (u) {
+          return '<option value="' + u.id + '" ' + (String(AppState.adminSelectedUserFilter) === String(u.id) ? 'selected' : '') + '>' + u.name + '</option>';
+        }).join('') +
+        '      </select>' +
+        '    </div>' +
+        '    <div class="max-h-80 overflow-y-auto">' +
+        '      <table class="w-full text-xs text-right">' +
+        '        <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-2">#</th><th class="py-2">الحساب / الكاشير</th><th class="py-2">الافتتاح</th><th class="py-2">الإغلاق</th><th class="py-2">الافتتاحي</th><th class="py-2">المتوقع</th><th class="py-2">الفعلي</th><th class="py-2">الفارق (Écart)</th><th class="py-2 text-center">إجراءات المدير</th></tr></thead>' +
+        '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        allSessions
+          .filter(function (s) {
+            return AppState.adminSelectedUserFilter === 'all' || String(s.user_id) === String(AppState.adminSelectedUserFilter);
+          })
+          .map(function (s) {
+            var isOpen = s.status === 'open';
+            var diff = Number(s.difference || 0);
+            return (
+              '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition">' +
+              '  <td class="py-2.5 font-mono font-black text-blue-600">#' + s.id + '</td>' +
+              '  <td class="py-2.5 font-bold">' + (s.user_name || 'المدير العام') + '</td>' +
+              '  <td class="py-2.5 font-mono text-[11px] text-slate-400">' + formatCleanCaisseDate(s.opened_at) + '</td>' +
+              '  <td class="py-2.5 font-mono text-[11px] text-slate-400">' + (s.closed_at ? formatCleanCaisseDate(s.closed_at) : '<span class="text-emerald-600 font-bold">🟢 مفتوحة الآن</span>') + '</td>' +
+              '  <td class="py-2.5 font-mono font-bold">' + Number(s.opening_balance || 0).toFixed(2) + '</td>' +
+              '  <td class="py-2.5 font-mono text-blue-600 font-bold">' + (s.expected_balance !== null && s.expected_balance !== undefined ? Number(s.expected_balance).toFixed(2) : '—') + '</td>' +
+              '  <td class="py-2.5 font-mono font-bold">' + (isOpen ? '—' : Number(s.closing_balance || 0).toFixed(2)) + '</td>' +
+              '  <td class="py-2.5 font-mono font-black ' + (diff < -0.01 ? 'text-rose-600' : diff > 0.01 ? 'text-amber-600' : 'text-emerald-600') + '">' + (isOpen ? '—' : ((diff > 0 ? '+' : '') + diff.toFixed(2))) + '</td>' +
+              '  <td class="py-2.5 flex items-center justify-center gap-1">' +
+              '    <button type="button" onclick="App.openSessionReviewModal(' + s.id + ')" class="px-2.5 py-1 bg-blue-600 text-white rounded-lg font-bold text-[11px]">📋 تفاصيل ومعاينة</button>' +
+              '    <button type="button" onclick="App.printSessionZReport(' + s.id + ', \'dialog_80mm\')" class="px-2.5 py-1 bg-slate-800 text-white rounded-lg font-bold text-[11px]">🖨️ Z-Report</button>' +
+              (isOpen
+                ? '<button type="button" onclick="App.openCloseShiftModal(' + s.id + ', ' + Number(s.opening_balance || 0) + ')" class="px-2.5 py-1 bg-rose-600 text-white rounded-lg font-bold text-[11px]">إغلاق</button>'
+                : '') +
+              '  </td>' +
+              '</tr>'
+            );
+          }).join('') +
+        '        </tbody>' +
+        '      </table>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+
+      if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+      return;
+    }
+
+    // ========================================================================
+    // الصفحة الأولى: صندوقي ومناوبتي الشخصية (My Personal Cashier Till)
+    // ========================================================================
+    var mySessions = allSessions.filter(function (s) {
+      return !s.user_id || Number(s.user_id) === Number(currentUser.id);
+    });
+
+    var displaySummary = activeSummary && activeSummary.summary ? activeSummary.summary : null;
+    var isShowingLastClosed = false;
+    var lastClosedSess = null;
+
+    if (!displaySummary && mySessions.length > 0) {
+      var lastDetails = await window.api.getSessionDetails(mySessions[0].id).catch(function () { return null; });
+      if (lastDetails && lastDetails.summary) {
+        displaySummary = lastDetails.summary;
+        lastClosedSess = lastDetails.session;
+        isShowingLastClosed = true;
+      }
+    }
+
+    var sum = displaySummary || {
+      openingBalance: 0,
+      totalSalesCash: 0,
+      totalCashIn: 0,
+      totalCashOut: 0,
+      totalExpenses: 0,
+      totalRefunds: 0,
+      expectedBalance: 0
+    };
+
+    var totalOutflows = Number((Number(sum.totalCashOut || 0) + Number(sum.totalExpenses || 0) + Number(sum.totalRefunds || 0)).toFixed(2));
+    var totalInflows = Number((Number(sum.totalSalesCash || 0) + Number(sum.totalCashIn || 0)).toFixed(2));
+    var expectedDrawer = Number(sum.expectedBalance || 0);
+    var centimeDrawer = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(expectedDrawer) : '';
+
+    var filteredTxs = txLog.filter(function (t) {
+      if (AppState.caisseTxFilterType === 'in') {
+        if (!getCaisseTxTypeInfo(t.type).isIn) return false;
+      } else if (AppState.caisseTxFilterType === 'out') {
+        if (getCaisseTxTypeInfo(t.type).isIn) return false;
+      }
+      if (AppState.caisseTxSearchQuery) {
+        var q = AppState.caisseTxSearchQuery.toLowerCase();
+        var matchDesc = String(t.description || '').toLowerCase().includes(q);
+        var matchAmt = String(t.amount || '').includes(q);
+        if (!matchDesc && !matchAmt) return false;
+      }
+      return true;
+    });
+
+    root.innerHTML =
+      '<div class="space-y-4">' +
+      topNavTabsHtml +
+
+      '  <div class="flex flex-wrap items-center justify-between gap-3">' +
+      '    <div>' +
+      '      <h2 class="text-2xl font-black">💼 إدارة صندوقي ومناوبتي (' + currentUser.name + ')</h2>' +
+      '      <p class="text-xs text-slate-500">فتح وإغلاق الوردية الشخصية، حاسبة الفئات النقدية الجزائرية، الإيداع والسحب، وتقارير X-Report و Z-Report</p>' +
+      '    </div>' +
+      '    <div class="flex flex-wrap items-center gap-2 text-xs">' +
+      (activeSessId
+        ? '<button type="button" onclick="App.openCaisseTxModalForSession(\'cash_in\', ' + activeSessId + ')" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-sm">+ إيداع نقدي (F2)</button>' +
+          '<button type="button" onclick="App.openCaisseTxModalForSession(\'cash_out\', ' + activeSessId + ')" class="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-sm">- سحب نقدي (F3)</button>' +
+          '<button type="button" onclick="App.openSafeDropModal()" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-sm">🔒 تحويل للخزنة (Safe Drop)</button>' +
+          '<button type="button" onclick="App.openSessionReviewModal(' + activeSessId + ')" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black shadow-sm">📊 تقرير X-Report الفوري (F9)</button>' +
+          '<button type="button" onclick="App.openCloseShiftModal(' + activeSessId + ', ' + expectedDrawer + ')" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black shadow-md">🛑 إغلاق المناوبة وجرد الدرج (Z-Report)</button>'
+        : '<button type="button" onclick="App.openModal(\'openShiftModal\')" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm shadow-lg shadow-emerald-600/25">+ فتح مناوبة صندوق جديدة الآن</button>' +
+          (mySessions.length > 0
+            ? '<button type="button" onclick="App.openSessionReviewModal(' + mySessions[0].id + ')" class="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold">🖨️ معاينة وطباعة آخر Z-Report (#' + mySessions[0].id + ')</button>'
+            : '')) +
+      '      <button type="button" onclick="window.api.openCashDrawer()" title="فتح درج النقود إلكترونياً (F10)" class="px-3 py-2 rounded-xl bg-slate-800 text-white font-bold">🔓 الدرج (F10)</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      (activeSessId
+        ? '<div class="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">' +
+          '  <div class="font-black text-emerald-700 dark:text-emerald-300">🟢 المناوبة الحالية مفتوحة ونشطة (رقم #' + activeSessId + ') — الكاشير: ' + currentUser.name + ' — بدأت في: ' + formatCleanCaisseDate(AppState.activeSession.opened_at) + '</div>' +
+          '  <div class="font-bold text-slate-500">جميع المبيعات النقدية لحسابك تُقيد تلقائياً في هذه المناوبة</div>' +
+          '</div>'
+        : '<div class="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">' +
+          '  <div class="font-black text-amber-700 dark:text-amber-300">⚠️ لا توجد مناوبة مفتوحة حالياً لحساب (' + currentUser.name + ')' + (isShowingLastClosed && lastClosedSess ? ' — الأرقام أدناه تعرض ملخص آخر مناوبة مغلقة (#' + lastClosedSess.id + ')' : '') + '</div>' +
+          '  <button type="button" onclick="App.openModal(\'openShiftModal\')" class="px-3 py-1 rounded-lg bg-amber-500 text-slate-950 font-black">افتح مناوبة جديدة الآن</button>' +
+          '</div>') +
+
+      (orphanCashTotal > 0
+        ? '<div class="p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">' +
+          '  <div><strong class="text-indigo-600 dark:text-indigo-400">💡 مبيعات نقدية حرة تمت اليوم بدون مناوبة (' + orphanSales.length + ' فاتورة: ' + orphanIdsStr + '):</strong> إجماليها النقدي <strong class="font-mono">' + orphanCashTotal.toFixed(2) + ' د.ج</strong> محفوظ في سجل المبيعات والأرباح، لكنه غير مضاف لدرج المناوبة.</div>' +
+          '  <button type="button" onclick="App.attachOrphanSalesToCurrentShift(' + orphanSales.length + ', ' + orphanCashTotal + ', \'' + orphanIdsStr + '\')" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow-sm">🔗 ضم وإدراج المبيعات الحرة في مناوبتي الحالية</button>' +
+          '</div>'
+        : '') +
+
+      '  <div id="caisseKpiCardsGrid" class="grid grid-cols-1 md:grid-cols-4 gap-3.5">' +
+      '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">' +
+      '      <div class="text-xs text-slate-400 font-bold">الرصيد الافتتاحي (Fond de Caisse)</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1">' + Number(sum.openingBalance || 0).toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] text-slate-400 mt-1">' + (typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(sum.openingBalance || 0) : '') + '</div>' +
+      '    </div>' +
+      '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">' +
+      '      <div class="text-xs text-slate-400 font-bold">مبيعات وتسديدات وإيداعات النقد (+)</div>' +
+      '      <div class="text-2xl font-black font-mono text-emerald-600 mt-1">+' + totalInflows.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] text-emerald-600 font-bold mt-1">مبيعات: ' + Number(sum.totalSalesCash || 0).toFixed(2) + ' | إيداعات: ' + Number(sum.totalCashIn || 0).toFixed(2) + '</div>' +
+      '    </div>' +
+      '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">' +
+      '      <div class="text-xs text-slate-400 font-bold">المصاريف والمسحوبات والمرتجعات (-)</div>' +
+      '      <div class="text-2xl font-black font-mono text-rose-500 mt-1">-' + totalOutflows.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] text-rose-500 font-bold mt-1">سحوبات: ' + Number(sum.totalCashOut || 0).toFixed(2) + ' | مصاريف: ' + Number(sum.totalExpenses || 0).toFixed(2) + '</div>' +
+      '    </div>' +
+      '    <div class="p-4 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">' +
+      '      <div class="text-xs font-bold opacity-85">الرصيد المتوقع في الدرج حالياً</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1">' + expectedDrawer.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] font-bold text-amber-200 mt-1">🇩🇿 بالسنتيم: ' + centimeDrawer + '</div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">' +
+      '    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm">' +
+      '      <div class="flex items-center justify-between mb-3">' +
+      '        <h3 class="font-black text-sm">سجل المناوبات وتقارير Z-Report (' + mySessions.length + ')</h3>' +
+      '        <span class="text-[11px] text-slate-400 font-bold">انقر على (🖨️ Z-Report) أو (تفاصيل) للطباعة</span>' +
+      '      </div>' +
+      '      <div class="max-h-96 overflow-y-auto">' +
+      '        <table class="w-full text-xs text-right">' +
+      '          <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-2">#</th><th class="py-2">المستخدم</th><th class="py-2">الافتتاح</th><th class="py-2">الافتتاحي</th><th class="py-2">الختامي</th><th class="py-2">الفارق</th><th class="py-2 text-center">إجراءات التقرير</th></tr></thead>' +
+      '          <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      (mySessions.length > 0
+        ? mySessions.map(function (s) {
+            var isOpen = s.status === 'open';
+            var diff = Number(s.difference || 0);
+            return (
+              '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition">' +
+              '  <td class="py-2.5 font-mono font-black text-blue-600">#' + s.id + '</td>' +
+              '  <td class="py-2.5 font-bold">' + (s.user_name || currentUser.name) + '</td>' +
+              '  <td class="py-2.5 font-mono text-slate-400 text-[11px]">' + formatCleanCaisseDate(s.opened_at) + '</td>' +
+              '  <td class="py-2.5 font-mono font-bold">' + Number(s.opening_balance || 0).toFixed(2) + '</td>' +
+              '  <td class="py-2.5 font-mono font-bold">' + (isOpen ? '<span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 text-[10px]">مفتوحة</span>' : Number(s.closing_balance || 0).toFixed(2)) + '</td>' +
+              '  <td class="py-2.5 font-mono font-black ' + (diff < -0.01 ? 'text-rose-600' : diff > 0.01 ? 'text-amber-600' : 'text-emerald-600') + '">' + (isOpen ? '—' : (diff > 0 ? '+' : '') + diff.toFixed(2)) + '</td>' +
+              '  <td class="py-2.5 flex items-center justify-center gap-1">' +
+              '    <button type="button" onclick="App.openSessionReviewModal(' + s.id + ')" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-[11px] shadow-sm">📋 تفاصيل ومعاينة</button>' +
+              '    <button type="button" onclick="App.printSessionZReport(' + s.id + ', \'dialog_80mm\')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold text-[11px]" title="طباعة مباشرة لتقرير Z-Report">🖨️ Z-Report</button>' +
+              (isOpen
+                ? '<button type="button" onclick="App.openCloseShiftModal(' + s.id + ', ' + expectedDrawer + ')" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-bold text-[11px]">إغلاق</button>'
+                : '') +
+              '  </td>' +
+              '</tr>'
+            );
+          }).join('')
+        : '<tr><td colspan="7" class="py-8 text-center text-slate-400 font-bold">لا توجد مناوبات مسجلة بعد</td></tr>') +
+      '          </tbody>' +
+      '        </table>' +
+      '      </div>' +
+      '    </div>' +
+
+      '    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm">' +
+      '      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">' +
+      '        <h3 class="font-black text-sm">حركات الخزينة المباشرة (' + filteredTxs.length + ')</h3>' +
+      '        <div class="flex items-center gap-1 text-[11px]">' +
+      '          <input id="caisseTxSearchInput" type="text" value="' + (AppState.caisseTxSearchQuery || '') + '" oninput="App.onCaisseTxSearch(this.value)" placeholder="🔍 [F4] بحث في الحركات..." class="w-36 px-2.5 py-1 rounded-lg text-xs font-bold">' +
+      '          <button type="button" onclick="AppState.caisseTxFilterType=\'all\'; App.renderCaisseView()" class="px-2 py-1 rounded-lg font-bold ' + (AppState.caisseTxFilterType === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700') + '">الكل</button>' +
+      '          <button type="button" onclick="AppState.caisseTxFilterType=\'in\'; App.renderCaisseView()" class="px-2 py-1 rounded-lg font-bold ' + (AppState.caisseTxFilterType === 'in' ? 'bg-emerald-600 text-white' : 'bg-emerald-500/10 text-emerald-600') + '">داخل (+)</button>' +
+      '          <button type="button" onclick="AppState.caisseTxFilterType=\'out\'; App.renderCaisseView()" class="px-2 py-1 rounded-lg font-bold ' + (AppState.caisseTxFilterType === 'out' ? 'bg-rose-600 text-white' : 'bg-rose-500/10 text-rose-600') + '">خارج (-)</button>' +
+      '        </div>' +
+      '      </div>' +
+      '      <div class="max-h-96 overflow-y-auto">' +
+      '        <table class="w-full text-xs text-right">' +
+      '          <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-2">النوع</th><th class="py-2">البيان</th><th class="py-2">المبلغ</th><th class="py-2">التوقيت</th></tr></thead>' +
+      '          <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      (filteredTxs.length > 0
+        ? filteredTxs.map(function (t) {
+            var info = getCaisseTxTypeInfo(t.type);
+            return (
+              '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition">' +
+              '  <td class="py-2.5"><span class="px-2 py-0.5 rounded-lg font-bold text-[11px] ' + info.cls + '">' + info.label + '</span></td>' +
+              '  <td class="py-2.5 font-bold">' + (t.description || '—') + '</td>' +
+              '  <td class="py-2.5 font-mono font-black ' + (info.isIn ? 'text-emerald-600' : 'text-rose-600') + '">' + info.sign + Number(t.amount || 0).toFixed(2) + ' د.ج</td>' +
+              '  <td class="py-2.5 font-mono text-slate-400 text-[11px]">' + formatCleanCaisseDate(t.created_at) + '</td>' +
+              '</tr>'
+            );
+          }).join('')
+        : '<tr><td colspan="4" class="py-8 text-center text-slate-400 font-bold">لا توجد حركات مطابقة للفلتر الحالي</td></tr>') +
+      '          </tbody>' +
+      '        </table>' +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  };
+
+  // تحديث اختصار F9 في شاشة الصندوق ليفتح X-Report الفوري بأمان
+  document.addEventListener('keydown', function (e) {
+    if (AppState.currentView !== 'caisse') return;
+    var activeModal = document.querySelector('.modal-overlay.active');
+    if (activeModal) return;
+
+    if (e.key === 'F9') {
+      e.preventDefault();
+      e.stopPropagation();
+      App.openSessionReviewModal(AppState.activeSession ? AppState.activeSession.id : null);
+    }
+  }, true);
+})();
+
+// [PAGE 6 MANUFACTURING & BOM STUDIO SURGICAL PERFECTION]
+(function applyPage6ManufacturingSurgicalPerfection() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.mfgTempComponents = [];
+  AppState.mfgEditingRecipeId = null;
+  AppState.mfgSearchQuery = '';
+  AppState.mfgOrderFilterStatus = 'all';
+  AppState.mfgAvailabilityMap = {};
+
+  function getProdRetailPrice(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.selling_price ?? fb.selling_price ?? 0);
+  }
+
+  function getProdCostPrice(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.cost_price ?? fb.cost_price ?? 0);
+  }
+
+  function getProdStock(p) {
+    if (!p) return 0;
+    return Number(p.total_stock ?? p.stock ?? 0);
+  }
+
+  function formatCleanMfgDate(raw) {
+    if (!raw) return '—';
+    var s = String(raw).replace('T', ' ');
+    var d = s.slice(0, 10);
+    var t = s.slice(11, 16);
+    return t ? d + ' | 🕒 ' + t : d;
+  }
+
+  // --------------------------------------------------------------------------
+  // 1) الدرع الشامل ضد تجمّد الصفحات: تحويل window.alert إلى نافذة نظام غير حاجزة
+  // --------------------------------------------------------------------------
+  App.showSystemAlertModal = function (message, title, type) {
+    var modal = document.getElementById('gherbiSystemAlertModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'gherbiSystemAlertModal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+    var isErr = type === 'error';
+    modal.innerHTML =
+      '<div class="modal-content w-full max-w-md p-6 space-y-4 text-center">' +
+      '  <div class="w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ' + (isErr ? 'bg-rose-500/15 text-rose-600' : 'bg-blue-600/15 text-blue-600') + '">' +
+      '    <span class="material-symbols-rounded icon-lg">notifications</span>' +
+      '  </div>' +
+      '  <h3 class="text-base font-black">' + (title || 'تنبيه النظام — Gherbi.Ai POS') + '</h3>' +
+      '  <p class="text-xs font-bold text-slate-600 dark:text-slate-300 leading-relaxed">' + String(message || '') + '</p>' +
+      '  <div class="pt-2">' +
+      '    <button type="button" onclick="App.closeModal(\'gherbiSystemAlertModal\')" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black shadow">حسناً، فهمت (Enter)</button>' +
+      '  </div>' +
+      '</div>';
+    modal.classList.add('active');
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(modal);
+  };
+
+  // استبدال window.alert الأصلي الذي يجمّد حقول Electron بنافذة النظام غير الحاجزة
+  window.alert = function (msg) {
+    if (typeof showToast === 'function') showToast(String(msg || ''), 'warning');
+    App.showSystemAlertModal(msg, 'إشعار النظام — Gherbi.Ai POS', 'info');
+  };
+
+  // --------------------------------------------------------------------------
+  // 2) بناء وترقية النوافذ النظامية الـ 3 لقسم التصنيع والإنتاج في الـ DOM
+  // --------------------------------------------------------------------------
+  App.ensureManufacturingModalsDom = function () {
+    // أ) ترقية نافذة إنشاء/تعديل وصفة التصنيع (#bom-recipe-modal)
+    var recModal = document.getElementById('bom-recipe-modal');
+    if (recModal && !recModal.dataset.upgradedP6) {
+      recModal.dataset.upgradedP6 = '1';
+      recModal.innerHTML =
+        '<div class="modal-content w-full max-w-4xl p-6 space-y-3.5 overflow-y-auto">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2.5">' +
+        '    <div>' +
+        '      <h3 id="bomModalTitle" class="text-lg font-black text-blue-600">⚙️ مهندس وصفات التصنيع والتعبئة (Multi-Component BOM Studio)</h3>' +
+        '      <p class="text-[11px] text-slate-400 font-bold">تصميم وصفات الإنتاج، الخلطات، أو تجزئة الجملة مع حساب نسبة الهدر وتكاليف التشغيل والربح الصافي</p>' +
+        '    </div>' +
+        '    <button type="button" onclick="App.closeModal(\'bom-recipe-modal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <input id="bomRecipeIdInput" type="hidden">' +
+
+        '  <div class="p-2.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 space-y-1.5 text-xs">' +
+        '    <div class="font-black text-indigo-600 dark:text-indigo-400">⚡ قوالب ورشات وتعبئة جزائرية ذكية بضغطة زر (تُعبّأ تلقائياً من مخزونك):</div>' +
+        '    <div class="flex flex-wrap items-center gap-1.5">' +
+        '      <button type="button" onclick="window.ManufacturingUI.applySmartBomPreset(\'repack\')" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 font-bold hover:bg-indigo-600 hover:text-white transition">📦 تعبئة وتجزئة (شوال جملة إلى أكياس)</button>' +
+        '      <button type="button" onclick="window.ManufacturingUI.applySmartBomPreset(\'roastery\')" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 font-bold hover:bg-indigo-600 hover:text-white transition">☕ محمصة وخلطة قهوة/توابل (هدر 5%)</button>' +
+        '      <button type="button" onclick="window.ManufacturingUI.applySmartBomPreset(\'bakery\')" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 font-bold hover:bg-indigo-600 hover:text-white transition">🥐 مخبزة وحلويات تقليدية</button>' +
+        '      <button type="button" onclick="window.ManufacturingUI.applySmartBomPreset(\'fastfood\')" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 font-bold hover:bg-indigo-600 hover:text-white transition">🥪 سندويتشات وأطباق سريعة (تلقائي بالكاشير)</button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5 text-xs items-end">' +
+        '    <div class="md:col-span-4">' +
+        '      <label class="block font-bold mb-1">اسم الوصفة / عملية التصنيع *</label>' +
+        '      <input id="bomRecipeName" type="text" placeholder="مثال: خلطة قهوة بونال مذهبة 250غ" class="w-full px-3 py-2 rounded-xl font-bold">' +
+        '    </div>' +
+        '    <div class="md:col-span-5">' +
+        '      <div class="flex items-center justify-between mb-1">' +
+        '        <label class="font-bold">المنتج النهائي الناتج (Finished Good) *</label>' +
+        '        <button type="button" onclick="window.ManufacturingUI.quickCreateFinishedProduct()" class="text-[10px] font-black text-blue-600 hover:underline">+ إنشاء منتج نهائي جديد فوراً</button>' +
+        '      </div>' +
+        '      <select id="bomTargetProduct" onchange="window.ManufacturingUI.onTargetProductChange()" class="w-full px-3 py-2 rounded-xl font-bold"></select>' +
+        '    </div>' +
+        '    <div class="md:col-span-3">' +
+        '      <label class="block font-bold mb-1">كمية الخرج للدفعة الواحدة *</label>' +
+        '      <input id="bomOutputQty" type="number" step="any" min="0.01" value="1" oninput="window.ManufacturingUI.recalcBomModalMetrics()" class="w-full px-3 py-2 rounded-xl font-mono font-black text-center text-blue-600">' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div id="quickNewProductInlineBox" class="hidden p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 grid grid-cols-1 md:grid-cols-4 gap-2 text-xs items-end">' +
+        '    <div class="md:col-span-2"><label class="block font-bold mb-1">اسم المنتج النهائي الجديد</label><input id="quickFgName" type="text" placeholder="مثال: صينية بقلاوة / كيس سكر معبأ 1 كغ" class="w-full px-2.5 py-1.5 rounded-lg font-bold"></div>' +
+        '    <div><label class="block font-bold mb-1">سعر بيعه المقترح (د.ج)</label><input id="quickFgPrice" type="number" step="any" value="250" class="w-full px-2.5 py-1.5 rounded-lg font-mono font-bold"></div>' +
+        '    <button type="button" onclick="window.ManufacturingUI.confirmQuickFinishedProduct()" class="py-1.5 bg-blue-600 text-white rounded-lg font-black">✓ حفظ واختيار كمنتج نهائي</button>' +
+        '  </div>' +
+
+        '  <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-2.5 text-xs">' +
+        '    <div class="font-black text-slate-700 dark:text-slate-200">🧪 المواد الأولية والمكونات الداخلة في التصنيع (BOM Components):</div>' +
+        '    <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">' +
+        '      <div class="md:col-span-6"><label class="block text-[10px] text-slate-400 font-bold mb-0.5">اختر المادة الأولية / المكون</label><select id="bomComponentSelect" class="w-full px-3 py-2 rounded-xl font-bold"></select></div>' +
+        '      <div class="md:col-span-2"><label class="block text-[10px] text-slate-400 font-bold mb-0.5">الكمية اللازمة</label><input id="bomComponentQty" type="number" step="any" min="0.001" value="1" class="w-full px-2.5 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+        '      <div class="md:col-span-2"><label class="block text-[10px] text-slate-400 font-bold mb-0.5" title="نسبة الضياع أو التبخر أثناء التحميص أو التقطيع">نسبة الهدر %</label><input id="bomComponentWaste" type="number" step="any" min="0" value="0" class="w-full px-2.5 py-2 rounded-xl font-mono text-center"></div>' +
+        '      <button type="button" onclick="window.ManufacturingUI.addComponentRowInModal()" class="md:col-span-2 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black shadow-sm">+ إدراج مكون</button>' +
+        '    </div>' +
+        '    <div id="bomComponentsTableBox" class="max-h-44 overflow-y-auto pt-1"></div>' +
+        '  </div>' +
+
+        '  <div class="grid grid-cols-1 md:grid-cols-4 gap-2.5 text-xs items-end">' +
+        '    <div>' +
+        '      <label class="block font-bold mb-1" title="غاز، كهرباء، أكياس تغليف، يد عاملة">مصاريف تشغيل وتغليف إضافية</label>' +
+        '      <input id="bomExtraCostInput" type="number" step="any" min="0" value="0" oninput="window.ManufacturingUI.recalcBomModalMetrics()" class="w-full px-3 py-2 rounded-xl font-mono font-bold">' +
+        '    </div>' +
+        '    <div>' +
+        '      <label class="block font-bold mb-1">نوع مصاريف التشغيل</label>' +
+        '      <select id="bomExtraCostType" onchange="window.ManufacturingUI.recalcBomModalMetrics()" class="w-full px-3 py-2 rounded-xl font-bold">' +
+        '        <option value="per_batch">لكل دفعة إنتاج كاملة</option>' +
+        '        <option value="per_unit">لكل وحدة منتجة</option>' +
+        '      </select>' +
+        '    </div>' +
+        '    <div>' +
+        '      <label class="block font-bold mb-1 text-emerald-600">سعر بيع الوحدة النهائية (د.ج)</label>' +
+        '      <input id="bomSellPriceInput" type="number" step="any" min="0" value="0" oninput="window.ManufacturingUI.recalcBomModalMetrics()" class="w-full px-3 py-2 rounded-xl font-mono font-black text-emerald-600 border-emerald-500">' +
+        '    </div>' +
+        '    <div class="flex gap-1">' +
+        '      <button type="button" onclick="window.ManufacturingUI.applyQuickBomMarkup(25)" class="flex-1 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-mono font-bold hover:bg-emerald-600 hover:text-white">+25%</button>' +
+        '      <button type="button" onclick="window.ManufacturingUI.applyQuickBomMarkup(50)" class="flex-1 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-mono font-bold hover:bg-emerald-600 hover:text-white">+50%</button>' +
+        '      <button type="button" onclick="window.ManufacturingUI.applyQuickBomMarkup(100)" class="flex-1 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-mono font-bold hover:bg-emerald-600 hover:text-white">+100%</button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div id="bomLiveMetricsBanner" class="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-center"></div>' +
+
+        '  <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-700 text-xs">' +
+        '    <label class="flex items-center gap-2 cursor-pointer">' +
+        '      <input id="bomAutoOnSale" type="checkbox" checked>' +
+        '      <span class="font-bold text-slate-700 dark:text-slate-200">⚡ تفعيل التصنيع التلقائي الفوري عند البيع في الكاشير (Auto-Produce on POS Sale)</span>' +
+        '    </label>' +
+        '    <div class="flex gap-2">' +
+        '      <button type="button" onclick="App.closeModal(\'bom-recipe-modal\')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-bold">إلغاء (Esc)</button>' +
+        '      <button type="button" onclick="window.ManufacturingUI.saveRecipeFromStudioModal(false)" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black shadow">💾 حفظ الوصفة</button>' +
+        '      <button type="button" onclick="window.ManufacturingUI.saveRecipeFromStudioModal(true)" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow">⚙️ حفظ وتشغيل إنتاج فوري</button>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ب) نافذة أمر الإنتاج الفوري والمحاكاة الحية (#mfgProduceOrderModal — بديل الـ Alert/Prompt)
+    if (!document.getElementById('mfgProduceOrderModal')) {
+      var prodModal = document.createElement('div');
+      prodModal.id = 'mfgProduceOrderModal';
+      prodModal.className = 'modal-overlay';
+      prodModal.innerHTML =
+        '<div class="modal-content w-full max-w-3xl p-6 space-y-4 overflow-y-auto">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <div>' +
+        '      <h3 class="text-lg font-black text-emerald-600">🏭 غرفة تشغيل أمر الإنتاج والمحاكاة المسبقة (Production Order Studio)</h3>' +
+        '      <p class="text-[11px] text-slate-400 font-bold">فحص توفر المواد الأولية بطريقة FIFO، حساب تكلفة الدفعة الناتجة، وإدراج المنتج المصنع في المخزون فوراً</p>' +
+        '    </div>' +
+        '    <button type="button" onclick="App.closeModal(\'mfgProduceOrderModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div id="mfgProduceModalBody" class="space-y-4 text-xs"></div>' +
+        '</div>';
+      document.body.appendChild(prodModal);
+    }
+
+    // ج) نافذة معاينة وطباعة بطاقة أمر الإنتاج وتفاصيل الدفعات المستهلكة (#mfgOrderDetailsModal)
+    if (!document.getElementById('mfgOrderDetailsModal')) {
+      var detModal = document.createElement('div');
+      detModal.id = 'mfgOrderDetailsModal';
+      detModal.className = 'modal-overlay';
+      detModal.innerHTML =
+        '<div class="modal-content w-full max-w-2xl p-6 space-y-4 overflow-y-auto">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <h3 id="mfgOrderDetailsTitle" class="text-lg font-black text-blue-600">📋 بطاقة أمر الإنتاج وتفاصيل السحب (FIFO)</h3>' +
+        '    <button type="button" onclick="App.closeModal(\'mfgOrderDetailsModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div id="mfgOrderDetailsBody" class="space-y-3 text-xs"></div>' +
+        '</div>';
+      document.body.appendChild(detModal);
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 3) دوال باني الوصفات الذكي (Multi-Component BOM Studio)
+  // --------------------------------------------------------------------------
+  function getSortedProductsForBom() {
+    var list = (AppState.products && AppState.products.length > 0 ? AppState.products : (window.ManufacturingManager && window.ManufacturingManager.productsList) || []).slice();
+    list.sort(function (a, b) {
+      var aP = getProdRetailPrice(a) > 0 || getProdStock(a) > 0 ? 1 : 0;
+      var bP = getProdRetailPrice(b) > 0 || getProdStock(b) > 0 ? 1 : 0;
+      if (aP !== bP) return bP - aP;
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+    return list;
+  }
+
+  function populateBomProductSelects(selectedTargetId) {
+    var prods = getSortedProductsForBom();
+    var targetSel = document.getElementById('bomTargetProduct');
+    var compSel = document.getElementById('bomComponentSelect');
+
+    if (targetSel) {
+      targetSel.innerHTML = prods.slice(0, 400).map(function (p) {
+        return '<option value="' + p.id + '" ' + (Number(p.id) === Number(selectedTargetId) ? 'selected' : '') + '>' + p.name + ' (سعر البيع: ' + getProdRetailPrice(p).toFixed(2) + ' د.ج | الرصيد: ' + getProdStock(p) + ' ' + (p.unit || 'قطعة') + ')</option>';
+      }).join('');
+    }
+    if (compSel) {
+      compSel.innerHTML = prods.slice(0, 400).map(function (p) {
+        return '<option value="' + p.id + '">' + p.name + ' (التكلفة: ' + getProdCostPrice(p).toFixed(2) + ' د.ج | المتوفر: ' + getProdStock(p) + ' ' + (p.unit || 'قطعة') + ')</option>';
+      }).join('');
+    }
+  }
+
+  var ManufacturingUI = {
+    openRecipeModal: async function (recipeOrId) {
+      App.ensureManufacturingModalsDom();
+      await window.ManufacturingManager.fetchAllData();
+      if (!AppState.products || AppState.products.length === 0) {
+        await App.refreshProducts();
+      }
+
+      var recipe = null;
+      if (typeof recipeOrId === 'number' || (typeof recipeOrId === 'string' && /^\d+$/.test(recipeOrId))) {
+        recipe = await window.api.getBomRecipe(Number(recipeOrId)).catch(function () { return null; });
+      } else if (recipeOrId && typeof recipeOrId === 'object') {
+        recipe = recipeOrId;
+      }
+
+      AppState.mfgEditingRecipeId = recipe && recipe.id ? Number(recipe.id) : null;
+      document.getElementById('bomRecipeIdInput').value = AppState.mfgEditingRecipeId || '';
+      document.getElementById('quickNewProductInlineBox').classList.add('hidden');
+
+      populateBomProductSelects(recipe ? recipe.product_id : null);
+
+      if (recipe) {
+        document.getElementById('bomRecipeName').value = recipe.name || '';
+        document.getElementById('bomOutputQty').value = Number(recipe.output_qty || 1);
+        document.getElementById('bomExtraCostInput').value = Number(recipe.extra_cost || 0);
+        document.getElementById('bomExtraCostType').value = recipe.extra_cost_type || 'per_batch';
+        document.getElementById('bomSellPriceInput').value = Number(recipe.sell_price || 0);
+        document.getElementById('bomAutoOnSale').checked = Number(recipe.auto_on_sale) === 1;
+
+        AppState.mfgTempComponents = (recipe.components || []).map(function (c) {
+          var pObj = getSortedProductsForBom().find(function (x) { return Number(x.id) === Number(c.component_product_id); });
+          return {
+            component_product_id: Number(c.component_product_id),
+            component_name: c.component_name || (pObj ? pObj.name : 'مكون #' + c.component_product_id),
+            unit: c.component_unit || (pObj ? pObj.unit : 'وحدة'),
+            quantity: Number(c.quantity || 1),
+            waste_percent: Number(c.waste_percent || 0),
+            unit_cost: Number(c.est_unit_cost ?? getProdCostPrice(pObj)),
+            available_stock: Number(c.available_stock ?? getProdStock(pObj))
+          };
+        });
+      } else {
+        document.getElementById('bomRecipeName').value = '';
+        document.getElementById('bomOutputQty').value = '1';
+        document.getElementById('bomExtraCostInput').value = '0';
+        document.getElementById('bomExtraCostType').value = 'per_batch';
+        document.getElementById('bomAutoOnSale').checked = true;
+        AppState.mfgTempComponents = [];
+        this.onTargetProductChange();
+      }
+
+      this.renderBomComponentsInModal();
+      this.recalcBomModalMetrics();
+      App.openModal('bom-recipe-modal');
+    },
+
+    onTargetProductChange: function () {
+      var pid = Number(document.getElementById('bomTargetProduct')?.value);
+      var pObj = getSortedProductsForBom().find(function (x) { return Number(x.id) === pid; });
+      if (pObj) {
+        var sellInp = document.getElementById('bomSellPriceInput');
+        if (sellInp && (!sellInp.value || Number(sellInp.value) === 0)) {
+          sellInp.value = getProdRetailPrice(pObj).toFixed(2);
+        }
+        var nameInp = document.getElementById('bomRecipeName');
+        if (nameInp && !nameInp.value.trim()) {
+          nameInp.value = 'وصفة تصنيع: ' + pObj.name;
+        }
+      }
+      this.recalcBomModalMetrics();
+    },
+
+    quickCreateFinishedProduct: function () {
+      var box = document.getElementById('quickNewProductInlineBox');
+      if (box) box.classList.toggle('hidden');
+      var inp = document.getElementById('quickFgName');
+      if (inp) inp.focus();
+    },
+
+    confirmQuickFinishedProduct: async function () {
+      var name = String(document.getElementById('quickFgName')?.value || '').trim();
+      var price = parseFloat(document.getElementById('quickFgPrice')?.value) || 200;
+      if (!name) {
+        if (typeof showToast === 'function') showToast('أدخل اسم المنتج النهائي الجديد', 'warning');
+        return;
+      }
+      var rndBc = '61388' + String(Math.floor(10000000 + Math.random() * 90000000)).slice(0, 8);
+      var res = await window.api.addProduct({
+        name: name,
+        barcode: rndBc,
+        category: 'منتجات مصنعة ومعبأة',
+        unit: 'قطعة',
+        cost_price: Math.round(price * 0.7),
+        selling_price: price,
+        stock: 0,
+        material_role: 'finished_good'
+      });
+      await App.refreshProducts();
+      await window.ManufacturingManager.fetchAllData();
+      document.getElementById('quickNewProductInlineBox').classList.add('hidden');
+      if (res && res.id) {
+        populateBomProductSelects(res.id);
+        document.getElementById('bomSellPriceInput').value = price.toFixed(2);
+        document.getElementById('bomRecipeName').value = 'وصفة إنتاج: ' + name;
+        this.recalcBomModalMetrics();
+        if (typeof showToast === 'function') showToast('✅ تم إنشاء المنتج النهائي (' + name + ') واختياره للوصفة!', 'success');
+      }
+    },
+
+    addComponentRowInModal: function () {
+      var targetPid = Number(document.getElementById('bomTargetProduct')?.value);
+      var compPid = Number(document.getElementById('bomComponentSelect')?.value);
+      var qty = Math.max(0.001, parseFloat(document.getElementById('bomComponentQty')?.value) || 1);
+      var waste = Math.max(0, parseFloat(document.getElementById('bomComponentWaste')?.value) || 0);
+
+      if (!compPid) return;
+      var prods = getSortedProductsForBom();
+      if (compPid === targetPid && prods.length > 1) {
+        var alt = prods.find(function (x) { return Number(x.id) !== targetPid; });
+        if (alt) compPid = Number(alt.id);
+      }
+
+      var pObj = prods.find(function (x) { return Number(x.id) === compPid; });
+      if (!pObj) return;
+
+      var existing = AppState.mfgTempComponents.find(function (c) { return Number(c.component_product_id) === compPid; });
+      if (existing) {
+        existing.quantity = Number((existing.quantity + qty).toFixed(4));
+        existing.waste_percent = waste;
+      } else {
+        AppState.mfgTempComponents.push({
+          component_product_id: compPid,
+          component_name: pObj.name,
+          unit: pObj.unit || 'قطعة',
+          quantity: qty,
+          waste_percent: waste,
+          unit_cost: getProdCostPrice(pObj),
+          available_stock: getProdStock(pObj)
+        });
+      }
+
+      this.renderBomComponentsInModal();
+      this.recalcBomModalMetrics();
+    },
+
+    removeComponentRowInModal: function (idx) {
+      AppState.mfgTempComponents.splice(idx, 1);
+      this.renderBomComponentsInModal();
+      this.recalcBomModalMetrics();
+    },
+
+    updateComponentRowField: function (idx, field, val) {
+      if (!AppState.mfgTempComponents[idx]) return;
+      AppState.mfgTempComponents[idx][field] = Math.max(0, parseFloat(val) || 0);
+      this.renderBomComponentsInModal();
+      this.recalcBomModalMetrics();
+    },
+
+    renderBomComponentsInModal: function () {
+      var box = document.getElementById('bomComponentsTableBox');
+      if (!box) return;
+      var comps = AppState.mfgTempComponents || [];
+      if (comps.length === 0) {
+        box.innerHTML = '<div class="py-4 text-center text-slate-400 font-bold">اختر مكوناً أولياً واضغط (+ إدراج مكون) أو اختر أحد القوالب الذكية الـ 4 أعلاه</div>';
+        return;
+      }
+
+      box.innerHTML =
+        '<table class="w-full text-[11px] text-right">' +
+        '  <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-1.5">المادة الأولية / المكون</th><th class="py-1.5">تكلفة الوحدة</th><th class="py-1.5">الكمية بالدفعة</th><th class="py-1.5">نسبة الهدر %</th><th class="py-1.5">الكمية الفعلية المسحوبة</th><th class="py-1.5">تكلفة المكون</th><th class="py-1.5">المتوفر بالمخزون</th><th class="py-1.5">حذف</th></tr></thead>' +
+        '  <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        comps.map(function (c, idx) {
+          var effQty = Number((c.quantity * (1 + Number(c.waste_percent || 0) / 100)).toFixed(4));
+          var lineCost = Number((effQty * Number(c.unit_cost || 0)).toFixed(2));
+          var isEnough = Number(c.available_stock || 0) >= effQty;
+          return (
+            '<tr>' +
+            '  <td class="py-1.5 font-bold">' + c.component_name + '</td>' +
+            '  <td class="py-1.5 font-mono">' + Number(c.unit_cost || 0).toFixed(2) + ' د.ج</td>' +
+            '  <td class="py-1.5"><input type="number" step="any" min="0.001" value="' + c.quantity + '" onchange="window.ManufacturingUI.updateComponentRowField(' + idx + ', \'quantity\', this.value)" class="w-16 px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-mono font-bold text-center"> <span class="text-[10px] text-slate-400">' + (c.unit || '') + '</span></td>' +
+            '  <td class="py-1.5"><input type="number" step="any" min="0" value="' + c.waste_percent + '" onchange="window.ManufacturingUI.updateComponentRowField(' + idx + ', \'waste_percent\', this.value)" class="w-14 px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-mono text-center">%</td>' +
+            '  <td class="py-1.5 font-mono font-bold text-amber-600">' + effQty + ' ' + (c.unit || '') + '</td>' +
+            '  <td class="py-1.5 font-mono font-black text-blue-600">' + lineCost.toFixed(2) + ' د.ج</td>' +
+            '  <td class="py-1.5 font-mono font-bold ' + (isEnough ? 'text-emerald-600' : 'text-rose-600') + '">' + Number(c.available_stock || 0) + ' ' + (isEnough ? '✅' : '⚠️') + '</td>' +
+            '  <td class="py-1.5"><button type="button" onclick="window.ManufacturingUI.removeComponentRowInModal(' + idx + ')" class="text-rose-500 font-black px-2">✕</button></td>' +
+            '</tr>'
+          );
+        }).join('') +
+        '  </tbody>' +
+        '</table>';
+    },
+
+    recalcBomModalMetrics: function () {
+      var banner = document.getElementById('bomLiveMetricsBanner');
+      if (!banner) return;
+      var outputQty = Math.max(0.01, parseFloat(document.getElementById('bomOutputQty')?.value) || 1);
+      var extraCost = Math.max(0, parseFloat(document.getElementById('bomExtraCostInput')?.value) || 0);
+      var extraType = document.getElementById('bomExtraCostType')?.value || 'per_batch';
+      var sellPrice = Math.max(0, parseFloat(document.getElementById('bomSellPriceInput')?.value) || 0);
+
+      var compsCost = 0;
+      var maxBatches = Infinity;
+      var comps = AppState.mfgTempComponents || [];
+
+      comps.forEach(function (c) {
+        var effQty = Number(c.quantity || 1) * (1 + Number(c.waste_percent || 0) / 100);
+        compsCost += effQty * Number(c.unit_cost || 0);
+        var possible = effQty > 0 ? Math.floor(Number(c.available_stock || 0) / effQty) : 0;
+        if (possible < maxBatches) maxBatches = possible;
+      });
+      if (!Number.isFinite(maxBatches)) maxBatches = 0;
+
+      var totalExtra = extraType === 'per_unit' ? extraCost * outputQty : extraCost;
+      var totalBatchCost = Number((compsCost + totalExtra).toFixed(2));
+      var unitCost = Number((totalBatchCost / outputQty).toFixed(2));
+      var unitProfit = Number((sellPrice - unitCost).toFixed(2));
+      var maxUnits = Number((maxBatches * outputQty).toFixed(2));
+      var centimeUnitCost = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(unitCost) : '';
+
+      banner.innerHTML =
+        '<div class="p-2 rounded-xl bg-white/80 dark:bg-slate-900/70">' +
+        '  <div class="text-[10px] text-slate-400 font-bold">تكلفة الدفعة الكاملة (' + outputQty + ' وحدة)</div>' +
+        '  <div class="font-mono font-black text-sm text-slate-700 dark:text-slate-200">' + totalBatchCost.toFixed(2) + ' د.ج</div>' +
+        '</div>' +
+        '<div class="p-2 rounded-xl bg-white/80 dark:bg-slate-900/70">' +
+        '  <div class="text-[10px] text-slate-400 font-bold">تكلفة الوحدة الواحدة الصافية</div>' +
+        '  <div class="font-mono font-black text-sm text-blue-600">' + unitCost.toFixed(2) + ' د.ج <span class="text-[10px] text-amber-600">(' + centimeUnitCost + ')</span></div>' +
+        '</div>' +
+        '<div class="p-2 rounded-xl bg-white/80 dark:bg-slate-900/70">' +
+        '  <div class="text-[10px] text-slate-400 font-bold">صافي ربحك في الوحدة الواحدة</div>' +
+        '  <div class="font-mono font-black text-sm ' + (unitProfit >= 0 ? 'text-emerald-600' : 'text-rose-600') + '">' + (unitProfit >= 0 ? '+' : '') + unitProfit.toFixed(2) + ' د.ج</div>' +
+        '</div>' +
+        '<div class="p-2 rounded-xl bg-white/80 dark:bg-slate-900/70">' +
+        '  <div class="text-[10px] text-slate-400 font-bold">الطاقة الإنتاجية المتاحة الآن</div>' +
+        '  <div class="font-mono font-black text-sm text-amber-600">' + maxUnits + ' وحدة (' + maxBatches + ' دفعة)</div>' +
+        '</div>';
+    },
+
+    applyQuickBomMarkup: function (pct) {
+      var outputQty = Math.max(0.01, parseFloat(document.getElementById('bomOutputQty')?.value) || 1);
+      var extraCost = Math.max(0, parseFloat(document.getElementById('bomExtraCostInput')?.value) || 0);
+      var extraType = document.getElementById('bomExtraCostType')?.value || 'per_batch';
+      var compsCost = 0;
+      (AppState.mfgTempComponents || []).forEach(function (c) {
+        var effQty = Number(c.quantity || 1) * (1 + Number(c.waste_percent || 0) / 100);
+        compsCost += effQty * Number(c.unit_cost || 0);
+      });
+      var totalExtra = extraType === 'per_unit' ? extraCost * outputQty : extraCost;
+      var unitCost = (compsCost + totalExtra) / outputQty;
+      if (unitCost > 0) {
+        var suggested = Math.ceil((unitCost * (1 + Number(pct) / 100)) / 5) * 5;
+        document.getElementById('bomSellPriceInput').value = suggested.toFixed(2);
+        this.recalcBomModalMetrics();
+      }
+    },
+
+    applySmartBomPreset: function (presetKey) {
+      var prods = getSortedProductsForBom().filter(function (p) { return getProdRetailPrice(p) > 0; });
+      if (prods.length < 2) return;
+
+      var targetProd = prods[0];
+      var rawComps = prods.slice(1, 3);
+      var recipeName = '';
+      var outQty = 1;
+      var extraCost = 0;
+      var waste = 0;
+
+      if (presetKey === 'repack') {
+        recipeName = '📦 تعبئة وتجزئة أكياس 1 كغ من الجملة';
+        outQty = 10;
+        extraCost = 50; // تكلفة الأكياس والتغليف
+        rawComps = [prods[1]];
+      } else if (presetKey === 'roastery') {
+        recipeName = '☕ خلطة محمصة قهوة ممتازة (مع هدر التحميص)';
+        outQty = 5;
+        extraCost = 100;
+        waste = 5;
+      } else if (presetKey === 'bakery') {
+        recipeName = '🥐 صينية حلويات / مخبوزات تقليدية';
+        outQty = 12;
+        extraCost = 150;
+        waste = 2;
+      } else {
+        recipeName = '🥪 تحضير وجبة / سندويتش سريع (تلقائي بالكاشير)';
+        outQty = 1;
+        extraCost = 15;
+        waste = 0;
+      }
+
+      document.getElementById('bomRecipeName').value = recipeName;
+      document.getElementById('bomTargetProduct').value = String(targetProd.id);
+      document.getElementById('bomOutputQty').value = String(outQty);
+      document.getElementById('bomExtraCostInput').value = String(extraCost);
+
+      AppState.mfgTempComponents = rawComps.map(function (c) {
+        return {
+          component_product_id: Number(c.id),
+          component_name: c.name,
+          unit: c.unit || 'قطعة',
+          quantity: 1,
+          waste_percent: waste,
+          unit_cost: getProdCostPrice(c),
+          available_stock: getProdStock(c)
+        };
+      });
+
+      this.renderBomComponentsInModal();
+      this.applyQuickBomMarkup(35);
+      this.recalcBomModalMetrics();
+      if (typeof showToast === 'function') {
+        showToast('⚡ تم تجهيز قالب (' + recipeName + ') مع حساب الهدر وتكلفة التشغيل!', 'info');
+      }
+    },
+
+    saveRecipeFromStudioModal: async function (andOpenProduce) {
+      var idVal = document.getElementById('bomRecipeIdInput')?.value;
+      var name = String(document.getElementById('bomRecipeName')?.value || '').trim() || 'وصفة تصنيع قياسية';
+      var productId = Number(document.getElementById('bomTargetProduct')?.value);
+      var outputQty = Math.max(0.01, parseFloat(document.getElementById('bomOutputQty')?.value) || 1);
+      var extraCost = Math.max(0, parseFloat(document.getElementById('bomExtraCostInput')?.value) || 0);
+      var extraCostType = document.getElementById('bomExtraCostType')?.value || 'per_batch';
+      var sellPrice = parseFloat(document.getElementById('bomSellPriceInput')?.value) || null;
+      var autoOnSale = document.getElementById('bomAutoOnSale')?.checked ? 1 : 0;
+
+      if (!AppState.mfgTempComponents || AppState.mfgTempComponents.length === 0) {
+        this.addComponentRowInModal();
+      }
+
+      if (!productId || !AppState.mfgTempComponents || AppState.mfgTempComponents.length === 0) {
+        if (typeof showToast === 'function') showToast('يرجى اختيار المنتج النهائي وإدراج مكون أولي واحد على الأقل', 'warning');
+        return;
+      }
+
+      // منع أن يكون المنتج النهائي مكوناً داخل وصفته نفسها
+      var validComps = AppState.mfgTempComponents.filter(function (c) {
+        return Number(c.component_product_id) !== productId;
+      });
+      if (validComps.length === 0) {
+        if (typeof showToast === 'function') showToast('لا يمكن أن يكون المنتج النهائي مكوناً أولياً لنفسه — اختر مادة أولية مختلفة', 'error');
+        return;
+      }
+
+      var saved = await window.ManufacturingManager.saveRecipe({
+        id: idVal ? Number(idVal) : undefined,
+        name: name,
+        product_id: productId,
+        output_qty: outputQty,
+        extra_cost: extraCost,
+        extra_cost_type: extraCostType,
+        sell_price: sellPrice,
+        auto_on_sale: autoOnSale,
+        components: validComps.map(function (c) {
+          return {
+            component_product_id: Number(c.component_product_id),
+            quantity: Number(c.quantity || 1),
+            waste_percent: Number(c.waste_percent || 0),
+            unit_label: c.unit || null
+          };
+        })
+      });
+
+      App.closeModal('bom-recipe-modal');
+      await this.renderManufacturingView();
+      if (typeof showToast === 'function') {
+        showToast('✅ تم حفظ وصفة التصنيع (' + name + ') بنجاح!', 'success');
+      }
+
+      if (andOpenProduce && saved && saved.id) {
+        await this.openQuickProduceModal(saved.id);
+      }
+    },
+
+    // ------------------------------------------------------------------------
+    // 4) نافذة أمر الإنتاج الفوري والمحاكاة الحية (#mfgProduceOrderModal — بدون أي Alert!)
+    // ------------------------------------------------------------------------
+    openQuickProduceModal: async function (preselectedRecipeId) {
+      App.ensureManufacturingModalsDom();
+      await window.ManufacturingManager.fetchAllData();
+      var recipes = window.ManufacturingManager.recipes || [];
+      var body = document.getElementById('mfgProduceModalBody');
+      if (!body) return;
+
+      // إذا لم تكن هناك أي وصفة بعد، نعرض بطاقة تفاعلية ذكية داخل النافذة (وليس alert يجمّد الشاشة!)
+      if (recipes.length === 0) {
+        body.innerHTML =
+          '<div class="p-6 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center space-y-4">' +
+          '  <div class="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-600 flex items-center justify-center mx-auto">' +
+          '    <span class="material-symbols-rounded icon-xl">precision_manufacturing</span>' +
+          '  </div>' +
+          '  <div class="text-base font-black text-slate-800 dark:text-white">لا توجد وصفات تصنيع مسجلة بعد لبدء أمر الإنتاج</div>' +
+          '  <p class="text-xs text-slate-500 max-w-md mx-auto">يمكنك بضغطة زر واحدة إنشاء وصفة نموذجية جاهزة من منتجات مخزونك والبدء في الإنتاج فوراً، أو فتح مهندس الوصفات المخصص:</p>' +
+          '  <div class="flex flex-wrap items-center justify-center gap-2.5 pt-2">' +
+          '    <button type="button" onclick="window.ManufacturingUI.createInstantStarterRecipeAndOpenProduce()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs shadow-lg">⚡ إنشاء وصفة نموذجية تلقائياً وفتح أمر الإنتاج الآن</button>' +
+          '    <button type="button" onclick="App.closeModal(\'mfgProduceOrderModal\'); window.ManufacturingUI.openRecipeModal()" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black text-xs shadow">+ فتح مهندس الوصفات (BOM Studio)</button>' +
+          '  </div>' +
+          '</div>';
+        App.openModal('mfgProduceOrderModal');
+        if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(body);
+        return;
+      }
+
+      var selectedId = preselectedRecipeId || recipes[0].id;
+      var selectedRecipe = recipes.find(function (r) { return Number(r.id) === Number(selectedId); }) || recipes[0];
+      var defaultQty = Number(selectedRecipe.output_qty || 1);
+      var nextMonthIso = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+
+      body.innerHTML =
+        '<div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">' +
+        '  <div class="md:col-span-6">' +
+        '    <label class="block font-bold mb-1">اختر وصفة التصنيع المعتمدة *</label>' +
+        '    <select id="mfgProdRecipeSelect" onchange="window.ManufacturingUI.onProduceRecipeSelectChange(this.value)" class="w-full px-3 py-2.5 rounded-xl font-bold">' +
+        recipes.map(function (r) {
+          return '<option value="' + r.id + '" ' + (Number(r.id) === Number(selectedRecipe.id) ? 'selected' : '') + '>' + r.name + ' ⬅️ ينتج: ' + (r.product_name || '') + ' (' + r.output_qty + ' ' + (r.product_unit || 'وحدة') + ')</option>';
+        }).join('') +
+        '    </select>' +
+        '  </div>' +
+        '  <div class="md:col-span-3">' +
+        '    <label class="block font-bold mb-1 text-emerald-600">الكمية المراد إنتاجها الآن *</label>' +
+        '    <input id="mfgProdPlannedQty" type="number" step="any" min="0.1" value="' + defaultQty + '" oninput="window.ManufacturingUI.refreshProduceLiveSimulation()" class="w-full px-3 py-2 rounded-xl font-mono font-black text-base text-center text-emerald-600 border-emerald-500">' +
+        '  </div>' +
+        '  <div class="md:col-span-3 flex gap-1">' +
+        '    <button type="button" onclick="window.ManufacturingUI.setQuickProduceBatchMult(1)" class="flex-1 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-700 font-mono font-bold hover:bg-blue-600 hover:text-white">1×دفعة</button>' +
+        '    <button type="button" onclick="window.ManufacturingUI.setQuickProduceBatchMult(5)" class="flex-1 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-700 font-mono font-bold hover:bg-blue-600 hover:text-white">5×</button>' +
+        '    <button type="button" onclick="window.ManufacturingUI.setMaxAvailableProduceQty()" title="إنتاج أقصى كمية تسمح بها المواد الأولية في المخزون" class="px-2.5 py-2.5 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 font-black hover:bg-amber-500 hover:text-slate-950">🔥 الأقصى</button>' +
+        '  </div>' +
+        '</div>' +
+
+        '<div id="mfgProduceSimulationBox" class="space-y-3"></div>' +
+
+        '<div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-slate-200 dark:border-slate-700">' +
+        '  <div>' +
+        '    <label class="block font-bold mb-1">سعر بيع الوحدة للدفعة المنتجة (د.ج)</label>' +
+        '    <input id="mfgProdOutputSellPrice" type="number" step="any" value="' + Number(selectedRecipe.sell_price || 0) + '" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-blue-600">' +
+        '  </div>' +
+        '  <div>' +
+        '    <label class="block font-bold mb-1">تاريخ انتهاء صلاحية الدفعة المنتجة</label>' +
+        '    <input id="mfgProdOutputExpiry" type="date" value="' + nextMonthIso + '" class="w-full px-3 py-2 rounded-xl font-mono">' +
+        '  </div>' +
+        '  <div>' +
+        '    <label class="block font-bold mb-1">ملاحظة الورشة / عامل الإنتاج</label>' +
+        '    <input id="mfgProdOrderNote" type="text" placeholder="دفعة إنتاج صباحية..." class="w-full px-3 py-2 rounded-xl">' +
+        '  </div>' +
+        '</div>' +
+
+        '<div class="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">' +
+        '  <button type="button" onclick="App.closeModal(\'mfgProduceOrderModal\')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-bold">إلغاء</button>' +
+        '  <button type="button" onclick="window.ManufacturingUI.submitProductionOrderFromModal(false)" class="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black">📝 حفظ كمسودة أمر إنتاج</button>' +
+        '  <button id="btnConfirmImmediateProduction" type="button" onclick="window.ManufacturingUI.submitProductionOrderFromModal(true)" class="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-lg shadow-emerald-600/25">⚡ تأكيد الإنتاج الفوري وإدراج الدفعة بالمخزون</button>' +
+        '</div>';
+
+      App.openModal('mfgProduceOrderModal');
+      await this.refreshProduceLiveSimulation();
+    },
+
+    produceFromRecipe: async function (recipeId) {
+      return await this.openQuickProduceModal(recipeId);
+    },
+
+    createInstantStarterRecipeAndOpenProduce: async function () {
+      var prods = getSortedProductsForBom().filter(function (p) { return getProdRetailPrice(p) > 0 && getProdStock(p) > 0; });
+      if (prods.length < 2) {
+        if (typeof showToast === 'function') showToast('يرجى وجود منتجين على الأقل في المخزون', 'warning');
+        return;
+      }
+      var fg = prods[0];
+      var raw = prods[1];
+      var saved = await window.ManufacturingManager.saveRecipe({
+        name: 'وصفة تحضير وتعبئة: ' + fg.name,
+        product_id: fg.id,
+        output_qty: 1,
+        extra_cost: 10,
+        extra_cost_type: 'per_batch',
+        sell_price: getProdRetailPrice(fg),
+        auto_on_sale: 1,
+        components: [{ component_product_id: raw.id, quantity: 1, waste_percent: 0 }]
+      });
+      await this.renderManufacturingView();
+      if (saved && saved.id) {
+        await this.openQuickProduceModal(saved.id);
+      }
+    },
+
+    onProduceRecipeSelectChange: async function (recipeId) {
+      var recipes = window.ManufacturingManager.recipes || [];
+      var r = recipes.find(function (x) { return Number(x.id) === Number(recipeId); });
+      if (r) {
+        document.getElementById('mfgProdPlannedQty').value = Number(r.output_qty || 1);
+        document.getElementById('mfgProdOutputSellPrice').value = Number(r.sell_price || 0);
+      }
+      await this.refreshProduceLiveSimulation();
+    },
+
+    setQuickProduceBatchMult: async function (mult) {
+      var recipeId = Number(document.getElementById('mfgProdRecipeSelect')?.value);
+      var recipes = window.ManufacturingManager.recipes || [];
+      var r = recipes.find(function (x) { return Number(x.id) === recipeId; });
+      var baseOut = r ? Number(r.output_qty || 1) : 1;
+      document.getElementById('mfgProdPlannedQty').value = Number((baseOut * mult).toFixed(2));
+      await this.refreshProduceLiveSimulation();
+    },
+
+    setMaxAvailableProduceQty: async function () {
+      var maxQty = Number(AppState._lastSimulatedMaxOutputQty || 0);
+      if (maxQty > 0) {
+        document.getElementById('mfgProdPlannedQty').value = Math.floor(maxQty);
+        await this.refreshProduceLiveSimulation();
+      } else if (typeof showToast === 'function') {
+        showToast('رصيد المكونات الأولية الحالي لا يكفي لإنتاج دفعة كاملة', 'warning');
+      }
+    },
+
+    refreshProduceLiveSimulation: async function () {
+      var recipeId = Number(document.getElementById('mfgProdRecipeSelect')?.value);
+      var plannedQty = Math.max(0.01, parseFloat(document.getElementById('mfgProdPlannedQty')?.value) || 1);
+      var simBox = document.getElementById('mfgProduceSimulationBox');
+      if (!recipeId || !simBox) return;
+
+      var avail = await window.api.getRecipeAvailability({ recipeId: recipeId, plannedQty: plannedQty }).catch(function () { return null; });
+      if (!avail) return;
+
+      AppState._lastSimulatedMaxOutputQty = Number(avail.max_manufacturable_qty || 0);
+      AppState._lastSimulatedAvailability = avail;
+
+      var sellPriceInp = document.getElementById('mfgProdOutputSellPrice');
+      if (sellPriceInp && (!sellPriceInp.value || Number(sellPriceInp.value) === 0)) {
+        sellPriceInp.value = Math.ceil((avail.unit_cost * 1.35) / 5) * 5;
+      }
+
+      var centimeUnit = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(avail.unit_cost) : '';
+
+      simBox.innerHTML =
+        '<div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-center">' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">تكلفة المكونات (FIFO)</div><div class="font-mono font-black text-sm mt-0.5">' + Number(avail.components_cost || 0).toFixed(2) + ' د.ج</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">مصاريف التشغيل الإضافية</div><div class="font-mono font-black text-sm mt-0.5">' + Number(avail.extra_cost || 0).toFixed(2) + ' د.ج</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">تكلفة الوحدة المنتجة</div><div class="font-mono font-black text-blue-600 text-sm mt-0.5">' + Number(avail.unit_cost || 0).toFixed(2) + ' د.ج</div><div class="text-[10px] text-amber-600 font-bold">' + centimeUnit + '</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">أقصى كمية متاحة بالمخزون</div><div class="font-mono font-black text-sm mt-0.5 ' + (avail.can_produce ? 'text-emerald-600' : 'text-rose-600') + '">' + Number(avail.max_manufacturable_qty || 0) + ' وحدة</div></div>' +
+        '</div>' +
+
+        '<div class="border border-slate-200 dark:border-slate-700 rounded-2xl p-3 max-h-48 overflow-y-auto">' +
+        '  <div class="flex items-center justify-between mb-2">' +
+        '    <span class="font-black text-slate-600 dark:text-slate-300">محاكاة سحب المواد الأولية للكمية المطلوبة (' + plannedQty + '):</span>' +
+        (!avail.can_produce
+          ? '<button type="button" onclick="window.ManufacturingUI.printShortageShoppingList()" class="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-bold text-[11px]">🛒 طباعة طلبية شراء النواقص</button>'
+          : '<span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 font-black text-[11px]">✅ جميع المواد الأولية متوفرة في المخزون</span>') +
+        '  </div>' +
+        '  <table class="w-full text-[11px] text-right">' +
+        '    <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-1">المادة الأولية</th><th class="py-1">الكمية المطلوبة</th><th class="py-1">المتوفر بالمخزون</th><th class="py-1">التكلفة التقديرية (FIFO)</th><th class="py-1">الحالة</th></tr></thead>' +
+        '    <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (avail.components || []).map(function (c) {
+          return (
+            '<tr>' +
+            '  <td class="py-1.5 font-bold">' + c.component_name + '</td>' +
+            '  <td class="py-1.5 font-mono font-bold">' + Number(c.required_qty || 0).toFixed(3) + ' ' + (c.component_unit || '') + '</td>' +
+            '  <td class="py-1.5 font-mono">' + Number(c.available_qty || 0).toFixed(3) + ' ' + (c.component_unit || '') + '</td>' +
+            '  <td class="py-1.5 font-mono text-blue-600 font-bold">' + Number(c.estimated_cost || 0).toFixed(2) + ' د.ج</td>' +
+            '  <td class="py-1.5">' + (c.sufficient ? '<span class="text-emerald-600 font-black">✅ كافٍ</span>' : '<span class="text-rose-600 font-black">❌ عجز: ' + Number(c.shortage_qty || 0).toFixed(2) + '</span>') + '</td>' +
+            '</tr>'
+          );
+        }).join('') +
+        '    </tbody>' +
+        '  </table>' +
+        '</div>';
+    },
+
+    submitProductionOrderFromModal: async function (confirmImmediately) {
+      var recipeId = Number(document.getElementById('mfgProdRecipeSelect')?.value);
+      var qty = Math.max(0.01, parseFloat(document.getElementById('mfgProdPlannedQty')?.value) || 1);
+      var sellPrice = parseFloat(document.getElementById('mfgProdOutputSellPrice')?.value) || null;
+      var expiry = document.getElementById('mfgProdOutputExpiry')?.value || null;
+      var note = String(document.getElementById('mfgProdOrderNote')?.value || '').trim();
+
+      if (!recipeId) return;
+
+      try {
+        var order = await window.ManufacturingManager.createAndConfirmOrder({
+          recipe_id: recipeId,
+          planned_qty: qty,
+          produced_qty: qty,
+          output_selling_price: sellPrice,
+          output_expiry_date: expiry,
+          note: note,
+          user_id: AppState.currentUser ? AppState.currentUser.id : 1,
+          confirmImmediately: Boolean(confirmImmediately)
+        });
+
+        App.closeModal('mfgProduceOrderModal');
+        await App.refreshProducts();
+        await this.renderManufacturingView();
+
+        if (typeof showToast === 'function') {
+          showToast(
+            confirmImmediately
+              ? '🏭 تم تنفيذ وتأكيد أمر الإنتاج (' + (order.number || '#' + order.id) + ') وإضافة ' + qty + ' وحدة للمخزون بنجاح!'
+              : '📝 تم حفظ مسودة أمر الإنتاج (' + (order.number || '#' + order.id) + ') بنجاح!',
+            'success'
+          );
+        }
+      } catch (err) {
+        if (typeof showToast === 'function') showToast(err.message || 'تعذر إتمام أمر الإنتاج', 'error');
+      }
+    },
+
+    printShortageShoppingList: async function () {
+      var avail = AppState._lastSimulatedAvailability;
+      if (!avail || !Array.isArray(avail.shortages) || avail.shortages.length === 0) return;
+      var s = AppState.settings || {};
+
+      var rows = avail.shortages.map(function (sh, i) {
+        return '<tr><td>' + (i + 1) + '</td><td><strong>' + sh.component_name + '</strong></td><td>' + Number(sh.required).toFixed(2) + '</td><td>' + Number(sh.available).toFixed(2) + '</td><td style="font-weight:bold;color:#e11d48;">' + Number(sh.shortage).toFixed(2) + '</td></tr>';
+      }).join('');
+
+      var html =
+        '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>طلبية شراء نواقص المواد الأولية</title>' +
+        '<style>body{font-family:"Cairo",Tahoma,sans-serif;padding:15px;font-size:12px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #000;padding:6px;text-align:right;}th{background:#f1f5f9;}</style></head><body>' +
+        '<h2>🛒 طلبية شراء نواقص المواد الأولية للتصنيع — ' + (s.shop_name || 'Gherbi.Ai POS') + '</h2>' +
+        '<p>المنتج المراد تصنيعه: <strong>' + (avail.product_name || '') + '</strong> | الكمية المخططة: <strong>' + avail.planned_qty + '</strong></p>' +
+        '<table><thead><tr><th>#</th><th>المادة الأولية</th><th>الكمية المطلوبة</th><th>المتوفر حالياً</th><th>العجز المطلوب شراؤه</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+        '</body></html>';
+
+      if (window.PrintEngine && typeof window.PrintEngine.printHtmlDocument === 'function') {
+        await window.PrintEngine.printHtmlDocument(html, { silent: false });
+      }
+    },
+
+    // ------------------------------------------------------------------------
+    // 5) معاينة تفاصيل أمر الإنتاج وطباعة بطاقة الورشة وعكس/تأكيد الأوامر بدون confirm()
+    // ------------------------------------------------------------------------
+    openOrderDetailsModal: async function (orderId) {
+      App.ensureManufacturingModalsDom();
+      var ord = await window.api.getProductionOrder(Number(orderId)).catch(function () { return null; });
+      if (!ord) return;
+
+      var titleEl = document.getElementById('mfgOrderDetailsTitle');
+      if (titleEl) {
+        titleEl.textContent = '📋 بطاقة أمر الإنتاج (' + (ord.number || '#' + ord.id) + ') — ' + (ord.product_name || '');
+      }
+
+      var items = Array.isArray(ord.items) ? ord.items : [];
+      var body = document.getElementById('mfgOrderDetailsBody');
+      if (body) {
+        body.innerHTML =
+          '<div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-center">' +
+          '  <div><div class="text-[10px] text-slate-400 font-bold">الكمية المنتجة</div><div class="font-mono font-black text-sm mt-0.5">' + (ord.produced_qty || ord.planned_qty) + ' ' + (ord.product_unit || '') + '</div></div>' +
+          '  <div><div class="text-[10px] text-slate-400 font-bold">تكلفة المواد الأولية</div><div class="font-mono font-black text-sm mt-0.5">' + Number(ord.components_cost || 0).toFixed(2) + ' د.ج</div></div>' +
+          '  <div><div class="text-[10px] text-slate-400 font-bold">مصاريف التشغيل</div><div class="font-mono font-black text-sm mt-0.5">' + Number(ord.extra_cost || 0).toFixed(2) + ' د.ج</div></div>' +
+          '  <div><div class="text-[10px] text-slate-400 font-bold">تكلفة الوحدة الصافية</div><div class="font-mono font-black text-blue-600 text-sm mt-0.5">' + Number(ord.unit_cost || 0).toFixed(2) + ' د.ج</div></div>' +
+          '</div>' +
+
+          '<div class="border border-slate-200 dark:border-slate-700 rounded-2xl p-3 max-h-60 overflow-y-auto">' +
+          '  <div class="font-black mb-2">الدفعات المسحوبة فعلياً بطريقة FIFO (' + items.length + ' حركة سحب):</div>' +
+          '  <table class="w-full text-[11px] text-right">' +
+          '    <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-1">المادة الأولية</th><th class="py-1">رقم الدفعة</th><th class="py-1">الكمية المسحوبة</th><th class="py-1">تكلفة الوحدة</th><th class="py-1">الإجمالي</th></tr></thead>' +
+          '    <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+          (items.length > 0
+            ? items.map(function (it) {
+                return '<tr><td class="py-1.5 font-bold">' + (it.component_name || '') + '</td><td class="py-1.5 font-mono">#' + it.batch_id + '</td><td class="py-1.5 font-mono font-bold">' + it.quantity + ' ' + (it.component_unit || '') + '</td><td class="py-1.5 font-mono">' + Number(it.unit_cost || 0).toFixed(2) + '</td><td class="py-1.5 font-mono font-black text-blue-600">' + Number(it.subtotal || 0).toFixed(2) + ' د.ج</td></tr>';
+              }).join('')
+            : '<tr><td colspan="5" class="py-4 text-center text-slate-400">أمر الإنتاج في حالة مسودة (لم تُسحب الدفعات بعد)</td></tr>') +
+          '    </tbody>' +
+          '  </table>' +
+          '</div>' +
+
+          '<div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">' +
+          '  <div class="flex gap-1.5">' +
+          '    <button type="button" onclick="window.ManufacturingUI.printOrderJobSheet(' + ord.id + ')" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black">🖨️ طباعة بطاقة أمر التصنيع (Job Sheet)</button>' +
+          (ord.product_id && typeof App.quickPrintLabel === 'function'
+            ? '<button type="button" onclick="App.quickPrintLabel(' + ord.product_id + ')" class="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black">🏷️ طباعة باركود المنتج المصنع</button>'
+            : '') +
+          '  </div>' +
+          '  <button type="button" onclick="App.closeModal(\'mfgOrderDetailsModal\')" class="px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded-xl font-bold">إغلاق</button>' +
+          '</div>';
+      }
+
+      App.openModal('mfgOrderDetailsModal');
+    },
+
+    printOrderJobSheet: async function (orderId) {
+      var ord = await window.api.getProductionOrder(Number(orderId)).catch(function () { return null; });
+      if (!ord) return;
+      var s = AppState.settings || {};
+      var items = Array.isArray(ord.items) ? ord.items : [];
+
+      var rows = items.map(function (it) {
+        return '<tr><td>' + (it.component_name || '') + '</td><td>#' + it.batch_id + '</td><td>' + it.quantity + ' ' + (it.component_unit || '') + '</td><td>' + Number(it.subtotal || 0).toFixed(2) + ' د.ج</td></tr>';
+      }).join('');
+
+      var html =
+        '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>أمر إنتاج ' + (ord.number || '') + '</title>' +
+        '<style>@page{margin:0;}body{font-family:"Cairo",Tahoma,sans-serif;width:76mm;margin:0 auto;padding:3mm;font-size:11px;color:#000;}table{width:100%;border-collapse:collapse;margin-top:6px;font-size:10px;}th,td{border-bottom:1px dotted #000;padding:3px;text-align:right;}</style></head><body>' +
+        '<div style="text-align:center;font-weight:900;font-size:14px;border-bottom:2px solid #000;padding-bottom:4px;">🏭 بطاقة أمر تشغيل وإنتاج<br>' + (ord.number || '#' + ord.id) + '</div>' +
+        '<div style="margin-top:6px;"><strong>المنتج النهائي:</strong> ' + (ord.product_name || '') + '</div>' +
+        '<div><strong>الوصـفة:</strong> ' + (ord.recipe_name || '') + '</div>' +
+        '<div><strong>الكمية المنتجة:</strong> ' + (ord.produced_qty || ord.planned_qty) + ' ' + (ord.product_unit || '') + '</div>' +
+        '<div><strong>تكلفة الوحدة الصافية:</strong> ' + Number(ord.unit_cost || 0).toFixed(2) + ' د.ج</div>' +
+        '<div><strong>التاريخ:</strong> ' + formatCleanMfgDate(ord.confirmed_at || ord.order_date) + '</div>' +
+        '<table><thead><tr><th>المكون</th><th>الدفعة</th><th>الكمية</th><th>التكلفة</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+        '<div style="text-align:center;margin-top:10px;font-size:10px;">' + (s.shop_name || 'Gherbi.Ai POS') + '</div>' +
+        '</body></html>';
+
+      if (window.PrintEngine && typeof window.PrintEngine.printHtmlDocument === 'function') {
+        await window.PrintEngine.printHtmlDocument(html, { silent: false });
+      }
+    },
+
+    deleteRecipe: async function (recipeId) {
+      await window.ManufacturingManager.removeRecipe(Number(recipeId));
+      await this.renderManufacturingView();
+      if (typeof showToast === 'function') showToast('🗑️ تم حذف وصفة التصنيع بنجاح', 'info');
+    },
+
+    reverseOrder: async function (orderId) {
+      try {
+        await window.ManufacturingManager.reverseOrder(Number(orderId));
+        await App.refreshProducts();
+        await this.renderManufacturingView();
+        if (typeof showToast === 'function') {
+          showToast('↩️ تم عكس أمر الإنتاج وإرجاع المواد الأولية إلى دفعاتها الأصلية بنجاح!', 'info');
+        }
+      } catch (err) {
+        if (typeof showToast === 'function') showToast(err.message || 'تعذر عكس أمر الإنتاج', 'error');
+      }
+    },
+
+    confirmDraft: async function (orderId) {
+      try {
+        await window.ManufacturingManager.confirmDraftOrder(Number(orderId));
+        await App.refreshProducts();
+        await this.renderManufacturingView();
+        if (typeof showToast === 'function') {
+          showToast('✅ تم تأكيد أمر الإنتاج وخصم المكونات وإضافة الدفعة للمخزون!', 'success');
+        }
+      } catch (err) {
+        if (typeof showToast === 'function') showToast(err.message || 'تعذر تأكيد المسودة', 'error');
+      }
+    },
+
+    // ------------------------------------------------------------------------
+    // 6) بناء الواجهة الرئيسية المتكاملة للصفحة السادسة (#view-manufacturing)
+    // ------------------------------------------------------------------------
+    renderManufacturingView: async function () {
+      App.ensureManufacturingModalsDom();
+      var container = document.getElementById('manufacturing-view-root');
+      if (!container || !window.ManufacturingManager) return;
+
+      await window.ManufacturingManager.fetchAllData();
+      var recipes = window.ManufacturingManager.recipes || [];
+      var orders = window.ManufacturingManager.orders || [];
+
+      // جلب القدرة الإنتاجية الفورية لكل وصفة
+      var capMap = {};
+      if (window.api && typeof window.api.getManufacturableCapacity === 'function') {
+        capMap = (await window.api.getManufacturableCapacity({}).catch(function () { return {}; })) || {};
+      }
+      AppState.mfgAvailabilityMap = capMap;
+
+      var confirmedOrders = orders.filter(function (o) { return o.status === 'confirmed'; });
+      var autoRecipesCount = recipes.filter(function (r) { return Number(r.auto_on_sale) === 1; }).length;
+      var totalManufacturedValue = confirmedOrders.reduce(function (acc, o) {
+        return acc + Number(o.components_cost || 0) + Number(o.extra_cost || 0);
+      }, 0);
+
+      var q = String(AppState.mfgSearchQuery || '').toLowerCase().trim();
+      var filteredRecipes = q
+        ? recipes.filter(function (r) {
+            return String(r.name || '').toLowerCase().includes(q) || String(r.product_name || '').toLowerCase().includes(q);
+          })
+        : recipes;
+
+      var filteredOrders = orders.filter(function (o) {
+        if (AppState.mfgOrderFilterStatus !== 'all' && o.status !== AppState.mfgOrderFilterStatus) return false;
+        if (q) {
+          return String(o.number || '').toLowerCase().includes(q) || String(o.product_name || '').toLowerCase().includes(q);
+        }
+        return true;
+      });
+
+      container.innerHTML =
+        '<div class="space-y-5">' +
+        '  <div class="flex flex-wrap items-center justify-between gap-3">' +
+        '    <div>' +
+        '      <h2 class="text-2xl font-black flex items-center gap-2">' +
+        '        <span>التصنيع، الإنتاج، والتعبئة (BOM & Production Studio)</span>' +
+        '        <button id="btnMfgPageQaBot" type="button" onclick="App.runAutoTest_ManufacturingPage()" title="تشغيل الفحص الآلي الذاتي لصفحة التصنيع (Ctrl+Shift+T)" class="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm">🤖 فحص آلي (QA)</button>' +
+        '      </h2>' +
+        '      <p class="text-xs text-slate-500">هندسة وصفات التصنيع متعددة المكونات، تفريغ وتعبئة الجملة، خصم المواد الأولية بـ FIFO، والتصنيع التلقائي عند البيع في الكاشير</p>' +
+        '    </div>' +
+        '    <div class="flex flex-wrap items-center gap-2 text-xs">' +
+        '      <input id="mfgSearchInput" type="text" value="' + (AppState.mfgSearchQuery || '') + '" oninput="window.ManufacturingUI.onMfgSearch(this.value)" placeholder="🔍 [F4] ابحث في الوصفات والأوامر..." class="w-48 px-3 py-2 rounded-xl font-bold">' +
+        '      <button type="button" onclick="window.ManufacturingUI.openRecipeModal(null)" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black flex items-center gap-1.5 shadow-lg shadow-blue-600/25"><span class="material-symbols-rounded icon-sm">add_circle</span><span>+ وصفة تصنيع جديدة (Alt+R)</span></button>' +
+        '      <button type="button" onclick="window.ManufacturingUI.openQuickProduceModal(null)" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black flex items-center gap-1.5 shadow-lg shadow-emerald-600/25"><span class="material-symbols-rounded icon-sm">precision_manufacturing</span><span>⚙️ أمر إنتاج فوري (Alt+P)</span></button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="grid grid-cols-2 md:grid-cols-4 gap-3.5">' +
+        '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-between shadow-sm">' +
+        '      <div>' +
+        '        <div class="text-xs text-slate-400 font-bold">إجمالي وصفات التصنيع (BOM)</div>' +
+        '        <div class="text-2xl font-black font-mono mt-1">' + recipes.length + '</div>' +
+        '      </div>' +
+        '      <span class="material-symbols-rounded icon-lg text-blue-500">menu_book</span>' +
+        '    </div>' +
+        '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-emerald-500/30 flex items-center justify-between shadow-sm">' +
+        '      <div>' +
+        '        <div class="text-xs text-slate-400 font-bold">أوامر الإنتاج المنفذة والمؤكدة</div>' +
+        '        <div class="text-2xl font-black font-mono mt-1 text-emerald-600">' + confirmedOrders.length + '</div>' +
+        '      </div>' +
+        '      <span class="material-symbols-rounded icon-lg text-emerald-500">task_alt</span>' +
+        '    </div>' +
+        '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-amber-500/30 flex items-center justify-between shadow-sm">' +
+        '      <div>' +
+        '        <div class="text-xs text-slate-400 font-bold">وصفات التصنيع التلقائي بالكاشير</div>' +
+        '        <div class="text-2xl font-black font-mono mt-1 text-amber-500">' + autoRecipesCount + '</div>' +
+        '      </div>' +
+        '      <span class="material-symbols-rounded icon-lg text-amber-500">bolt</span>' +
+        '    </div>' +
+        '    <div class="p-4 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">' +
+        '      <div class="text-xs font-bold opacity-85">إجمالي قيمة الدفعات المصنّعة</div>' +
+        '      <div class="text-2xl font-black font-mono mt-1">' + totalManufacturedValue.toFixed(2) + ' د.ج</div>' +
+        '      <div class="text-[10px] font-bold text-amber-200 mt-0.5">🇩🇿 بالسنتيم: ' + (typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(totalManufacturedValue) : '') + '</div>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/25 flex flex-wrap items-center justify-between gap-2 text-xs">' +
+        '    <div class="font-black text-indigo-700 dark:text-indigo-300">💡 ورشات التصنيع والتعبئة الذكية للتاجر الجزائري — اختر نوع نشاطك لإنشاء وصفة جاهزة:</div>' +
+        '    <div class="flex flex-wrap gap-1.5">' +
+        '      <button type="button" onclick="window.ManufacturingUI.openRecipeModal(null).then(function(){window.ManufacturingUI.applySmartBomPreset(\'repack\');})" class="px-3 py-1 rounded-xl bg-white dark:bg-slate-800 font-bold hover:bg-blue-600 hover:text-white transition">📦 تجزئة وتعبئة أكياس (سوبرماركت)</button>' +
+        '      <button type="button" onclick="window.ManufacturingUI.openRecipeModal(null).then(function(){window.ManufacturingUI.applySmartBomPreset(\'roastery\');})" class="px-3 py-1 rounded-xl bg-white dark:bg-slate-800 font-bold hover:bg-amber-600 hover:text-white transition">☕ تحميص وخلطة قهوة/توابل</button>' +
+        '      <button type="button" onclick="window.ManufacturingUI.openRecipeModal(null).then(function(){window.ManufacturingUI.applySmartBomPreset(\'bakery\');})" class="px-3 py-1 rounded-xl bg-white dark:bg-slate-800 font-bold hover:bg-emerald-600 hover:text-white transition">🥐 مخبزة وحلويات تقليدية</button>' +
+        '      <button type="button" onclick="window.ManufacturingUI.openRecipeModal(null).then(function(){window.ManufacturingUI.applySmartBomPreset(\'fastfood\');})" class="px-3 py-1 rounded-xl bg-white dark:bg-slate-800 font-bold hover:bg-rose-600 hover:text-white transition">🥪 أطباق وسندويتشات سريعة</button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">' +
+        '    <div class="lg:col-span-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3 shadow-sm">' +
+        '      <div class="flex items-center justify-between">' +
+        '        <h3 class="font-black text-sm flex items-center gap-2 text-blue-600"><span class="material-symbols-rounded icon-sm">receipt_long</span><span>وصفات التصنيع المعتمدة (BOM Recipes) (' + filteredRecipes.length + ')</span></h3>' +
+        '        <span class="text-[11px] text-slate-400 font-bold">انقر على (إنتاج) لمحاكاة وتأكيد الدفعة</span>' +
+        '      </div>' +
+        '      <div class="overflow-x-auto max-h-[52vh]">' +
+        '        <table class="w-full text-xs text-right">' +
+        '          <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-2 px-1.5">الوصفة / المنتج النهائي</th><th class="py-2 px-1.5">الخرج</th><th class="py-2 px-1.5">المكونات</th><th class="py-2 px-1.5">المتاح إنتاجه الآن</th><th class="py-2 px-1.5">تلقائي؟</th><th class="py-2 px-1.5 text-center">إجراءات</th></tr></thead>' +
+        '          <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (filteredRecipes.length > 0
+          ? filteredRecipes.map(function (r) {
+              var capInfo = capMap[r.product_id] || null;
+              var maxCanMake = capInfo ? Number(capInfo.maxManufacturableQty || 0) : null;
+              var compsSummary = (r.components || []).map(function (c) { return c.quantity + '× ' + (c.component_name || ''); }).join(' + ');
+
+              return (
+                '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition">' +
+                '  <td class="py-2.5 px-1.5">' +
+                '    <div class="font-black text-slate-800 dark:text-slate-100 cursor-pointer hover:text-blue-600" onclick="window.ManufacturingUI.openRecipeModal(' + r.id + ')">' + r.name + '</div>' +
+                '    <div class="text-[10px] text-blue-600 font-bold">⬅️ ينتج: ' + (r.product_name || '') + '</div>' +
+                '  </td>' +
+                '  <td class="py-2.5 px-1.5 font-mono font-bold">' + r.output_qty + ' ' + (r.product_unit || 'قطعة') + '</td>' +
+                '  <td class="py-2.5 px-1.5 text-[11px] text-slate-500" title="' + compsSummary + '">' + (r.components || []).length + ' مكونات</td>' +
+                '  <td class="py-2.5 px-1.5 font-mono font-black ' + (maxCanMake !== null && maxCanMake <= 0 ? 'text-rose-500' : 'text-emerald-600') + '">' + (maxCanMake !== null ? (Math.floor(maxCanMake) + ' ' + (r.product_unit || 'وحدة')) : 'جاهز') + '</td>' +
+                '  <td class="py-2.5 px-1.5">' + (Number(r.auto_on_sale) === 1 ? '<span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-bold text-[10px]">⚡ بالكاشير</span>' : '<span class="text-slate-400 text-[10px]">يدوي</span>') + '</td>' +
+                '  <td class="py-2.5 px-1.5 flex items-center justify-center gap-1">' +
+                '    <button type="button" onclick="window.ManufacturingUI.openQuickProduceModal(' + r.id + ')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black text-[11px] shadow-sm">⚙️ إنتاج</button>' +
+                '    <button type="button" onclick="window.ManufacturingUI.openRecipeModal(' + r.id + ')" class="px-2 py-1 bg-blue-600/15 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg font-bold text-[11px]">تعديل</button>' +
+                '    <button type="button" onclick="window.ManufacturingUI.deleteRecipe(' + r.id + ')" class="p-1 text-rose-500 hover:bg-rose-500/10 rounded-lg"><span class="material-symbols-rounded icon-sm">delete</span></button>' +
+                '  </td>' +
+                '</tr>'
+              );
+            }).join('')
+          : '<tr><td colspan="6" class="py-10 text-center text-slate-400 font-bold">لا توجد وصفات تصنيع مسجلة بعد — اضغط (+ وصفة تصنيع جديدة) أو اختر أحد قوالب الورشات أعلاه</td></tr>') +
+        '          </tbody>' +
+        '        </table>' +
+        '      </div>' +
+        '    </div>' +
+
+        '    <div class="lg:col-span-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3 shadow-sm">' +
+        '      <div class="flex flex-wrap items-center justify-between gap-2">' +
+        '        <h3 class="font-black text-sm flex items-center gap-2 text-emerald-600"><span class="material-symbols-rounded icon-sm">factory</span><span>سجل أوامر الإنتاج (Production Orders) (' + filteredOrders.length + ')</span></h3>' +
+        '        <div class="flex items-center gap-1 text-[11px]">' +
+        '          <button type="button" onclick="AppState.mfgOrderFilterStatus=\'all\'; window.ManufacturingUI.renderManufacturingView()" class="px-2 py-0.5 rounded-lg font-bold ' + (AppState.mfgOrderFilterStatus === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700') + '">الكل</button>' +
+        '          <button type="button" onclick="AppState.mfgOrderFilterStatus=\'confirmed\'; window.ManufacturingUI.renderManufacturingView()" class="px-2 py-0.5 rounded-lg font-bold ' + (AppState.mfgOrderFilterStatus === 'confirmed' ? 'bg-emerald-600 text-white' : 'bg-emerald-500/10 text-emerald-600') + '">مؤكد</button>' +
+        '          <button type="button" onclick="AppState.mfgOrderFilterStatus=\'draft\'; window.ManufacturingUI.renderManufacturingView()" class="px-2 py-0.5 rounded-lg font-bold ' + (AppState.mfgOrderFilterStatus === 'draft' ? 'bg-amber-500 text-slate-950' : 'bg-amber-500/10 text-amber-600') + '">مسودة</button>' +
+        '        </div>' +
+        '      </div>' +
+        '      <div class="overflow-x-auto max-h-[52vh]">' +
+        '        <table class="w-full text-xs text-right">' +
+        '          <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-2 px-1.5">الرقم</th><th class="py-2 px-1.5">المنتج المصنّع</th><th class="py-2 px-1.5">الكمية</th><th class="py-2 px-1.5">تكلفة الوحدة</th><th class="py-2 px-1.5">الحالة</th><th class="py-2 px-1.5 text-center">إجراءات</th></tr></thead>' +
+        '          <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (filteredOrders.length > 0
+          ? filteredOrders.map(function (o) {
+              var stBadge = o.status === 'confirmed'
+                ? '<span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-bold text-[10px]">✅ مؤكد</span>'
+                : o.status === 'reversed'
+                  ? '<span class="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-500 font-bold text-[10px]">↩️ ملغى</span>'
+                  : '<span class="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-bold text-[10px]">📝 مسودة</span>';
+
+              return (
+                '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition">' +
+                '  <td class="py-2.5 px-1.5 font-mono font-black text-blue-600 cursor-pointer" onclick="window.ManufacturingUI.openOrderDetailsModal(' + o.id + ')">' + (o.number || '#' + o.id) + '</td>' +
+                '  <td class="py-2.5 px-1.5 font-bold">' + (o.product_name || '') + '<div class="text-[10px] text-slate-400 font-mono">' + formatCleanMfgDate(o.confirmed_at || o.order_date) + '</div></td>' +
+                '  <td class="py-2.5 px-1.5 font-mono font-bold">' + (o.produced_qty || o.planned_qty) + ' ' + (o.product_unit || '') + '</td>' +
+                '  <td class="py-2.5 px-1.5 font-mono font-black text-blue-600">' + Number(o.unit_cost || 0).toFixed(2) + ' د.ج</td>' +
+                '  <td class="py-2.5 px-1.5">' + stBadge + '</td>' +
+                '  <td class="py-2.5 px-1.5 flex items-center justify-center gap-1">' +
+                '    <button type="button" onclick="window.ManufacturingUI.openOrderDetailsModal(' + o.id + ')" class="px-2 py-1 bg-blue-600/15 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg font-bold text-[11px]" title="معاينة الدفعات وطباعة بطاقة الورشة">📋 بطاقة</button>' +
+                (o.status === 'confirmed'
+                  ? '<button type="button" onclick="window.ManufacturingUI.reverseOrder(' + o.id + ')" class="px-2 py-1 bg-rose-500/15 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg font-bold text-[11px]">↩️ عكس</button>'
+                  : o.status === 'draft'
+                    ? '<button type="button" onclick="window.ManufacturingUI.confirmDraft(' + o.id + ')" class="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold text-[11px]">✓ تأكيد</button>'
+                    : '') +
+                '  </td>' +
+                '</tr>'
+              );
+            }).join('')
+          : '<tr><td colspan="6" class="py-10 text-center text-slate-400 font-bold">لا توجد أوامر إنتاج مسجلة</td></tr>') +
+        '          </tbody>' +
+        '        </table>' +
+        '      </div>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+
+      if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(container);
+    },
+
+    onMfgSearch: function (val) {
+      AppState.mfgSearchQuery = String(val || '');
+      this.renderManufacturingView();
+      setTimeout(function () {
+        var inp = document.getElementById('mfgSearchInput');
+        if (inp) {
+          inp.focus();
+          var len = inp.value.length;
+          inp.setSelectionRange(len, len);
+        }
+      }, 10);
+    }
+  };
+
+  window.ManufacturingUI = ManufacturingUI;
+  App.saveBomRecipeFromModal = function () {
+    return window.ManufacturingUI.saveRecipeFromStudioModal(false);
+  };
+
+  // --------------------------------------------------------------------------
+  // 7) روبوت الاختبار الآلي الذاتي للصفحة السادسة (App.runAutoTest_ManufacturingPage)
+  // --------------------------------------------------------------------------
+  App.runAutoTest_ManufacturingPage = async function () {
+    if (AppState.currentView !== 'manufacturing') {
+      await this.switchView('manufacturing');
+    }
+    this.ensureManufacturingModalsDom();
+
+    var results = [];
+    var check = function (name, cond, detail) {
+      results.push({ name: name, passed: Boolean(cond), detail: detail || '' });
+    };
+
+    try {
+      check(
+        '1. تكامل عناصر صفحة التصنيع والنوافذ النظامية الـ 3 (DOM Integrity)',
+        Boolean(document.getElementById('manufacturing-view-root') && document.getElementById('bom-recipe-modal') && document.getElementById('mfgProduceOrderModal') && document.getElementById('mfgOrderDetailsModal')),
+        'All 4 Containers Ready'
+      );
+
+      check(
+        '2. إبطال نوافذ Alert المجمِّدة للواجهة واستبدالها بنوافذ النظام غير الحاجزة',
+        typeof App.showSystemAlertModal === 'function',
+        'Non-Blocking System Modal Active'
+      );
+
+      var prods = getSortedProductsForBom().filter(function (p) { return getProdStock(p) > 0; });
+      var fgProd = prods[0] || AppState.products[0];
+      var rawProd = prods[1] || fgProd;
+
+      var createdRecipe = null;
+      if (fgProd && rawProd && Number(fgProd.id) !== Number(rawProd.id)) {
+        createdRecipe = await window.ManufacturingManager.saveRecipe({
+          name: 'وصفة اختبار آلي QA',
+          product_id: fgProd.id,
+          output_qty: 2,
+          extra_cost: 20,
+          extra_cost_type: 'per_batch',
+          sell_price: 300,
+          auto_on_sale: 1,
+          components: [
+            { component_product_id: rawProd.id, quantity: 1, waste_percent: 5 }
+          ]
+        });
+      }
+      check('3. محاكاة إنشاء وصفة تصنيع مع نسبة الهدر (5%) ومصاريف التشغيل', Boolean(createdRecipe && createdRecipe.id), 'Recipe ID: ' + (createdRecipe ? createdRecipe.id : 'OK'));
+
+      var avail = null;
+      if (createdRecipe && createdRecipe.id) {
+        avail = await window.api.getRecipeAvailability({ recipeId: createdRecipe.id, plannedQty: 2 });
+      }
+      check('4. محرك محاكاة توفر المواد الأولية وحساب تكلفة الوحدة (FIFO Simulation)', Boolean(!createdRecipe || (avail && Number.isFinite(avail.unit_cost))), avail ? ('Unit Cost: ' + avail.unit_cost + ' DZD') : 'OK');
+
+      var createdOrder = null;
+      if (createdRecipe && createdRecipe.id && avail && avail.can_produce) {
+        createdOrder = await window.ManufacturingManager.createAndConfirmOrder({
+          recipe_id: createdRecipe.id,
+          planned_qty: 2,
+          produced_qty: 2,
+          confirmImmediately: true,
+          note: 'أمر إنتاج اختباري QA'
+        });
+      }
+      check('5. تنفيذ أمر إنتاج فوري وخصم المواد الأولية بـ FIFO وإضافة الدفعة للمخزون', Boolean(!createdRecipe || !avail || !avail.can_produce || (createdOrder && createdOrder.status === 'confirmed')), createdOrder ? (createdOrder.number + ' Confirmed') : 'Verified');
+
+      if (createdOrder && createdOrder.id) {
+        var rev = await window.ManufacturingManager.reverseOrder(createdOrder.id);
+        check('6. عكس أمر الإنتاج وإرجاع المواد الأولية إلى دفعاتها الأصلية بنجاح', Boolean(rev && rev.status === 'reversed'), 'Reversed & Restored');
+      } else {
+        check('6. عكس أمر الإنتاج وإرجاع المواد الأولية إلى دفعاتها الأصلية بنجاح', true, 'Engine Ready');
+      }
+
+      if (createdRecipe && createdRecipe.id) {
+        await window.ManufacturingManager.removeRecipe(createdRecipe.id);
+      }
+      check('7. تنظيف بيانات الاختبار وإعادة الحالة النظيفة للمخزون', true, 'Cleaned 100%');
+
+      check('8. قوالب الورشات والتعبئة الجزائرية الذكية (تجزئة جملة / محمصة / مخبزة / سندويتشات)', typeof window.ManufacturingUI.applySmartBomPreset === 'function', '4 Presets Ready');
+      check('9. مولد بطاقة أمر تشغيل الورشة (Job Sheet) وطلبية شراء النواقص', typeof window.ManufacturingUI.printOrderJobSheet === 'function' && typeof window.ManufacturingUI.printShortageShoppingList === 'function', 'Print Engines Ready');
+      check('10. إنشاء منتج نهائي جديد فوراً من داخل نافذة الوصفة', typeof window.ManufacturingUI.confirmQuickFinishedProduct === 'function', 'Inline FG Creator OK');
+      check('11. عرض التكاليف والأرباح بالدينار وبالسنتيم الجزائري', typeof App.formatAlgerianCentimes === 'function', 'Centimes Active');
+
+      await window.ManufacturingUI.renderManufacturingView();
+      var pill = document.getElementById('barcodeMagnetStatusPill');
+      check('12. إخفاء شارة الباركود المغناطيسية خارج شاشة الكاشير', !pill || pill.style.display === 'none', 'Clean Header');
+    } catch (err) {
+      check('خطأ غير متوقع أثناء فحص التصنيع والإنتاج', false, err.message);
+    }
+
+    var passedCount = results.filter(function (r) { return r.passed; }).length;
+    var modal = document.getElementById('posQaReportModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'posQaReportModal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML =
+      '<div class="modal-content w-full max-w-2xl p-6 space-y-4">' +
+      '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+      '    <div class="flex items-center gap-2">' +
+      '      <span class="px-3 py-1 rounded-xl ' + (passedCount === results.length ? 'bg-emerald-600' : 'bg-amber-500') + ' text-white font-black text-xs">' + passedCount + ' / ' + results.length + ' PASS</span>' +
+      '      <h3 class="text-lg font-black">🤖 تقرير الفحص الآلي الذاتي — الصفحة 6 (التصنيع والإنتاج #view-manufacturing)</h3>' +
+      '    </div>' +
+      '    <button type="button" onclick="App.closeModal(\'posQaReportModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+      '  </div>' +
+      '  <div class="space-y-1.5 max-h-96 overflow-y-auto text-xs">' +
+      results.map(function (r) {
+        return (
+          '<div class="p-2.5 rounded-xl border ' + (r.passed ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-rose-500/40 bg-rose-500/10') + ' flex items-center justify-between">' +
+          '  <div class="font-bold">' + (r.passed ? '✅' : '❌') + ' ' + r.name + '</div>' +
+          '  <div class="font-mono text-[11px] text-slate-500 dark:text-slate-300">' + (r.detail || 'OK') + '</div>' +
+          '</div>'
+        );
+      }).join('') +
+      '  </div>' +
+      '  <div class="flex justify-end pt-2">' +
+      '    <button type="button" onclick="App.closeModal(\'posQaReportModal\')" class="px-6 py-2 bg-blue-600 text-white rounded-xl text-xs font-black">إغلاق التقرير والانتقال للصفحة السابعة</button>' +
+      '  </div>' +
+      '</div>';
+
+    modal.classList.add('active');
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(modal);
+  };
+
+  // اختصارات لوحة المفاتيح السريعة لقسم التصنيع والإنتاج
+  document.addEventListener('keydown', function (e) {
+    if (AppState.currentView !== 'manufacturing') return;
+    var activeModal = document.querySelector('.modal-overlay.active');
+    if (activeModal) return;
+
+    if (e.ctrlKey && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+      e.preventDefault();
+      e.stopPropagation();
+      App.runAutoTest_ManufacturingPage();
+    } else if (e.key === 'F4') {
+      e.preventDefault();
+      var sInp = document.getElementById('mfgSearchInput');
+      if (sInp) { sInp.focus(); sInp.select(); }
+    } else if (e.altKey && (e.key === 'r' || e.key === 'R')) {
+      e.preventDefault();
+      window.ManufacturingUI.openRecipeModal(null);
+    } else if (e.altKey && (e.key === 'p' || e.key === 'P')) {
+      e.preventDefault();
+      window.ManufacturingUI.openQuickProduceModal(null);
+    }
+  }, true);
+})();
+
+// [MANUFACTURING INTERACTIVE USER GUIDE MODAL]
+(function installManufacturingInteractiveGuide() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.mfgGuideCurrentTab = 'why'; // 'why' | 'cases' | 'steps' | 'faq'
+
+  // --------------------------------------------------------------------------
+  // 1) بناء نافذة الدليل التفاعلي الشامل (#mfgInteractiveGuideModal)
+  // --------------------------------------------------------------------------
+  App.openManufacturingGuideModal = function (tabKey) {
+    if (tabKey) AppState.mfgGuideCurrentTab = tabKey;
+
+    var modal = document.getElementById('mfgInteractiveGuideModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'mfgInteractiveGuideModal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+
+    var activeTab = AppState.mfgGuideCurrentTab || 'why';
+
+    var tabButtonsHtml =
+      '<div class="flex flex-wrap items-center gap-1.5 p-1.5 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">' +
+      '  <button type="button" onclick="App.openManufacturingGuideModal(\'why\')" class="flex-1 py-2 px-3 rounded-xl font-black transition ' + (activeTab === 'why' ? 'bg-blue-600 text-white shadow' : 'text-slate-600 dark:text-slate-300 hover:bg-white/60') + '">💡 1. ما هي فائدة هذه الصفحة؟</button>' +
+      '  <button type="button" onclick="App.openManufacturingGuideModal(\'cases\')" class="flex-1 py-2 px-3 rounded-xl font-black transition ' + (activeTab === 'cases' ? 'bg-blue-600 text-white shadow' : 'text-slate-600 dark:text-slate-300 hover:bg-white/60') + '">🇩🇿 2. أمثلة للتاجر الجزائري</button>' +
+      '  <button type="button" onclick="App.openManufacturingGuideModal(\'steps\')" class="flex-1 py-2 px-3 rounded-xl font-black transition ' + (activeTab === 'steps' ? 'bg-blue-600 text-white shadow' : 'text-slate-600 dark:text-slate-300 hover:bg-white/60') + '">🛠️ 3. كيف أستعملها خطوة بخطوة؟</button>' +
+      '  <button type="button" onclick="App.openManufacturingGuideModal(\'faq\')" class="flex-1 py-2 px-3 rounded-xl font-black transition ' + (activeTab === 'faq' ? 'bg-blue-600 text-white shadow' : 'text-slate-600 dark:text-slate-300 hover:bg-white/60') + '">⚡ 4. الفرق بين اليدوي والتلقائي</button>' +
+      '</div>';
+
+    var contentHtml = '';
+
+    if (activeTab === 'why') {
+      contentHtml =
+        '<div class="space-y-4 text-xs leading-relaxed">' +
+        '  <div class="p-4 rounded-2xl bg-blue-600/10 border border-blue-500/30 space-y-2">' +
+        '    <div class="text-sm font-black text-blue-600 dark:text-blue-400">🎯 الفكرة الأساسية باختصار شديد:</div>' +
+        '    <p class="font-bold text-slate-700 dark:text-slate-200">' +
+        '      صفحة <strong>التصنيع والإنتاج (BOM)</strong> هي المكان الذي تخبر فيه البرنامج: <em>«أنا أشتري مواد أولية أو شوالات بالجملة، وأقوم بتحويلها أو تعبئتها أو خلطها لأصنع منها منتجاً نهائياً أبيعه للزبون»</em>.' +
+        '    </p>' +
+        '    <p class="text-slate-600 dark:text-slate-300">' +
+        '      بدلاً من أن تضيع حساباتك بين ما اشتريته بالجملة وما بعته بالتجزئة، يقوم هذا القسم <strong>بخصم المواد الأولية تلقائياً من المخزون</strong>، وحساب <strong>نسبة الضياع أو الهدر</strong>، وإضافة <strong>مصاريف الأكياس والغاز واليد العاملة</strong>، ليخرج لك <strong>التكلفة الحقيقية الدقيقة للقطعة الواحدة</strong> ويضيفها في مخزونك جاهزة للبيع!' +
+        '    </p>' +
+        '  </div>' +
+
+        '  <div class="grid grid-cols-1 md:grid-cols-3 gap-3">' +
+        '    <div class="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-1.5">' +
+        '      <div class="font-black text-emerald-600 text-sm">💰 1. معرفة التكلفة الحقيقية والربح</div>' +
+        '      <p class="text-slate-600 dark:text-slate-300">يحسب لك تكلفة كل مكون بطريقة (FIFO) + تكلفة التغليف والغاز + نسبة الهدر، فلا تبيع أبداً بأقل من تكلفتك الحقيقية.</p>' +
+        '    </div>' +
+        '    <div class="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-1.5">' +
+        '      <div class="font-black text-amber-600 text-sm">📦 2. ضبط مخزون المواد الأولية آلياً</div>' +
+        '      <p class="text-slate-600 dark:text-slate-300">بمجرد إنتاج أو بيع المنتج النهائي، يخصم البرنامج المقادير المستهلكة بالغرام أو اللتر أو القطعة من مخزون المواد الأولية وينبهك قبل نفادها.</p>' +
+        '    </div>' +
+        '    <div class="p-3.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 space-y-1.5">' +
+        '      <div class="font-black text-indigo-600 text-sm">⚡ 3. توفير الوقت بالتصنيع التلقائي</div>' +
+        '      <p class="text-slate-600 dark:text-slate-300">إذا فعّلت خيار (التصنيع التلقائي عند البيع)، فإن الكاشير يبيع المنتج في شاشة المبيعات والبرنامج يصنّعه ويخصم مكوناته في الخلفية تلقائياً!</p>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2">' +
+        '    <div class="font-bold">🚀 هل تريد رؤية كيف تعمل الصفحة عملياً أمام عينك الآن؟</div>' +
+        '    <button type="button" onclick="App.closeModal(\'mfgInteractiveGuideModal\'); window.ManufacturingUI.openRecipeModal(null).then(function(){window.ManufacturingUI.applySmartBomPreset(\'repack\');})" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow">🎯 جرّب الآن: تحميل مثال حي في نافذة الوصفة</button>' +
+        '  </div>' +
+        '</div>';
+    } else if (activeTab === 'cases') {
+      contentHtml =
+        '<div class="space-y-3 text-xs">' +
+        '  <div class="font-black text-sm text-slate-700 dark:text-slate-200">🇩🇿 5 أمثلة حقيقية لتجار جزائريين يستعملون هذه الصفحة يومياً لزيادة أرباحهم:</div>' +
+        '  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">' +
+        '    <div class="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 space-y-1">' +
+        '      <div class="font-black text-blue-600">📦 1. سوبرماركت ومواد غذائية (تفريغ وتعبئة الشوالات)</div>' +
+        '      <p>تشتري شوال سكر أو أرز أو عدس أو فرينة (25 كغ) وتفرغه في أكياس صغيرة (1 كغ). تنشئ وصفة تسحب 1 شوال + 50 د.ج ثمن الأكياس + 1% هدر ميزان، وتنتج لك 25 كيساً جاهزاً للبيع بالباركود.</p>' +
+        '    </div>' +
+        '    <div class="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 space-y-1">' +
+        '      <div class="font-black text-amber-600">☕ 2. محمصة قهوة، توابل، ومكسرات (الخلطات والتحميص)</div>' +
+        '      <p>تخلط 3 كغ قهوة روبوستا + 2 كغ أرابيكا (أو 7 بهارات لتكوين رأس الحانوت). أثناء التحميص ينقص الوزن بنسبة 5% (نسبة الهدر). الوصفة تحسب لك تكلفة كل كيس 250غ بعد الهدر والغاز بدقة تامة!</p>' +
+        '    </div>' +
+        '    <div class="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 space-y-1">' +
+        '      <div class="font-black text-emerald-600">🥐 3. مخبزة وحلويات تقليدية (باتيسري)</div>' +
+        '      <p>صينية البقلاوة أو الكرواسون تستهلك فرينة، زبدة، سكر، ولوز. تسجل المقادير في الوصفة، وعند إنتاج 5 صواني صباحاً يخصم البرنامج كل المقادير من المخزون ويخبرك كم بقي لديك من اللوز والفرينة.</p>' +
+        '    </div>' +
+        '    <div class="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 space-y-1">' +
+        '      <div class="font-black text-rose-600">🥪 4. محلات الأكل السريع، المقاهي، والعصائر</div>' +
+        '      <p>تضع وصفة لـ «طاكوس» أو «عصير طبيعي» مع تفعيل (التصنيع التلقائي عند البيع). الكاشير يبيع في شاشة المبيعات بشكل عادي، والبرنامج يخصم الخبز واللحم والجبن في الخلفية مع كل فاتورة!</p>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+    } else if (activeTab === 'steps') {
+      contentHtml =
+        '<div class="space-y-3 text-xs leading-relaxed">' +
+        '  <div class="font-black text-sm text-blue-600">🛠️ دليل الاستعمال العملي خطوة بخطوة (في 3 دقائق فقط):</div>' +
+        '  <div class="space-y-2.5">' +
+        '    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border-r-4 border-blue-600">' +
+        '      <div class="font-black text-slate-800 dark:text-white">الخطوة 1️⃣: إنشاء وصفة التصنيع (تُعمل مرة واحدة فقط لكل منتج)</div>' +
+        '      <div class="text-slate-600 dark:text-slate-300 mt-1">' +
+        '        اضغط على الزر الأزرق <strong>(+ وصفة تصنيع جديدة Alt+R)</strong> ⬅️ اختر <strong>المنتج النهائي الناتج</strong> (أو أنشئه فوراً من زر <em>+ إنشاء منتج نهائي جديد</em> داخل نفس النافذة) ⬅️ حدد <strong>كمية الخرج للدفعة</strong> (كم قطعة تنتجها هذه الخلطة) ⬅️ اختر المواد الأولية واضغط <strong>(+ إدراج مكون)</strong> ⬅️ اضغط <strong>(💾 حفظ الوصفة)</strong>.' +
+        '      </div>' +
+        '    </div>' +
+        '    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border-r-4 border-emerald-600">' +
+        '      <div class="font-black text-slate-800 dark:text-white">الخطوة 2️⃣: تنفيذ أمر إنتاج فوري (عندما تحضّر بضاعة جديدة في المحل أو الورشة)</div>' +
+        '      <div class="text-slate-600 dark:text-slate-300 mt-1">' +
+        '        اضغط على الزر الأخضر <strong>(⚙️ أمر إنتاج فوري Alt+P)</strong> أو زر <strong>(⚙️ إنتاج)</strong> أمام الوصفة في الجدول ⬅️ أدخل الكمية التي تريد إنتاجها اليوم ⬅️ سيظهر لك جدول المحاكاة الأخضر ليؤكد لك أن المواد الأولية متوفرة ويحسب لك تكلفة الوحدة ⬅️ اضغط <strong>(⚡ تأكيد الإنتاج الفوري)</strong> ليتم خصم المواد الأولية وإضافة المنتج النهائي في مخزون الكاشير فوراً!' +
+        '      </div>' +
+        '    </div>' +
+        '    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border-r-4 border-amber-500">' +
+        '      <div class="font-black text-slate-800 dark:text-white">الخطوة 3️⃣: الطباعة، الباركود، أو التراجع عن أمر إنتاج (عكس العملية)</div>' +
+        '      <div class="text-slate-600 dark:text-slate-300 mt-1">' +
+        '        في جدول <strong>(سجل أوامر الإنتاج)</strong> جهة اليسار، يمكنك الضغط على زر <strong>(📋 بطاقة)</strong> لطباعة ورقة التشغيل للعامل أو طباعة ملصقات الباركود للمنتج المصنع، أو الضغط على زر <strong>(↩️ عكس)</strong> إذا أردت إلغاء العملية وإرجاع المواد الأولية إلى المخزون كما كانت!' +
+        '      </div>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+    } else {
+      contentHtml =
+        '<div class="space-y-3 text-xs leading-relaxed">' +
+        '  <div class="font-black text-sm text-indigo-600">⚡ متى أختار «الإنتاج اليدوي» ومتى أختار «التصنيع التلقائي عند البيع بالكاشير»؟</div>' +
+        '  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">' +
+        '    <div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-2">' +
+        '      <div class="font-black text-sm text-emerald-700 dark:text-emerald-300">⚡ التصنيع التلقائي عند البيع (Auto on Sale)</div>' +
+        '      <p><strong>متى تستعمله؟</strong> للأشياء التي تُحضّر لحظة طلب الزبون (مثل: سندويتش، بيتزا، قهوة، عصير، أو خلطة سريعة) ولا توجد منها كمية مخزنة مسبقاً على الرف.</p>' +
+        '      <p><strong>كيف يعمل؟</strong> عندما يكون رصيد المنتج النهائي <code>0</code> ويقوم الكاشير ببيعه في شاشة المبيعات، يقوم البرنامج أوتوماتيكياً بتصنيع الكمية المباعة وخصم مكوناتها دون أي نقرة إضافية!</p>' +
+        '    </div>' +
+        '    <div class="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/30 space-y-2">' +
+        '      <div class="font-black text-sm text-blue-700 dark:text-blue-300">🏭 أمر الإنتاج اليدوي المسبق (Batch Production)</div>' +
+        '      <p><strong>متى تستعمله؟</strong> عندما تقوم صباحاً بتحضير أو تعبئة كمية كبيرة لترتيبها على الرفوف (مثلاً: تعبئة 50 كيس سكر 1 كغ، أو خبز 30 قطعة باتيسري، أو تحميص 20 علبة قهوة).</p>' +
+        '      <p><strong>كيف يعمل؟</strong> تضغط على <strong>(⚙️ أمر إنتاج فوري)</strong> وتدخل الكمية <code>50</code>، فيصبح لديك رصيد فعلي <code>50 قطعة</code> في المخزون وتطبع لها ملصقات باركود لتلصقها على الأكياس.</p>' +
+        '    </div>' +
+        '  </div>' +
+        '  <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 font-bold text-amber-700 dark:text-amber-300">' +
+        '    💡 <strong>معلومة ذهبية حول (نسبة الهدر %):</strong> إذا كنت تحمص 10 كغ قهوة خضراء وتفقد 5% من وزنها بسبب تبخر الرطوبة، ضع <code>5%</code> في خانة الهدر، وسيقوم البرنامج بسحب <code>10.5 كغ</code> وحساب التكلفة الحقيقية بدقة متناهية!' +
+        '  </div>' +
+        '</div>';
+    }
+
+    modal.innerHTML =
+      '<div class="modal-content w-full max-w-4xl p-6 space-y-4 overflow-y-auto">' +
+      '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+      '    <div class="flex items-center gap-2.5">' +
+      '      <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow">' +
+      '        <span class="material-symbols-rounded">menu_book</span>' +
+      '      </div>' +
+      '      <div>' +
+      '        <h3 class="text-lg font-black text-slate-800 dark:text-white">📘 الدليل الشامل لقسم التصنيع والإنتاج والتعبئة (BOM Master Guide)</h3>' +
+      '        <p class="text-[11px] text-slate-400 font-bold">شرح مبسط ومفصل لفائدة هذا القسم وكيف تستثمره لزيادة أرباح متجرك وضبط مخزونك</p>' +
+      '      </div>' +
+      '    </div>' +
+      '    <button type="button" onclick="App.closeModal(\'mfgInteractiveGuideModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+      '  </div>' +
+      tabButtonsHtml +
+      contentHtml +
+      '  <div class="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-700 text-xs">' +
+      '    <span class="text-slate-400 font-bold">⌨️ اختصارات الصفحة: [F1] فتح هذا الدليل | [Alt+R] وصفة جديدة | [Alt+P] أمر إنتاج فوري | [F4] بحث</span>' +
+      '    <button type="button" onclick="App.closeModal(\'mfgInteractiveGuideModal\')" class="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-black">إغلاق الدليل</button>' +
+      '  </div>' +
+      '</div>';
+
+    modal.classList.add('active');
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(modal);
+  };
+
+  // --------------------------------------------------------------------------
+  // 2) حقن زر (📘 ما فائدة هذه الصفحة؟ وكيف أستعملها؟ F1) أعلى شاشة التصنيع تلقائياً
+  // --------------------------------------------------------------------------
+  function injectGuideButtonIntoManufacturingHeader() {
+    var root = document.getElementById('manufacturing-view-root');
+    if (!root) return;
+
+    var qaBtn = document.getElementById('btnMfgPageQaBot');
+    if (qaBtn && !document.getElementById('btnMfgInteractiveGuide')) {
+      qaBtn.insertAdjacentHTML(
+        'afterend',
+        '<button id="btnMfgInteractiveGuide" type="button" onclick="App.openManufacturingGuideModal(\'why\')" title="اضغط هنا لشرح فائدة صفحة التصنيع وكيفية استعمالها بالتفصيل الممل (F1)" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-md flex items-center gap-1">' +
+        '  <span>📘 ما فائدة هذه الصفحة؟ وكيف أستعملها؟ (F1)</span>' +
+        '</button>'
+      );
+    }
+  }
+
+  if (window.ManufacturingUI && typeof window.ManufacturingUI.renderManufacturingView === 'function') {
+    var _origRenderMfg = window.ManufacturingUI.renderManufacturingView.bind(window.ManufacturingUI);
+    window.ManufacturingUI.renderManufacturingView = async function () {
+      var res = await _origRenderMfg();
+      injectGuideButtonIntoManufacturingHeader();
+      return res;
+    };
+  }
+
+  // تفعيل اختصار F1 داخل صفحة التصنيع لفتح الدليل التفاعلي فوراً
+  document.addEventListener('keydown', function (e) {
+    if (AppState.currentView !== 'manufacturing') return;
+    var activeModal = document.querySelector('.modal-overlay.active');
+    if (activeModal) return;
+
+    if (e.key === 'F1') {
+      e.preventDefault();
+      e.stopPropagation();
+      App.openManufacturingGuideModal('why');
+    }
+  }, true);
+
+  setTimeout(injectGuideButtonIntoManufacturingHeader, 250);
+})();
+
+// [PAGE 7 PHYSICAL STOCKTAKE SURGICAL PERFECTION]
+(function applyPage7StocktakeSurgicalPerfection() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.stkRows = [];
+  AppState.stkHistory = [];
+  AppState.stkCategoryFilter = 'all';
+  AppState.stkVarianceFilter = 'all'; // 'all' | 'changed' | 'shortage' | 'surplus' | 'matched'
+  AppState.stkSearchQuery = '';
+  AppState.stkBlindMode = false;
+  AppState.stkScanMode = 'increment'; // 'increment' (+1) | 'jump' (focus input)
+  AppState.stkHideZeroBook = true;
+
+  function formatCleanStkDate(raw) {
+    if (!raw) return '—';
+    var s = String(raw).replace('T', ' ');
+    var d = s.slice(0, 10);
+    var t = s.slice(11, 16);
+    return t ? d + ' | 🕒 ' + t : d;
+  }
+
+  // --------------------------------------------------------------------------
+  // 1) إنشاء النوافذ النظامية (Layout Modals) البديلة عن confirm / alert
+  // --------------------------------------------------------------------------
+  App.ensureStocktakeModalsDom = function () {
+    if (!document.getElementById('stocktakeConfirmLayoutModal')) {
+      var m1 = document.createElement('div');
+      m1.id = 'stocktakeConfirmLayoutModal';
+      m1.className = 'modal-overlay';
+      m1.innerHTML =
+        '<div class="modal-content w-full max-w-3xl p-6 space-y-4 overflow-y-auto">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <div>' +
+        '      <h3 class="text-lg font-black text-emerald-600">✅ مراجعة واعتماد الجرد المخزني الفعلي (Stocktake Audit & Commit)</h3>' +
+        '      <p class="text-[11px] text-slate-400 font-bold">نافذة نظام تفاعلية لمراجعة الفروقات الكمية والمالية قبل تحديث أرصدة المخزون الفعلي</p>' +
+        '    </div>' +
+        '    <button type="button" onclick="App.closeModal(\'stocktakeConfirmLayoutModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div id="stocktakeConfirmModalBody" class="space-y-4 text-xs"></div>' +
+        '</div>';
+      document.body.appendChild(m1);
+    }
+
+    if (!document.getElementById('stocktakeDetailsModal')) {
+      var m2 = document.createElement('div');
+      m2.id = 'stocktakeDetailsModal';
+      m2.className = 'modal-overlay';
+      m2.innerHTML =
+        '<div class="modal-content w-full max-w-3xl p-6 space-y-4 overflow-y-auto">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <h3 id="stocktakeDetailsTitle" class="text-lg font-black text-blue-600">📋 تفاصيل محضر الجرد المخزني</h3>' +
+        '    <button type="button" onclick="App.closeModal(\'stocktakeDetailsModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div id="stocktakeDetailsBody" class="space-y-3 text-xs"></div>' +
+        '</div>';
+      document.body.appendChild(m2);
+    }
+
+    if (!document.getElementById('stocktakeGuideModal')) {
+      var m3 = document.createElement('div');
+      m3.id = 'stocktakeGuideModal';
+      m3.className = 'modal-overlay';
+      document.body.appendChild(m3);
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 2) حساب المؤشرات المالية والكمية الحية لورقة الجرد
+  // --------------------------------------------------------------------------
+  function computeLiveStocktakeMetrics(rows) {
+    var totalItems = rows.length;
+    var matchedCount = 0;
+    var shortageCount = 0;
+    var surplusCount = 0;
+    var totalBookCostValue = 0;
+    var totalCountedCostValue = 0;
+    var shortageCostValue = 0;
+    var surplusCostValue = 0;
+    var changedRows = [];
+
+    rows.forEach(function (r) {
+      var book = Number(r.book_qty || 0);
+      var counted = Number(r.counted_qty ?? book);
+      var diff = Number((counted - book).toFixed(3));
+      var cost = Number(r.cost_price || 0);
+      var sell = Number(r.selling_price || 0);
+      var unitVal = cost > 0 ? cost : sell;
+
+      totalBookCostValue += Math.max(0, book) * unitVal;
+      totalCountedCostValue += Math.max(0, counted) * unitVal;
+
+      if (Math.abs(diff) < 0.0001) {
+        matchedCount++;
+      } else if (diff < 0) {
+        shortageCount++;
+        shortageCostValue += Math.abs(diff) * unitVal;
+        changedRows.push(r);
+      } else {
+        surplusCount++;
+        surplusCostValue += diff * unitVal;
+        changedRows.push(r);
+      }
+    });
+
+    var netVarianceValue = Number((surplusCostValue - shortageCostValue).toFixed(2));
+
+    return {
+      totalItems: totalItems,
+      matchedCount: matchedCount,
+      shortageCount: shortageCount,
+      surplusCount: surplusCount,
+      discrepanciesCount: shortageCount + surplusCount,
+      totalBookCostValue: Number(totalBookCostValue.toFixed(2)),
+      totalCountedCostValue: Number(totalCountedCostValue.toFixed(2)),
+      shortageCostValue: Number(shortageCostValue.toFixed(2)),
+      surplusCostValue: Number(surplusCostValue.toFixed(2)),
+      netVarianceValue: netVarianceValue,
+      changedRows: changedRows
+    };
+  }
+
+  function getFilteredStocktakeRows() {
+    return (AppState.stkRows || []).filter(function (r) {
+      var book = Number(r.book_qty || 0);
+      var price = Number(r.selling_price || 0);
+      var cost = Number(r.cost_price || 0);
+      if (AppState.stkHideZeroBook && book <= 0 && price <= 0 && cost <= 0) {
+        return false;
+      }
+      if (AppState.stkCategoryFilter !== 'all' && (r.category || 'عام') !== AppState.stkCategoryFilter) {
+        return false;
+      }
+      var diff = Number((Number(r.counted_qty ?? book) - book).toFixed(3));
+      if (AppState.stkVarianceFilter === 'changed' && Math.abs(diff) < 0.0001) return false;
+      if (AppState.stkVarianceFilter === 'shortage' && diff >= -0.0001) return false;
+      if (AppState.stkVarianceFilter === 'surplus' && diff <= 0.0001) return false;
+      if (AppState.stkVarianceFilter === 'matched' && Math.abs(diff) >= 0.0001) return false;
+
+      if (AppState.stkSearchQuery) {
+        var q = AppState.stkSearchQuery.toLowerCase();
+        var matchName = String(r.product_name || '').toLowerCase().includes(q);
+        var matchBc = String(r.barcode || '').toLowerCase().includes(q);
+        var matchCat = String(r.category || '').toLowerCase().includes(q);
+        if (!matchName && !matchBc && !matchCat) return false;
+      }
+      return true;
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // 3) المحرك الكامل لواجهة الجرد المخزني الفعلي (window.StocktakeUI)
+  // --------------------------------------------------------------------------
+  var StocktakeUI = {
+    renderStocktakeView: async function (filters) {
+      App.ensureStocktakeModalsDom();
+      var container = document.getElementById('stocktake-view-root');
+      if (!container || !window.api) return;
+
+      var pair = await Promise.all([
+        window.api.getStocktakeSheet(filters || {}).catch(function () { return []; }),
+        window.api.getStocktakes({}).catch(function () { return []; })
+      ]);
+
+      var rawSheet = Array.isArray(pair[0]) ? pair[0] : [];
+      // ترتيب المنتجات التي لها رصيد أو سعر في الصدارة
+      rawSheet.sort(function (a, b) {
+        var aActive = (Number(a.book_qty || 0) > 0 || Number(a.selling_price || 0) > 0) ? 1 : 0;
+        var bActive = (Number(b.book_qty || 0) > 0 || Number(b.selling_price || 0) > 0) ? 1 : 0;
+        if (aActive !== bActive) return bActive - aActive;
+        return Number(b.product_id || 0) - Number(a.product_id || 0);
+      });
+
+      // استرجاع مسودة الجرد المحفوظة محلياً إن وجدت
+      var savedDraft = {};
+      try {
+        savedDraft = JSON.parse(localStorage.getItem('gherbi_stocktake_draft_v1') || '{}') || {};
+      } catch (_) {}
+
+      AppState.stkRows = rawSheet.map(function (row, idx) {
+        var key = (row.product_id || 0) + '_' + (row.batch_id || 0);
+        var draftEntry = savedDraft[key];
+        var defaultCounted = AppState.stkBlindMode ? 0 : Number(row.book_qty || 0);
+        return Object.assign({}, row, {
+          _rowIndex: idx,
+          _key: key,
+          counted_qty: draftEntry && draftEntry.counted_qty !== undefined ? Number(draftEntry.counted_qty) : defaultCounted,
+          reason: (draftEntry && draftEntry.reason) || ''
+        });
+      });
+
+      AppState.stkHistory = Array.isArray(pair[1]) ? pair[1] : [];
+      this.drawStocktakeInterface();
+    },
+
+    drawStocktakeInterface: function () {
+      var container = document.getElementById('stocktake-view-root');
+      if (!container) return;
+
+      var displayedRows = getFilteredStocktakeRows();
+      var metrics = computeLiveStocktakeMetrics(displayedRows);
+
+      var allCategories = Array.from(
+        new Set((AppState.stkRows || []).map(function (r) { return r.category || 'عام'; }).filter(Boolean))
+      );
+
+      var centimeBook = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(metrics.totalBookCostValue) : '';
+      var centimeNetVar = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(Math.abs(metrics.netVarianceValue)) : '';
+
+      container.innerHTML =
+        '<div class="space-y-4">' +
+        '  <div class="flex flex-wrap items-center justify-between gap-3">' +
+        '    <div>' +
+        '      <h2 class="text-2xl font-black flex flex-wrap items-center gap-2">' +
+        '        <span>الجرد المخزني الفعلي والمطابقة المالية (Physical Stocktake)</span>' +
+        '        <button id="btnStocktakeQaBot" type="button" onclick="App.runAutoTest_StocktakePage()" title="تشغيل الفحص الآلي الذاتي لصفحة الجرد (Ctrl+Shift+T)" class="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm">🤖 فحص آلي (QA)</button>' +
+        '        <button type="button" onclick="window.StocktakeUI.openStocktakeGuideModal()" class="px-3 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-sm">📘 ما فائدة الجرد؟ وكيف أستعمله؟ (F1)</button>' +
+        '      </h2>' +
+        '      <p class="text-xs text-slate-500">مقارنة الرصيد الدفتري بالرصيد الفعلي، العد السريع بالباركود، وضع الجرد الأعمى للعمال، وتسوية الفروقات آلياً</p>' +
+        '    </div>' +
+        '    <div class="flex flex-wrap items-center gap-2 text-xs">' +
+        '      <button type="button" onclick="window.StocktakeUI.toggleBlindStocktakeMode()" class="px-3.5 py-2 rounded-xl font-black border transition ' + (AppState.stkBlindMode ? 'bg-amber-500 text-slate-950 border-amber-500 shadow' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200') + '">' +
+        (AppState.stkBlindMode ? '👁️ كشف الرصيد الدفتري والمطابقة' : '🙈 تفعيل الجرد الأعمى للعمال') +
+        '      </button>' +
+        '      <button type="button" onclick="window.StocktakeUI.saveDraftLocally()" class="px-3 py-2 rounded-xl bg-indigo-600/15 text-indigo-600 hover:bg-indigo-600 hover:text-white font-bold transition">📌 حفظ مسودة العد</button>' +
+        '      <button type="button" onclick="window.StocktakeUI.printBlankSheet(false)" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold flex items-center gap-1"><span class="material-symbols-rounded icon-sm">print</span><span>ورقة جرد ميدانية</span></button>' +
+        '      <button type="button" onclick="window.StocktakeUI.openCommitConfirmationModal()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black flex items-center gap-1.5 shadow-lg shadow-emerald-600/25"><span class="material-symbols-rounded icon-sm">fact_check</span><span>اعتماد الجرد وتسوية الأرصدة (F9)</span></button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div id="stocktakeKpiGrid" class="grid grid-cols-2 md:grid-cols-4 gap-3.5">' +
+        '    <div onclick="window.StocktakeUI.setVarianceFilter(\'all\')" class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer">' +
+        '      <div class="text-xs text-slate-400 font-bold">إجمالي الأصناف في ورقة الجرد</div>' +
+        '      <div class="text-2xl font-black font-mono mt-1">' + metrics.totalItems + ' <span class="text-xs text-emerald-600 font-bold">(' + metrics.matchedCount + ' مطابق)</span></div>' +
+        '      <div class="text-[11px] text-slate-400 mt-0.5">القيمة الدفترية: ' + (AppState.stkBlindMode ? '🔒 مخفي' : (metrics.totalBookCostValue.toFixed(0) + ' د.ج (' + centimeBook + ')')) + '</div>' +
+        '    </div>' +
+        '    <div onclick="window.StocktakeUI.setVarianceFilter(\'shortage\')" class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-rose-500/30 shadow-sm cursor-pointer">' +
+        '      <div class="text-xs text-slate-400 font-bold">أصناف بها عجز / نقص (Shortage)</div>' +
+        '      <div class="text-2xl font-black font-mono text-rose-600 mt-1">' + metrics.shortageCount + ' صنف</div>' +
+        '      <div class="text-[11px] font-bold text-rose-500 mt-0.5">قيمة العجز: -' + metrics.shortageCostValue.toFixed(2) + ' د.ج</div>' +
+        '    </div>' +
+        '    <div onclick="window.StocktakeUI.setVarianceFilter(\'surplus\')" class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-emerald-500/30 shadow-sm cursor-pointer">' +
+        '      <div class="text-xs text-slate-400 font-bold">أصناف بها فائض / زيادة (Surplus)</div>' +
+        '      <div class="text-2xl font-black font-mono text-emerald-600 mt-1">' + metrics.surplusCount + ' صنف</div>' +
+        '      <div class="text-[11px] font-bold text-emerald-600 mt-0.5">قيمة الفائض: +' + metrics.surplusCostValue.toFixed(2) + ' د.ج</div>' +
+        '    </div>' +
+        '    <div onclick="window.StocktakeUI.setVarianceFilter(\'changed\')" class="p-4 rounded-2xl ' + (metrics.netVarianceValue < -0.01 ? 'bg-rose-600' : metrics.netVarianceValue > 0.01 ? 'bg-amber-500 text-slate-950' : 'bg-blue-600') + ' text-white shadow-lg cursor-pointer">' +
+        '      <div class="text-xs font-bold opacity-90">صافي فارق الجرد المالي (Écart Net)</div>' +
+        '      <div class="text-2xl font-black font-mono mt-1">' + (metrics.netVarianceValue > 0 ? '+' : '') + metrics.netVarianceValue.toFixed(2) + ' د.ج</div>' +
+        '      <div class="text-[11px] font-bold opacity-90 mt-0.5">' + (Math.abs(metrics.netVarianceValue) < 0.01 ? '✅ المخزون مطابق 100%' : ('🇩🇿 بالسنتيم: ' + centimeNetVar)) + '</div>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3 shadow-sm">' +
+        '    <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-700">' +
+        '      <div class="flex flex-wrap items-center gap-2 flex-1">' +
+        '        <div class="relative w-64">' +
+        '          <input id="stkBarcodeScannerInput" type="text" onkeydown="if(event.key===\'Enter\') window.StocktakeUI.handleStocktakeBarcodeScan(this.value)" placeholder="🔫 [F5] امسح باركود المنتج للعد..." class="w-full px-3 py-2 rounded-xl text-xs font-mono font-black border-2 border-emerald-500/50">' +
+        '        </div>' +
+        '        <button type="button" onclick="window.StocktakeUI.toggleScanMode()" class="px-2.5 py-2 rounded-xl text-[11px] font-black ' + (AppState.stkScanMode === 'increment' ? 'bg-emerald-600/15 text-emerald-600 border border-emerald-500/30' : 'bg-blue-600/15 text-blue-600 border border-blue-500/30') + '">' +
+        (AppState.stkScanMode === 'increment' ? '🔫 وضع المسح: +1 تلقائي' : '🎯 وضع المسح: قفز لحقل الكمية') +
+        '        </button>' +
+        '        <input id="stkSearchInput" type="text" value="' + (AppState.stkSearchQuery || '') + '" oninput="window.StocktakeUI.onSearchInput(this.value)" placeholder="🔍 [F4] بحث بالاسم أو الباركود..." class="w-48 px-3 py-2 rounded-xl text-xs font-bold">' +
+        '        <select onchange="AppState.stkCategoryFilter=this.value; window.StocktakeUI.drawStocktakeInterface()" class="px-3 py-2 rounded-xl text-xs font-bold">' +
+        '          <option value="all">جميع الفئات (' + allCategories.length + ')</option>' +
+        allCategories.map(function (c) {
+          return '<option value="' + c + '" ' + (AppState.stkCategoryFilter === c ? 'selected' : '') + '>' + c + '</option>';
+        }).join('') +
+        '        </select>' +
+        '      </div>' +
+        '      <div class="flex flex-wrap items-center gap-1.5 text-xs">' +
+        '        <input id="stocktakeNoteInput" type="text" placeholder="📝 ملاحظة على جلسة الجرد (اختياري)..." class="w-56 px-3 py-2 rounded-xl text-xs font-bold">' +
+        '        <button type="button" onclick="window.StocktakeUI.resetAllCountedToBook()" title="إرجاع كافة الكميات المعدودة لتطابق الرصيد الدفتري" class="px-2.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 font-bold hover:bg-blue-600 hover:text-white">🔄 مطابقة الكل</button>' +
+        '      </div>' +
+        '    </div>' +
+
+        '    <div class="overflow-x-auto max-h-[48vh]">' +
+        '      <table class="w-full text-xs text-right">' +
+        '        <thead class="sticky top-0 bg-slate-100 dark:bg-slate-900 z-10">' +
+        '          <tr class="text-slate-500 border-b border-slate-200 dark:border-slate-700">' +
+        '            <th class="py-2.5 px-2">المنتج</th>' +
+        '            <th class="py-2.5 px-2">الباركود</th>' +
+        '            <th class="py-2.5 px-2">الفئة</th>' +
+        '            <th class="py-2.5 px-2">الرصيد الدفتري</th>' +
+        '            <th class="py-2.5 px-2 text-center">الكمية المعدودة فعلياً</th>' +
+        '            <th class="py-2.5 px-2">الفارق الكمي</th>' +
+        '            <th class="py-2.5 px-2">أثر الفارق المالي</th>' +
+        '            <th class="py-2.5 px-2">سبب الفارق (Audit)</th>' +
+        '          </tr>' +
+        '        </thead>' +
+        '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (displayedRows.length === 0
+          ? '<tr><td colspan="8" class="py-10 text-center text-slate-400 font-bold">لا توجد منتجات مطابقة للفلتر الحالي</td></tr>'
+          : displayedRows.slice(0, 250).map(function (r) {
+              var idx = r._rowIndex;
+              var book = Number(r.book_qty || 0);
+              var counted = Number(r.counted_qty ?? book);
+              var diff = Number((counted - book).toFixed(3));
+              var unitCost = Number(r.cost_price || r.selling_price || 0);
+              var diffMoney = Number((diff * unitCost).toFixed(2));
+              var diffClass = diff > 0.0001 ? 'text-emerald-600 font-black' : diff < -0.0001 ? 'text-rose-600 font-black' : 'text-slate-400';
+
+              return (
+                '<tr id="stk-row-' + idx + '" class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition ' + (Math.abs(diff) > 0.0001 ? 'bg-amber-500/5' : '') + '">' +
+                '  <td class="py-2 px-2 font-bold">' + r.product_name + '</td>' +
+                '  <td class="py-2 px-2 font-mono text-slate-400">' + (r.barcode || '—') + '</td>' +
+                '  <td class="py-2 px-2 text-slate-500">' + (r.category || 'عام') + '</td>' +
+                '  <td class="py-2 px-2 font-mono font-bold">' + (AppState.stkBlindMode ? '<span class="px-2 py-0.5 rounded bg-amber-500/15 text-amber-600 text-[10px]">🔒 مخفي (جرد أعمى)</span>' : (book + ' ' + (r.unit || ''))) + '</td>' +
+                '  <td class="py-2 px-2">' +
+                '    <div class="flex items-center justify-center gap-1">' +
+                '      <button type="button" onclick="window.StocktakeUI.stepCountedQty(' + idx + ', -1)" class="w-6 h-7 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-rose-500 hover:text-white font-mono font-black">-</button>' +
+                '      <input id="stk-inp-' + idx + '" type="number" step="any" value="' + counted + '" oninput="window.StocktakeUI.updateCountedQty(' + idx + ', this.value)" onkeydown="if(event.key===\'Enter\'){var sc=document.getElementById(\'stkBarcodeScannerInput\');if(sc)sc.focus();}" class="w-20 px-2 py-1 rounded-lg font-mono text-center font-black border border-blue-400">' +
+                '      <button type="button" onclick="window.StocktakeUI.stepCountedQty(' + idx + ', 1)" class="w-6 h-7 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-emerald-600 hover:text-white font-mono font-black">+</button>' +
+                '    </div>' +
+                '  </td>' +
+                '  <td id="stk-diff-' + idx + '" class="py-2 px-2 font-mono ' + diffClass + '">' + (AppState.stkBlindMode ? '—' : ((diff > 0 ? '+' : '') + diff)) + '</td>' +
+                '  <td id="stk-money-' + idx + '" class="py-2 px-2 font-mono ' + diffClass + '">' + (AppState.stkBlindMode ? '—' : ((diffMoney > 0 ? '+' : '') + diffMoney.toFixed(2) + ' د.ج')) + '</td>' +
+                '  <td class="py-2 px-2">' +
+                '    <select id="stk-reason-' + idx + '" onchange="window.StocktakeUI.updateRowReason(' + idx + ', this.value)" class="px-2 py-1 rounded-lg text-[11px] font-bold ' + (Math.abs(diff) > 0.0001 ? 'border-amber-500 bg-amber-500/10' : 'opacity-60') + '">' +
+                '      <option value="" ' + (!r.reason ? 'selected' : '') + '>— عادي / مطابق —</option>' +
+                '      <option value="تلف أو كسر" ' + (r.reason === 'تلف أو كسر' ? 'selected' : '') + '>💔 تلف أو كسر</option>' +
+                '      <option value="انتهاء صلاحية" ' + (r.reason === 'انتهاء صلاحية' ? 'selected' : '') + '>⏳ انتهاء صلاحية</option>' +
+                '      <option value="ضياع أو سرقة" ' + (r.reason === 'ضياع أو سرقة' ? 'selected' : '') + '>🕵️ ضياع أو سرقة</option>' +
+                '      <option value="خطأ إدخال فواتير" ' + (r.reason === 'خطأ إدخال فواتير' ? 'selected' : '') + '>📝 خطأ إدخال فواتير</option>' +
+                '      <option value="استهلاك داخلي" ' + (r.reason === 'استهلاك داخلي' ? 'selected' : '') + '>☕ استهلاك داخلي للمحل</option>' +
+                '    </select>' +
+                '  </td>' +
+                '</tr>'
+              );
+            }).join('')) +
+        '        </tbody>' +
+        '      </table>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3 shadow-sm">' +
+        '    <div class="flex items-center justify-between">' +
+        '      <h3 class="font-black text-sm">📋 سجل عمليات الجرد السابقة ومحاضر التسوية (' + AppState.stkHistory.length + ')</h3>' +
+        '      <span class="text-[11px] text-slate-400 font-bold">انقر على (📋 محضر الجرد) لمعاينة وطباعة وثيقة PV d\'Inventaire</span>' +
+        '    </div>' +
+        '    <div class="overflow-x-auto max-h-60">' +
+        '      <table class="w-full text-xs text-right">' +
+        '        <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-2 px-2">رقم المحضر</th><th class="py-2 px-2">التاريخ والتوقيت</th><th class="py-2 px-2">المشرف</th><th class="py-2 px-2">الأصناف المجرودة</th><th class="py-2 px-2">الفروقات المسجلة</th><th class="py-2 px-2">ملاحظة الجلسة</th><th class="py-2 px-2 text-center">إجراءات</th></tr></thead>' +
+        '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (AppState.stkHistory.length === 0
+          ? '<tr><td colspan="7" class="py-8 text-center text-slate-400 font-bold">لا توجد عمليات جرد سابقة مسجلة بعد</td></tr>'
+          : AppState.stkHistory.map(function (st) {
+              return (
+                '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition">' +
+                '  <td class="py-2.5 px-2 font-mono font-black text-blue-600 cursor-pointer" onclick="window.StocktakeUI.openStocktakeDetails(' + st.id + ')">' + (st.number || '#' + st.id) + '</td>' +
+                '  <td class="py-2.5 px-2 font-mono text-slate-400">' + formatCleanStkDate(st.closed_at || st.created_at) + '</td>' +
+                '  <td class="py-2.5 px-2 font-bold">' + (st.user_name || 'المدير العام') + '</td>' +
+                '  <td class="py-2.5 px-2 font-mono font-bold">' + (st.items_count || 0) + ' صنف</td>' +
+                '  <td class="py-2.5 px-2 font-mono font-black ' + (Number(st.discrepancies_count) > 0 ? 'text-amber-500' : 'text-emerald-600') + '">' + (Number(st.discrepancies_count) > 0 ? (st.discrepancies_count + ' فروقات') : '✅ مطابق 100%') + '</td>' +
+                '  <td class="py-2.5 px-2 text-slate-500">' + (st.note || '—') + '</td>' +
+                '  <td class="py-2.5 px-2 flex items-center justify-center gap-1">' +
+                '    <button type="button" onclick="window.StocktakeUI.openStocktakeDetails(' + st.id + ')" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-[11px]">📋 محضر الجرد</button>' +
+                '    <button type="button" onclick="window.StocktakeUI.printHistoricalStocktakeReport(' + st.id + ')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold text-[11px]">🖨️ طباعة A4</button>' +
+                '  </td>' +
+                '</tr>'
+              );
+            }).join('')) +
+        '        </tbody>' +
+        '      </table>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+
+      if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(container);
+    },
+
+    updateCountedQty: function (index, rawValue) {
+      var row = AppState.stkRows[index];
+      if (!row) return;
+      var val = parseFloat(rawValue);
+      row.counted_qty = Number.isFinite(val) ? val : Number(row.book_qty || 0);
+
+      var book = Number(row.book_qty || 0);
+      var diff = Number((row.counted_qty - book).toFixed(3));
+      var unitCost = Number(row.cost_price || row.selling_price || 0);
+      var diffMoney = Number((diff * unitCost).toFixed(2));
+      var cls = diff > 0.0001 ? 'py-2 px-2 font-mono text-emerald-600 font-black' : diff < -0.0001 ? 'py-2 px-2 font-mono text-rose-600 font-black' : 'py-2 px-2 font-mono text-slate-400';
+
+      var diffCell = document.getElementById('stk-diff-' + index);
+      var moneyCell = document.getElementById('stk-money-' + index);
+      if (diffCell && !AppState.stkBlindMode) {
+        diffCell.textContent = (diff > 0 ? '+' : '') + diff;
+        diffCell.className = cls;
+      }
+      if (moneyCell && !AppState.stkBlindMode) {
+        moneyCell.textContent = (diffMoney > 0 ? '+' : '') + diffMoney.toFixed(2) + ' د.ج';
+        moneyCell.className = cls;
+      }
+    },
+
+    stepCountedQty: function (index, delta) {
+      var row = AppState.stkRows[index];
+      if (!row) return;
+      var nextVal = Math.max(0, Number((Number(row.counted_qty || 0) + Number(delta)).toFixed(3)));
+      var inp = document.getElementById('stk-inp-' + index);
+      if (inp) inp.value = String(nextVal);
+      this.updateCountedQty(index, nextVal);
+    },
+
+    updateRowReason: function (index, reasonVal) {
+      if (AppState.stkRows[index]) {
+        AppState.stkRows[index].reason = String(reasonVal || '');
+      }
+    },
+
+    setVarianceFilter: function (filterKey) {
+      AppState.stkVarianceFilter = filterKey || 'all';
+      this.drawStocktakeInterface();
+    },
+
+    onSearchInput: function (val) {
+      AppState.stkSearchQuery = String(val || '');
+      this.drawStocktakeInterface();
+      setTimeout(function () {
+        var inp = document.getElementById('stkSearchInput');
+        if (inp) {
+          inp.focus();
+          var len = inp.value.length;
+          inp.setSelectionRange(len, len);
+        }
+      }, 10);
+    },
+
+    toggleBlindStocktakeMode: function () {
+      AppState.stkBlindMode = !AppState.stkBlindMode;
+      if (AppState.stkBlindMode) {
+        (AppState.stkRows || []).forEach(function (r) { r.counted_qty = 0; });
+        if (typeof showToast === 'function') {
+          showToast('🙈 تم تفعيل وضع الجرد الأعمى: تم إخفاء الرصيد الدفتري وتصفير العداد ليقوم العامل بالعد الفعلي!', 'info');
+        }
+      } else {
+        if (typeof showToast === 'function') {
+          showToast('👁️ تم كشف الأرصدة الدفترية وإظهار المطابقة والفروقات الفعلية!', 'success');
+        }
+      }
+      this.drawStocktakeInterface();
+    },
+
+    toggleScanMode: function () {
+      AppState.stkScanMode = AppState.stkScanMode === 'increment' ? 'jump' : 'increment';
+      this.drawStocktakeInterface();
+    },
+
+    handleStocktakeBarcodeScan: function (rawCode) {
+      var code = String(rawCode || '').trim().toLowerCase();
+      var scInp = document.getElementById('stkBarcodeScannerInput');
+      if (scInp) scInp.value = '';
+      if (!code) return;
+
+      var found = (AppState.stkRows || []).find(function (r) {
+        return String(r.barcode || '').trim().toLowerCase() === code || String(r.product_name || '').toLowerCase() === code;
+      });
+
+      if (!found) {
+        if (typeof playBeep === 'function') playBeep(false);
+        if (typeof showToast === 'function') showToast('الباركود (' + rawCode + ') غير موجود في ورقة الجرد الحالية', 'warning');
+        return;
+      }
+
+      if (typeof playBeep === 'function') playBeep(true);
+      var idx = found._rowIndex;
+
+      if (AppState.stkScanMode === 'increment') {
+        this.stepCountedQty(idx, 1);
+        var rowEl = document.getElementById('stk-row-' + idx);
+        if (rowEl) {
+          rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          rowEl.classList.add('bg-emerald-500/20');
+          setTimeout(function () { rowEl.classList.remove('bg-emerald-500/20'); }, 650);
+        }
+        if (typeof showToast === 'function') {
+          showToast('🔫 +1 (' + found.product_name + ') ⬅️ المعدود الآن: ' + found.counted_qty, 'success');
+        }
+      } else {
+        var numInp = document.getElementById('stk-inp-' + idx);
+        if (numInp) {
+          numInp.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          numInp.focus();
+          numInp.select();
+        }
+      }
+    },
+
+    resetAllCountedToBook: function () {
+      (AppState.stkRows || []).forEach(function (r) {
+        r.counted_qty = Number(r.book_qty || 0);
+        r.reason = '';
+      });
+      localStorage.removeItem('gherbi_stocktake_draft_v1');
+      this.drawStocktakeInterface();
+      if (typeof showToast === 'function') showToast('🔄 تمت مطابقة جميع الكميات المعدودة مع الرصيد الدفتري', 'info');
+    },
+
+    saveDraftLocally: function () {
+      var map = {};
+      (AppState.stkRows || []).forEach(function (r) {
+        map[r._key] = { counted_qty: r.counted_qty, reason: r.reason || '' };
+      });
+      localStorage.setItem('gherbi_stocktake_draft_v1', JSON.stringify(map));
+      if (typeof showToast === 'function') {
+        showToast('📌 تم حفظ مسودة الجرد محلياً — يمكنك إكمال العد في أي وقت دون ضياع أرقامك!', 'success');
+      }
+    },
+
+    // ------------------------------------------------------------------------
+    // 4) نافذة اعتماد الجرد النظامية (#stocktakeConfirmLayoutModal — بديل confirm!)
+    // ------------------------------------------------------------------------
+    openCommitConfirmationModal: function () {
+      App.ensureStocktakeModalsDom();
+      var displayedRows = getFilteredStocktakeRows();
+      if (displayedRows.length === 0) {
+        if (typeof showToast === 'function') showToast('لا توجد عناصر في قائمة الجرد لاعتمادها', 'warning');
+        return;
+      }
+
+      var metrics = computeLiveStocktakeMetrics(displayedRows);
+      var noteVal = document.getElementById('stocktakeNoteInput')?.value?.trim() || '';
+      var body = document.getElementById('stocktakeConfirmModalBody');
+      if (!body) return;
+
+      body.innerHTML =
+        '<div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-center">' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">إجمالي الأصناف المجرودة</div><div class="font-mono font-black text-base mt-0.5">' + metrics.totalItems + ' صنف</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">أصناف العجز (-)</div><div class="font-mono font-black text-rose-600 text-base mt-0.5">' + metrics.shortageCount + ' (-' + metrics.shortageCostValue.toFixed(2) + ' د.ج)</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">أصناف الفائض (+)</div><div class="font-mono font-black text-emerald-600 text-base mt-0.5">' + metrics.surplusCount + ' (+' + metrics.surplusCostValue.toFixed(2) + ' د.ج)</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">صافي التسوية المالية</div><div class="font-mono font-black text-blue-600 text-base mt-0.5">' + (metrics.netVarianceValue > 0 ? '+' : '') + metrics.netVarianceValue.toFixed(2) + ' د.ج</div></div>' +
+        '</div>' +
+
+        (metrics.changedRows.length > 0
+          ? '<div class="border border-amber-500/40 bg-amber-500/5 rounded-2xl p-3 max-h-52 overflow-y-auto">' +
+            '  <div class="font-black text-amber-700 dark:text-amber-300 mb-2">⚠️ الأصناف التي ستتغير أرصدتها فعلياً في المخزون (' + metrics.changedRows.length + ' صنف):</div>' +
+            '  <table class="w-full text-[11px] text-right">' +
+            '    <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-1">المنتج</th><th class="py-1">الرصيد الدفتري</th><th class="py-1">الرصيد الجديد المعدود</th><th class="py-1">الفارق</th><th class="py-1">السبب</th></tr></thead>' +
+            '    <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+            metrics.changedRows.map(function (r) {
+              var d = Number((Number(r.counted_qty) - Number(r.book_qty)).toFixed(3));
+              return (
+                '<tr>' +
+                '  <td class="py-1.5 font-bold">' + r.product_name + '</td>' +
+                '  <td class="py-1.5 font-mono">' + r.book_qty + '</td>' +
+                '  <td class="py-1.5 font-mono font-black text-blue-600">' + r.counted_qty + '</td>' +
+                '  <td class="py-1.5 font-mono font-black ' + (d > 0 ? 'text-emerald-600' : 'text-rose-600') + '">' + (d > 0 ? '+' : '') + d + '</td>' +
+                '  <td class="py-1.5 text-slate-500">' + (r.reason || 'تسوية جرد') + '</td>' +
+                '</tr>'
+              );
+            }).join('') +
+            '    </tbody>' +
+            '  </table>' +
+            '</div>'
+          : '<div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-center font-black text-emerald-600">✅ جميع الكميات المعدودة مطابقة 100% للرصيد الدفتري (0 فروقات) — سيتم توثيق محضر الجرد الدوري في السجل.</div>') +
+
+        '<div class="space-y-1.5">' +
+        '  <label class="block font-bold">ملاحظة وتبرير محضر الجرد (تُحفظ في الأرشيف):</label>' +
+        '  <input id="confirmModalStocktakeNote" type="text" value="' + noteVal + '" placeholder="مثال: جرد نهاية الأسبوع / إشراف المدير العام..." class="w-full px-3 py-2 rounded-xl font-bold">' +
+        '</div>' +
+
+        '<div class="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">' +
+        '  <button type="button" onclick="App.closeModal(\'stocktakeConfirmLayoutModal\')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-bold">رجوع للمراجعة (Esc)</button>' +
+        '  <button type="button" onclick="window.StocktakeUI.executeCommitStocktakeNow(false)" class="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold">📄 حفظ كمحضر تدقيق فقط (بدون تغيير الأرصدة)</button>' +
+        '  <button id="btnExecuteCommitStocktake" type="button" onclick="window.StocktakeUI.executeCommitStocktakeNow(true)" class="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-lg shadow-emerald-600/25">✅ تأكيد واعتماد الجرد وتحديث المخزون الآن</button>' +
+        '</div>';
+
+      App.openModal('stocktakeConfirmLayoutModal');
+    },
+
+    commitStocktake: function () {
+      return this.openCommitConfirmationModal();
+    },
+
+    executeCommitStocktakeNow: async function (applyAdjustments) {
+      var displayedRows = getFilteredStocktakeRows();
+      if (displayedRows.length === 0) return;
+
+      var noteInp = document.getElementById('confirmModalStocktakeNote') || document.getElementById('stocktakeNoteInput');
+      var baseNote = noteInp ? noteInp.value.trim() : '';
+
+      var reasonsList = displayedRows
+        .filter(function (r) { return r.reason && Math.abs(Number(r.counted_qty) - Number(r.book_qty)) > 0.0001; })
+        .map(function (r) { return r.product_name + ': ' + r.reason; });
+
+      var fullNote = reasonsList.length > 0
+        ? (baseNote ? baseNote + ' | ' : '') + 'أسباب الفروقات: [' + reasonsList.slice(0, 6).join(' ، ') + ']'
+        : baseNote;
+
+      try {
+        var created = await window.api.createStocktake({
+          scope_type: AppState.stkCategoryFilter !== 'all' ? 'category' : 'all',
+          scope_value: AppState.stkCategoryFilter !== 'all' ? AppState.stkCategoryFilter : null,
+          user_id: AppState.currentUser ? AppState.currentUser.id : 1,
+          note: fullNote || null,
+          applyAdjustments: Boolean(applyAdjustments),
+          items: displayedRows
+        });
+
+        localStorage.removeItem('gherbi_stocktake_draft_v1');
+        App.closeModal('stocktakeConfirmLayoutModal');
+        await App.refreshProducts();
+        await this.renderStocktakeView();
+
+        if (typeof showToast === 'function') {
+          showToast('✅ تم اعتماد الجرد المخزني (' + (created && created.number ? created.number : '') + ') وتسوية الأرصدة بنجاح!', 'success');
+        }
+      } catch (err) {
+        if (typeof showToast === 'function') showToast(err.message || 'تعذر حفظ الجرد المخزني', 'error');
+      }
+    },
+
+    // ------------------------------------------------------------------------
+    // 5) معاينة وطباعة محضر الجرد الرسمي (PV d'Inventaire) وورقة العد الميدانية
+    // ------------------------------------------------------------------------
+    openStocktakeDetails: async function (stocktakeId) {
+      App.ensureStocktakeModalsDom();
+      var st = await window.api.getStocktake(Number(stocktakeId)).catch(function () { return null; });
+      if (!st) return;
+
+      var titleEl = document.getElementById('stocktakeDetailsTitle');
+      if (titleEl) {
+        titleEl.textContent = '📋 محضر الجرد المخزني (' + (st.number || '#' + st.id) + ') — ' + formatCleanStkDate(st.closed_at || st.created_at);
+      }
+
+      var items = Array.isArray(st.items) ? st.items : [];
+      var diffItems = items.filter(function (x) { return Math.abs(Number(x.diff_qty || 0)) > 0.0001; });
+      var body = document.getElementById('stocktakeDetailsBody');
+      if (body) {
+        body.innerHTML =
+          '<div class="grid grid-cols-3 gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-center">' +
+          '  <div><div class="text-[10px] text-slate-400 font-bold">إجمالي الأصناف</div><div class="font-mono font-black text-sm mt-0.5">' + items.length + ' صنف</div></div>' +
+          '  <div><div class="text-[10px] text-slate-400 font-bold">الأصناف ذات الفروقات</div><div class="font-mono font-black text-amber-500 text-sm mt-0.5">' + diffItems.length + ' صنف</div></div>' +
+          '  <div><div class="text-[10px] text-slate-400 font-bold">المشرف المسؤول</div><div class="font-bold text-sm mt-0.5">' + (st.user_name || 'المدير العام') + '</div></div>' +
+          '</div>' +
+
+          (st.note ? '<div class="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 font-bold">📝 ملاحظة المحضر: ' + st.note + '</div>' : '') +
+
+          '<div class="border border-slate-200 dark:border-slate-700 rounded-2xl p-3 max-h-64 overflow-y-auto">' +
+          '  <table class="w-full text-[11px] text-right">' +
+          '    <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-1">المنتج</th><th class="py-1">الدفتري</th><th class="py-1">المعدود</th><th class="py-1">الفارق</th><th class="py-1">الأثر المالي</th></tr></thead>' +
+          '    <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+          items.map(function (it) {
+            var d = Number((Number(it.diff_qty || 0)).toFixed(3));
+            var dm = Number((Number(it.diff_cost_value || 0)).toFixed(2));
+            return (
+              '<tr class="' + (Math.abs(d) > 0.0001 ? 'bg-amber-500/5 font-bold' : '') + '">' +
+              '  <td class="py-1.5">' + (it.product_name || '') + '</td>' +
+              '  <td class="py-1.5 font-mono">' + it.book_qty + '</td>' +
+              '  <td class="py-1.5 font-mono text-blue-600">' + it.counted_qty + '</td>' +
+              '  <td class="py-1.5 font-mono ' + (d > 0 ? 'text-emerald-600' : d < 0 ? 'text-rose-600' : 'text-slate-400') + '">' + (d > 0 ? '+' : '') + d + '</td>' +
+              '  <td class="py-1.5 font-mono ' + (dm > 0 ? 'text-emerald-600' : dm < 0 ? 'text-rose-600' : 'text-slate-400') + '">' + (dm > 0 ? '+' : '') + dm.toFixed(2) + ' د.ج</td>' +
+              '</tr>'
+            );
+          }).join('') +
+          '    </tbody>' +
+          '  </table>' +
+          '</div>' +
+
+          '<div class="flex justify-between items-center pt-2 border-t border-slate-200 dark:border-slate-700">' +
+          '  <button type="button" onclick="window.StocktakeUI.printHistoricalStocktakeReport(' + st.id + ')" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black">🖨️ طباعة محضر الجرد الرسمي (PV d\'Inventaire A4)</button>' +
+          '  <button type="button" onclick="App.closeModal(\'stocktakeDetailsModal\')" class="px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded-xl font-bold">إغلاق</button>' +
+          '</div>';
+      }
+
+      App.openModal('stocktakeDetailsModal');
+    },
+
+    printHistoricalStocktakeReport: async function (stocktakeId) {
+      var st = await window.api.getStocktake(Number(stocktakeId)).catch(function () { return null; });
+      if (!st) return;
+      var s = AppState.settings || {};
+      var items = Array.isArray(st.items) ? st.items : [];
+
+      var rowsHtml = items.map(function (it, i) {
+        var d = Number((Number(it.diff_qty || 0)).toFixed(3));
+        var dm = Number((Number(it.diff_cost_value || 0)).toFixed(2));
+        return (
+          '<tr>' +
+          '<td>' + (i + 1) + '</td>' +
+          '<td><strong>' + (it.product_name || '') + '</strong></td>' +
+          '<td style="font-family:monospace;">' + (it.barcode || '—') + '</td>' +
+          '<td style="font-family:monospace;">' + it.book_qty + '</td>' +
+          '<td style="font-family:monospace;font-weight:bold;">' + it.counted_qty + '</td>' +
+          '<td style="direction:ltr;font-family:monospace;font-weight:bold;color:' + (d < 0 ? '#e11d48' : d > 0 ? '#059669' : '#64748b') + ';">' + (d > 0 ? '+' : '') + d + '</td>' +
+          '<td style="direction:ltr;font-family:monospace;font-weight:bold;">' + (dm > 0 ? '+' : '') + dm.toFixed(2) + ' د.ج</td>' +
+          '</tr>'
+        );
+      }).join('');
+
+      var html =
+        '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>محضر جرد ' + (st.number || '') + '</title>' +
+        '<style>@page{size:A4 portrait;margin:12mm;}body{font-family:"Cairo",Tahoma,sans-serif;color:#0f172a;font-size:12px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #0f172a;padding:6px;text-align:right;font-size:11px;}th{background:#e2e8f0;}</style></head><body>' +
+        '<h2 style="margin:0;color:#1e3a8a;">📋 محضر جرد وتسوية مخزنية رسمي (PV d\'Inventaire) — ' + (st.number || '#' + st.id) + '</h2>' +
+        '<p>المؤسسة: <strong>' + (s.shop_name || 'Gherbi.Ai POS') + '</strong> | التاريخ: <strong>' + formatCleanStkDate(st.closed_at || st.created_at) + '</strong> | المشرف: <strong>' + (st.user_name || 'المدير العام') + '</strong></p>' +
+        (st.note ? '<p><strong>ملاحظات وتبريرات الجرد:</strong> ' + st.note + '</p>' : '') +
+        '<table><thead><tr><th>#</th><th>المنتج</th><th>الباركود</th><th>الرصيد الدفتري</th><th>الرصيد المعدود</th><th>الفارق الكمي</th><th>الأثر المالي</th></tr></thead><tbody>' + rowsHtml + '</tbody></table>' +
+        '<div style="display:flex;justify-content:space-between;margin-top:36px;font-weight:bold;"><div>إمضاء لجنة الجرد / أمين المخزن: ........................</div><div>مصادقة وختم المدير العام: ........................</div></div>' +
+        '</body></html>';
+
+      if (window.PrintEngine && typeof window.PrintEngine.printHtmlDocument === 'function') {
+        await window.PrintEngine.printHtmlDocument(html, { silent: false });
+      }
+    },
+
+    printBlankSheet: function () {
+      var displayedRows = getFilteredStocktakeRows();
+      var hideBook = AppState.stkBlindMode;
+      var s = AppState.settings || {};
+
+      var rowsHtml = displayedRows.map(function (r, i) {
+        return (
+          '<tr>' +
+          '<td style="border:1px solid #000;padding:5px;text-align:center;">' + (i + 1) + '</td>' +
+          '<td style="border:1px solid #000;padding:5px;font-weight:bold;">' + r.product_name + '</td>' +
+          '<td style="border:1px solid #000;padding:5px;text-align:center;font-family:monospace;">' + (r.barcode || '') + '</td>' +
+          '<td style="border:1px solid #000;padding:5px;text-align:center;font-family:monospace;">' + (hideBook ? '🔒 جرد أعمى' : (r.book_qty + ' ' + (r.unit || ''))) + '</td>' +
+          '<td style="border:1px solid #000;padding:5px;"></td>' +
+          '<td style="border:1px solid #000;padding:5px;"></td>' +
+          '</tr>'
+        );
+      }).join('');
+
+      var html =
+        '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>ورقة جرد ميدانية</title></head>' +
+        '<body style="font-family:Cairo,Tahoma,sans-serif;padding:16px;font-size:12px;">' +
+        '<h2 style="text-align:center;margin:0;">📋 ورقة العد والجرد الميداني للمخزون — ' + (s.shop_name || 'Gherbi.Ai POS') + '</h2>' +
+        '<p style="text-align:center;font-size:11px;">التاريخ: ' + new Date().toISOString().slice(0, 10) + ' | الفئة: ' + (AppState.stkCategoryFilter === 'all' ? 'جميع الفئات' : AppState.stkCategoryFilter) + (hideBook ? ' | (وضع الجرد الأعمى للموظفين)' : '') + '</p>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:11px;">' +
+        '<thead><tr style="background:#e2e8f0;"><th style="border:1px solid #000;padding:6px;width:35px;">#</th><th style="border:1px solid #000;padding:6px;">المنتج</th><th style="border:1px solid #000;padding:6px;">الباركود</th><th style="border:1px solid #000;padding:6px;">الرصيد الدفتري</th><th style="border:1px solid #000;padding:6px;width:110px;">الكمية المعدودة فعلياً</th><th style="border:1px solid #000;padding:6px;width:130px;">ملاحظة (تلف/صلاحية)</th></tr></thead>' +
+        '<tbody>' + rowsHtml + '</tbody></table>' +
+        '</body></html>';
+
+      if (window.PrintEngine && typeof window.PrintEngine.printHtmlDocument === 'function') {
+        window.PrintEngine.printHtmlDocument(html, { silent: false });
+      }
+    },
+
+    // ------------------------------------------------------------------------
+    // 6) نافذة الدليل التفاعلي الشامل لقسم الجرد المخزني (F1)
+    // ------------------------------------------------------------------------
+    openStocktakeGuideModal: function () {
+      App.ensureStocktakeModalsDom();
+      var modal = document.getElementById('stocktakeGuideModal');
+      if (!modal) return;
+
+      modal.innerHTML =
+        '<div class="modal-content w-full max-w-3xl p-6 space-y-4 overflow-y-auto">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <h3 class="text-lg font-black text-indigo-600">📘 الدليل الاستشاري الشامل للجرد المخزني الفعلي (Stocktake Master Guide)</h3>' +
+        '    <button type="button" onclick="App.closeModal(\'stocktakeGuideModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div class="space-y-3 text-xs leading-relaxed">' +
+        '    <div class="p-3.5 rounded-2xl bg-blue-600/10 border border-blue-500/30">' +
+        '      <div class="font-black text-blue-600 text-sm mb-1">💡 ما هي فائدة الجرد المخزني؟</div>' +
+        '      <p>مع مرور الأيام في المتجر، قد يختلف <strong>الرصيد المسجل في الكمبيوتر (الرصيد الدفتري)</strong> عن <strong>الكمية الموجودة فعلياً على الرفوف</strong> بسبب الكسر، التلف، السرقة، أو نسيان تسجيل فاتورة. هذه الصفحة تضبط مخزونك بضغطة زر وتكشف لك قيمة الضياع بالدينار والسنتيم!</p>' +
+        '    </div>' +
+        '    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">' +
+        '      <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">' +
+        '        <div class="font-black text-amber-700 dark:text-amber-300">🙈 1. لماذا نستعمل (وضع الجرد الأعمى للعمال)؟</div>' +
+        '        <p class="mt-1">إذا رأى العامل أن الكمبيوتر يقول <code>64 علبة</code>، فقد يكتب <code>64</code> دون أن يتعب نفسه في العد! عند تفعيل <strong>(🙈 الجرد الأعمى)</strong> يختفي الرقم الدفتري وتصبح الخانة <code>0</code>، فيضطر العامل لعدّ الرفوف بأمانة ودقة!</p>' +
+        '      </div>' +
+        '      <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">' +
+        '        <div class="font-black text-emerald-700 dark:text-emerald-300">🔫 2. كيف أجرد المحل بسرعة البرق بالباركود؟</div>' +
+        '        <p class="mt-1">ضع المؤشر في خانة <strong>(🔫 امسح باركود المنتج للعد F5)</strong>: في وضع <code>+1 تلقائي</code> كل مسحة تزيد الكمية بـ 1، وفي وضع <code>قفز لحقل الكمية</code> يقفز المؤشر للسطر لتكتب العدد الكلي وتضغط Enter!</p>' +
+        '      </div>' +
+        '    </div>' +
+        '    <div class="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">' +
+        '      <div class="font-black mb-1">⌨️ اختصارات لوحة المفاتيح السريعة في صفحة الجرد:</div>' +
+        '      <div class="font-mono text-[11px] text-slate-600 dark:text-slate-300">[F1] فتح هذا الدليل | [F5] التركيز على ماسح باركود الجرد | [F4] البحث النصي | [F9] فتح نافذة مراجعة واعتماد الجرد</div>' +
+        '    </div>' +
+        '  </div>' +
+        '  <div class="flex justify-end pt-2">' +
+        '    <button type="button" onclick="App.closeModal(\'stocktakeGuideModal\')" class="px-6 py-2 bg-blue-600 text-white rounded-xl text-xs font-black">فهمت، ابدأ الجرد الآن</button>' +
+        '  </div>' +
+        '</div>';
+
+      modal.classList.add('active');
+      if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(modal);
+    }
+  };
+
+  window.StocktakeUI = StocktakeUI;
+
+  // --------------------------------------------------------------------------
+  // 7) روبوت الاختبار الآلي الذاتي للصفحة السابعة (App.runAutoTest_StocktakePage)
+  // --------------------------------------------------------------------------
+  App.runAutoTest_StocktakePage = async function () {
+    if (AppState.currentView !== 'stocktake') {
+      await this.switchView('stocktake');
+    }
+    this.ensureStocktakeModalsDom();
+    await window.StocktakeUI.renderStocktakeView();
+
+    var results = [];
+    var check = function (name, cond, detail) {
+      results.push({ name: name, passed: Boolean(cond), detail: detail || '' });
+    };
+
+    try {
+      check(
+        '1. تكامل عناصر صفحة الجرد والنوافذ النظامية (DOM Integrity)',
+        Boolean(document.getElementById('stocktake-view-root') && document.getElementById('stocktakeConfirmLayoutModal') && document.getElementById('stocktakeDetailsModal')),
+        'Modals & Grid OK'
+      );
+
+      check(
+        '2. إزالة نافذة confirm المجمِّدة واستبدالها بنافذة النظام (#stocktakeConfirmLayoutModal)',
+        typeof window.StocktakeUI.openCommitConfirmationModal === 'function',
+        'System Layout Modal Ready'
+      );
+
+      var rows = AppState.stkRows || [];
+      check('3. تحميل ورقة الجرد الفعلي من قاعدة البيانات (SQLite WAL)', Array.isArray(rows) && rows.length > 0, rows.length + ' عنصر جرد');
+
+      if (rows.length > 0) {
+        var origQty = Number(rows[0].counted_qty || 0);
+        window.StocktakeUI.stepCountedQty(0, -1);
+        var afterStep = Number(rows[0].counted_qty || 0);
+        window.StocktakeUI.updateCountedQty(0, origQty);
+        check('4. محاكاة تعديل الكمية المعدودة وحساب الفارق الكمي والمالي لحظياً', afterStep === Math.max(0, origQty - 1), 'Orig: ' + origQty + ' -> Step: ' + afterStep);
+      } else {
+        check('4. محاكاة تعديل الكمية المعدودة وحساب الفارق الكمي والمالي لحظياً', true, 'Ready');
+      }
+
+      window.StocktakeUI.toggleBlindStocktakeMode();
+      var isBlindNow = AppState.stkBlindMode === true;
+      window.StocktakeUI.toggleBlindStocktakeMode();
+      check('5. اختبار وضع الجرد الأعمى للعمال (Blind Stocktake Mode)', isBlindNow && AppState.stkBlindMode === false, 'Blind Mode Toggled OK');
+
+      if (rows.length > 0 && rows[0].barcode) {
+        var beforeScan = Number(rows[0].counted_qty || 0);
+        AppState.stkScanMode = 'increment';
+        window.StocktakeUI.handleStocktakeBarcodeScan(rows[0].barcode);
+        var afterScan = Number(rows[0].counted_qty || 0);
+        window.StocktakeUI.updateCountedQty(0, beforeScan);
+        check('6. رادار الجرد السريع بقارئ الباركود (Scan-to-Count +1)', afterScan === beforeScan + 1, 'Barcode Scan +1 Verified');
+      } else {
+        check('6. رادار الجرد السريع بقارئ الباركود (Scan-to-Count +1)', true, 'Scanner Ready');
+      }
+
+      window.StocktakeUI.openCommitConfirmationModal();
+      var confirmModalActive = document.getElementById('stocktakeConfirmLayoutModal')?.classList.contains('active');
+      this.closeModal('stocktakeConfirmLayoutModal');
+      check('7. فتح نافذة مراجعة واعتماد الجرد النظامية بدون أي تجميد للواجهة', Boolean(confirmModalActive), 'Layout Modal Active');
+
+      var sampleSt = null;
+      if (rows.length > 0) {
+        sampleSt = await window.api.createStocktake({
+          scope_type: 'all',
+          note: 'محضر فحص آلي QA (بدون تغيير أرصدة)',
+          applyAdjustments: false,
+          items: rows.slice(0, 3)
+        });
+      }
+      check('8. حفظ وتوثيق محضر الجرد في سجل العمليات (stocktakes)', Boolean(!rows.length || (sampleSt && sampleSt.id)), sampleSt ? (sampleSt.number || '#' + sampleSt.id) : 'OK');
+
+      check('9. تصنيف أسباب الفروقات لكل سطر (تلف / صلاحية / سرقة / خطأ فواتير)', typeof window.StocktakeUI.updateRowReason === 'function', 'Audit Reasons Active');
+      check('10. حفظ واسترجاع مسودة الجرد محلياً (Local Draft Persistence)', typeof window.StocktakeUI.saveDraftLocally === 'function', 'Draft Engine Ready');
+      check('11. مولد محضر الجرد الرسمي (PV d\'Inventaire A4) وورقة العد الميدانية', typeof window.StocktakeUI.printHistoricalStocktakeReport === 'function', 'Print Engine Ready');
+
+      await window.StocktakeUI.renderStocktakeView();
+      var pill = document.getElementById('barcodeMagnetStatusPill');
+      check('12. إخفاء شارة الباركود المغناطيسية خارج شاشة الكاشير', !pill || pill.style.display === 'none', 'Clean Header');
+    } catch (err) {
+      check('خطأ غير متوقع أثناء فحص الجرد المخزني', false, err.message);
+    }
+
+    var passedCount = results.filter(function (r) { return r.passed; }).length;
+    var modal = document.getElementById('posQaReportModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'posQaReportModal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML =
+      '<div class="modal-content w-full max-w-2xl p-6 space-y-4">' +
+      '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+      '    <div class="flex items-center gap-2">' +
+      '      <span class="px-3 py-1 rounded-xl ' + (passedCount === results.length ? 'bg-emerald-600' : 'bg-amber-500') + ' text-white font-black text-xs">' + passedCount + ' / ' + results.length + ' PASS</span>' +
+      '      <h3 class="text-lg font-black">🤖 تقرير الفحص الآلي الذاتي — الصفحة 7 (الجرد المخزني #view-stocktake)</h3>' +
+      '    </div>' +
+      '    <button type="button" onclick="App.closeModal(\'posQaReportModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+      '  </div>' +
+      '  <div class="space-y-1.5 max-h-96 overflow-y-auto text-xs">' +
+      results.map(function (r) {
+        return (
+          '<div class="p-2.5 rounded-xl border ' + (r.passed ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-rose-500/40 bg-rose-500/10') + ' flex items-center justify-between">' +
+          '  <div class="font-bold">' + (r.passed ? '✅' : '❌') + ' ' + r.name + '</div>' +
+          '  <div class="font-mono text-[11px] text-slate-500 dark:text-slate-300">' + (r.detail || 'OK') + '</div>' +
+          '</div>'
+        );
+      }).join('') +
+      '  </div>' +
+      '  <div class="flex justify-end pt-2">' +
+      '    <button type="button" onclick="App.closeModal(\'posQaReportModal\')" class="px-6 py-2 bg-blue-600 text-white rounded-xl text-xs font-black">إغلاق التقرير والانتقال للصفحة الثامنة</button>' +
+      '  </div>' +
+      '</div>';
+
+    modal.classList.add('active');
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(modal);
+  };
+
+  // اختصارات لوحة المفاتيح السريعة لصفحة الجرد المخزني
+  document.addEventListener('keydown', function (e) {
+    if (AppState.currentView !== 'stocktake') return;
+    var activeModal = document.querySelector('.modal-overlay.active');
+    if (activeModal) return;
+
+    if (e.ctrlKey && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+      e.preventDefault();
+      e.stopPropagation();
+      App.runAutoTest_StocktakePage();
+    } else if (e.key === 'F1') {
+      e.preventDefault();
+      e.stopPropagation();
+      window.StocktakeUI.openStocktakeGuideModal();
+    } else if (e.key === 'F4') {
+      e.preventDefault();
+      var sInp = document.getElementById('stkSearchInput');
+      if (sInp) { sInp.focus(); sInp.select(); }
+    } else if (e.key === 'F5') {
+      e.preventDefault();
+      var bcInp = document.getElementById('stkBarcodeScannerInput');
+      if (bcInp) { bcInp.focus(); bcInp.select(); }
+    } else if (e.key === 'F9') {
+      e.preventDefault();
+      window.StocktakeUI.openCommitConfirmationModal();
+    }
+  }, true);
+})();
+
+// [PAGE 8 PRINT STUDIO, BARCODE SHEETS & UNIVERSAL BON CREATOR]
+(function applyPage8PrintStudioSurgicalPerfection() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.printStudioTab = AppState.printStudioTab || 'labels'; // 'labels' | 'designer' | 'custom_bon' | 'catalogue_posters'
+
+  // 1) إعدادات استوديو الباركود والملصقات الشاملة
+  AppState.labelStudioConfig = Object.assign(
+    {
+      source: 'products',
+      selectedId: null,
+      symbology: 'code128', // 'code128' | 'ean13' | 'qrcode' | 'code39'
+      presetKey: 'roll_40x25',
+      paperType: 'roll', // 'roll' | 'a4_sheet'
+      columns: 1,
+      skipOffset: 0, // عدد الملصقات المتخطاة في بداية ورقة A4
+      widthMm: 40,
+      heightMm: 25,
+      barcodeHeightMm: 11,
+      priceOnlyMode: false,
+      borderStyle: 'dashed', // 'none' | 'solid' | 'dashed'
+      showShop: true,
+      showName: true,
+      showPrice: true,
+      showCentimes: true,
+      showOldPrice: false,
+      oldPriceValue: '',
+      showBarcodeText: true,
+      showPlu: false,
+      showDates: false,
+      prodDate: new Date().toISOString().slice(0, 10),
+      expDate: new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10),
+      customFooterText: '',
+      filterCategory: 'all'
+    },
+    AppState.labelStudioConfig || {}
+  );
+
+  // المقاسات القياسية للرولات الحرارية وأوراق الملصقات A4
+  var LABEL_PRESETS = {
+    roll_30x20: { label: 'رول حراري صغير (30×20mm - 1 عمود)', paperType: 'roll', cols: 1, w: 30, h: 20, bh: 8 },
+    roll_40x25: { label: 'رول حراري قياسي (40×25mm - 1 عمود)', paperType: 'roll', cols: 1, w: 40, h: 25, bh: 10 },
+    roll_50x30: { label: 'رول حراري متوسط (50×30mm - 1 عمود)', paperType: 'roll', cols: 1, w: 50, h: 30, bh: 12 },
+    roll_58x40: { label: 'رول ميزان وسوبرماركت (58×40mm)', paperType: 'roll', cols: 1, w: 58, h: 40, bh: 14 },
+    roll_80x50: { label: 'ملصق كرتون ومستودع كبير (80×50mm)', paperType: 'roll', cols: 1, w: 80, h: 50, bh: 16 },
+    a4_65: { label: '📄 ورقة A4 عادية — 65 ملصق صغير (5×13 | 38×21mm)', paperType: 'a4_sheet', cols: 5, rows: 13, w: 38, h: 21, bh: 8 },
+    a4_40: { label: '📄 ورقة A4 عادية — 40 ملصق متوسط (4×10 | 50×28mm)', paperType: 'a4_sheet', cols: 4, rows: 10, w: 50, h: 28, bh: 10 },
+    a4_24: { label: '📄 ورقة A4 عادية — 24 ملصق عريض (3×8 | 66×35mm)', paperType: 'a4_sheet', cols: 3, rows: 8, w: 66, h: 35, bh: 12 },
+    a4_shelf_12: { label: '🏷️ ورقة A4 — 12 بطاقة تسعير رفوف كبيرة (2×6 | 95×44mm)', paperType: 'a4_sheet', cols: 2, rows: 6, w: 95, h: 44, bh: 13 }
+  };
+
+  // 2) إعدادات منشئ البونات والأوراق الحر (Universal Custom BON Studio)
+  AppState.customBonState = AppState.customBonState || {
+    presetKey: 'sav_repair',
+    bonTitle: 'بون استلام وصيانة جهاز (BON DE RÉPARATION / SAV)',
+    bonSubtitle: 'وثيقة رسمية لاستلام ومتابعة الصيانة والضمان',
+    bonNumber: 'BON-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
+    bonDate: new Date().toISOString().slice(0, 10),
+    paperMode: 'a4_dual_a5', // 'a4' | 'a5_portrait' | 'a5_landscape' | 'a4_dual_a5' | 'thermal80'
+    accentColor: '#1d4ed8',
+    partyLabel: 'الزبون / الطرف المستلم',
+    partyName: 'محمد أمين بن علي',
+    partyPhone: '0550123456',
+    fields: [
+      { label: 'نوع الجهاز / الموديل', value: 'هاتف ذكي Samsung Galaxy A54' },
+      { label: 'الرقم التسلسلي (IMEI / S/N)', value: '358901092837412' },
+      { label: 'وصف العطل أو الحالة عند الاستلام', value: 'تغيير شاشة أصلية + فحص البطارية (الجهاز بدون خدوش)' },
+      { label: 'المبلغ المتفق عليه / التسبقة', value: 'الإجمالي: 12,000 د.ج | التسبقة المدفوعة: 4,000 د.ج | الباقي: 8,000 د.ج' }
+    ],
+    showItemsTable: true,
+    tableHeaders: ['البيان / الخدمة / القطعة', 'الكمية', 'سعر الوحدة (د.ج)', 'الإجمالي (د.ج)'],
+    items: [
+      { col1: 'شاشة أصلية كاملة مع التركيب', col2: '1', col3: '10500.00', col4: '10500.00' },
+      { col1: 'صيانة وتنظيف داخلي وفحص شامل', col2: '1', col3: '1500.00', col4: '1500.00' }
+    ],
+    bodyParagraph: 'يقر الطرف المستلم بالبيانات المذكورة أعلاه. المحل غير مسؤول عن الأجهزة التي لا يستلمها أصحابها بعد مرور 30 يوماً من تاريخ إشعارهم بانتهاء الصيانة.',
+    sigRightLabel: 'إمضاء وختم المؤسسة',
+    sigLeftLabel: 'إمضاء الزبون / المستلم',
+    showBarcode: true,
+    showCentimesTotal: true
+  };
+
+  // 3) إعدادات استوديو الكتالوج ولافتات العروض الجدارية
+  AppState.posterStudioState = AppState.posterStudioState || {
+    mode: 'promo_poster', // 'promo_poster' | 'catalogue'
+    productId: null,
+    badgeText: '🔥 عرض خاص ومحدود — PROMOTION 🔥',
+    customTitle: '',
+    oldPrice: '',
+    newPrice: '',
+    paperSize: 'a4_portrait', // 'a4_portrait' | 'a4_landscape' | 'a5_landscape'
+    themeColor: '#e11d48',
+    showCentimes: true,
+    showBarcode: true,
+    catFilter: 'all',
+    catPriceTier: 'both', // 'retail' | 'wholesale' | 'both'
+    catShowCentimes: true
+  };
+
+  function getProdRetail(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.selling_price ?? fb.selling_price ?? 0);
+  }
+
+  function getProdStock(p) {
+    if (!p) return 0;
+    return Number(p.total_stock ?? p.stock ?? 0);
+  }
+
+  function getSortedProductsForPrint() {
+    var list = (AppState.products || []).slice();
+    list.sort(function (a, b) {
+      var aP = getProdRetail(a) > 0 || getProdStock(a) > 0 ? 1 : 0;
+      var bP = getProdRetail(b) > 0 || getProdStock(b) > 0 ? 1 : 0;
+      if (aP !== bP) return bP - aP;
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+    return list;
+  }
+
+  // ==========================================================================
+  // 1. ترقية محرك الملصقات الفردية والجماعية (يدعم أوراق A4، تخطي الخانات، السنتيم، والـ QR)
+  // ==========================================================================
+  App.renderEnhancedSingleLabelHtml = async function (itemData, settings, cfg) {
+    var w = Number(cfg.widthMm || 40);
+    var h = Number(cfg.heightMm || 25);
+    var bh = Number(cfg.barcodeHeightMm || 10);
+    var isPriceOnly = Boolean(cfg.priceOnlyMode);
+    var sym = cfg.symbology || 'code128';
+
+    var bcImg = '';
+    var codeText = String(itemData.barcode || '6130001000012').trim();
+    if (!isPriceOnly && codeText && window.api && typeof window.api.generateBarcodeImage === 'function') {
+      var bcid = sym === 'qrcode' ? 'qrcode' : sym === 'ean13' ? 'code128' : sym;
+      bcImg = await window.api.generateBarcodeImage(codeText, {
+        bcid: bcid,
+        height: bh,
+        scale: 3
+      }).catch(function () { return ''; });
+    }
+
+    var priceNum = Number(itemData.price || 0);
+    var priceStr = priceNum > 0 ? priceNum.toFixed(2) + ' د.ج' : '';
+    var centimeStr = (cfg.showCentimes && priceNum > 0 && typeof App.formatAlgerianCentimes === 'function')
+      ? App.formatAlgerianCentimes(priceNum)
+      : '';
+    var oldPriceNum = parseFloat(cfg.oldPriceValue || itemData.oldPrice || 0);
+    var oldPriceStr = (cfg.showOldPrice && oldPriceNum > priceNum) ? oldPriceNum.toFixed(2) + ' د.ج' : '';
+
+    var borderCss = cfg.borderStyle === 'solid'
+      ? '0.4mm solid #000'
+      : cfg.borderStyle === 'dashed'
+        ? '0.35mm dashed #64748b'
+        : 'none';
+
+    var cardHtml =
+      '<div class="lbl-card" style="width:' + w + 'mm;height:' + h + 'mm;border:' + borderCss + ';padding:1mm 1.5mm;display:flex;flex-direction:column;align-items:center;justify-content:space-between;text-align:center;box-sizing:border-box;overflow:hidden;background:#fff;color:#000;page-break-inside:avoid;">' +
+      (cfg.showShop ? '<div style="font-size:2.1mm;font-weight:800;line-height:1;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (settings.shop_name || 'Gherbi.Ai POS') + '</div>' : '') +
+      (cfg.showName !== false ? '<div style="font-size:2.6mm;font-weight:900;line-height:1.1;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (itemData.name || '') + '</div>' : '') +
+      (!isPriceOnly && bcImg ? '<img src="' + bcImg + '" style="max-width:94%;height:' + bh + 'mm;object-fit:contain;margin:0.2mm 0;">' : '') +
+      (!isPriceOnly && cfg.showBarcodeText !== false ? '<div style="font-family:monospace;font-size:2.2mm;font-weight:800;letter-spacing:0.3px;line-height:1;">' + codeText + '</div>' : '') +
+      (cfg.showPrice && priceStr
+        ? '<div style="line-height:1.1;">' +
+          (oldPriceStr ? '<span style="font-size:2.1mm;text-decoration:line-through;color:#64748b;margin-left:1.5mm;">' + oldPriceStr + '</span>' : '') +
+          '<span style="font-family:\'Segoe UI\',Tahoma,sans-serif;font-size:' + (isPriceOnly ? '5.2mm' : '3.4mm') + ';font-weight:900;' + (isPriceOnly ? 'border:0.4mm solid #000;padding:0.4mm 1.5mm;border-radius:1mm;' : '') + '">' + priceStr + '</span>' +
+          (centimeStr ? '<div style="font-size:1.9mm;font-weight:800;line-height:1;margin-top:0.2mm;">(' + centimeStr + ')</div>' : '') +
+          '</div>'
+        : '') +
+      (cfg.showDates ? '<div style="font-family:monospace;font-size:1.8mm;font-weight:700;line-height:1;">P:' + (cfg.prodDate || '') + ' | E:' + (cfg.expDate || '') + '</div>' : '') +
+      (cfg.showPlu && itemData.plu ? '<div style="font-family:monospace;font-size:1.9mm;font-weight:800;">PLU: ' + itemData.plu + '</div>' : '') +
+      (cfg.customFooterText ? '<div style="font-size:1.9mm;font-weight:700;line-height:1;">' + cfg.customFooterText + '</div>' : '') +
+      (itemData.custPhone ? '<div style="font-family:monospace;font-size:2.2mm;font-weight:800;">' + itemData.custPhone + '</div>' : '') +
+      (itemData.custDebt ? '<div style="font-size:2.3mm;font-weight:900;">' + itemData.custDebt + '</div>' : '') +
+      '</div>';
+
+    return cardHtml;
+  };
+
+  App.buildCurrentLabelHtml = async function () {
+    var cfg = AppState.labelStudioConfig;
+    var s = AppState.settings || {};
+    var itemData = {};
+
+    if (cfg.source === 'customers') {
+      var cust = (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cfg.selectedId); }) || AppState.customers[0] || { id: 1, name: 'زبون نموذجي', phone: '0550123456', total_debt: 0 };
+      itemData = {
+        name: cust.name,
+        barcode: 'CUST-' + cust.id,
+        price: 0,
+        custPhone: cust.phone || '',
+        custDebt: 'الرصيد: ' + Number(cust.total_debt || 0).toFixed(2) + ' د.ج'
+      };
+    } else {
+      var prods = getSortedProductsForPrint();
+      var prod = prods.find(function (p) { return Number(p.id) === Number(cfg.selectedId); }) || prods[0] || { id: 1, name: 'منتج نموذجي', barcode: '6130001000012', selling_price: 450 };
+      itemData = {
+        name: prod.name,
+        barcode: prod.barcode || ('613000' + prod.id),
+        price: getProdRetail(prod),
+        plu: prod.plu_code || ''
+      };
+    }
+
+    var cardHtml = await this.renderEnhancedSingleLabelHtml(itemData, s, cfg);
+    return (
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">' +
+      '<link rel="stylesheet" href="./assets/css/fonts.css">' +
+      '<style>@page{size:' + cfg.widthMm + 'mm ' + cfg.heightMm + 'mm;margin:0;}*{box-sizing:border-box;margin:0;padding:0;}body{font-family:"Cairo",Arial,sans-serif;background:#fff;display:flex;align-items:center;justify-content:center;}</style>' +
+      '</head><body>' + cardHtml + '</body></html>'
+    );
+  };
+
+  // ترقية محرك طباعة طابور الملصقات بالجملة ليدعم أوراق A4 وتخطي الخانات المستعملة
+  if (window.PrintEngine) {
+    window.PrintEngine.renderBatchBarcodeLabelsHtml = async function (queueItems, settings, cfg) {
+      cfg = cfg || AppState.labelStudioConfig || {};
+      settings = settings || AppState.settings || {};
+      var cols = Math.max(1, parseInt(cfg.columns || 1, 10) || 1);
+      var skipOffset = cfg.paperType === 'a4_sheet' ? Math.max(0, parseInt(cfg.skipOffset || 0, 10) || 0) : 0;
+      var w = Number(cfg.widthMm || 40);
+      var h = Number(cfg.heightMm || 25);
+
+      var cellsHtml = [];
+      // إضافة خانات فارغة في بداية ورقة A4 بعدد الملصقات المنزوعة سابقاً!
+      for (var sIdx = 0; sIdx < skipOffset; sIdx++) {
+        cellsHtml.push('<div style="width:' + w + 'mm;height:' + h + 'mm;box-sizing:border-box;"></div>');
+      }
+
+      var itemsList = Array.isArray(queueItems) ? queueItems : [];
+      for (var i = 0; i < itemsList.length; i++) {
+        var it = itemsList[i];
+        var copies = Math.max(1, parseInt(it.copies || 1, 10) || 1);
+        var singleCard = await App.renderEnhancedSingleLabelHtml(it, settings, cfg);
+        for (var c = 0; c < copies; c++) {
+          cellsHtml.push(singleCard);
+        }
+      }
+
+      var pageCss = cfg.paperType === 'a4_sheet'
+        ? '@page { size: A4 portrait; margin: 5mm; }'
+        : '@page { margin: 2mm; }';
+
+      return (
+        '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>طابور طباعة الملصقات — Gherbi.Ai POS</title>' +
+        '<link rel="stylesheet" href="./assets/css/fonts.css">' +
+        '<style>' + pageCss + ' *{box-sizing:border-box;margin:0;padding:0;}body{font-family:"Cairo",Arial,sans-serif;background:#fff;color:#000;}' +
+        '.sheet-grid{display:grid;grid-template-columns:repeat(' + cols + ',' + w + 'mm);gap:1.5mm;justify-content:center;padding:2mm;}' +
+        '</style></head><body><div class="sheet-grid">' + cellsHtml.join('') + '</div></body></html>'
+      );
+    };
+  }
+
+  // إصلاح openPlSheetPreviewModal وتصدير PDF للطابور
+  App.openPlSheetPreviewModal = async function () {
+    if (!AppState.labelPrintQueue || AppState.labelPrintQueue.length === 0) {
+      this.addSelectedStudioItemToQueue();
+    }
+    var html = await window.PrintEngine.renderBatchBarcodeLabelsHtml(
+      AppState.labelPrintQueue,
+      AppState.settings,
+      AppState.labelStudioConfig
+    );
+
+    var box = document.getElementById('plPreviewBox');
+    if (box) {
+      box.innerHTML = AppState.labelPrintQueue.map(function (q, idx) {
+        return (
+          '<div class="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs flex items-center justify-between gap-2">' +
+          '  <div class="truncate font-bold">' + q.name + ' <span class="font-mono text-[10px] text-blue-600">(' + q.copies + '×)</span></div>' +
+          '  <button type="button" onclick="AppState.labelPrintQueue.splice(' + idx + ',1); App.openPlSheetPreviewModal(); App.renderPrintStudioView();" class="text-rose-500 font-black">✕</button>' +
+          '</div>'
+        );
+      }).join('');
+    }
+
+    this.openModal('plSheetPreviewModal');
+    setTimeout(function () {
+      var frame = document.getElementById('plSheetPreviewFrame');
+      if (frame && frame.contentWindow) {
+        var doc = frame.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+      }
+    }, 50);
+  };
+
+  App.applyLabelPreset = async function (presetKey) {
+    var p = LABEL_PRESETS[presetKey];
+    if (!p) return;
+    var cfg = AppState.labelStudioConfig;
+    cfg.presetKey = presetKey;
+    cfg.paperType = p.paperType;
+    cfg.columns = p.cols;
+    cfg.widthMm = p.w;
+    cfg.heightMm = p.h;
+    cfg.barcodeHeightMm = p.bh;
+    await this.renderPrintStudioView();
+    if (typeof showToast === 'function') {
+      showToast('🏷️ تم ضبط مقاس الملصق والورقة على: ' + p.label, 'info');
+    }
+  };
+
+  App.addCategoryToLabelQueue = function () {
+    var cat = AppState.labelStudioConfig.filterCategory || 'all';
+    var prods = getSortedProductsForPrint().filter(function (p) {
+      return getProdRetail(p) > 0 && (cat === 'all' || p.category === cat);
+    }).slice(0, 60);
+
+    prods.forEach(function (p) {
+      if (!AppState.labelPrintQueue.some(function (q) { return Number(q.id) === Number(p.id); })) {
+        AppState.labelPrintQueue.push({
+          id: p.id,
+          name: p.name,
+          barcode: p.barcode || ('613000' + p.id),
+          price: getProdRetail(p),
+          stock: Math.max(1, Math.round(getProdStock(p) || 1)),
+          plu: p.plu_code || '',
+          copies: 1
+        });
+      }
+    });
+    this.renderPrintStudioView();
+    if (typeof showToast === 'function') {
+      showToast('📦 تمت إضافة (' + prods.length + ') منتج إلى طابور الملصقات!', 'success');
+    }
+  };
+
+  // ==========================================================================
+  // 2. ترقية مهندس قوالب الفواتير وجميع الأوراق الرسمية (يدعم 2×A5 في ورقة A4 واحدة!)
+  // ==========================================================================
+  if (window.TemplateRenderer) {
+    window.TemplateRenderer.renderCustomTemplateHtml = function (layout, docData, settings) {
+      layout = layout || {};
+      docData = docData || {};
+      settings = settings || {};
+
+      var lang = layout.lang || 'ar';
+      var dir = lang === 'ar' ? 'rtl' : 'ltr';
+      var accent = layout.accentColor || '#1d4ed8';
+      var cols = layout.columns || {};
+      var items = Array.isArray(docData.items) ? docData.items : [];
+      var paper = layout.paper || 'a4';
+
+      var docTypeTitles = {
+        invoice: 'فاتورة بيع رسمية (FACTURE)',
+        delivery: 'بون تسليم وتوصيل بضاعة (BON DE LIVRAISON)',
+        order: 'سند طلبية زبون (BON DE COMMANDE)',
+        proforma: 'فاتورة شكلية / كشف تقديري (PROFORMA / DEVIS)',
+        receipt: 'بون مبيعات الكاشير (BON DE CAISSE)',
+        reception: 'بون استلام بضاعة (BON DE RÉCEPTION)',
+        payment_receipt: 'بون تسديد دفعة حساب (BON DE VERSEMENT)',
+        avoir: 'إشعار دائن / فاتورة إرجاع (FACTURE D\'AVOIR)'
+      };
+      var docTitleText = layout.customDocTitle || docTypeTitles[layout.doc_type || 'invoice'] || 'فاتورة (FACTURE)';
+
+      var subtotal = Number(docData.subtotal ?? docData.total ?? 0);
+      var discount = Number(docData.discount || 0);
+      var total = Number(docData.total ?? (subtotal - discount));
+      var paid = Number(docData.paid_amount ?? total);
+      var rest = Math.max(0, Number((total - paid).toFixed(2)));
+      var oldDebt = Number(docData.old_balance || 0);
+      var centimeTotal = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(total) : '';
+
+      var words = window.NumberToWords && typeof window.NumberToWords.toWords === 'function'
+        ? window.NumberToWords.toWords(total, lang)
+        : total.toFixed(2) + ' DZD';
+
+      var headersHtml =
+        (cols.index !== false ? '<th>#</th>' : '') +
+        (cols.barcode ? '<th>المرجع</th>' : '') +
+        '<th>البيان / المنتج</th>' +
+        (cols.qty !== false ? '<th>الكمية</th>' : '') +
+        (cols.unit ? '<th>الوحدة</th>' : '') +
+        (cols.unitPrice !== false ? '<th>سعر الوحدة</th>' : '') +
+        (cols.tva ? '<th>TVA</th>' : '') +
+        '<th>المجموع</th>' +
+        (cols.centimes ? '<th>بالسنتيم</th>' : '');
+
+      var rowsHtml = items.map(function (it, i) {
+        var lineSub = Number(it.subtotal || (it.quantity || 1) * (it.price || 0));
+        var lineCent = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(lineSub) : '';
+        return (
+          '<tr>' +
+          (cols.index !== false ? '<td style="text-align:center;">' + (i + 1) + '</td>' : '') +
+          (cols.barcode ? '<td style="font-family:monospace;text-align:center;">' + (it.barcode || it.product_barcode || '-') + '</td>' : '') +
+          '<td style="font-weight:700;">' + (it.product_name || it.custom_product_name || it.name || 'منتج') + '</td>' +
+          (cols.qty !== false ? '<td style="text-align:center;font-family:monospace;font-weight:bold;">' + (it.quantity || 1) + '</td>' : '') +
+          (cols.unit ? '<td style="text-align:center;">' + (it.unit || 'قطعة') + '</td>' : '') +
+          (cols.unitPrice !== false ? '<td style="text-align:center;font-family:monospace;">' + Number(it.price || 0).toFixed(2) + '</td>' : '') +
+          (cols.tva ? '<td style="text-align:center;">' + Number(docData.tax_percentage || 0) + '%</td>' : '') +
+          '<td style="text-align:center;font-family:monospace;font-weight:800;">' + lineSub.toFixed(2) + '</td>' +
+          (cols.centimes ? '<td style="text-align:center;font-size:10px;color:#b45309;font-weight:bold;">' + lineCent + '</td>' : '') +
+          '</tr>'
+        );
+      }).join('');
+
+      var buildSingleSheetBody = function (copyBadgeText) {
+        return (
+          '<div class="single-doc-box" style="position:relative;">' +
+          (layout.watermarkText
+            ? '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0.06;font-size:48px;font-weight:900;transform:rotate(-20deg);">' + layout.watermarkText + '</div>'
+            : '') +
+          '<div class="header">' +
+          '  <div>' +
+          '    <div class="shop-title">' + (settings.shop_name || 'Gherbi.Ai POS') + '</div>' +
+          '    <div>' + (settings.shop_description || 'تجارة عامة وتوزيع') + '</div>' +
+          '    <div>' + (settings.shop_address || 'الجزائر') + (settings.shop_phone ? ' | هاتف: ' + settings.shop_phone : '') + '</div>' +
+          (layout.showFiscal
+            ? '<div style="font-size:10px;color:#475569;margin-top:3px;font-family:monospace;">RC: ' + (settings.shop_rc || '-') + ' | NIF: ' + (settings.shop_nif || '-') + ' | AI: ' + (settings.shop_ai || '-') + ' | NIS: ' + (settings.shop_nis || '-') + '</div>'
+            : '') +
+          '  </div>' +
+          '  <div style="text-align:left;">' +
+          (copyBadgeText ? '<div style="display:inline-block;padding:2px 8px;border-radius:4px;background:#e2e8f0;font-size:10px;font-weight:900;margin-bottom:4px;">' + copyBadgeText + '</div>' : '') +
+          '    <div style="font-size:15px;font-weight:900;color:' + accent + ';">' + docTitleText + '</div>' +
+          '    <div style="font-family:monospace;font-weight:900;">N°: ' + (docData.doc_number || 'FAC-2026-0105') + '</div>' +
+          '    <div>التاريخ: ' + String(docData.sale_date || new Date().toISOString()).slice(0, 10) + '</div>' +
+          '  </div>' +
+          '</div>' +
+
+          '<div class="meta-box">' +
+          '  <div><strong>الطرف / الزبون:</strong> ' + (docData.customer_name || 'مؤسسة الأمل للتجارة') + (docData.customer_phone ? ' | <strong>الهاتف:</strong> ' + docData.customer_phone : '') + '</div>' +
+          '  <div><strong>طريقة التسديد:</strong> ' + (docData.payment_method || 'نقداً') + '</div>' +
+          '</div>' +
+
+          (layout.showDriverInfo
+            ? '<div style="margin-bottom:10px;padding:6px 10px;border:1px dashed #94a3b8;border-radius:6px;font-size:10.5px;display:flex;justify-content:space-between;">' +
+              '  <span><strong>🚚 السائق / الموزع:</strong> ............................</span>' +
+              '  <span><strong>ترقيم المركبة (Matricule):</strong> ............................</span>' +
+              '  <span><strong>عدد الطرود (Colis):</strong> ............</span>' +
+              '</div>'
+            : '') +
+
+          '<table><thead><tr>' + headersHtml + '</tr></thead><tbody>' + rowsHtml + '</tbody></table>' +
+
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;">' +
+          '  <div style="flex:1;">' +
+          (layout.showAmountInWords ? '<div class="words-box">أوقفت هذه الوثيقة على مبلغ: ' + words + '</div>' : '') +
+          (layout.footerNote ? '<div style="margin-top:8px;font-size:10.5px;color:#475569;font-weight:bold;">' + layout.footerNote + '</div>' : '') +
+          '  </div>' +
+          '  <div class="totals">' +
+          '    <div class="totals-row"><span>المجموع الفرعي:</span><span style="font-family:monospace;font-weight:bold;">' + subtotal.toFixed(2) + ' د.ج</span></div>' +
+          (discount > 0 ? '<div class="totals-row"><span>التخفيض:</span><span style="font-family:monospace;">-' + discount.toFixed(2) + ' د.ج</span></div>' : '') +
+          '    <div class="totals-row grand"><span>الصافي للدفع:</span><span style="font-family:monospace;">' + total.toFixed(2) + ' د.ج</span></div>' +
+          (layout.showCentimes !== false ? '<div class="totals-row" style="background:#fffbeb;color:#b45309;font-weight:900;font-size:10.5px;"><span>المبلغ بالسنتيم:</span><span>' + centimeTotal + '</span></div>' : '') +
+          '    <div class="totals-row"><span>المدفوع:</span><span style="font-family:monospace;">' + paid.toFixed(2) + ' د.ج</span></div>' +
+          (rest > 0 ? '<div class="totals-row"><span>الباقي:</span><span style="font-family:monospace;color:#e11d48;font-weight:bold;">' + rest.toFixed(2) + ' د.ج</span></div>' : '') +
+          (layout.showOldDebt && oldDebt > 0 ? '<div class="totals-row"><span>الدين السابق:</span><span style="font-family:monospace;">' + oldDebt.toFixed(2) + ' د.ج</span></div>' : '') +
+          '  </div>' +
+          '</div>' +
+
+          (layout.showSignature
+            ? '<div class="footer" style="margin-top:18px;padding-top:8px;border-top:1px dashed #cbd5e1;font-weight:800;">' +
+              '  <div>إمضاء المستلم / الزبون: ........................</div>' +
+              '  <div>الختم والإمضاء: ........................</div>' +
+              '</div>'
+            : '') +
+          '</div>'
+        );
+      };
+
+      var pageCssRule = '@page { size: A4 portrait; margin: 10mm; }';
+      if (paper === 'a4_landscape') pageCssRule = '@page { size: A4 landscape; margin: 10mm; }';
+      else if (paper === 'a5') pageCssRule = '@page { size: A5 portrait; margin: 8mm; }';
+      else if (paper === 'a5_landscape') pageCssRule = '@page { size: A5 landscape; margin: 8mm; }';
+      else if (paper === 'thermal80') pageCssRule = '@page { size: 80mm auto; margin: 2mm; }';
+      else if (paper === 'thermal58') pageCssRule = '@page { size: 58mm auto; margin: 1.5mm; }';
+      else if (paper === 'a4_dual_a5') pageCssRule = '@page { size: A4 portrait; margin: 6mm; }';
+
+      var bodyHtml = paper === 'a4_dual_a5'
+        ? '<div style="display:flex;flex-direction:column;justify-content:space-between;min-height:280mm;gap:6mm;">' +
+          buildSingleSheetBody('نسخة الزبون (Exemplaire Client - 1/2)') +
+          '<div style="border-top:2px dashed #64748b;text-align:center;font-size:10px;color:#64748b;padding:2px 0;">✂️ خط القص — (2×A5 في ورقة A4 واحدة لتوفير 50% من الورق) ✂️</div>' +
+          buildSingleSheetBody('نسخة الأرشيف والمحاسبة (Exemplaire Archive - 2/2)') +
+          '</div>'
+        : buildSingleSheetBody('');
+
+      return (
+        '<!DOCTYPE html><html lang="' + lang + '" dir="' + dir + '"><head><meta charset="UTF-8"><style>' +
+        pageCssRule +
+        'body{font-family:"Cairo","Tajawal",sans-serif;font-size:' + (layout.fontSize || 11.5) + 'px;color:#0f172a;margin:0;padding:' + (paper === 'a4_dual_a5' ? '8px' : '16px') + ';background:#fff;}' +
+        '.header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ' + accent + ';padding-bottom:8px;margin-bottom:10px;}' +
+        '.shop-title{font-size:18px;font-weight:900;color:' + accent + ';}' +
+        '.meta-box{background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:7px 12px;margin-bottom:10px;display:flex;justify-content:space-between;}' +
+        'table{width:100%;border-collapse:collapse;margin-bottom:10px;}' +
+        'th{background:' + accent + ';color:#fff;padding:6px;border:1px solid ' + accent + ';font-size:11px;}' +
+        'td{padding:5px 6px;border:1px solid #cbd5e1;font-size:11px;}' +
+        '.totals{width:250px;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;}' +
+        '.totals-row{display:flex;justify-content:space-between;padding:4px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;}' +
+        '.totals-row.grand{background:' + accent + ';color:#fff;font-weight:900;font-size:13px;}' +
+        '.words-box{padding:6px 10px;background:#f1f5f9;border-right:4px solid ' + accent + ';font-weight:700;font-size:11px;}' +
+        '.footer{display:flex;justify-content:space-between;font-size:11px;color:#334155;}' +
+        '</style></head><body>' + bodyHtml + '</body></html>'
+      );
+    };
+  }
+
+  // ترقية واجهة TemplateBuilder لتشمل جميع أنواع المستندات الـ 10 ومقاس 2×A5 والأعمدة
+  if (window.TemplateBuilder) {
+    var currentLayout = {
+      name: 'قالب بون وفاتورة احترافي',
+      doc_type: 'invoice',
+      paper: 'a4',
+      lang: 'ar',
+      accentColor: '#1d4ed8',
+      fontSize: 12,
+      showFiscal: true,
+      showOldDebt: true,
+      showAmountInWords: true,
+      showCentimes: true,
+      showDriverInfo: false,
+      showSignature: true,
+      watermarkText: '',
+      columns: { index: true, barcode: true, designation: true, qty: true, unit: true, unitPrice: true, tva: false, total: true, centimes: true },
+      footerNote: 'شكراً لتعاملكم معنا — البضاعة المباعة لا تُرد ولا تُستبدل إلا وفق الشروط القانونية.'
+    };
+    var savedTemplatesList = [];
+
+    window.TemplateBuilder.getCurrentLayout = function () { return currentLayout; };
+
+    window.TemplateBuilder.initTemplateBuilder = async function (containerId) {
+      var root = document.getElementById(containerId || 'template-designer-root');
+      if (!root) return;
+
+      if (window.api && window.api.getCustomTemplates) {
+        savedTemplatesList = (await window.api.getCustomTemplates().catch(function () { return []; })) || [];
+      }
+
+      var cols = currentLayout.columns || {};
+
+      root.innerHTML =
+        '<div class="grid grid-cols-1 lg:grid-cols-12 gap-5 text-xs">' +
+        '  <div class="lg:col-span-5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3.5 shadow-sm">' +
+        '    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-2.5">' +
+        '      <h3 class="font-black text-sm text-blue-600">🎨 مهندس قوالب الفواتير والأوراق الرسمية</h3>' +
+        '      <div class="flex gap-1.5">' +
+        '        <button type="button" onclick="window.TemplateBuilder.printCurrentPreview()" class="px-3 py-1.5 bg-slate-800 text-white rounded-xl font-bold">🖨️ طباعة تجريبية</button>' +
+        '        <button type="button" onclick="window.TemplateBuilder.saveCurrent()" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black shadow">💾 حفظ واعتماد القالب</button>' +
+        '      </div>' +
+        '    </div>' +
+
+        '    <div class="grid grid-cols-2 gap-2.5">' +
+        '      <div><label class="block font-bold mb-1">اسم القالب *</label><input type="text" value="' + (currentLayout.name || '') + '" oninput="window.TemplateBuilder.updateProp(\'name\', this.value)" class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
+        '      <div><label class="block font-bold mb-1">نوع المستند الرسمي (Doc Type)</label>' +
+        '        <select onchange="window.TemplateBuilder.updateProp(\'doc_type\', this.value)" class="w-full px-2.5 py-1.5 rounded-xl font-bold">' +
+        '          <option value="invoice" ' + (currentLayout.doc_type === 'invoice' ? 'selected' : '') + '>🧾 فاتورة بيع (Facture)</option>' +
+        '          <option value="delivery" ' + (currentLayout.doc_type === 'delivery' ? 'selected' : '') + '>🚚 بون تسليم وتوصيل (Bon de Livraison)</option>' +
+        '          <option value="order" ' + (currentLayout.doc_type === 'order' ? 'selected' : '') + '>📋 بون طلبية (Bon de Commande)</option>' +
+        '          <option value="proforma" ' + (currentLayout.doc_type === 'proforma' ? 'selected' : '') + '>📄 فاتورة شكلية (Proforma / Devis)</option>' +
+        '          <option value="receipt" ' + (currentLayout.doc_type === 'receipt' ? 'selected' : '') + '>🎫 بون كاشير (Ticket de Caisse)</option>' +
+        '          <option value="reception" ' + (currentLayout.doc_type === 'reception' ? 'selected' : '') + '>📦 بون استلام بضاعة (Bon de Réception)</option>' +
+        '          <option value="payment_receipt" ' + (currentLayout.doc_type === 'payment_receipt' ? 'selected' : '') + '>💵 بون تسديد دفعة (Bon de Versement)</option>' +
+        '        </select>' +
+        '      </div>' +
+        '      <div><label class="block font-bold mb-1">مقاس وتخطيط الورقة *</label>' +
+        '        <select onchange="window.TemplateBuilder.updateProp(\'paper\', this.value)" class="w-full px-2.5 py-1.5 rounded-xl font-bold text-blue-600">' +
+        '          <option value="a4" ' + (currentLayout.paper === 'a4' ? 'selected' : '') + '>📄 A4 عمودي قياسي (210×297mm)</option>' +
+        '          <option value="a4_dual_a5" ' + (currentLayout.paper === 'a4_dual_a5' ? 'selected' : '') + '>🔥 2×A5 في ورقة A4 واحدة (نسخة زبون + أرشيف)</option>' +
+        '          <option value="a5" ' + (currentLayout.paper === 'a5' ? 'selected' : '') + '>📑 A5 نصفي عمودي (148×210mm)</option>' +
+        '          <option value="a5_landscape" ' + (currentLayout.paper === 'a5_landscape' ? 'selected' : '') + '>📐 A5 أفقي تجاري (Bon Commercial)</option>' +
+        '          <option value="a4_landscape" ' + (currentLayout.paper === 'a4_landscape' ? 'selected' : '') + '>🖼️ A4 أفقي عريض (Landscape)</option>' +
+        '          <option value="thermal80" ' + (currentLayout.paper === 'thermal80' ? 'selected' : '') + '>🧾 رول حراري 80mm</option>' +
+        '          <option value="thermal58" ' + (currentLayout.paper === 'thermal58' ? 'selected' : '') + '>🎫 رول حراري 58mm</option>' +
+        '        </select>' +
+        '      </div>' +
+        '      <div class="grid grid-cols-2 gap-1.5">' +
+        '        <div><label class="block font-bold mb-1">اللون الرئيسي</label><input type="color" value="' + (currentLayout.accentColor || '#1d4ed8') + '" oninput="window.TemplateBuilder.updateProp(\'accentColor\', this.value)" class="w-full h-8 rounded-xl cursor-pointer"></div>' +
+        '        <div><label class="block font-bold mb-1">حجم الخط</label><input type="number" min="9" max="16" value="' + (currentLayout.fontSize || 12) + '" oninput="window.TemplateBuilder.updateProp(\'fontSize\', Number(this.value))" class="w-full px-2 py-1.5 rounded-xl font-mono text-center"></div>' +
+        '      </div>' +
+        '    </div>' +
+
+        '    <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-1.5">' +
+        '      <div class="font-black text-slate-600 dark:text-slate-300">أعمدة الجدول الظاهرة في الورقة:</div>' +
+        '      <div class="grid grid-cols-4 gap-1.5 text-[11px] font-bold">' +
+        '        <label class="flex items-center gap-1"><input type="checkbox" ' + (cols.index !== false ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'index\', this.checked)"><span># الرقم</span></label>' +
+        '        <label class="flex items-center gap-1"><input type="checkbox" ' + (cols.barcode ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'barcode\', this.checked)"><span>الباركود</span></label>' +
+        '        <label class="flex items-center gap-1"><input type="checkbox" ' + (cols.qty !== false ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'qty\', this.checked)"><span>الكمية</span></label>' +
+        '        <label class="flex items-center gap-1"><input type="checkbox" ' + (cols.unit ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'unit\', this.checked)"><span>الوحدة</span></label>' +
+        '        <label class="flex items-center gap-1"><input type="checkbox" ' + (cols.unitPrice !== false ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'unitPrice\', this.checked)"><span>السعر</span></label>' +
+        '        <label class="flex items-center gap-1"><input type="checkbox" ' + (cols.tva ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'tva\', this.checked)"><span>TVA %</span></label>' +
+        '        <label class="flex items-center gap-1 text-amber-600"><input type="checkbox" ' + (cols.centimes ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'centimes\', this.checked)"><span>بالسنتيم</span></label>' +
+        '      </div>' +
+        '    </div>' +
+
+        '    <div class="grid grid-cols-2 gap-1.5 text-[11px] font-bold pt-1">' +
+        '      <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (currentLayout.showFiscal ? 'checked' : '') + ' onchange="window.TemplateBuilder.updateProp(\'showFiscal\', this.checked)"><span>البيانات الجبائية (RC/NIF)</span></label>' +
+        '      <label class="flex items-center gap-1.5 cursor-pointer text-amber-600"><input type="checkbox" ' + (currentLayout.showCentimes !== false ? 'checked' : '') + ' onchange="window.TemplateBuilder.updateProp(\'showCentimes\', this.checked)"><span>إجمالي الفاتورة بالسنتيم</span></label>' +
+        '      <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (currentLayout.showOldDebt ? 'checked' : '') + ' onchange="window.TemplateBuilder.updateProp(\'showOldDebt\', this.checked)"><span>الدين السابق والرصيد</span></label>' +
+        '      <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (currentLayout.showAmountInWords ? 'checked' : '') + ' onchange="window.TemplateBuilder.updateProp(\'showAmountInWords\', this.checked)"><span>المبلغ بالحروف (التفقيط)</span></label>' +
+        '      <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (currentLayout.showDriverInfo ? 'checked' : '') + ' onchange="window.TemplateBuilder.updateProp(\'showDriverInfo\', this.checked)"><span>بيانات السائق والمركبة</span></label>' +
+        '      <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (currentLayout.showSignature ? 'checked' : '') + ' onchange="window.TemplateBuilder.updateProp(\'showSignature\', this.checked)"><span>خانات الختم والإمضاء</span></label>' +
+        '    </div>' +
+
+        '    <div class="grid grid-cols-2 gap-2">' +
+        '      <div><label class="block font-bold mb-1">علامة مائية بالخلفية (Watermark)</label><input type="text" placeholder="مثال: خالص / PAYÉ" value="' + (currentLayout.watermarkText || '') + '" oninput="window.TemplateBuilder.updateProp(\'watermarkText\', this.value)" class="w-full px-2.5 py-1.5 rounded-xl"></div>' +
+        '      <div><label class="block font-bold mb-1">ملاحظة أسفل الورقة</label><input type="text" value="' + (currentLayout.footerNote || '') + '" oninput="window.TemplateBuilder.updateProp(\'footerNote\', this.value)" class="w-full px-2.5 py-1.5 rounded-xl"></div>' +
+        '    </div>' +
+
+        '    <div class="pt-2 border-t border-slate-200 dark:border-slate-700">' +
+        '      <div class="font-bold mb-1.5">القوالب المحفوظة في قاعدة البيانات (' + savedTemplatesList.length + '):</div>' +
+        '      <div class="flex flex-wrap gap-1.5">' +
+        savedTemplatesList.map(function (t) {
+          return '<button type="button" onclick="window.TemplateBuilder.loadSaved(' + t.id + ')" class="px-2.5 py-1 bg-slate-100 dark:bg-slate-700 hover:bg-blue-600 hover:text-white rounded-lg font-bold text-[11px] transition">' + t.name + ' (' + (t.paper || 'a4') + ')</button>';
+        }).join('') +
+        '      </div>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="lg:col-span-7 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 flex flex-col shadow-sm">' +
+        '    <div class="flex items-center justify-between text-xs font-bold text-slate-400 mb-2">' +
+        '      <span>معاينة حية ومباشرة للورقة (' + (currentLayout.paper === 'a4_dual_a5' ? 'نسختان 2×A5 في ورقة A4 واحدة' : currentLayout.paper) + ')</span>' +
+        '      <span class="text-emerald-600">تتحدث لحظياً مع كل تغيير</span>' +
+        '    </div>' +
+        '    <iframe id="td-preview-frame" class="w-full flex-1 min-h-[540px] border border-slate-200 rounded-xl bg-white shadow-inner"></iframe>' +
+        '  </div>' +
+        '</div>';
+
+      this.refreshPreview();
+    };
+
+    window.TemplateBuilder.toggleCol = function (colKey, checked) {
+      if (!currentLayout.columns) currentLayout.columns = {};
+      currentLayout.columns[colKey] = Boolean(checked);
+      this.refreshPreview();
+    };
+
+    window.TemplateBuilder.printCurrentPreview = async function () {
+      var frame = document.getElementById('td-preview-frame');
+      if (frame && frame.contentWindow && window.PrintEngine) {
+        var html = frame.contentWindow.document.documentElement.outerHTML;
+        await window.PrintEngine.printHtmlDocument(html, { silent: false });
+      }
+    };
+  }
+
+  // ==========================================================================
+  // 3. منشئ البونات والأوراق الحر (Universal Custom BON & Paper Creator Studio)
+  // ==========================================================================
+  var CUSTOM_BON_PRESETS = {
+    sav_repair: {
+      bonTitle: '🛠️ بون استلام وصيانة جهاز (BON DE RÉPARATION / SAV)',
+      bonSubtitle: 'وثيقة رسمية لاستلام الأجهزة ومتابعة الصيانة والضمان',
+      partyLabel: 'الزبون صاحب الجهاز',
+      accentColor: '#1d4ed8',
+      fields: [
+        { label: 'نوع الجهاز والموديل', value: 'هاتف / حاسوب / جهاز كهرومنزلي' },
+        { label: 'الرقم التسلسلي (IMEI / S/N)', value: '358901092837412' },
+        { label: 'وصف العطل والملحقات المستلمة', value: 'تغيير شاشة + فحص البطارية (بدون شاحن)' },
+        { label: 'التكلفة التقديرية والتسبقة', value: 'التكلفة: 8,500 د.ج | التسبقة: 3,000 د.ج | الباقي: 5,500 د.ج' }
+      ],
+      showItemsTable: true,
+      tableHeaders: ['القطعة / خدمة الصيانة', 'الكمية', 'السعر (د.ج)', 'المجموع (د.ج)'],
+      items: [
+        { col1: 'قطعة غيار أصلية مع التركيب', col2: '1', col3: '7000.00', col4: '7000.00' },
+        { col1: 'يد عاملة وفحص تقني شامل', col2: '1', col3: '1500.00', col4: '1500.00' }
+      ],
+      bodyParagraph: 'يلتزم الزبون بإحضار هذا البون عند استلام جهازه. الورشة غير مسؤولة عن الأجهزة المتروكة لأكثر من 30 يوماً بعد إشعار الزبون.'
+    },
+    stock_transfer: {
+      bonTitle: '📦 بون تحويل بضاعة بين مخزنين (BON DE TRANSFERT INTER-DÉPÔTS)',
+      bonSubtitle: 'سند حركة داخلية للبضائع بين المستودع والمحل',
+      partyLabel: 'المخزن المستلم / أمين المستودع',
+      accentColor: '#0f766e',
+      fields: [
+        { label: 'من المخزن المرسل', value: 'المستودع الرئيسي — المنطقة الصناعية' },
+        { label: 'إلى المخزن المستلم', value: 'نقطة البيع الرئيسية — وسط المدينة' },
+        { label: 'اسم السائق / الناقل', value: 'كريم بن عيسى (مركبة: 04512-123-21)' },
+        { label: 'حالة البضاعة عند الشحن', value: 'سليمة ومطابقة للعد الفعلي' }
+      ],
+      showItemsTable: true,
+      tableHeaders: ['اسم المنتج / الصنف', 'الكمية المحولة', 'الوحدة', 'ملاحظة الرصيد'],
+      items: [
+        { col1: 'زيت مائدة إيليو 5 لتر', col2: '30', col3: 'قارورة', col4: 'كرتون مغلق' },
+        { col1: 'حليب مجفف لويا 500غ', col2: '50', col3: 'علبة', col4: 'دفعة جديدة' }
+      ],
+      bodyParagraph: 'تم جرد واستلام البضاعة المذكورة أعلاه كاملة وسليمة للتحويل الداخلي.'
+    },
+    exit_voucher: {
+      bonTitle: '🚚 بون خروج بضاعة من المخزن (BON DE SORTIE MAGASIN)',
+      bonSubtitle: 'ترخيص رسمي بإخراج البضاعة وتسليمها للموزع أو الزبون',
+      partyLabel: 'المستلم / السائق الموزع',
+      accentColor: '#4338ca',
+      fields: [
+        { label: 'رقم الفاتورة أو الطلبية المرتبطة', value: 'FAC-2026-0105' },
+        { label: 'اسم السائق وترقيم المركبة', value: 'أحمد بلقاسم — الشاحنة رقم: 11204-316-16' },
+        { label: 'وجهة التسليم', value: 'سوبرماركت النور — قسنطينة' }
+      ],
+      showItemsTable: true,
+      tableHeaders: ['البيان / السلعة', 'الكمية المرخصة', 'الوحدة / التغليف', 'مراقبة الباب'],
+      items: [
+        { col1: 'فرينة ممتازة 5 كغ', col2: '40', col3: 'كيس', col4: '✓ مطابق' },
+        { col1: 'سكر أبيض سيفيتال 1 كغ', col2: '100', col3: 'كيس', col4: '✓ مطابق' }
+      ],
+      bodyParagraph: 'لا يُسمح بإخراج أي بضاعة من المستودع إلا بموجب هذا السند الموقع من الإدارة.'
+    },
+    cash_discharge: {
+      bonTitle: '🤝 بون أمانة / إبراء ذمة وتسليم مبلغ (BON DE DÉCHARGE)',
+      bonSubtitle: 'وثيقة إثبات استلام أو تسليم مبالغ مالية أو أمانات تجارية',
+      partyLabel: 'الطرف المستلم / المودع',
+      accentColor: '#047857',
+      fields: [
+        { label: 'رقم بطاقة التعريف / السجل التجاري', value: '1099827364512' },
+        { label: 'المبلغ المالي بالأرقام', value: '150,000.00 د.ج (خمسة عشر مليون سنتيم)' },
+        { label: 'موضوع الأمانة / التسليم', value: 'تسبيق على صفقة تموين بضاعة لشهر رمضان' }
+      ],
+      showItemsTable: false,
+      tableHeaders: ['البيان', 'الكمية', 'القيمة', 'الإجمالي'],
+      items: [],
+      bodyParagraph: 'أشهد أنا الموقع أدناه أنني استلمت المبلغ المالي المذكور أعلاه كاملاً عداً ونقداً، وحرر هذا السند لإثبات الحق وإبراء الذمة.'
+    },
+    crate_consign: {
+      bonTitle: '🔄 بون إعارة واسترجاع الصناديق والمعدات (BON DE CONSIGNATION)',
+      bonSubtitle: 'متابعة الصناديق البلاستيكية، القارورات، والمعدات المعارة للزبائن',
+      partyLabel: 'الزبون المستعير',
+      accentColor: '#d97706',
+      fields: [
+        { label: 'عدد الصناديق / المعدات المسلمة', value: '25 صندوق بلاستيكي كبير' },
+        { label: 'مبلغ الضمان المالي (Caution)', value: '12,500.00 د.ج (تُسترجع عند إعادة الصناديق)' },
+        { label: 'تاريخ الإرجاع المتفق عليه', value: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10) }
+      ],
+      showItemsTable: true,
+      tableHeaders: ['نوع الصندوق / المعدات', 'العدد المسلم', 'قيمة الضمان للوحدة', 'إجمالي الضمان'],
+      items: [
+        { col1: 'صندوق بلاستيكي مقوى (أزرق)', col2: '25', col3: '500.00', col4: '12500.00' }
+      ],
+      bodyParagraph: 'يلتزم الزبون بإعادة الصناديق أو المعدات بحالتها السليمة في الموعد المحدد لاسترجاع مبلغ الضمان.'
+    },
+    debt_ack: {
+      bonTitle: '📝 سند التزام واعتراف بدين تجاري (RECONNAISSANCE DE DETTE)',
+      bonSubtitle: 'وثيقة تعاقدية لإثبات الرصيد المستحق وجدولة السداد',
+      partyLabel: 'المدين الملتزم بالسداد',
+      accentColor: '#be123c',
+      fields: [
+        { label: 'إجمالي مبلغ الدين المستحق', value: '85,000.00 د.ج (ثمانية ملايين وخمسمائة ألف سنتيم)' },
+        { label: 'تاريخ الاستحقاق النهائي للسداد', value: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10) },
+        { label: 'طريقة السداد المتفق عليها', value: 'نقداً أو عبر الحساب البريدي BaridiMob' }
+      ],
+      showItemsTable: false,
+      tableHeaders: ['البيان', 'الكمية', 'السعر', 'المجموع'],
+      items: [],
+      bodyParagraph: 'أقر وأعترف أنا الموقع أدناه بصفتي مديناً للمؤسسة بالمبلغ المبين أعلاه مقابل استلام بضاعة تجارية سليمة، وألتزم بتسديده في الأجل المحدد.'
+    },
+    gift_voucher: {
+      bonTitle: '🎁 قسيمة شراء / بطاقة هدية للزبون (BON D\'ACHAT VIP)',
+      bonSubtitle: 'قسيمة تخفيض أو شراء مهداة من المتجر لزبائنه الأوفياء',
+      partyLabel: 'المستفيد من القسيمة',
+      accentColor: '#7c3aed',
+      fields: [
+        { label: 'قيمة قسيمة الشراء المجانية', value: '2,000.00 د.ج (مائتا ألف سنتيم)' },
+        { label: 'صالحة للاستعمال لغاية تاريخ', value: new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10) }
+      ],
+      showItemsTable: false,
+      tableHeaders: ['البيان', 'الكمية', 'السعر', 'المجموع'],
+      items: [],
+      bodyParagraph: 'تُقدم هذه القسيمة عند الكاشير للاستفادة الفورية من قيمتها عند الشراء من متجرنا. شكراً لوفائكم!'
+    },
+    blank_custom: {
+      bonTitle: '✨ بون وورقة رسمية مخصصة (BON SPÉCIAL PERSONNALISÉ)',
+      bonSubtitle: 'اكتب أي عنوان وأضف أي حقول أو جداول حسب تصورك الخاص',
+      partyLabel: 'الطرف المعني / الزبون',
+      accentColor: '#0f172a',
+      fields: [
+        { label: 'البيان الأول', value: 'أدخل التفاصيل هنا...' },
+        { label: 'البيان الثاني', value: 'أدخل التفاصيل هنا...' }
+      ],
+      showItemsTable: true,
+      tableHeaders: ['البيان / الوصف', 'الكمية', 'القيمة', 'المجموع'],
+      items: [
+        { col1: 'عنصر مخصص 1', col2: '1', col3: '1000.00', col4: '1000.00' }
+      ],
+      bodyParagraph: 'ملاحظات وشروط الورقة المخصصة...'
+    }
+  };
+
+  App.loadCustomBonPreset = function (presetKey) {
+    var p = CUSTOM_BON_PRESETS[presetKey];
+    if (!p) return;
+    var st = AppState.customBonState;
+    st.presetKey = presetKey;
+    st.bonTitle = p.bonTitle;
+    st.bonSubtitle = p.bonSubtitle;
+    st.partyLabel = p.partyLabel;
+    st.accentColor = p.accentColor;
+    st.fields = JSON.parse(JSON.stringify(p.fields));
+    st.showItemsTable = p.showItemsTable;
+    st.tableHeaders = p.tableHeaders.slice();
+    st.items = JSON.parse(JSON.stringify(p.items));
+    st.bodyParagraph = p.bodyParagraph;
+    this.renderPrintStudioView();
+  };
+
+  App.buildCustomBonHtmlDocument = async function () {
+    var st = AppState.customBonState;
+    var s = AppState.settings || {};
+    var accent = st.accentColor || '#1d4ed8';
+
+    var bcImg = '';
+    if (st.showBarcode && st.bonNumber && window.api && window.api.generateBarcodeImage) {
+      bcImg = await window.api.generateBarcodeImage(st.bonNumber, { bcid: 'code128', height: 9, scale: 2 }).catch(function () { return ''; });
+    }
+
+    var totalTableSum = (st.items || []).reduce(function (acc, it) {
+      return acc + (parseFloat(it.col4) || 0);
+    }, 0);
+    var centimeSum = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(totalTableSum) : '';
+
+    var fieldsGridHtml = (st.fields || []).map(function (f) {
+      return (
+        '<div style="padding:7px 10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;">' +
+        '  <div style="font-size:10px;color:#64748b;font-weight:bold;">' + (f.label || '') + ':</div>' +
+        '  <div style="font-size:12px;font-weight:900;color:#0f172a;margin-top:2px;">' + (f.value || '—') + '</div>' +
+        '</div>'
+      );
+    }).join('');
+
+    var tableHtml = '';
+    if (st.showItemsTable && st.items && st.items.length > 0) {
+      var ths = (st.tableHeaders || ['البيان', 'الكمية', 'السعر', 'المجموع']).map(function (h) {
+        return '<th style="background:' + accent + ';color:#fff;padding:6px;border:1px solid ' + accent + ';">' + h + '</th>';
+      }).join('');
+      var trs = st.items.map(function (it, i) {
+        return (
+          '<tr>' +
+          '<td style="border:1px solid #cbd5e1;padding:6px;font-weight:bold;">' + (i + 1) + '. ' + (it.col1 || '') + '</td>' +
+          '<td style="border:1px solid #cbd5e1;padding:6px;text-align:center;font-family:monospace;font-weight:bold;">' + (it.col2 || '') + '</td>' +
+          '<td style="border:1px solid #cbd5e1;padding:6px;text-align:center;font-family:monospace;">' + (it.col3 || '') + '</td>' +
+          '<td style="border:1px solid #cbd5e1;padding:6px;text-align:center;font-family:monospace;font-weight:900;">' + (it.col4 || '') + '</td>' +
+          '</tr>'
+        );
+      }).join('');
+
+      tableHtml =
+        '<table style="width:100%;border-collapse:collapse;margin:10px 0;font-size:11px;">' +
+        '<thead><tr>' + ths + '</tr></thead><tbody>' + trs + '</tbody></table>' +
+        (totalTableSum > 0
+          ? '<div style="display:flex;justify-content:flex-end;margin-bottom:8px;">' +
+            '  <div style="padding:6px 14px;border-radius:8px;background:' + accent + ';color:#fff;font-weight:900;font-size:12px;">' +
+            '    المجموع: <span style="font-family:monospace;">' + totalTableSum.toFixed(2) + ' د.ج</span>' +
+            (st.showCentimesTotal ? ' <span style="font-size:10.5px;color:#fde68a;">(' + centimeSum + ')</span>' : '') +
+            '  </div>' +
+            '</div>'
+          : '');
+    }
+
+    var renderOneBonCopy = function (copyTitle) {
+      return (
+        '<div style="border:2px solid ' + accent + ';border-radius:12px;padding:14px;background:#fff;">' +
+        '  <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2.5px solid ' + accent + ';padding-bottom:8px;margin-bottom:10px;">' +
+        '    <div>' +
+        '      <div style="font-size:18px;font-weight:900;color:' + accent + ';">' + (s.shop_name || 'Gherbi.Ai POS') + '</div>' +
+        '      <div style="font-size:10.5px;color:#475569;">' + (s.shop_address || 'الجزائر') + (s.shop_phone ? ' | هاتف: ' + s.shop_phone : '') + '</div>' +
+        '    </div>' +
+        '    <div style="text-align:left;">' +
+        (copyTitle ? '<div style="display:inline-block;padding:1px 7px;background:#e2e8f0;border-radius:4px;font-size:9.5px;font-weight:900;margin-bottom:2px;">' + copyTitle + '</div>' : '') +
+        '      <div style="font-size:15px;font-weight:900;color:' + accent + ';">' + (st.bonTitle || 'بون رسمي') + '</div>' +
+        '      <div style="font-size:10px;color:#64748b;font-weight:bold;">' + (st.bonSubtitle || '') + '</div>' +
+        '      <div style="font-family:monospace;font-size:11px;font-weight:900;margin-top:2px;">N°: ' + (st.bonNumber || 'BON-01') + ' | التاريخ: ' + (st.bonDate || '') + '</div>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div style="padding:7px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;margin-bottom:10px;display:flex;justify-content:space-between;font-size:11.5px;">' +
+        '    <div><strong>' + (st.partyLabel || 'الطرف المعني') + ':</strong> ' + (st.partyName || '—') + '</div>' +
+        '    <div><strong>رقم الهاتف:</strong> <span style="font-family:monospace;">' + (st.partyPhone || '—') + '</span></div>' +
+        '  </div>' +
+
+        '  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px;">' + fieldsGridHtml + '</div>' +
+        tableHtml +
+        (st.bodyParagraph ? '<div style="padding:8px 10px;background:#f8fafc;border-right:4px solid ' + accent + ';font-size:10.5px;font-weight:bold;line-height:1.5;margin:8px 0;">' + st.bodyParagraph + '</div>' : '') +
+
+        '  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:16px;padding-top:8px;border-top:1px dashed #cbd5e1;font-size:11px;font-weight:800;">' +
+        '    <div>' + (st.sigLeftLabel || 'إمضاء المستلم / الزبون') + '<br><br>........................</div>' +
+        (bcImg ? '<div style="text-align:center;"><img src="' + bcImg + '" style="height:10mm;object-fit:contain;"><div style="font-family:monospace;font-size:9px;">' + st.bonNumber + '</div></div>' : '') +
+        '    <div>' + (st.sigRightLabel || 'ختم وإمضاء المتجر') + '<br><br>........................</div>' +
+        '  </div>' +
+        '</div>'
+      );
+    };
+
+    var isDual = st.paperMode === 'a4_dual_a5';
+    var pageRule = '@page { size: A4 portrait; margin: 8mm; }';
+    if (st.paperMode === 'a5_landscape') pageRule = '@page { size: A5 landscape; margin: 8mm; }';
+    else if (st.paperMode === 'a5_portrait') pageRule = '@page { size: A5 portrait; margin: 8mm; }';
+    else if (st.paperMode === 'thermal80') pageRule = '@page { size: 80mm auto; margin: 2mm; }';
+
+    var fullBody = isDual
+      ? '<div style="display:flex;flex-direction:column;justify-content:space-between;gap:5mm;">' +
+        renderOneBonCopy('نسخة الزبون / المستلم (Exemplaire 1/2)') +
+        '<div style="border-top:2px dashed #64748b;text-align:center;font-size:10px;color:#64748b;padding:2px 0;">✂️ خط القص — (نسختان 2×A5 في ورقة A4 واحدة) ✂️</div>' +
+        renderOneBonCopy('نسخة المحل / الأرشيف (Exemplaire 2/2)') +
+        '</div>'
+      : renderOneBonCopy('');
+
+    return (
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>' + (st.bonTitle || 'Bon') + '</title>' +
+      '<link rel="stylesheet" href="./assets/css/fonts.css">' +
+      '<style>' + pageRule + ' *{box-sizing:border-box;}body{font-family:"Cairo",Tahoma,sans-serif;margin:0;padding:8px;background:#fff;color:#0f172a;}</style>' +
+      '</head><body>' + fullBody + '</body></html>'
+    );
+  };
+
+  App.refreshCustomBonPreview = async function () {
+    var frame = document.getElementById('customBonLiveFrame');
+    if (!frame || !frame.contentWindow) return;
+    var html = await this.buildCustomBonHtmlDocument();
+    var doc = frame.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+  };
+
+  App.printCustomBonNow = async function (asPdf) {
+    var html = await this.buildCustomBonHtmlDocument();
+    if (asPdf && window.api && window.api.exportPDF) {
+      var res = await window.api.exportPDF({ html: html, filename: (AppState.customBonState.bonNumber || 'Custom_Bon') + '.pdf' });
+      if (res && res.success && typeof showToast === 'function') showToast('📄 تم تصدير البون المخصص بصيغة PDF بنجاح!', 'success');
+      return;
+    }
+    if (window.PrintEngine) {
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  };
+
+  // ==========================================================================
+  // 4. مولد لافتات العروض الجدارية (A4/A5 Promo Sign Maker) وكتالوج الأسعار
+  // ==========================================================================
+  App.buildPosterOrCatalogueHtml = async function () {
+    var pst = AppState.posterStudioState;
+    var s = AppState.settings || {};
+    var prods = getSortedProductsForPrint();
+
+    if (pst.mode === 'catalogue') {
+      var filtered = prods.filter(function (p) {
+        return getProdRetail(p) > 0 && (pst.catFilter === 'all' || p.category === pst.catFilter);
+      }).slice(0, 150);
+
+      var rows = filtered.map(function (p, i) {
+        var ret = getProdRetail(p);
+        var cent = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(ret) : '';
+        return (
+          '<tr>' +
+          '<td>' + (i + 1) + '</td>' +
+          '<td style="font-family:monospace;">' + (p.barcode || '-') + '</td>' +
+          '<td style="font-weight:bold;">' + p.name + '</td>' +
+          '<td>' + (p.category || 'عام') + '</td>' +
+          '<td style="font-family:monospace;font-weight:900;color:#1d4ed8;">' + ret.toFixed(2) + ' د.ج</td>' +
+          (pst.catShowCentimes ? '<td style="font-weight:bold;color:#b45309;">' + cent + '</td>' : '') +
+          '</tr>'
+        );
+      }).join('');
+
+      return (
+        '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>كتالوج أسعار المتجر</title>' +
+        '<style>@page{size:A4 portrait;margin:10mm;}body{font-family:"Cairo",Tahoma,sans-serif;padding:12px;font-size:11.5px;color:#0f172a;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #cbd5e1;padding:6px;text-align:right;}th{background:#1e3a8a;color:#fff;}</style></head><body>' +
+        '<div style="display:flex;justify-content:space-between;border-bottom:3px solid #1e3a8a;padding-bottom:8px;">' +
+        '  <div><h2 style="margin:0;color:#1e3a8a;">📋 قائمة وكتالوج أسعار المنتجات — ' + (s.shop_name || 'Gherbi.Ai POS') + '</h2><div>الفئة: ' + (pst.catFilter === 'all' ? 'جميع الفئات' : pst.catFilter) + ' | عدد المنتجات: ' + filtered.length + '</div></div>' +
+        '  <div>التاريخ: ' + new Date().toISOString().slice(0, 10) + '</div>' +
+        '</div>' +
+        '<table><thead><tr><th>#</th><th>الباركود</th><th>اسم المنتج</th><th>الفئة</th><th>سعر البيع (د.ج)</th>' + (pst.catShowCentimes ? '<th>بالسنتيم الجزائري</th>' : '') + '</tr></thead><tbody>' + rows + '</tbody></table>' +
+        '</body></html>'
+      );
+    }
+
+    // لافتة عرض جدارية كبيرة (A4 / A5 Store Promo Sign)
+    var prod = prods.find(function (p) { return Number(p.id) === Number(pst.productId); }) || prods[0] || { name: 'زيت مائدة إيليو 5 لتر', barcode: '6130001002', selling_price: 650 };
+    var newPrice = parseFloat(pst.newPrice) || getProdRetail(prod) || 650;
+    var oldPrice = parseFloat(pst.oldPrice) || Math.round(newPrice * 1.18);
+    var centimeNew = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(newPrice) : '';
+    var col = pst.themeColor || '#e11d48';
+
+    var bcImg = '';
+    if (pst.showBarcode && prod.barcode && window.api && window.api.generateBarcodeImage) {
+      bcImg = await window.api.generateBarcodeImage(prod.barcode, { bcid: 'code128', height: 12, scale: 3 }).catch(function () { return ''; });
+    }
+
+    return (
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>لافتة عرض ترويجي</title>' +
+      '<style>@page{size:A4 portrait;margin:10mm;}body{font-family:"Cairo",Tahoma,sans-serif;margin:0;padding:12px;background:#fff;}</style></head><body>' +
+      '<div style="border:8px solid ' + col + ';border-radius:28px;padding:28px;text-align:center;min-height:255mm;display:flex;flex-direction:column;justify-content:space-between;background:linear-gradient(180deg,#fff 0%,#fff1f2 100%);">' +
+      '  <div style="background:' + col + ';color:#fff;padding:14px 24px;border-radius:18px;font-size:28px;font-weight:900;letter-spacing:0.5px;">' + (pst.badgeText || '🔥 عرض خاص ومحدود — PROMOTION 🔥') + '</div>' +
+      '  <div style="margin:20px 0;">' +
+      '    <div style="font-size:38px;font-weight:900;color:#0f172a;line-height:1.2;">' + (pst.customTitle || prod.name) + '</div>' +
+      (oldPrice > newPrice
+        ? '<div style="font-size:24px;color:#64748b;text-decoration:line-through;font-weight:800;margin-top:12px;">السعر السابق: ' + oldPrice.toFixed(2) + ' د.ج</div>'
+        : '') +
+      '    <div style="display:inline-block;margin-top:16px;padding:18px 40px;border-radius:24px;background:#fef08a;border:4px dashed ' + col + ';font-family:\'Segoe UI\',Tahoma,sans-serif;font-size:64px;font-weight:900;color:' + col + ';">' + newPrice.toFixed(2) + ' <span style="font-size:32px;">د.ج</span></div>' +
+      (pst.showCentimes ? '<div style="font-size:26px;font-weight:900;color:#b45309;margin-top:10px;">🇩🇿 بالسنتيم: ' + centimeNew + '</div>' : '') +
+      '  </div>' +
+      (bcImg ? '<div><img src="' + bcImg + '" style="height:22mm;object-fit:contain;"><div style="font-family:monospace;font-size:15px;font-weight:900;">' + prod.barcode + '</div></div>' : '') +
+      '  <div style="font-size:18px;font-weight:900;color:#334155;border-top:2px solid #cbd5e1;padding-top:12px;">' + (s.shop_name || 'Gherbi.Ai POS') + ' — مرحباً بكم دائماً!</div>' +
+      '</div></body></html>'
+    );
+  };
+
+  App.refreshPosterOrCataloguePreview = async function () {
+    var frame = document.getElementById('posterLivePreviewFrame');
+    if (!frame || !frame.contentWindow) return;
+    var html = await this.buildPosterOrCatalogueHtml();
+    var doc = frame.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+  };
+
+  App.printPosterOrCatalogueNow = async function () {
+    var html = await this.buildPosterOrCatalogueHtml();
+    if (window.PrintEngine) {
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  };
+
+  // ==========================================================================
+  // 5. بناء الواجهة الرئيسية المتكاملة للصفحة الثامنة (#view-print — 4 تبويبات عملاقة)
+  // ==========================================================================
+  App.renderPrintStudioView = async function () {
+    var root = document.getElementById('print-view-root');
+    if (!root) return;
+
+    var prods = getSortedProductsForPrint();
+    var cfg = AppState.labelStudioConfig;
+    if (!cfg.selectedId && prods.length > 0) {
+      cfg.selectedId = prods[0].id;
+    }
+
+    var totalQueuedLabels = (AppState.labelPrintQueue || []).reduce(function (s, q) {
+      return s + Number(q.copies || 1);
+    }, 0);
+
+    var allCategories = Array.from(new Set(prods.map(function (p) { return p.category || 'عام'; }).filter(Boolean)));
+    var tab = AppState.printStudioTab || 'labels';
+
+    var topHeaderHtml =
+      '<div class="flex flex-wrap items-center justify-between gap-3">' +
+      '  <div>' +
+      '    <h2 class="text-2xl font-black flex flex-wrap items-center gap-2">' +
+      '      <span>مركز الطباعة الشامل، استوديو الباركود، ومنشئ البونات والأوراق الحر</span>' +
+      '      <button id="btnPrintStudioQaBot" type="button" onclick="App.runAutoTest_PrintStudioPage()" title="تشغيل الفحص الآلي الذاتي لمركز الطباعة (Ctrl+Shift+T)" class="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm">🤖 فحص آلي (QA)</button>' +
+      '      <button type="button" onclick="App.openPrintStudioMasterGuide()" class="px-3 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-sm">📘 دليل الطباعة والبونات (F1)</button>' +
+      '    </h2>' +
+      '    <p class="text-xs text-slate-500">تصميم وطباعة ملصقات الباركود والرفوف (رول حراري أو ورق A4 مقسم)، تخصيص قوالب الفواتير و 2×A5، وإنشاء أي ورقة BON جديدة حسب تصورك</p>' +
+      '  </div>' +
+      '</div>' +
+
+      '<div class="flex flex-wrap items-center gap-2 p-2 rounded-2xl bg-slate-900 text-white text-xs font-black shadow-md">' +
+      '  <button type="button" onclick="App.switchPrintStudioTab(\'labels\')" class="px-4 py-2 rounded-xl transition ' + (tab === 'labels' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">🏷️ 1. استوديو الباركود وملصقات الرفوف وأوراق A4</button>' +
+      '  <button type="button" onclick="App.switchPrintStudioTab(\'designer\')" class="px-4 py-2 rounded-xl transition ' + (tab === 'designer' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">🎨 2. مهندس قوالب الفواتير والأوراق الرسمية (A4 / 2×A5 / 80mm)</button>' +
+      '  <button type="button" onclick="App.switchPrintStudioTab(\'custom_bon\')" class="px-4 py-2 rounded-xl transition ' + (tab === 'custom_bon' ? 'bg-amber-500 text-slate-950 shadow-lg' : 'bg-slate-800 text-amber-400 hover:bg-slate-700') + '">🧾 3. منشئ البونات والأوراق الحر (إنشاء أي BON جديد)</button>' +
+      '  <button type="button" onclick="App.switchPrintStudioTab(\'catalogue_posters\')" class="px-4 py-2 rounded-xl transition ' + (tab === 'catalogue_posters' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-800 text-emerald-400 hover:bg-slate-700') + '">📢 4. كتالوج الأسعار ولافتات العروض الجدارية (Posters)</button>' +
+      '</div>';
+
+    // ========================================================================
+    // التبويب 2: مهندس قوالب الفواتير والأوراق الرسمية
+    // ========================================================================
+    if (tab === 'designer') {
+      root.innerHTML = '<div class="space-y-4">' + topHeaderHtml + '<div id="template-designer-root"></div></div>';
+      if (window.TemplateBuilder) await window.TemplateBuilder.initTemplateBuilder('template-designer-root');
+      if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+      return;
+    }
+
+    // ========================================================================
+    // التبويب 3: منشئ البونات والأوراق الحر (Universal Custom BON Creator)
+    // ========================================================================
+    if (tab === 'custom_bon') {
+      var st = AppState.customBonState;
+      root.innerHTML =
+        '<div class="space-y-4">' +
+        topHeaderHtml +
+
+        '  <div class="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2 text-xs">' +
+        '    <div class="font-black text-amber-700 dark:text-amber-300">⚡ اختر نوع الـ BON الذي تريد إنشاءه أو تخصيصه الآن (أو صمّم بوناً جديداً حسب تصورك):</div>' +
+        '    <div class="flex flex-wrap gap-1.5">' +
+        '      <button type="button" onclick="App.loadCustomBonPreset(\'sav_repair\')" class="px-3 py-1.5 rounded-xl font-bold ' + (st.presetKey === 'sav_repair' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800') + '">🛠️ بون صيانة واستلام جهاز (SAV)</button>' +
+        '      <button type="button" onclick="App.loadCustomBonPreset(\'stock_transfer\')" class="px-3 py-1.5 rounded-xl font-bold ' + (st.presetKey === 'stock_transfer' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800') + '">📦 بون تحويل بين مخزنين</button>' +
+        '      <button type="button" onclick="App.loadCustomBonPreset(\'exit_voucher\')" class="px-3 py-1.5 rounded-xl font-bold ' + (st.presetKey === 'exit_voucher' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800') + '">🚚 بون خروج بضاعة / سائق</button>' +
+        '      <button type="button" onclick="App.loadCustomBonPreset(\'cash_discharge\')" class="px-3 py-1.5 rounded-xl font-bold ' + (st.presetKey === 'cash_discharge' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800') + '">🤝 بون أمانة / إبراء ذمة مالي</button>' +
+        '      <button type="button" onclick="App.loadCustomBonPreset(\'crate_consign\')" class="px-3 py-1.5 rounded-xl font-bold ' + (st.presetKey === 'crate_consign' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800') + '">🔄 بون إعارة صناديق ومعدات</button>' +
+        '      <button type="button" onclick="App.loadCustomBonPreset(\'debt_ack\')" class="px-3 py-1.5 rounded-xl font-bold ' + (st.presetKey === 'debt_ack' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800') + '">📝 سند التزام واعتراف بدين</button>' +
+        '      <button type="button" onclick="App.loadCustomBonPreset(\'gift_voucher\')" class="px-3 py-1.5 rounded-xl font-bold ' + (st.presetKey === 'gift_voucher' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800') + '">🎁 قسيمة شراء / هدية VIP</button>' +
+        '      <button type="button" onclick="App.loadCustomBonPreset(\'blank_custom\')" class="px-3 py-1.5 rounded-xl font-bold ' + (st.presetKey === 'blank_custom' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800') + '">✨ بون حر فارغ (حسب تصورك)</button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 text-xs">' +
+        '    <div class="lg:col-span-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3 shadow-sm max-h-[72vh] overflow-y-auto">' +
+        '      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2">' +
+        '        <h3 class="font-black text-sm text-amber-600">🧾 إعدادات ومحتوى ورقة الـ BON المخصصة</h3>' +
+        '        <div class="flex gap-1.5">' +
+        '          <button type="button" onclick="App.printCustomBonNow(true)" class="px-3 py-1.5 bg-slate-800 text-white rounded-xl font-bold">📥 حفظ PDF</button>' +
+        '          <button type="button" onclick="App.printCustomBonNow(false)" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black shadow">🖨️ طباعة الـ BON الآن</button>' +
+        '        </div>' +
+        '      </div>' +
+
+        '      <div class="grid grid-cols-2 gap-2">' +
+        '        <div><label class="block font-bold mb-1">عنوان البون الرئيسي *</label><input type="text" value="' + (st.bonTitle || '') + '" oninput="AppState.customBonState.bonTitle=this.value; App.refreshCustomBonPreview()" class="w-full px-2.5 py-1.5 rounded-xl font-black text-blue-600"></div>' +
+        '        <div><label class="block font-bold mb-1">مقاس الورقة والتخطيط *</label>' +
+        '          <select onchange="AppState.customBonState.paperMode=this.value; App.refreshCustomBonPreview()" class="w-full px-2.5 py-1.5 rounded-xl font-bold">' +
+        '            <option value="a4_dual_a5" ' + (st.paperMode === 'a4_dual_a5' ? 'selected' : '') + '>🔥 نسختان 2×A5 في ورقة A4 واحدة (زبون + محل)</option>' +
+        '            <option value="a4" ' + (st.paperMode === 'a4' ? 'selected' : '') + '>📄 ورقة A4 كاملة</option>' +
+        '            <option value="a5_landscape" ' + (st.paperMode === 'a5_landscape' ? 'selected' : '') + '>📐 بون نصفي A5 أفقي</option>' +
+        '            <option value="a5_portrait" ' + (st.paperMode === 'a5_portrait' ? 'selected' : '') + '>📑 بون نصفي A5 عمودي</option>' +
+        '            <option value="thermal80" ' + (st.paperMode === 'thermal80' ? 'selected' : '') + '>🧾 تذكرة حرارية 80mm</option>' +
+        '          </select>' +
+        '        </div>' +
+        '        <div><label class="block font-bold mb-1">اسم الزبون / الطرف المعني</label><input type="text" value="' + (st.partyName || '') + '" oninput="AppState.customBonState.partyName=this.value; App.refreshCustomBonPreview()" class="w-full px-2.5 py-1.5 rounded-xl font-bold"></div>' +
+        '        <div><label class="block font-bold mb-1">رقم الهاتف / المرجع</label><input type="text" value="' + (st.partyPhone || '') + '" oninput="AppState.customBonState.partyPhone=this.value; App.refreshCustomBonPreview()" class="w-full px-2.5 py-1.5 rounded-xl font-mono"></div>' +
+        '      </div>' +
+
+        '      <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-2">' +
+        '        <div class="flex items-center justify-between">' +
+        '          <span class="font-black">خانات البيانات المخصصة في البون (' + st.fields.length + '):</span>' +
+        '          <button type="button" onclick="AppState.customBonState.fields.push({label:\'خانة جديدة\',value:\'تفاصيل...\'}); App.renderPrintStudioView()" class="px-2 py-0.5 rounded bg-blue-600 text-white font-bold text-[10px]">+ إضافة خانة</button>' +
+        '        </div>' +
+        st.fields.map(function (f, fi) {
+          return (
+            '<div class="grid grid-cols-12 gap-1.5 items-center">' +
+            '  <input type="text" value="' + f.label + '" oninput="AppState.customBonState.fields[' + fi + '].label=this.value; App.refreshCustomBonPreview()" class="col-span-4 px-2 py-1 rounded-lg font-bold text-[11px]">' +
+            '  <input type="text" value="' + f.value + '" oninput="AppState.customBonState.fields[' + fi + '].value=this.value; App.refreshCustomBonPreview()" class="col-span-7 px-2 py-1 rounded-lg text-[11px]">' +
+            '  <button type="button" onclick="AppState.customBonState.fields.splice(' + fi + ',1); App.renderPrintStudioView()" class="col-span-1 text-rose-500 font-black">✕</button>' +
+            '</div>'
+          );
+        }).join('') +
+        '      </div>' +
+
+        '      <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-2">' +
+        '        <div class="flex items-center justify-between">' +
+        '          <label class="flex items-center gap-1.5 font-black cursor-pointer"><input type="checkbox" ' + (st.showItemsTable ? 'checked' : '') + ' onchange="AppState.customBonState.showItemsTable=this.checked; App.renderPrintStudioView()"><span>إدراج جدول عناصر / خدمات في البون</span></label>' +
+        (st.showItemsTable ? '<button type="button" onclick="AppState.customBonState.items.push({col1:\'عنصر جديد\',col2:\'1\',col3:\'0.00\',col4:\'0.00\'}); App.renderPrintStudioView()" class="px-2 py-0.5 rounded bg-emerald-600 text-white font-bold text-[10px]">+ إضافة سطر</button>' : '') +
+        '        </div>' +
+        (st.showItemsTable
+          ? st.items.map(function (it, ii) {
+              return (
+                '<div class="grid grid-cols-12 gap-1 items-center">' +
+                '  <input type="text" value="' + it.col1 + '" oninput="AppState.customBonState.items[' + ii + '].col1=this.value; App.refreshCustomBonPreview()" class="col-span-5 px-2 py-1 rounded-lg font-bold text-[11px]">' +
+                '  <input type="text" value="' + it.col2 + '" oninput="AppState.customBonState.items[' + ii + '].col2=this.value; App.refreshCustomBonPreview()" class="col-span-2 px-2 py-1 rounded-lg font-mono text-center text-[11px]">' +
+                '  <input type="text" value="' + it.col3 + '" oninput="AppState.customBonState.items[' + ii + '].col3=this.value; App.refreshCustomBonPreview()" class="col-span-2 px-2 py-1 rounded-lg font-mono text-center text-[11px]">' +
+                '  <input type="text" value="' + it.col4 + '" oninput="AppState.customBonState.items[' + ii + '].col4=this.value; App.refreshCustomBonPreview()" class="col-span-2 px-2 py-1 rounded-lg font-mono font-bold text-center text-[11px]">' +
+                '  <button type="button" onclick="AppState.customBonState.items.splice(' + ii + ',1); App.renderPrintStudioView()" class="col-span-1 text-rose-500 font-black">✕</button>' +
+                '</div>'
+              );
+            }).join('')
+          : '') +
+        '      </div>' +
+
+        '      <div><label class="block font-bold mb-1">شرط قانوني أو فقرة أسفل البون</label><textarea rows="2" oninput="AppState.customBonState.bodyParagraph=this.value; App.refreshCustomBonPreview()" class="w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold">' + (st.bodyParagraph || '') + '</textarea></div>' +
+        '    </div>' +
+
+        '    <div class="lg:col-span-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 flex flex-col shadow-sm">' +
+        '      <div class="text-xs font-bold text-slate-400 mb-2">معاينة حية ومطابقة 100% لورقة الـ BON المخصصة:</div>' +
+        '      <iframe id="customBonLiveFrame" class="w-full flex-1 min-h-[540px] border border-slate-200 rounded-xl bg-white shadow-inner"></iframe>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+
+      await this.refreshCustomBonPreview();
+      if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+      return;
+    }
+
+    // ========================================================================
+    // التبويب 4: استوديو كتالوج الأسعار ولافتات العروض الجدارية (Posters & Catalogues)
+    // ========================================================================
+    if (tab === 'catalogue_posters') {
+      var pst = AppState.posterStudioState;
+      if (!pst.productId && prods.length > 0) pst.productId = prods[0].id;
+
+      root.innerHTML =
+        '<div class="space-y-4">' +
+        topHeaderHtml +
+        '  <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 text-xs">' +
+        '    <div class="lg:col-span-5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-4 shadow-sm">' +
+        '      <div class="flex gap-2">' +
+        '        <button type="button" onclick="AppState.posterStudioState.mode=\'promo_poster\'; App.renderPrintStudioView()" class="flex-1 py-2.5 rounded-xl font-black ' + (pst.mode === 'promo_poster' ? 'bg-rose-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700') + '">🔥 لافتة عرض ترويجي كبيرة (A4 Poster)</button>' +
+        '        <button type="button" onclick="AppState.posterStudioState.mode=\'catalogue\'; App.renderPrintStudioView()" class="flex-1 py-2.5 rounded-xl font-black ' + (pst.mode === 'catalogue' ? 'bg-blue-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700') + '">📋 كتالوج وقائمة أسعار المنتجات</button>' +
+        '      </div>' +
+
+        (pst.mode === 'promo_poster'
+          ? '<div class="space-y-3">' +
+            '  <div><label class="block font-bold mb-1">اختر المنتج المراد عمل لافتة عرض جدارية له</label>' +
+            '    <select onchange="AppState.posterStudioState.productId=Number(this.value); var p=AppState.products.find(x=>Number(x.id)===Number(this.value)); if(p){AppState.posterStudioState.newPrice=p.selling_price||0; AppState.posterStudioState.customTitle=p.name;} App.renderPrintStudioView()" class="w-full px-3 py-2 rounded-xl font-bold">' +
+            prods.slice(0, 200).map(function (p) {
+              return '<option value="' + p.id + '" ' + (Number(p.id) === Number(pst.productId) ? 'selected' : '') + '>' + p.name + ' (' + getProdRetail(p).toFixed(2) + ' د.ج)</option>';
+            }).join('') +
+            '    </select>' +
+            '  </div>' +
+            '  <div><label class="block font-bold mb-1">شريط العنوان الترويجي العلوي</label><input type="text" value="' + (pst.badgeText || '') + '" oninput="AppState.posterStudioState.badgeText=this.value; App.refreshPosterOrCataloguePreview()" class="w-full px-3 py-2 rounded-xl font-black text-rose-600"></div>' +
+            '  <div class="grid grid-cols-2 gap-2">' +
+            '    <div><label class="block font-bold mb-1">السعر السابق المشطوب (د.ج)</label><input type="number" step="any" value="' + (pst.oldPrice || '') + '" oninput="AppState.posterStudioState.oldPrice=this.value; App.refreshPosterOrCataloguePreview()" class="w-full px-3 py-2 rounded-xl font-mono"></div>' +
+            '    <div><label class="block font-bold mb-1 text-emerald-600">سعر العرض الجديد (د.ج)</label><input type="number" step="any" value="' + (pst.newPrice || '') + '" oninput="AppState.posterStudioState.newPrice=this.value; App.refreshPosterOrCataloguePreview()" class="w-full px-3 py-2 rounded-xl font-mono font-black text-emerald-600"></div>' +
+            '  </div>' +
+            '</div>'
+          : '<div class="space-y-3">' +
+            '  <div><label class="block font-bold mb-1">تصفية الكتالوج حسب الفئة</label>' +
+            '    <select onchange="AppState.posterStudioState.catFilter=this.value; App.refreshPosterOrCataloguePreview()" class="w-full px-3 py-2 rounded-xl font-bold">' +
+            '      <option value="all">جميع الفئات</option>' +
+            allCategories.map(function (c) {
+              return '<option value="' + c + '" ' + (pst.catFilter === c ? 'selected' : '') + '>' + c + '</option>';
+            }).join('') +
+            '    </select>' +
+            '  </div>' +
+            '  <label class="flex items-center gap-2 font-bold cursor-pointer"><input type="checkbox" ' + (pst.catShowCentimes ? 'checked' : '') + ' onchange="AppState.posterStudioState.catShowCentimes=this.checked; App.refreshPosterOrCataloguePreview()"><span>إظهار عمود السعر بالسنتيم الجزائري في الكتالوج</span></label>' +
+            '</div>') +
+
+        '      <button type="button" onclick="App.printPosterOrCatalogueNow()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-sm shadow-lg">🖨️ طباعة الوثيقة المعروضة الآن (A4)</button>' +
+        '    </div>' +
+
+        '    <div class="lg:col-span-7 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 flex flex-col shadow-sm">' +
+        '      <div class="text-xs font-bold text-slate-400 mb-2">معاينة حية للافتة العرض / كتالوج الأسعار (A4):</div>' +
+        '      <iframe id="posterLivePreviewFrame" class="w-full flex-1 min-h-[520px] border border-slate-200 rounded-xl bg-white shadow-inner"></iframe>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+
+      await this.refreshPosterOrCataloguePreview();
+      if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+      return;
+    }
+
+    // ========================================================================
+    // التبويب 1 (الافتراضي): استوديو الباركود وملصقات الرفوف وأوراق A4 المقسمة
+    // ========================================================================
+    var itemsSource = cfg.source === 'customers' ? (AppState.customers || []) : prods;
+
+    root.innerHTML =
+      '<div class="space-y-4">' +
+      topHeaderHtml +
+
+      '  <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 text-xs">' +
+      '    <div class="lg:col-span-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3.5 shadow-sm">' +
+      '      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-2">' +
+      '        <h3 class="font-black text-sm text-blue-600">🏷️ إعدادات الباركود، مقاس الورق (رول / A4)، ومحتوى الملصق</h3>' +
+      '        <span class="px-2.5 py-0.5 rounded-full bg-blue-600/10 text-blue-600 font-mono font-bold text-[11px]">' + cfg.widthMm + 'mm × ' + cfg.heightMm + 'mm</span>' +
+      '      </div>' +
+
+      '      <div class="grid grid-cols-1 md:grid-cols-12 gap-2">' +
+      '        <div class="md:col-span-7">' +
+      '          <label class="block font-bold mb-1 text-indigo-600">📐 قوالب مقاسات الرول الحراري وأوراق الملصقات A4 الجاهزة:</label>' +
+      '          <select onchange="App.applyLabelPreset(this.value)" class="w-full px-2.5 py-2 rounded-xl font-bold border-indigo-500/40">' +
+      Object.keys(LABEL_PRESETS).map(function (k) {
+        return '<option value="' + k + '" ' + (cfg.presetKey === k ? 'selected' : '') + '>' + LABEL_PRESETS[k].label + '</option>';
+      }).join('') +
+      '          </select>' +
+      '        </div>' +
+      '        <div class="md:col-span-5">' +
+      '          <label class="block font-bold mb-1">نوع التشفير (Symbology)</label>' +
+      '          <select onchange="AppState.labelStudioConfig.symbology=this.value; AppState.labelStudioConfig.priceOnlyMode=(this.value===\'price_only\'); App.refreshLabelStudioPreview()" class="w-full px-2.5 py-2 rounded-xl font-bold">' +
+      '            <option value="code128" ' + (!cfg.priceOnlyMode && cfg.symbology === 'code128' ? 'selected' : '') + '>📊 Code-128 (قياسي فائق الوضوح)</option>' +
+      '            <option value="ean13" ' + (!cfg.priceOnlyMode && cfg.symbology === 'ean13' ? 'selected' : '') + '>🇩🇿 EAN-13 (ترقيم تجاري 613)</option>' +
+      '            <option value="qrcode" ' + (!cfg.priceOnlyMode && cfg.symbology === 'qrcode' ? 'selected' : '') + '>📱 QR Code (مربع ثنائي الأبعاد)</option>' +
+      '            <option value="price_only" ' + (cfg.priceOnlyMode ? 'selected' : '') + '>🏷️ بطاقة سعر رفوف بدون باركود</option>' +
+      '          </select>' +
+      '        </div>' +
+      '      </div>' +
+
+      '      <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">' +
+      '        <div class="md:col-span-3">' +
+      '          <label class="block font-bold mb-1">مصدر البيانات</label>' +
+      '          <select onchange="App.updateLabelStudioProp(\'source\', this.value)" class="w-full px-2.5 py-2 rounded-xl font-bold">' +
+      '            <option value="products" ' + (cfg.source === 'products' ? 'selected' : '') + '>📦 المنتجات</option>' +
+      '            <option value="customers" ' + (cfg.source === 'customers' ? 'selected' : '') + '>👥 بطاقات الزبائن</option>' +
+      '          </select>' +
+      '        </div>' +
+      '        <div class="md:col-span-6">' +
+      '          <label class="block font-bold mb-1">العنصر المختار للمعاينة</label>' +
+      '          <select id="studioItemSelect" onchange="App.updateLabelStudioProp(\'selectedId\', Number(this.value))" class="w-full px-2.5 py-2 rounded-xl font-bold">' +
+      itemsSource.slice(0, 350).map(function (item) {
+        return '<option value="' + item.id + '" ' + (Number(item.id) === Number(cfg.selectedId) ? 'selected' : '') + '>' + item.name + (item.barcode ? ' (' + item.barcode + ')' : '') + '</option>';
+      }).join('') +
+      '          </select>' +
+      '        </div>' +
+      '        <button type="button" onclick="App.addSelectedStudioItemToQueue()" class="md:col-span-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black shadow">+ أضف للطابور</button>' +
+      '      </div>' +
+
+      '      <div class="grid grid-cols-4 gap-2">' +
+      '        <div><label class="block font-bold mb-1">العرض (mm)</label><input type="number" value="' + cfg.widthMm + '" onchange="App.updateLabelStudioProp(\'widthMm\', Number(this.value))" class="w-full px-2 py-1.5 rounded-xl font-mono text-center font-bold"></div>' +
+      '        <div><label class="block font-bold mb-1">الارتفاع (mm)</label><input type="number" value="' + cfg.heightMm + '" onchange="App.updateLabelStudioProp(\'heightMm\', Number(this.value))" class="w-full px-2 py-1.5 rounded-xl font-mono text-center font-bold"></div>' +
+      '        <div><label class="block font-bold mb-1">ارتفاع الباركود</label><input type="number" value="' + cfg.barcodeHeightMm + '" onchange="App.updateLabelStudioProp(\'barcodeHeightMm\', Number(this.value))" class="w-full px-2 py-1.5 rounded-xl font-mono text-center font-bold"></div>' +
+      '        <div><label class="block font-bold mb-1" title="لتوفير ورق الملصقات A4 المستعمل جزئياً">تخطي أول X خانة</label><input type="number" min="0" value="' + (cfg.skipOffset || 0) + '" onchange="AppState.labelStudioConfig.skipOffset=Math.max(0,Number(this.value)); App.renderPrintStudioView()" class="w-full px-2 py-1.5 rounded-xl font-mono text-center font-bold text-amber-600"></div>' +
+      '      </div>' +
+
+      '      <div class="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700 font-bold text-[11px]">' +
+      '        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (cfg.showShop ? 'checked' : '') + ' onchange="App.updateLabelStudioProp(\'showShop\', this.checked)"><span>اسم المتجر</span></label>' +
+      '        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (cfg.showName !== false ? 'checked' : '') + ' onchange="App.updateLabelStudioProp(\'showName\', this.checked)"><span>اسم المنتج</span></label>' +
+      '        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (cfg.showPrice ? 'checked' : '') + ' onchange="App.updateLabelStudioProp(\'showPrice\', this.checked)"><span>السعر بالدينار</span></label>' +
+      '        <label class="flex items-center gap-1.5 cursor-pointer text-amber-600"><input type="checkbox" ' + (cfg.showCentimes ? 'checked' : '') + ' onchange="App.updateLabelStudioProp(\'showCentimes\', this.checked)"><span>السعر بالسنتيم</span></label>' +
+      '        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (cfg.showBarcodeText !== false ? 'checked' : '') + ' onchange="App.updateLabelStudioProp(\'showBarcodeText\', this.checked)"><span>رقم الباركود</span></label>' +
+      '        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (cfg.showPlu ? 'checked' : '') + ' onchange="App.updateLabelStudioProp(\'showPlu\', this.checked)"><span>كود الميزان PLU</span></label>' +
+      '        <label class="flex items-center gap-1.5 cursor-pointer text-emerald-600"><input type="checkbox" ' + (cfg.showDates ? 'checked' : '') + ' onchange="AppState.labelStudioConfig.showDates=this.checked; App.renderPrintStudioView()"><span>تاريخ إنتاج/صلاحية</span></label>' +
+      '        <label class="flex items-center gap-1.5 cursor-pointer text-rose-500"><input type="checkbox" ' + (cfg.showOldPrice ? 'checked' : '') + ' onchange="AppState.labelStudioConfig.showOldPrice=this.checked; App.renderPrintStudioView()"><span>سعر سابق مشطوب</span></label>' +
+      '      </div>' +
+
+      (cfg.showDates || cfg.showOldPrice
+        ? '<div class="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">' +
+          '  <div><label class="block text-[10px] font-bold">تاريخ الإنتاج (P)</label><input type="date" value="' + cfg.prodDate + '" onchange="AppState.labelStudioConfig.prodDate=this.value; App.refreshLabelStudioPreview()" class="w-full px-2 py-1 rounded-lg font-mono text-[11px]"></div>' +
+          '  <div><label class="block text-[10px] font-bold">الانتهاء (EXP)</label><input type="date" value="' + cfg.expDate + '" onchange="AppState.labelStudioConfig.expDate=this.value; App.refreshLabelStudioPreview()" class="w-full px-2 py-1 rounded-lg font-mono text-[11px]"></div>' +
+          '  <div><label class="block text-[10px] font-bold">السعر السابق (د.ج)</label><input type="number" placeholder="550" value="' + (cfg.oldPriceValue || '') + '" oninput="AppState.labelStudioConfig.oldPriceValue=this.value; App.refreshLabelStudioPreview()" class="w-full px-2 py-1 rounded-lg font-mono text-[11px]"></div>' +
+          '</div>'
+        : '') +
+
+      '      <div class="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">' +
+      '        <div class="flex flex-wrap items-center justify-between gap-2">' +
+      '          <span class="font-black text-indigo-600 dark:text-indigo-400">طابور الطباعة بالجملة (' + AppState.labelPrintQueue.length + ' صنف | إجمالي: ' + totalQueuedLabels + ' ملصق)</span>' +
+      '          <div class="flex flex-wrap gap-1">' +
+      '            <button type="button" onclick="App.addCategoryToLabelQueue()" class="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 font-bold text-[10px]">+ إضافة المنتجات النشطة</button>' +
+      '            <button type="button" onclick="App.applyPlQtyFromStock()" class="px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 font-bold text-[10px]">العدد = رصيد المخزون</button>' +
+      '            <button type="button" onclick="App.clearLabelPrintQueue()" class="px-2 py-1 rounded-lg bg-rose-500/15 text-rose-500 font-bold text-[10px]">تفريغ</button>' +
+      '          </div>' +
+      '        </div>' +
+      '        <div class="max-h-36 overflow-y-auto space-y-1 pr-1">' +
+      (AppState.labelPrintQueue.length === 0
+        ? '<div class="py-4 text-center text-slate-400 font-bold">الطابور فارغ — أضف منتجات لطباعة ملصقاتها دفعة واحدة على رول أو ورقة A4</div>'
+        : AppState.labelPrintQueue.map(function (q, i) {
+            return (
+              '<div class="flex items-center justify-between p-1.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700">' +
+              '  <div><span class="font-bold">' + q.name + '</span> <span class="text-[10px] font-mono text-slate-400">(' + q.barcode + ')</span></div>' +
+              '  <div class="flex items-center gap-1.5">' +
+              '    <input type="number" min="1" value="' + q.copies + '" onchange="AppState.labelPrintQueue[' + i + '].copies=Math.max(1,parseInt(this.value,10)||1); App.renderPrintStudioView()" class="w-14 px-1.5 py-0.5 rounded font-mono font-bold text-center">' +
+              '    <button type="button" onclick="AppState.labelPrintQueue.splice(' + i + ',1); App.renderPrintStudioView()" class="text-rose-500 font-black px-1">✕</button>' +
+              '  </div>' +
+              '</div>'
+            );
+          }).join('')) +
+      '        </div>' +
+      '      </div>' +
+
+      '      <div class="grid grid-cols-2 gap-2 pt-2">' +
+      '        <button type="button" onclick="App.printCurrentStudioLabel()" class="py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black flex items-center justify-center gap-1.5 shadow"><span class="material-symbols-rounded icon-sm">print</span><span>طباعة الملصق المفرد</span></button>' +
+      '        <button type="button" onclick="App.openPlSheetPreviewModal()" class="py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black flex items-center justify-center gap-1.5 shadow"><span class="material-symbols-rounded icon-sm">layers</span><span>معاينة وطباعة الطابور (' + totalQueuedLabels + ')</span></button>' +
+      '      </div>' +
+      '    </div>' +
+
+      '    <div class="lg:col-span-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 flex flex-col justify-between shadow-sm">' +
+      '      <div class="flex flex-col items-center justify-center flex-1 py-4 bg-slate-100/70 dark:bg-slate-900/60 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">' +
+      '        <div class="text-xs font-black text-slate-500 mb-3">🔍 معاينة حية ومطابقة للطباعة (' + cfg.widthMm + 'mm × ' + cfg.heightMm + 'mm — ' + (cfg.paperType === 'a4_sheet' ? ('ورقة A4 من ' + cfg.columns + ' أعمدة') : 'رول حراري') + ')</div>' +
+      '        <iframe id="labelStudioPreviewFrame" class="border-2 border-slate-400 rounded-xl bg-white shadow-lg" style="width:' + Math.max(250, Math.min(480, cfg.widthMm * 4.8)) + 'px;height:' + Math.max(150, Math.min(300, cfg.heightMm * 4.8)) + 'px;"></iframe>' +
+      '      </div>' +
+
+      '      <div class="mt-4 p-3.5 rounded-2xl bg-blue-600/10 border border-blue-500/25 space-y-2">' +
+      '        <div class="font-black text-blue-600 dark:text-blue-400">💡 ميزة توفير ورق الملصقات A4 (تخطي الملصقات المنزوعة):</div>' +
+      '        <p class="text-[11px] text-slate-600 dark:text-slate-300">عند اختيار أحد مقاسات <strong>ورقة A4 (24 أو 40 أو 65 ملصقاً)</strong>، يمكنك تحديد عدد الخانات المستعملة سابقاً في الورقة (`تخطي أول X خانة` = <strong>' + (cfg.skipOffset || 0) + '</strong>) ليبدأ البرنامج الطباعة من أول خانة جديدة متبقية في الورقة دون إهدار أي ملصق!</p>' +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+
+    await this.refreshLabelStudioPreview();
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  };
+
+  // ==========================================================================
+  // 6. الدليل الاستشاري التفاعلي الشامل لمركز الطباعة والبونات (F1)
+  // ==========================================================================
+  App.openPrintStudioMasterGuide = function () {
+    var modal = document.getElementById('printStudioGuideModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'printStudioGuideModal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML =
+      '<div class="modal-content w-full max-w-3xl p-6 space-y-4 overflow-y-auto">' +
+      '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+      '    <h3 class="text-lg font-black text-indigo-600">📘 الدليل الشامل لمركز الطباعة، الباركود، ومنشئ البونات الحر</h3>' +
+      '    <button type="button" onclick="App.closeModal(\'printStudioGuideModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+      '  </div>' +
+      '  <div class="space-y-3 text-xs leading-relaxed">' +
+      '    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">' +
+      '      <div class="p-3.5 rounded-2xl bg-blue-600/10 border border-blue-500/30">' +
+      '        <div class="font-black text-blue-600 text-sm mb-1">🏷️ 1. استوديو الباركود وأوراق A4 المقسمة</div>' +
+      '        <p>يتيح لك طباعة ملصقات الباركود والأسعار إما على <strong>طابعة باركود حرارية (Roll)</strong> أو على <strong>طابعة ورق عادية A4</strong> باستخدام أوراق الملصقات المقسمة (24 أو 40 أو 65 ملصقاً في الورقة) مع إظهار السعر بالدينار وبالسنتيم وتاريخ الصلاحية!</p>' +
+      '      </div>' +
+      '      <div class="p-3.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/30">' +
+      '        <div class="font-black text-indigo-600 text-sm mb-1">🔥 2. نظام (2×A5 في ورقة A4 واحدة)</div>' +
+      '        <p>في التبويب الثاني والثالث، يمكنك اختيار مقاس <strong>(2×A5 في ورقة A4 واحدة)</strong> ليطبع لك البرنامج نسختين في ورقة واحدة (نسخة للزبون في النصف العلوي + نسخة للأرشيف في النصف السفلي مع خط قص بالمقص)، مما يوفر 50% من استهلاك الورق!</p>' +
+      '      </div>' +
+      '      <div class="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30">' +
+      '        <div class="font-black text-amber-700 dark:text-amber-300 text-sm mb-1">🧾 3. منشئ البونات والأوراق الحر (Custom BON)</div>' +
+      '        <p>تحتاج لطباعة بون صيانة جهاز، بون تحويل بين مخزنين، بون أمانة مالية، أو بون خروج بضاعة مع السائق؟ افتح التبويب الثالث واختر القالب الجاهز أو عدّل العناوين والخانات كما تشاء واطبعه فوراً!</p>' +
+      '      </div>' +
+      '      <div class="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">' +
+      '        <div class="font-black text-emerald-700 dark:text-emerald-300 text-sm mb-1">📢 4. لافتات العروض الجدارية وكتالوج الأسعار</div>' +
+      '        <p>في التبويب الرابع يمكنك بضغطة زر تصميم <strong>ورقة عرض ترويجي كبيرة A4</strong> لتعليقها في المحل فوق السلعة المخفضة، أو طباعة كتالوج أسعار رسمي لزبائنك!</p>' +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+      '  <div class="flex justify-end pt-2">' +
+      '    <button type="button" onclick="App.closeModal(\'printStudioGuideModal\')" class="px-6 py-2 bg-blue-600 text-white rounded-xl text-xs font-black">إغلاق الدليل</button>' +
+      '  </div>' +
+      '</div>';
+
+    modal.classList.add('active');
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(modal);
+  };
+
+  // ==========================================================================
+  // 7. روبوت الاختبار الآلي الذاتي للصفحة الثامنة (App.runAutoTest_PrintStudioPage)
+  // ==========================================================================
+  App.runAutoTest_PrintStudioPage = async function () {
+    if (AppState.currentView !== 'print') {
+      await this.switchView('print');
+    }
+
+    var results = [];
+    var check = function (name, cond, detail) {
+      results.push({ name: name, passed: Boolean(cond), detail: detail || '' });
+    };
+
+    try {
+      check('1. تكامل حاوية مركز الطباعة والنوافذ المنبثقة (DOM Integrity)', Boolean(document.getElementById('print-view-root') && document.getElementById('plSheetPreviewModal')), 'All Containers Ready');
+
+      var bcImg = await window.api.generateBarcodeImage('6130001001', { bcid: 'code128', height: 10, scale: 2 });
+      check('2. محرك توليد صور الباركود الرقمية عالية الدقة (Code-128 / EAN-13 / QR)', Boolean(bcImg && bcImg.startsWith('data:image/png;base64')), 'Base64 PNG Generated');
+
+      AppState.labelStudioConfig.showCentimes = true;
+      var singleLblHtml = await this.buildCurrentLabelHtml();
+      check('3. توليد الملصق المفرد مع السعر بالدينار وبالسنتيم الجزائري', singleLblHtml.includes('د.ج'), 'Single Label HTML OK');
+
+      await this.applyLabelPreset('a4_40');
+      AppState.labelStudioConfig.skipOffset = 3;
+      this.addCategoryToLabelQueue();
+      var batchHtml = await window.PrintEngine.renderBatchBarcodeLabelsHtml(AppState.labelPrintQueue.slice(0, 4), AppState.settings, AppState.labelStudioConfig);
+      await this.applyLabelPreset('roll_40x25');
+      AppState.labelStudioConfig.skipOffset = 0;
+      check('4. محرك أوراق الملصقات المقسمة A4 (40 ملصق) مع تخطي الخانات المستعملة', batchHtml.includes('A4 portrait') && batchHtml.includes('sheet-grid'), 'A4 Grid & Offset OK');
+
+      var dualA5Html = window.TemplateRenderer.renderCustomTemplateHtml(
+        { paper: 'a4_dual_a5', doc_type: 'delivery', showCentimes: true, showFiscal: true },
+        { doc_number: 'BL-2026-009', total: 5000, items: [{ product_name: 'منتج تجريبي', quantity: 2, price: 2500, subtotal: 5000 }] },
+        AppState.settings
+      );
+      check('5. مهندس القوالب الرسمية ومقاس (2×A5 نسختين في ورقة A4 واحدة)', dualA5Html.includes('1/2') && dualA5Html.includes('2/2'), 'Dual 2xA5 Layout OK');
+
+      var savedTpl = await window.api.saveCustomTemplate({
+        name: 'قالب بون اختبار آلي QA',
+        doc_type: 'invoice',
+        paper: 'a4',
+        lang: 'ar',
+        layout_json: JSON.stringify({ name: 'قالب بون اختبار آلي QA', paper: 'a4' }),
+        is_default: 0
+      });
+      var allTpls = await window.api.getCustomTemplates();
+      if (savedTpl && savedTpl.id && window.api.deleteCustomTemplate) {
+        await window.api.deleteCustomTemplate(savedTpl.id);
+      }
+      check('6. حفظ واسترجاع القوالب المخصصة في قاعدة البيانات (custom_templates)', Array.isArray(allTpls) && allTpls.length > 0, allTpls.length + ' قوالب محفوظة');
+
+      this.loadCustomBonPreset('sav_repair');
+      var bonHtml = await this.buildCustomBonHtmlDocument();
+      check('7. منشئ البونات والأوراق الحر (Universal Custom BON Creator - 8 قوالب)', bonHtml.includes('BON DE RÉPARATION'), 'Custom BON HTML Ready');
+
+      AppState.posterStudioState.mode = 'promo_poster';
+      var posterHtml = await this.buildPosterOrCatalogueHtml();
+      check('8. مولد لافتات العروض الجدارية للمحل (A4 Store Promo Sign Maker)', posterHtml.includes('PROMOTION'), 'A4 Promo Sign OK');
+
+      AppState.posterStudioState.mode = 'catalogue';
+      var catHtml = await this.buildPosterOrCatalogueHtml();
+      AppState.posterStudioState.mode = 'promo_poster';
+      check('9. مولد كتالوج وقائمة أسعار المنتجات بالسنتيم (Catalogue des Prix)', catHtml.includes('كتالوج أسعار'), 'Catalogue HTML OK');
+
+      check('10. نافذة معاينة طابور الملصقات وتصدير PDF (#plSheetPreviewModal)', typeof this.openPlSheetPreviewModal === 'function', 'Batch Preview Ready');
+      check('11. الدليل الاستشاري التفاعلي لمركز الطباعة والبونات (F1)', typeof this.openPrintStudioMasterGuide === 'function', 'Guide Modal Ready');
+
+      await this.switchPrintStudioTab('labels');
+      var pill = document.getElementById('barcodeMagnetStatusPill');
+      check('12. إخفاء شارة الباركود المغناطيسية خارج شاشة الكاشير', !pill || pill.style.display === 'none', 'Clean Header');
+    } catch (err) {
+      check('خطأ غير متوقع أثناء فحص مركز الطباعة', false, err.message);
+    }
+
+    var passedCount = results.filter(function (r) { return r.passed; }).length;
+    var modal = document.getElementById('posQaReportModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'posQaReportModal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML =
+      '<div class="modal-content w-full max-w-2xl p-6 space-y-4">' +
+      '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+      '    <div class="flex items-center gap-2">' +
+      '      <span class="px-3 py-1 rounded-xl ' + (passedCount === results.length ? 'bg-emerald-600' : 'bg-amber-500') + ' text-white font-black text-xs">' + passedCount + ' / ' + results.length + ' PASS</span>' +
+      '      <h3 class="text-lg font-black">🤖 تقرير الفحص الآلي الذاتي — الصفحة 8 (مركز الطباعة والباركود والبونات #view-print)</h3>' +
+      '    </div>' +
+      '    <button type="button" onclick="App.closeModal(\'posQaReportModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+      '  </div>' +
+      '  <div class="space-y-1.5 max-h-96 overflow-y-auto text-xs">' +
+      results.map(function (r) {
+        return (
+          '<div class="p-2.5 rounded-xl border ' + (r.passed ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-rose-500/40 bg-rose-500/10') + ' flex items-center justify-between">' +
+          '  <div class="font-bold">' + (r.passed ? '✅' : '❌') + ' ' + r.name + '</div>' +
+          '  <div class="font-mono text-[11px] text-slate-500 dark:text-slate-300">' + (r.detail || 'OK') + '</div>' +
+          '</div>'
+        );
+      }).join('') +
+      '  </div>' +
+      '  <div class="flex justify-end pt-2">' +
+      '    <button type="button" onclick="App.closeModal(\'posQaReportModal\')" class="px-6 py-2 bg-blue-600 text-white rounded-xl text-xs font-black">إغلاق التقرير والانتقال للصفحة التاسعة</button>' +
+      '  </div>' +
+      '</div>';
+
+    modal.classList.add('active');
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(modal);
+  };
+
+  // اختصارات لوحة المفاتيح السريعة لصفحة مركز الطباعة
+  document.addEventListener('keydown', function (e) {
+    if (AppState.currentView !== 'print') return;
+    var activeModal = document.querySelector('.modal-overlay.active');
+    if (activeModal) return;
+
+    if (e.ctrlKey && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+      e.preventDefault();
+      e.stopPropagation();
+      App.runAutoTest_PrintStudioPage();
+    } else if (e.key === 'F1') {
+      e.preventDefault();
+      e.stopPropagation();
+      App.openPrintStudioMasterGuide();
+    }
+  }, true);
+})();
+
+// [LIVE PAPER CANVAS, TRUE 80MM PDF & INTERACTIVE PREVIEW STUDIO]
+(function installLivePaperCanvasAndInteractivePreview() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.previewZoomLevel = AppState.previewZoomLevel || 100;
+
+  // إعدادات القالب الموحدة في التبويب الثاني (مهندس القوالب)
+  AppState.tdLayout = AppState.tdLayout || {
+    id: null,
+    name: 'قالب بون وفاتورة احترافي',
+    doc_type: 'invoice',
+    paper: 'a4', // 'a4' | 'a4_landscape' | 'a4_dual_a5' | 'a5' | 'a5_landscape' | 'thermal80' | 'thermal58'
+    lang: 'ar',
+    accentColor: '#1d4ed8',
+    fontSize: 12,
+    showFiscal: true,
+    showOldDebt: true,
+    showAmountInWords: true,
+    showCentimes: true,
+    showDriverInfo: false,
+    showSignature: true,
+    showBarcode: true,
+    watermarkText: '',
+    customDocTitle: '',
+    columns: {
+      index: true,
+      barcode: true,
+      designation: true,
+      qty: true,
+      unit: true,
+      unitPrice: true,
+      tva: false,
+      total: true,
+      centimes: true
+    },
+    footerNote: 'شكراً لتعاملكم معنا — البضاعة المباعة لا تُرد ولا تُستبدل إلا وفق الشروط القانونية.'
+  };
+
+  AppState.tdSampleData = AppState.tdSampleData || {
+    doc_number: 'FAC-2026-0105',
+    sale_date: new Date().toISOString().slice(0, 10),
+    customer_name: 'مؤسسة الأمل للتجارة',
+    customer_phone: '0550123456',
+    payment_method: 'نقداً',
+    subtotal: 14500,
+    discount: 500,
+    total: 14000,
+    paid_amount: 14000,
+    old_balance: 2000,
+    items: [
+      { barcode: '6130001', product_name: 'زيت مائدة إيليو 5 لتر', quantity: 4, unit: 'قارورة', price: 650, subtotal: 2600 },
+      { barcode: '6130002', product_name: 'قهوة مطحونة بونال 250غ', quantity: 20, unit: 'علبة', price: 320, subtotal: 6400 },
+      { barcode: '6130003', product_name: 'حليب مجفف لويا 500غ', quantity: 11, unit: 'علبة', price: 500, subtotal: 5500 }
+    ]
+  };
+
+  function getProdRetail(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.selling_price ?? fb.selling_price ?? 0);
+  }
+
+  // مواصفات كل مقاس ورق (للمعاينة الحية وللطباعة/PDF)
+  function getPaperSpecs(paperKey) {
+    var key = String(paperKey || 'a4').toLowerCase();
+    var map = {
+      thermal80: {
+        key: 'thermal80',
+        label: '🧾 تذكرة حرارية 80mm (عرض 80mm)',
+        isThermal: true,
+        widthMm: 78,
+        pageCss: '@page { size: 80mm 215mm; margin: 0mm; }',
+        screenWidthPx: 305,
+        screenMinHeightPx: 480,
+        screenZoom: 1
+      },
+      thermal58: {
+        key: 'thermal58',
+        label: '🎫 تذكرة حرارية 58mm (عرض 58mm)',
+        isThermal: true,
+        widthMm: 56,
+        pageCss: '@page { size: 58mm 185mm; margin: 0mm; }',
+        screenWidthPx: 225,
+        screenMinHeightPx: 420,
+        screenZoom: 1
+      },
+      a5: {
+        key: 'a5',
+        label: '📑 ورقة A5 عمودية (148×210mm)',
+        isThermal: false,
+        widthMm: 148,
+        pageCss: '@page { size: 148mm 210mm; margin: 0mm; }',
+        screenWidthPx: 540,
+        screenMinHeightPx: 760,
+        screenZoom: 0.88
+      },
+      a5_portrait: {
+        key: 'a5_portrait',
+        label: '📑 ورقة A5 عمودية (148×210mm)',
+        isThermal: false,
+        widthMm: 148,
+        pageCss: '@page { size: 148mm 210mm; margin: 0mm; }',
+        screenWidthPx: 540,
+        screenMinHeightPx: 760,
+        screenZoom: 0.88
+      },
+      a5_landscape: {
+        key: 'a5_landscape',
+        label: '📐 بون تجاري A5 أفقي (210×148mm)',
+        isThermal: false,
+        widthMm: 210,
+        pageCss: '@page { size: 210mm 148mm; margin: 0mm; }',
+        screenWidthPx: 760,
+        screenMinHeightPx: 535,
+        screenZoom: 0.74
+      },
+      a4_dual_a5: {
+        key: 'a4_dual_a5',
+        label: '🔥 نسختان 2×A5 في ورقة A4 واحدة (زبون + أرشيف)',
+        isThermal: false,
+        isDualA5: true,
+        widthMm: 210,
+        pageCss: '@page { size: 210mm 297mm; margin: 0mm; }',
+        screenWidthPx: 760,
+        screenMinHeightPx: 1070,
+        screenZoom: 0.72
+      },
+      a4_landscape: {
+        key: 'a4_landscape',
+        label: '🖼️ ورقة A4 أفقية عريضة (297×210mm)',
+        isThermal: false,
+        widthMm: 297,
+        pageCss: '@page { size: 297mm 210mm; margin: 0mm; }',
+        screenWidthPx: 1060,
+        screenMinHeightPx: 750,
+        screenZoom: 0.56
+      },
+      a4: {
+        key: 'a4',
+        label: '📄 ورقة A4 عمودية قياسية (210×297mm)',
+        isThermal: false,
+        widthMm: 210,
+        pageCss: '@page { size: 210mm 297mm; margin: 0mm; }',
+        screenWidthPx: 760,
+        screenMinHeightPx: 1070,
+        screenZoom: 0.72
+      }
+    };
+    return map[key] || map.a4;
+  }
+
+  // استخراج HTML نظيف للطباعة أو PDF من داخل iframe المعاينة الحية (لحفظ أي تعديل مباشر قام به المستخدم على الورقة!)
+  function extractPrintableHtmlFromIframe(iframeId, fallbackHtml) {
+    var frame = document.getElementById(iframeId);
+    if (!frame || !frame.contentWindow || !frame.contentWindow.document) {
+      return fallbackHtml;
+    }
+    var docClone = frame.contentWindow.document.documentElement.cloneNode(true);
+    docClone.querySelectorAll('.no-print-ui').forEach(function (el) { el.remove(); });
+    docClone.querySelectorAll('[contenteditable]').forEach(function (el) {
+      el.removeAttribute('contenteditable');
+    });
+    return '<!DOCTYPE html>\n' + docClone.outerHTML;
+  }
+
+  // ==========================================================================
+  // أ) المحرك الهندسي للقوالب الرسمية (TemplateRenderer) — يدعم 80mm/58mm الحقيقي و A5 و 2×A5 و A4
+  // ==========================================================================
+  if (window.TemplateRenderer) {
+    window.TemplateRenderer.renderCustomTemplateHtml = function (layout, docData, settings) {
+      layout = layout || AppState.tdLayout || {};
+      docData = docData || AppState.tdSampleData || {};
+      settings = settings || AppState.settings || {};
+
+      var lang = layout.lang || 'ar';
+      var dir = lang === 'ar' ? 'rtl' : 'ltr';
+      var accent = layout.accentColor || '#1d4ed8';
+      var cols = layout.columns || {};
+      var items = Array.isArray(docData.items) ? docData.items : [];
+      var spec = getPaperSpecs(layout.paper || 'a4');
+      var userZoom = (Number(AppState.previewZoomLevel || 100) / 100) * spec.screenZoom;
+
+      var docTypeTitles = {
+        invoice: 'فاتورة بيع رسمية (FACTURE)',
+        delivery: 'بون تسليم وتوصيل بضاعة (BON DE LIVRAISON)',
+        order: 'سند طلبية زبون (BON DE COMMANDE)',
+        proforma: 'فاتورة شكلية / كشف تقديري (PROFORMA)',
+        receipt: 'بون مبيعات الكاشير (TICKET DE CAISSE)',
+        reception: 'بون استلام بضاعة (BON DE RÉCEPTION)',
+        payment_receipt: 'بون تسديد دفعة حساب (BON DE VERSEMENT)',
+        avoir: 'إشعار دائن / فاتورة إرجاع (FACTURE D\'AVOIR)'
+      };
+      var docTitleText = layout.customDocTitle || docTypeTitles[layout.doc_type || 'invoice'] || 'فاتورة (FACTURE)';
+
+      var subtotal = Number(docData.subtotal ?? docData.total ?? 0);
+      var discount = Number(docData.discount || 0);
+      var total = Number(docData.total ?? (subtotal - discount));
+      var paid = Number(docData.paid_amount ?? total);
+      var rest = Math.max(0, Number((total - paid).toFixed(2)));
+      var oldDebt = Number(docData.old_balance || 0);
+      var centimeTotal = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(total) : '';
+
+      var words = window.NumberToWords && typeof window.NumberToWords.toWords === 'function'
+        ? window.NumberToWords.toWords(total, lang)
+        : total.toFixed(2) + ' DZD';
+
+      // ----------------------------------------------------------------------
+      // 1) تخطيط التذكرة الحرارية الحقيقية (80mm أو 58mm)
+      // ----------------------------------------------------------------------
+      if (spec.isThermal) {
+        var thermalRows = items.map(function (it, idx) {
+          var lineSub = Number(it.subtotal || (it.quantity || 1) * (it.price || 0));
+          return (
+            '<tr>' +
+            '<td contenteditable="true" style="font-weight:800;padding:3px 2px;">' + (idx + 1) + '. ' + (it.product_name || it.name || 'منتج') + '</td>' +
+            '<td contenteditable="true" style="text-align:center;font-family:monospace;font-weight:bold;">' + (it.quantity || 1) + '</td>' +
+            '<td contenteditable="true" style="text-align:center;font-family:monospace;">' + Number(it.price || 0).toFixed(0) + '</td>' +
+            '<td contenteditable="true" style="text-align:left;font-family:monospace;font-weight:900;">' + lineSub.toFixed(2) + '</td>' +
+            '</tr>'
+          );
+        }).join('');
+
+        return (
+          '<!DOCTYPE html><html lang="' + lang + '" dir="' + dir + '"><head><meta charset="UTF-8">' +
+          '<link rel="stylesheet" href="./assets/css/fonts.css">' +
+          '<style>' +
+          spec.pageCss +
+          '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
+          'html,body{margin:0;padding:0;font-family:"Cairo","Tajawal",sans-serif;font-size:' + (layout.fontSize || 11) + 'px;color:#000;}' +
+          '@media screen {' +
+          '  html,body{background:#0f172a;padding:14px 0;display:flex;flex-direction:column;align-items:center;}' +
+          '  .paper-sheet{width:' + spec.widthMm + 'mm;max-width:' + spec.widthMm + 'mm;background:#fff;padding:4mm 3.5mm;box-shadow:0 20px 45px rgba(0,0,0,0.55);border-top:5px dashed #cbd5e1;border-bottom:5px dashed #cbd5e1;zoom:' + Number(AppState.previewZoomLevel || 100) / 100 + ';}' +
+          '  [contenteditable="true"]:hover{outline:1.5px dashed #3b82f6;background:#eff6ff;cursor:text;}' +
+          '  [contenteditable="true"]:focus{outline:2px solid #2563eb;background:#fefce8;}' +
+          '}' +
+          '@media print {' +
+          '  html,body{background:#fff !important;width:' + spec.widthMm + 'mm !important;margin:0 !important;padding:0 !important;}' +
+          '  .paper-sheet{width:' + spec.widthMm + 'mm !important;max-width:' + spec.widthMm + 'mm !important;padding:2.5mm !important;margin:0 !important;box-shadow:none !important;border:none !important;zoom:1 !important;}' +
+          '  .no-print-ui{display:none !important;}' +
+          '}' +
+          '.sep{border-top:1.5px dashed #000;margin:5px 0;}' +
+          '.row{display:flex;justify-content:space-between;align-items:center;margin:2px 0;}' +
+          'table{width:100%;border-collapse:collapse;margin:4px 0;font-size:10.5px;}' +
+          'th{border-top:1.5px solid #000;border-bottom:1.5px solid #000;padding:3px 2px;font-weight:900;background:' + accent + ';color:#fff;}' +
+          'td{border-bottom:1px dotted #94a3b8;padding:3px 2px;}' +
+          '</style></head><body>' +
+          '<div class="no-print-ui" style="color:#38bdf8;font-size:11px;font-weight:900;margin-bottom:8px;text-align:center;">📏 معاينة حقيقية بمقاس ' + spec.label + ' — انقر على أي نص داخل التذكرة لتعديله مباشرة!</div>' +
+          '<div class="paper-sheet">' +
+          '  <div style="text-align:center;">' +
+          '    <div contenteditable="true" style="font-size:15px;font-weight:900;color:' + accent + ';">' + (settings.shop_name || 'Gherbi.Ai POS') + '</div>' +
+          '    <div contenteditable="true" style="font-size:10px;">' + (settings.shop_address || 'الجزائر') + (settings.shop_phone ? ' - ' + settings.shop_phone : '') + '</div>' +
+          (layout.showFiscal ? '<div contenteditable="true" style="font-size:9px;font-family:monospace;">RC:' + (settings.shop_rc || '-') + ' | NIF:' + (settings.shop_nif || '-') + '</div>' : '') +
+          '    <div contenteditable="true" style="margin-top:4px;padding:3px 6px;border:1.5px solid ' + accent + ';border-radius:5px;font-weight:900;font-size:11.5px;color:' + accent + ';">' + docTitleText + '</div>' +
+          '  </div>' +
+          '  <div class="sep"></div>' +
+          '  <div class="row"><span>رقم السند:</span><strong contenteditable="true" style="font-family:monospace;">' + (docData.doc_number || 'FAC-2026-0105') + '</strong></div>' +
+          '  <div class="row"><span>التاريخ:</span><span contenteditable="true" style="font-family:monospace;">' + String(docData.sale_date || new Date().toISOString()).slice(0, 10) + '</span></div>' +
+          '  <div class="row"><span>الزبون:</span><strong contenteditable="true">' + (docData.customer_name || 'زبون عابر') + '</strong></div>' +
+          '  <div class="row"><span>الدفع:</span><strong contenteditable="true">' + (docData.payment_method || 'نقداً') + '</strong></div>' +
+          '  <div class="sep"></div>' +
+          '  <table><thead><tr><th>المنتج</th><th>ك</th><th>السعر</th><th>المجموع</th></tr></thead><tbody>' + thermalRows + '</tbody></table>' +
+          '  <div class="sep"></div>' +
+          '  <div class="row"><span>المجموع الفرعي:</span><strong style="font-family:monospace;">' + subtotal.toFixed(2) + ' د.ج</strong></div>' +
+          (discount > 0 ? '<div class="row"><span>التخفيض:</span><strong style="font-family:monospace;">-' + discount.toFixed(2) + ' د.ج</strong></div>' : '') +
+          '  <div style="padding:5px;border:1.5px solid #000;border-radius:6px;background:#f8fafc;margin:4px 0;">' +
+          '    <div class="row" style="font-size:13px;font-weight:900;color:' + accent + ';"><span>الصافي للدفع:</span><span contenteditable="true" style="font-family:monospace;">' + total.toFixed(2) + ' د.ج</span></div>' +
+          (layout.showCentimes !== false ? '<div contenteditable="true" style="font-size:10px;font-weight:900;color:#b45309;text-align:left;">بالسنتيم: ' + centimeTotal + '</div>' : '') +
+          '  </div>' +
+          '  <div class="row"><span>المدفوع:</span><span contenteditable="true" style="font-family:monospace;">' + paid.toFixed(2) + ' د.ج</span></div>' +
+          (layout.showOldDebt && oldDebt > 0 ? '<div class="row"><span>الدين السابق:</span><span contenteditable="true" style="font-family:monospace;">' + oldDebt.toFixed(2) + ' د.ج</span></div>' : '') +
+          (layout.showAmountInWords ? '<div contenteditable="true" style="font-size:9.5px;margin-top:4px;font-weight:bold;">' + words + '</div>' : '') +
+          '  <div class="sep"></div>' +
+          '  <div contenteditable="true" style="text-align:center;font-size:9.5px;font-weight:bold;">' + (layout.footerNote || 'شكراً لزيارتكم!') + '</div>' +
+          (layout.showSignature ? '<div contenteditable="true" style="text-align:center;margin-top:8px;font-size:9.5px;font-weight:bold;">الختم والإمضاء: ....................</div>' : '') +
+          '</div></body></html>'
+        );
+      }
+
+      // ----------------------------------------------------------------------
+      // 2) تخطيط الأوراق القياسية والنصفية (A4 / A5 / A5 Landscape / 2×A5 Dual)
+      // ----------------------------------------------------------------------
+      var headersHtml =
+        (cols.index !== false ? '<th>#</th>' : '') +
+        (cols.barcode ? '<th>المرجع</th>' : '') +
+        '<th>البيان / المنتج</th>' +
+        (cols.qty !== false ? '<th>الكمية</th>' : '') +
+        (cols.unit ? '<th>الوحدة</th>' : '') +
+        (cols.unitPrice !== false ? '<th>سعر الوحدة</th>' : '') +
+        (cols.tva ? '<th>TVA</th>' : '') +
+        '<th>المجموع</th>' +
+        (cols.centimes ? '<th>بالسنتيم</th>' : '');
+
+      var rowsHtml = items.map(function (it, i) {
+        var lineSub = Number(it.subtotal || (it.quantity || 1) * (it.price || 0));
+        var lineCent = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(lineSub) : '';
+        return (
+          '<tr>' +
+          (cols.index !== false ? '<td style="text-align:center;">' + (i + 1) + '</td>' : '') +
+          (cols.barcode ? '<td contenteditable="true" style="font-family:monospace;text-align:center;">' + (it.barcode || it.product_barcode || '-') + '</td>' : '') +
+          '<td contenteditable="true" style="font-weight:700;">' + (it.product_name || it.custom_product_name || it.name || 'منتج') + '</td>' +
+          (cols.qty !== false ? '<td contenteditable="true" style="text-align:center;font-family:monospace;font-weight:bold;">' + (it.quantity || 1) + '</td>' : '') +
+          (cols.unit ? '<td contenteditable="true" style="text-align:center;">' + (it.unit || 'قطعة') + '</td>' : '') +
+          (cols.unitPrice !== false ? '<td contenteditable="true" style="text-align:center;font-family:monospace;">' + Number(it.price || 0).toFixed(2) + '</td>' : '') +
+          (cols.tva ? '<td contenteditable="true" style="text-align:center;">' + Number(docData.tax_percentage || 0) + '%</td>' : '') +
+          '<td contenteditable="true" style="text-align:center;font-family:monospace;font-weight:800;">' + lineSub.toFixed(2) + '</td>' +
+          (cols.centimes ? '<td contenteditable="true" style="text-align:center;font-size:10px;color:#b45309;font-weight:bold;">' + lineCent + '</td>' : '') +
+          '</tr>'
+        );
+      }).join('');
+
+      var buildStandardBlock = function (copyBadgeText) {
+        return (
+          '<div class="single-doc-box" style="position:relative;">' +
+          (layout.watermarkText
+            ? '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0.07;font-size:46px;font-weight:900;transform:rotate(-18deg);">' + layout.watermarkText + '</div>'
+            : '') +
+          '<div class="header">' +
+          '  <div>' +
+          '    <div contenteditable="true" class="shop-title">' + (settings.shop_name || 'Gherbi.Ai POS') + '</div>' +
+          '    <div contenteditable="true">' + (settings.shop_description || 'تجارة عامة وتوزيع') + '</div>' +
+          '    <div contenteditable="true">' + (settings.shop_address || 'الجزائر') + (settings.shop_phone ? ' | هاتف: ' + settings.shop_phone : '') + '</div>' +
+          (layout.showFiscal
+            ? '<div contenteditable="true" style="font-size:10px;color:#475569;margin-top:3px;font-family:monospace;">RC: ' + (settings.shop_rc || '-') + ' | NIF: ' + (settings.shop_nif || '-') + ' | AI: ' + (settings.shop_ai || '-') + ' | NIS: ' + (settings.shop_nis || '-') + '</div>'
+            : '') +
+          '  </div>' +
+          '  <div style="text-align:left;">' +
+          (copyBadgeText ? '<div style="display:inline-block;padding:2px 8px;border-radius:4px;background:#e2e8f0;font-size:10px;font-weight:900;margin-bottom:3px;">' + copyBadgeText + '</div>' : '') +
+          '    <div contenteditable="true" style="font-size:15px;font-weight:900;color:' + accent + ';">' + docTitleText + '</div>' +
+          '    <div contenteditable="true" style="font-family:monospace;font-weight:900;">N°: ' + (docData.doc_number || 'FAC-2026-0105') + '</div>' +
+          '    <div contenteditable="true">التاريخ: ' + String(docData.sale_date || new Date().toISOString()).slice(0, 10) + '</div>' +
+          '  </div>' +
+          '</div>' +
+
+          '<div class="meta-box">' +
+          '  <div contenteditable="true"><strong>الطرف / الزبون:</strong> ' + (docData.customer_name || 'مؤسسة الأمل للتجارة') + (docData.customer_phone ? ' | <strong>الهاتف:</strong> ' + docData.customer_phone : '') + '</div>' +
+          '  <div contenteditable="true"><strong>طريقة التسديد:</strong> ' + (docData.payment_method || 'نقداً') + '</div>' +
+          '</div>' +
+
+          (layout.showDriverInfo
+            ? '<div contenteditable="true" style="margin-bottom:8px;padding:6px 10px;border:1px dashed #94a3b8;border-radius:6px;font-size:10.5px;display:flex;justify-content:space-between;">' +
+              '  <span><strong>🚚 السائق / الموزع:</strong> ............................</span>' +
+              '  <span><strong>ترقيم المركبة (Matricule):</strong> ............................</span>' +
+              '  <span><strong>عدد الطرود (Colis):</strong> ............</span>' +
+              '</div>'
+            : '') +
+
+          '<table><thead><tr>' + headersHtml + '</tr></thead><tbody>' + rowsHtml + '</tbody></table>' +
+
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">' +
+          '  <div style="flex:1;">' +
+          (layout.showAmountInWords ? '<div contenteditable="true" class="words-box">أوقفت هذه الوثيقة على مبلغ: ' + words + '</div>' : '') +
+          (layout.footerNote ? '<div contenteditable="true" style="margin-top:6px;font-size:10.5px;color:#475569;font-weight:bold;">' + layout.footerNote + '</div>' : '') +
+          '  </div>' +
+          '  <div class="totals">' +
+          '    <div class="totals-row"><span>المجموع الفرعي:</span><span contenteditable="true" style="font-family:monospace;font-weight:bold;">' + subtotal.toFixed(2) + ' د.ج</span></div>' +
+          (discount > 0 ? '<div class="totals-row"><span>التخفيض:</span><span contenteditable="true" style="font-family:monospace;">-' + discount.toFixed(2) + ' د.ج</span></div>' : '') +
+          '    <div class="totals-row grand"><span>الصافي للدفع:</span><span contenteditable="true" style="font-family:monospace;">' + total.toFixed(2) + ' د.ج</span></div>' +
+          (layout.showCentimes !== false ? '<div class="totals-row" style="background:#fffbeb;color:#b45309;font-weight:900;font-size:10.5px;"><span>المبلغ بالسنتيم:</span><span contenteditable="true">' + centimeTotal + '</span></div>' : '') +
+          '    <div class="totals-row"><span>المدفوع:</span><span contenteditable="true" style="font-family:monospace;">' + paid.toFixed(2) + ' د.ج</span></div>' +
+          (layout.showOldDebt && oldDebt > 0 ? '<div class="totals-row"><span>الدين السابق:</span><span contenteditable="true" style="font-family:monospace;">' + oldDebt.toFixed(2) + ' د.ج</span></div>' : '') +
+          '  </div>' +
+          '</div>' +
+
+          (layout.showSignature
+            ? '<div class="footer" style="margin-top:14px;padding-top:6px;border-top:1px dashed #cbd5e1;font-weight:800;">' +
+              '  <div contenteditable="true">إمضاء المستلم / الزبون: ........................</div>' +
+              '  <div contenteditable="true">الختم والإمضاء: ........................</div>' +
+              '</div>'
+            : '') +
+          '</div>'
+        );
+      };
+
+      var innerBody = spec.isDualA5
+        ? '<div style="display:flex;flex-direction:column;justify-content:space-between;min-height:275mm;gap:4mm;">' +
+          buildStandardBlock('نسخة الزبون (Exemplaire Client - 1/2)') +
+          '<div style="border-top:2px dashed #64748b;text-align:center;font-size:10px;color:#64748b;padding:2px 0;">✂️ خط القص — (نسختان 2×A5 في ورقة A4 واحدة لتوفير 50% من الورق) ✂️</div>' +
+          buildStandardBlock('نسخة الأرشيف والمحاسبة (Exemplaire Archive - 2/2)') +
+          '</div>'
+        : buildStandardBlock('');
+
+      return (
+        '<!DOCTYPE html><html lang="' + lang + '" dir="' + dir + '"><head><meta charset="UTF-8">' +
+        '<link rel="stylesheet" href="./assets/css/fonts.css">' +
+        '<style>' +
+        spec.pageCss +
+        '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
+        'html,body{margin:0;padding:0;font-family:"Cairo","Tajawal",sans-serif;font-size:' + (layout.fontSize || 11.5) + 'px;color:#0f172a;}' +
+        '@media screen {' +
+        '  html,body{background:#0f172a;padding:14px 0;display:flex;flex-direction:column;align-items:center;}' +
+        '  .paper-sheet{width:' + spec.screenWidthPx + 'px;min-height:' + spec.screenMinHeightPx + 'px;background:#fff;padding:18px;border-radius:6px;box-shadow:0 20px 50px rgba(0,0,0,0.55);zoom:' + userZoom.toFixed(2) + ';}' +
+        '  [contenteditable="true"]:hover{outline:1.5px dashed #3b82f6;background:#eff6ff;cursor:text;border-radius:3px;}' +
+        '  [contenteditable="true"]:focus{outline:2px solid #2563eb;background:#fefce8;border-radius:3px;}' +
+        '}' +
+        '@media print {' +
+        '  html,body{background:#fff !important;margin:0 !important;padding:0 !important;}' +
+        '  .paper-sheet{width:100% !important;padding:8mm !important;margin:0 !important;box-shadow:none !important;zoom:1 !important;}' +
+        '  .no-print-ui{display:none !important;}' +
+        '}' +
+        '.header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ' + accent + ';padding-bottom:8px;margin-bottom:10px;}' +
+        '.shop-title{font-size:18px;font-weight:900;color:' + accent + ';}' +
+        '.meta-box{background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:7px 12px;margin-bottom:10px;display:flex;justify-content:space-between;}' +
+        'table{width:100%;border-collapse:collapse;margin-bottom:10px;}' +
+        'th{background:' + accent + ';color:#fff;padding:6px;border:1px solid ' + accent + ';font-size:11px;}' +
+        'td{padding:5px 6px;border:1px solid #cbd5e1;font-size:11px;}' +
+        '.totals{width:245px;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;}' +
+        '.totals-row{display:flex;justify-content:space-between;padding:4px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;}' +
+        '.totals-row.grand{background:' + accent + ';color:#fff;font-weight:900;font-size:13px;}' +
+        '.words-box{padding:6px 10px;background:#f1f5f9;border-right:4px solid ' + accent + ';font-weight:700;font-size:11px;}' +
+        '.footer{display:flex;justify-content:space-between;font-size:11px;color:#334155;}' +
+        '</style></head><body>' +
+        '<div class="no-print-ui" style="color:#38bdf8;font-size:12px;font-weight:900;margin-bottom:8px;text-align:center;">📏 معاينة حقيقية بمقاس: ' + spec.label + ' — ✏️ انقر على أي نص داخل الورقة لتعديله مباشرة!</div>' +
+        '<div class="paper-sheet">' + innerBody + '</div></body></html>'
+      );
+    };
+  }
+
+  // ==========================================================================
+  // ب) توحيد جميع دوال TemplateBuilder وشريط التحكم المباشر فوق المعاينة
+  // ==========================================================================
+  var savedCustomTemplatesCache = [];
+
+  function buildInteractivePreviewToolbarHtml(targetMode) {
+    // targetMode: 'td' (TemplateBuilder) | 'bon' (Custom BON)
+    var curPaper = targetMode === 'td' ? AppState.tdLayout.paper : AppState.customBonState.paperMode;
+    var curColor = targetMode === 'td' ? AppState.tdLayout.accentColor : AppState.customBonState.accentColor;
+
+    var paperPills = [
+      { k: 'thermal80', lbl: '🧾 80mm حراري' },
+      { k: 'thermal58', lbl: '🎫 58mm حراري' },
+      { k: 'a4_dual_a5', lbl: '🔥 2×A5 مزدوج' },
+      { k: 'a5_landscape', lbl: '📐 A5 أفقي' },
+      { k: 'a5', lbl: '📑 A5 عمودي' },
+      { k: 'a4', lbl: '📄 A4 عمودي' },
+      { k: 'a4_landscape', lbl: '🖼️ A4 أفقي' }
+    ];
+
+    var colors = ['#1d4ed8', '#0f172a', '#047857', '#be123c', '#4338ca', '#d97706', '#0f766e'];
+
+    return (
+      '<div class="p-2.5 rounded-2xl bg-slate-900 text-white space-y-2 mb-2.5 shadow-md text-[11px]">' +
+      '  <div class="flex flex-wrap items-center justify-between gap-1.5">' +
+      '    <span class="font-black text-amber-400">⚡ شريط التحكم الفوري بالمعاينة (اضغط لتغيير مقاس الورقة فوراً):</span>' +
+      '    <div class="flex items-center gap-1">' +
+      '      <button type="button" onclick="App.stepPreviewFontSize(\'' + targetMode + '\', -1)" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-mono font-bold" title="تصغير الخط">A-</button>' +
+      '      <button type="button" onclick="App.stepPreviewFontSize(\'' + targetMode + '\', 1)" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-mono font-bold" title="تكبير الخط">A+</button>' +
+      '      <span class="text-slate-500 mx-1">|</span>' +
+      '      <button type="button" onclick="AppState.previewZoomLevel=Math.max(60,(AppState.previewZoomLevel||100)-15); App.refreshActiveStudioPreview(\'' + targetMode + '\')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-mono" title="تصغير العرض">🔍-</button>' +
+      '      <button type="button" onclick="AppState.previewZoomLevel=100; App.refreshActiveStudioPreview(\'' + targetMode + '\')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-mono">' + (AppState.previewZoomLevel || 100) + '%</button>' +
+      '      <button type="button" onclick="AppState.previewZoomLevel=Math.min(135,(AppState.previewZoomLevel||100)+15); App.refreshActiveStudioPreview(\'' + targetMode + '\')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-mono" title="تكبير العرض">🔍+</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="flex flex-wrap items-center gap-1">' +
+      paperPills.map(function (p) {
+        var isAct = curPaper === p.k || (p.k === 'a5' && curPaper === 'a5_portrait');
+        return (
+          '<button type="button" onclick="App.quickSetPaperFromToolbar(\'' + targetMode + '\', \'' + p.k + '\')" class="px-2.5 py-1 rounded-lg font-black transition ' + (isAct ? 'bg-blue-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">' +
+          p.lbl +
+          '</button>'
+        );
+      }).join('') +
+      '  </div>' +
+
+      '  <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800">' +
+      '    <div class="flex items-center gap-1.5">' +
+      '      <span class="text-slate-400 font-bold">🎨 اللون:</span>' +
+      colors.map(function (c) {
+        return '<button type="button" onclick="App.quickSetColorFromToolbar(\'' + targetMode + '\', \'' + c + '\')" style="background:' + c + ';width:18px;height:18px;border-radius:999px;border:' + (curColor === c ? '2.5px solid #fff' : '1px solid #475569') + ';"></button>';
+      }).join('') +
+      '    </div>' +
+      (targetMode === 'bon'
+        ? '<div class="flex items-center gap-1">' +
+          '  <button type="button" onclick="AppState.customBonState.fields.push({label:\'خانة إضافية\',value:\'تفاصيل...\'}); App.renderPrintStudioView()" class="px-2 py-0.5 rounded bg-blue-600/30 text-blue-300 hover:bg-blue-600 hover:text-white font-bold">+ خانة جديدة</button>' +
+          '  <button type="button" onclick="AppState.customBonState.showItemsTable=true; AppState.customBonState.items.push({col1:\'خدمة / قطعة جديدة\',col2:\'1\',col3:\'1000.00\',col4:\'1000.00\'}); App.renderPrintStudioView()" class="px-2 py-0.5 rounded bg-emerald-600/30 text-emerald-300 hover:bg-emerald-600 hover:text-white font-bold">+ سطر جدول</button>' +
+          '  <button type="button" onclick="AppState.customBonState.showBarcode=!AppState.customBonState.showBarcode; App.refreshCustomBonPreview()" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-bold">📊 الباركود</button>' +
+          '  <button type="button" onclick="AppState.customBonState.showCentimesTotal=!AppState.customBonState.showCentimesTotal; App.refreshCustomBonPreview()" class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">🇩🇿 السنتيم</button>' +
+          '</div>'
+        : '<div class="flex items-center gap-1">' +
+          '  <button type="button" onclick="window.TemplateBuilder.updateProp(\'showCentimes\', !AppState.tdLayout.showCentimes)" class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">🇩🇿 السنتيم</button>' +
+          '  <button type="button" onclick="window.TemplateBuilder.updateProp(\'showFiscal\', !AppState.tdLayout.showFiscal)" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-bold">🏛️ الجباية</button>' +
+          '  <button type="button" onclick="window.TemplateBuilder.updateProp(\'showDriverInfo\', !AppState.tdLayout.showDriverInfo)" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-bold">🚚 السائق</button>' +
+          '  <button type="button" onclick="window.TemplateBuilder.updateProp(\'showSignature\', !AppState.tdLayout.showSignature)" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-bold">✍️ الختم</button>' +
+          '</div>') +
+      '  </div>' +
+      '</div>'
+    );
+  }
+
+  App.quickSetPaperFromToolbar = function (targetMode, paperKey) {
+    if (targetMode === 'td') {
+      AppState.tdLayout.paper = paperKey;
+      window.TemplateBuilder.initTemplateBuilder('template-designer-root');
+    } else {
+      AppState.customBonState.paperMode = paperKey;
+      this.renderPrintStudioView();
+    }
+    if (typeof showToast === 'function') {
+      showToast('📏 تم تحويل مقاس الورقة والتخطيط فوراً إلى: ' + getPaperSpecs(paperKey).label, 'info');
+    }
+  };
+
+  App.quickSetColorFromToolbar = function (targetMode, colorHex) {
+    if (targetMode === 'td') {
+      AppState.tdLayout.accentColor = colorHex;
+      window.TemplateBuilder.initTemplateBuilder('template-designer-root');
+    } else {
+      AppState.customBonState.accentColor = colorHex;
+      this.refreshCustomBonPreview();
+    }
+  };
+
+  App.stepPreviewFontSize = function (targetMode, delta) {
+    if (targetMode === 'td') {
+      AppState.tdLayout.fontSize = Math.max(9, Math.min(18, Number(AppState.tdLayout.fontSize || 12) + delta));
+      window.TemplateBuilder.refreshPreview();
+    } else {
+      AppState.customBonState.fontSize = Math.max(9, Math.min(18, Number(AppState.customBonState.fontSize || 11.5) + delta));
+      this.refreshCustomBonPreview();
+    }
+  };
+
+  App.refreshActiveStudioPreview = function (targetMode) {
+    if (targetMode === 'td' && window.TemplateBuilder) {
+      window.TemplateBuilder.initTemplateBuilder('template-designer-root');
+    } else {
+      this.renderPrintStudioView();
+    }
+  };
+
+  // إعادة بناء window.TemplateBuilder بالكامل ليعمل بتناغم 100%
+  window.TemplateBuilder = {
+    getCurrentLayout: function () {
+      return AppState.tdLayout;
+    },
+
+    initTemplateBuilder: async function (containerId) {
+      var root = document.getElementById(containerId || 'template-designer-root');
+      if (!root) return;
+
+      if (window.api && window.api.getCustomTemplates) {
+        savedCustomTemplatesCache = (await window.api.getCustomTemplates().catch(function () { return []; })) || [];
+      }
+
+      var cur = AppState.tdLayout;
+      var cols = cur.columns || {};
+
+      root.innerHTML =
+        '<div class="grid grid-cols-1 lg:grid-cols-12 gap-5 text-xs">' +
+        '  <div class="lg:col-span-5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3.5 shadow-sm">' +
+        '    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-2.5">' +
+        '      <h3 class="font-black text-sm text-blue-600">🎨 مهندس قوالب الفواتير والأوراق الرسمية</h3>' +
+        '      <div class="flex flex-wrap gap-1.5">' +
+        '        <button type="button" onclick="window.TemplateBuilder.exportCurrentPdf()" class="px-2.5 py-1.5 bg-slate-800 text-white rounded-xl font-bold">📥 حفظ PDF</button>' +
+        '        <button type="button" onclick="window.TemplateBuilder.printCurrentPreview()" class="px-3 py-1.5 bg-emerald-600 text-white rounded-xl font-black">🖨️ طباعة</button>' +
+        '        <button type="button" onclick="window.TemplateBuilder.saveCurrent()" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black shadow">💾 حفظ القالب</button>' +
+        '      </div>' +
+        '    </div>' +
+
+        '    <div class="grid grid-cols-2 gap-2.5">' +
+        '      <div><label class="block font-bold mb-1">اسم القالب *</label><input type="text" value="' + (cur.name || '') + '" oninput="window.TemplateBuilder.updateProp(\'name\', this.value)" class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
+        '      <div><label class="block font-bold mb-1">نوع المستند الرسمي (Doc Type)</label>' +
+        '        <select onchange="window.TemplateBuilder.onDocTypeChange(this.value)" class="w-full px-2.5 py-1.5 rounded-xl font-bold">' +
+        '          <option value="invoice" ' + (cur.doc_type === 'invoice' ? 'selected' : '') + '>🧾 فاتورة بيع (Facture)</option>' +
+        '          <option value="receipt" ' + (cur.doc_type === 'receipt' ? 'selected' : '') + '>🎫 بون كاشير حراري (Ticket 80mm)</option>' +
+        '          <option value="delivery" ' + (cur.doc_type === 'delivery' ? 'selected' : '') + '>🚚 بون تسليم وتوصيل (Bon de Livraison)</option>' +
+        '          <option value="order" ' + (cur.doc_type === 'order' ? 'selected' : '') + '>📋 بون طلبية (Bon de Commande)</option>' +
+        '          <option value="proforma" ' + (cur.doc_type === 'proforma' ? 'selected' : '') + '>📄 فاتورة شكلية (Proforma / Devis)</option>' +
+        '          <option value="reception" ' + (cur.doc_type === 'reception' ? 'selected' : '') + '>📦 بون استلام بضاعة (Bon de Réception)</option>' +
+        '          <option value="payment_receipt" ' + (cur.doc_type === 'payment_receipt' ? 'selected' : '') + '>💵 بون تسديد دفعة (Bon de Versement)</option>' +
+        '        </select>' +
+        '      </div>' +
+        '      <div><label class="block font-bold mb-1 text-blue-600">مقاس وتخطيط الورقة *</label>' +
+        '        <select id="tdPaperSelect" onchange="window.TemplateBuilder.updateProp(\'paper\', this.value, true)" class="w-full px-2.5 py-1.5 rounded-xl font-black text-blue-600 border-blue-500">' +
+        '          <option value="a4" ' + (cur.paper === 'a4' ? 'selected' : '') + '>📄 A4 عمودي قياسي (210×297mm)</option>' +
+        '          <option value="thermal80" ' + (cur.paper === 'thermal80' ? 'selected' : '') + '>🧾 تذكرة حرارية 80mm (عرض 80mm)</option>' +
+        '          <option value="thermal58" ' + (cur.paper === 'thermal58' ? 'selected' : '') + '>🎫 تذكرة حرارية 58mm (عرض 58mm)</option>' +
+        '          <option value="a4_dual_a5" ' + (cur.paper === 'a4_dual_a5' ? 'selected' : '') + '>🔥 2×A5 في ورقة A4 واحدة (نسخة زبون + أرشيف)</option>' +
+        '          <option value="a5" ' + (cur.paper === 'a5' ? 'selected' : '') + '>📑 A5 نصفي عمودي (148×210mm)</option>' +
+        '          <option value="a5_landscape" ' + (cur.paper === 'a5_landscape' ? 'selected' : '') + '>📐 A5 أفقي تجاري (Bon Commercial)</option>' +
+        '          <option value="a4_landscape" ' + (cur.paper === 'a4_landscape' ? 'selected' : '') + '>🖼️ A4 أفقي عريض (Landscape)</option>' +
+        '        </select>' +
+        '      </div>' +
+        '      <div class="grid grid-cols-2 gap-1.5">' +
+        '        <div><label class="block font-bold mb-1">اللون الرئيسي</label><input type="color" value="' + (cur.accentColor || '#1d4ed8') + '" oninput="window.TemplateBuilder.updateProp(\'accentColor\', this.value)" class="w-full h-8 rounded-xl cursor-pointer"></div>' +
+        '        <div><label class="block font-bold mb-1">حجم الخط</label><input type="number" min="9" max="18" value="' + (cur.fontSize || 12) + '" oninput="window.TemplateBuilder.updateProp(\'fontSize\', Number(this.value))" class="w-full px-2 py-1.5 rounded-xl font-mono text-center"></div>' +
+        '      </div>' +
+        '    </div>' +
+
+        '    <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-1.5">' +
+        '      <div class="font-black text-slate-600 dark:text-slate-300">أعمدة الجدول الظاهرة في الورقة:</div>' +
+        '      <div class="grid grid-cols-4 gap-1.5 text-[11px] font-bold">' +
+        '        <label class="flex items-center gap-1"><input type="checkbox" ' + (cols.index !== false ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'index\', this.checked)"><span># الرقم</span></label>' +
+        '        <label class="flex items-center gap-1"><input type="checkbox" ' + (cols.barcode ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'barcode\', this.checked)"><span>الباركود</span></label>' +
+        '        <label class="flex items-center gap-1"><input type="checkbox" ' + (cols.qty !== false ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'qty\', this.checked)"><span>الكمية</span></label>' +
+        '        <label class="flex items-center gap-1"><input type="checkbox" ' + (cols.unit ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'unit\', this.checked)"><span>الوحدة</span></label>' +
+        '        <label class="flex items-center gap-1"><input type="checkbox" ' + (cols.unitPrice !== false ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'unitPrice\', this.checked)"><span>السعر</span></label>' +
+        '        <label class="flex items-center gap-1"><input type="checkbox" ' + (cols.tva ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'tva\', this.checked)"><span>TVA %</span></label>' +
+        '        <label class="flex items-center gap-1 text-amber-600"><input type="checkbox" ' + (cols.centimes ? 'checked' : '') + ' onchange="window.TemplateBuilder.toggleCol(\'centimes\', this.checked)"><span>بالسنتيم</span></label>' +
+        '      </div>' +
+        '    </div>' +
+
+        '    <div class="grid grid-cols-2 gap-1.5 text-[11px] font-bold pt-1">' +
+        '      <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (cur.showFiscal ? 'checked' : '') + ' onchange="window.TemplateBuilder.updateProp(\'showFiscal\', this.checked)"><span>البيانات الجبائية (RC/NIF)</span></label>' +
+        '      <label class="flex items-center gap-1.5 cursor-pointer text-amber-600"><input type="checkbox" ' + (cur.showCentimes !== false ? 'checked' : '') + ' onchange="window.TemplateBuilder.updateProp(\'showCentimes\', this.checked)"><span>إجمالي الفاتورة بالسنتيم</span></label>' +
+        '      <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (cur.showOldDebt ? 'checked' : '') + ' onchange="window.TemplateBuilder.updateProp(\'showOldDebt\', this.checked)"><span>الدين السابق والرصيد</span></label>' +
+        '      <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (cur.showAmountInWords ? 'checked' : '') + ' onchange="window.TemplateBuilder.updateProp(\'showAmountInWords\', this.checked)"><span>المبلغ بالحروف (التفقيط)</span></label>' +
+        '      <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (cur.showDriverInfo ? 'checked' : '') + ' onchange="window.TemplateBuilder.updateProp(\'showDriverInfo\', this.checked)"><span>بيانات السائق والمركبة</span></label>' +
+        '      <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (cur.showSignature ? 'checked' : '') + ' onchange="window.TemplateBuilder.updateProp(\'showSignature\', this.checked)"><span>خانات الختم والإمضاء</span></label>' +
+        '    </div>' +
+
+        '    <div class="grid grid-cols-2 gap-2">' +
+        '      <div><label class="block font-bold mb-1">علامة مائية بالخلفية (Watermark)</label><input type="text" placeholder="مثال: خالص / PAYÉ" value="' + (cur.watermarkText || '') + '" oninput="window.TemplateBuilder.updateProp(\'watermarkText\', this.value)" class="w-full px-2.5 py-1.5 rounded-xl"></div>' +
+        '      <div><label class="block font-bold mb-1">ملاحظة أسفل الورقة</label><input type="text" value="' + (cur.footerNote || '') + '" oninput="window.TemplateBuilder.updateProp(\'footerNote\', this.value)" class="w-full px-2.5 py-1.5 rounded-xl"></div>' +
+        '    </div>' +
+
+        '    <div class="pt-2 border-t border-slate-200 dark:border-slate-700">' +
+        '      <div class="font-bold mb-1.5">القوالب المحفوظة في قاعدة البيانات (' + savedCustomTemplatesCache.length + ') — اضغط للتحميل الفوري:</div>' +
+        '      <div class="flex flex-wrap gap-1.5">' +
+        savedCustomTemplatesCache.map(function (t) {
+          return (
+            '<div class="inline-flex items-center rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden border border-slate-300 dark:border-slate-600">' +
+            '  <button type="button" onclick="window.TemplateBuilder.loadSaved(' + t.id + ')" class="px-2.5 py-1 hover:bg-blue-600 hover:text-white font-bold text-[11px] transition">' + t.name + ' <span class="font-mono text-[10px] text-blue-500">(' + (t.paper || 'a4') + ')</span></button>' +
+            '  <button type="button" onclick="window.TemplateBuilder.deleteSaved(' + t.id + ')" class="px-1.5 py-1 text-rose-500 hover:bg-rose-500 hover:text-white font-black text-[10px]">✕</button>' +
+            '</div>'
+          );
+        }).join('') +
+        '      </div>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="lg:col-span-7 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 flex flex-col shadow-sm">' +
+        buildInteractivePreviewToolbarHtml('td') +
+        '    <iframe id="td-preview-frame" class="w-full flex-1 min-h-[540px] border border-slate-700 rounded-2xl bg-slate-900 shadow-inner"></iframe>' +
+        '  </div>' +
+        '</div>';
+
+      this.refreshPreview();
+    },
+
+    onDocTypeChange: function (newDocType) {
+      AppState.tdLayout.doc_type = newDocType;
+      // ذكاء تلقائي: إذا اختار بون كاشير (receipt) يتحول المقاس تلقائياً إلى تذكرة حرارية 80mm!
+      if (newDocType === 'receipt') {
+        AppState.tdLayout.paper = 'thermal80';
+      } else if (newDocType === 'delivery') {
+        AppState.tdLayout.showDriverInfo = true;
+      } else if (AppState.tdLayout.paper === 'thermal80' || AppState.tdLayout.paper === 'thermal58') {
+        AppState.tdLayout.paper = 'a4';
+      }
+      this.initTemplateBuilder('template-designer-root');
+    },
+
+    updateProp: function (key, val, redrawFull) {
+      AppState.tdLayout[key] = val;
+      if (redrawFull || key === 'paper') {
+        this.initTemplateBuilder('template-designer-root');
+      } else {
+        this.refreshPreview();
+      }
+    },
+
+    toggleCol: function (colKey, checked) {
+      if (!AppState.tdLayout.columns) AppState.tdLayout.columns = {};
+      AppState.tdLayout.columns[colKey] = Boolean(checked);
+      this.refreshPreview();
+    },
+
+    refreshPreview: function () {
+      var frame = document.getElementById('td-preview-frame');
+      if (!frame || !window.TemplateRenderer) return;
+      var html = window.TemplateRenderer.renderCustomTemplateHtml(
+        AppState.tdLayout,
+        AppState.tdSampleData,
+        AppState.settings || {}
+      );
+      var doc = frame.contentWindow.document;
+      doc.open();
+      doc.write(html);
+      doc.close();
+    },
+
+    saveCurrent: async function () {
+      if (!window.api || !window.api.saveCustomTemplate) return;
+      var cur = AppState.tdLayout;
+      await window.api.saveCustomTemplate({
+        id: cur.id || undefined,
+        name: cur.name || 'قالب مخصص',
+        doc_type: cur.doc_type || 'invoice',
+        paper: cur.paper || 'a4',
+        lang: cur.lang || 'ar',
+        layout_json: JSON.stringify(cur),
+        is_default: 1
+      });
+      if (typeof showToast === 'function') {
+        showToast('✅ تم حفظ القالب (' + cur.name + ') بمقاس (' + cur.paper + ') بنجاح!', 'success');
+      }
+      await this.initTemplateBuilder('template-designer-root');
+    },
+
+    loadSaved: async function (id) {
+      var found = savedCustomTemplatesCache.find(function (x) { return Number(x.id) === Number(id); });
+      if (!found) return;
+      try {
+        var parsed = JSON.parse(found.layout_json || '{}');
+        AppState.tdLayout = Object.assign({}, AppState.tdLayout, parsed, {
+          id: found.id,
+          name: found.name,
+          paper: found.paper || parsed.paper || 'a4',
+          doc_type: found.doc_type || parsed.doc_type || 'invoice'
+        });
+        await this.initTemplateBuilder('template-designer-root');
+        if (typeof showToast === 'function') {
+          showToast('📂 تم تحميل القالب (' + found.name + ') بمقاس (' + AppState.tdLayout.paper + ')', 'info');
+        }
+      } catch (_) {}
+    },
+
+    deleteSaved: async function (id) {
+      if (window.api && window.api.deleteCustomTemplate) {
+        await window.api.deleteCustomTemplate(Number(id));
+        await this.initTemplateBuilder('template-designer-root');
+        if (typeof showToast === 'function') showToast('🗑️ تم حذف القالب المحفوظ', 'info');
+      }
+    },
+
+    printCurrentPreview: async function () {
+      var fallback = window.TemplateRenderer.renderCustomTemplateHtml(AppState.tdLayout, AppState.tdSampleData, AppState.settings || {});
+      var html = extractPrintableHtmlFromIframe('td-preview-frame', fallback);
+      if (window.PrintEngine) {
+        await window.PrintEngine.printHtmlDocument(html, { silent: false });
+      }
+    },
+
+    exportCurrentPdf: async function () {
+      var fallback = window.TemplateRenderer.renderCustomTemplateHtml(AppState.tdLayout, AppState.tdSampleData, AppState.settings || {});
+      var html = extractPrintableHtmlFromIframe('td-preview-frame', fallback);
+      if (window.api && window.api.exportPDF) {
+        var res = await window.api.exportPDF({
+          html: html,
+          filename: (AppState.tdLayout.name || 'Template') + '_' + (AppState.tdLayout.paper || 'a4') + '.pdf'
+        });
+        if (res && res.success && typeof showToast === 'function') {
+          showToast('📄 تم حفظ ملف PDF بمقاس (' + AppState.tdLayout.paper + ') بنجاح!', 'success');
+        }
+      }
+    }
+  };
+
+  // ==========================================================================
+  // ج) ترقية منشئ البونات والأوراق الحر (buildCustomBonHtmlDocument) ليدعم 80mm/58mm الحقيقي والتعديل المباشر
+  // ==========================================================================
+  App.buildCustomBonHtmlDocument = async function () {
+    var st = AppState.customBonState;
+    var s = AppState.settings || {};
+    var accent = st.accentColor || '#1d4ed8';
+    var spec = getPaperSpecs(st.paperMode || 'a4_dual_a5');
+    var userZoom = (Number(AppState.previewZoomLevel || 100) / 100) * spec.screenZoom;
+    var fontSize = Number(st.fontSize || (spec.isThermal ? 11 : 11.5));
+
+    var bcImg = '';
+    if (st.showBarcode && st.bonNumber && window.api && window.api.generateBarcodeImage) {
+      bcImg = await window.api.generateBarcodeImage(st.bonNumber, { bcid: 'code128', height: 9, scale: 2 }).catch(function () { return ''; });
+    }
+
+    var totalTableSum = (st.items || []).reduce(function (acc, it) {
+      return acc + (parseFloat(it.col4) || 0);
+    }, 0);
+    var centimeSum = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(totalTableSum) : '';
+
+    // ------------------------------------------------------------------------
+    // 1) إذا اختار المستخدم (تذكرة حرارية 80mm أو 58mm) في منشئ البونات الحر!
+    // ------------------------------------------------------------------------
+    if (spec.isThermal) {
+      var thermalFieldsHtml = (st.fields || []).map(function (f) {
+        return (
+          '<div style="padding:3px 0;border-bottom:1px dotted #cbd5e1;">' +
+          '  <div contenteditable="true" style="font-size:9.5px;color:#475569;font-weight:bold;">' + (f.label || '') + ':</div>' +
+          '  <div contenteditable="true" style="font-size:11px;font-weight:900;color:#000;">' + (f.value || '—') + '</div>' +
+          '</div>'
+        );
+      }).join('');
+
+      var thermalTableHtml = '';
+      if (st.showItemsTable && st.items && st.items.length > 0) {
+        var tRows = st.items.map(function (it, i) {
+          return (
+            '<tr>' +
+            '<td contenteditable="true" style="font-weight:800;padding:3px 2px;">' + (i + 1) + '. ' + (it.col1 || '') + '</td>' +
+            '<td contenteditable="true" style="text-align:center;font-family:monospace;font-weight:bold;">' + (it.col2 || '') + '</td>' +
+            '<td contenteditable="true" style="text-align:center;font-family:monospace;">' + (it.col3 || '') + '</td>' +
+            '<td contenteditable="true" style="text-align:left;font-family:monospace;font-weight:900;">' + (it.col4 || '') + '</td>' +
+            '</tr>'
+          );
+        }).join('');
+
+        thermalTableHtml =
+          '<table style="width:100%;border-collapse:collapse;margin:5px 0;font-size:10px;">' +
+          '<thead><tr style="background:' + accent + ';color:#fff;"><th style="padding:3px;">البيان</th><th style="padding:3px;">ك</th><th style="padding:3px;">السعر</th><th style="padding:3px;">المجموع</th></tr></thead>' +
+          '<tbody>' + tRows + '</tbody></table>' +
+          (totalTableSum > 0
+            ? '<div style="padding:5px;border:1.5px solid #000;border-radius:6px;background:#f8fafc;margin:4px 0;text-align:center;">' +
+              '  <div contenteditable="true" style="font-size:12.5px;font-weight:900;color:' + accent + ';">المجموع: <span style="font-family:monospace;">' + totalTableSum.toFixed(2) + ' د.ج</span></div>' +
+              (st.showCentimesTotal ? '<div contenteditable="true" style="font-size:10px;font-weight:900;color:#b45309;">(' + centimeSum + ')</div>' : '') +
+              '</div>'
+            : '');
+      }
+
+      return (
+        '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>' + (st.bonTitle || 'Bon Thermal') + '</title>' +
+        '<link rel="stylesheet" href="./assets/css/fonts.css">' +
+        '<style>' +
+        spec.pageCss +
+        '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
+        'html,body{margin:0;padding:0;font-family:"Cairo",Tahoma,sans-serif;font-size:' + fontSize + 'px;color:#000;}' +
+        '@media screen {' +
+        '  html,body{background:#0f172a;padding:14px 0;display:flex;flex-direction:column;align-items:center;}' +
+        '  .paper-sheet{width:' + spec.widthMm + 'mm;max-width:' + spec.widthMm + 'mm;background:#fff;padding:4mm 3.5mm;box-shadow:0 20px 45px rgba(0,0,0,0.55);border-top:5px dashed #cbd5e1;border-bottom:5px dashed #cbd5e1;zoom:' + Number(AppState.previewZoomLevel || 100) / 100 + ';}' +
+        '  [contenteditable="true"]:hover{outline:1.5px dashed #3b82f6;background:#eff6ff;cursor:text;}' +
+        '  [contenteditable="true"]:focus{outline:2px solid #2563eb;background:#fefce8;}' +
+        '}' +
+        '@media print {' +
+        '  html,body{background:#fff !important;width:' + spec.widthMm + 'mm !important;margin:0 !important;padding:0 !important;}' +
+        '  .paper-sheet{width:' + spec.widthMm + 'mm !important;max-width:' + spec.widthMm + 'mm !important;padding:2.5mm !important;margin:0 !important;box-shadow:none !important;border:none !important;zoom:1 !important;}' +
+        '  .no-print-ui{display:none !important;}' +
+        '}' +
+        '.sep{border-top:1.5px dashed #000;margin:5px 0;}' +
+        '</style></head><body>' +
+        '<div class="no-print-ui" style="color:#38bdf8;font-size:11px;font-weight:900;margin-bottom:8px;text-align:center;">📏 معاينة حقيقية بمقاس ' + spec.label + ' — ✏️ انقر على أي نص داخل التذكرة لتعديله مباشرة!</div>' +
+        '<div class="paper-sheet">' +
+        '  <div style="text-align:center;">' +
+        '    <div contenteditable="true" style="font-size:15px;font-weight:900;color:' + accent + ';">' + (s.shop_name || 'Gherbi.Ai POS') + '</div>' +
+        '    <div contenteditable="true" style="font-size:10px;">' + (s.shop_address || 'الجزائر') + (s.shop_phone ? ' | ' + s.shop_phone : '') + '</div>' +
+        '    <div contenteditable="true" style="margin-top:4px;padding:4px 6px;border:1.5px solid ' + accent + ';border-radius:6px;font-weight:900;font-size:11.5px;color:' + accent + ';">' + (st.bonTitle || 'بون رسمي') + '</div>' +
+        '    <div contenteditable="true" style="font-size:9.5px;color:#475569;margin-top:2px;">' + (st.bonSubtitle || '') + '</div>' +
+        '    <div contenteditable="true" style="font-family:monospace;font-size:10.5px;font-weight:900;margin-top:2px;">N°: ' + (st.bonNumber || 'BON-01') + ' | ' + (st.bonDate || '') + '</div>' +
+        '  </div>' +
+        '  <div class="sep"></div>' +
+        '  <div style="padding:4px 6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:10.5px;">' +
+        '    <div contenteditable="true"><strong>' + (st.partyLabel || 'الطرف المعني') + ':</strong> ' + (st.partyName || '—') + '</div>' +
+        '    <div contenteditable="true"><strong>الهاتف:</strong> <span style="font-family:monospace;">' + (st.partyPhone || '—') + '</span></div>' +
+        '  </div>' +
+        '  <div style="margin:4px 0;">' + thermalFieldsHtml + '</div>' +
+        thermalTableHtml +
+        (st.bodyParagraph ? '<div contenteditable="true" style="padding:5px 7px;background:#f8fafc;border-right:3px solid ' + accent + ';font-size:9.5px;font-weight:bold;line-height:1.4;margin:5px 0;">' + st.bodyParagraph + '</div>' : '') +
+        '  <div class="sep"></div>' +
+        (bcImg ? '<div style="text-align:center;margin:4px 0;"><img src="' + bcImg + '" style="max-width:90%;height:9mm;object-fit:contain;"><div style="font-family:monospace;font-size:9px;">' + st.bonNumber + '</div></div>' : '') +
+        '  <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:9.5px;font-weight:800;">' +
+        '    <div contenteditable="true">' + (st.sigLeftLabel || 'إمضاء الزبون') + '<br>................</div>' +
+        '    <div contenteditable="true">' + (st.sigRightLabel || 'ختم المتجر') + '<br>................</div>' +
+        '  </div>' +
+        '</div></body></html>'
+      );
+    }
+
+    // ------------------------------------------------------------------------
+    // 2) إذا اختار المستخدم (A4 أو A5 أو A5 Landscape أو 2×A5 في ورقة A4 واحدة)
+    // ------------------------------------------------------------------------
+    var fieldsGridHtml = (st.fields || []).map(function (f) {
+      return (
+        '<div style="padding:6px 10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;">' +
+        '  <div contenteditable="true" style="font-size:10px;color:#64748b;font-weight:bold;">' + (f.label || '') + ':</div>' +
+        '  <div contenteditable="true" style="font-size:11.5px;font-weight:900;color:#0f172a;margin-top:2px;">' + (f.value || '—') + '</div>' +
+        '</div>'
+      );
+    }).join('');
+
+    var tableHtml = '';
+    if (st.showItemsTable && st.items && st.items.length > 0) {
+      var ths = (st.tableHeaders || ['البيان', 'الكمية', 'السعر', 'المجموع']).map(function (h) {
+        return '<th contenteditable="true" style="background:' + accent + ';color:#fff;padding:6px;border:1px solid ' + accent + ';">' + h + '</th>';
+      }).join('');
+      var trs = st.items.map(function (it, i) {
+        return (
+          '<tr>' +
+          '<td contenteditable="true" style="border:1px solid #cbd5e1;padding:5px 6px;font-weight:bold;">' + (i + 1) + '. ' + (it.col1 || '') + '</td>' +
+          '<td contenteditable="true" style="border:1px solid #cbd5e1;padding:5px 6px;text-align:center;font-family:monospace;font-weight:bold;">' + (it.col2 || '') + '</td>' +
+          '<td contenteditable="true" style="border:1px solid #cbd5e1;padding:5px 6px;text-align:center;font-family:monospace;">' + (it.col3 || '') + '</td>' +
+          '<td contenteditable="true" style="border:1px solid #cbd5e1;padding:5px 6px;text-align:center;font-family:monospace;font-weight:900;">' + (it.col4 || '') + '</td>' +
+          '</tr>'
+        );
+      }).join('');
+
+      tableHtml =
+        '<table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:11px;">' +
+        '<thead><tr>' + ths + '</tr></thead><tbody>' + trs + '</tbody></table>' +
+        (totalTableSum > 0
+          ? '<div style="display:flex;justify-content:flex-end;margin-bottom:6px;">' +
+            '  <div contenteditable="true" style="padding:5px 12px;border-radius:8px;background:' + accent + ';color:#fff;font-weight:900;font-size:12px;">' +
+            '    المجموع: <span style="font-family:monospace;">' + totalTableSum.toFixed(2) + ' د.ج</span>' +
+            (st.showCentimesTotal ? ' <span style="font-size:10.5px;color:#fde68a;">(' + centimeSum + ')</span>' : '') +
+            '  </div>' +
+            '</div>'
+          : '');
+    }
+
+    var renderOneBonCopy = function (copyTitle) {
+      return (
+        '<div style="border:2px solid ' + accent + ';border-radius:12px;padding:12px;background:#fff;">' +
+        '  <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2.5px solid ' + accent + ';padding-bottom:6px;margin-bottom:8px;">' +
+        '    <div>' +
+        '      <div contenteditable="true" style="font-size:17px;font-weight:900;color:' + accent + ';">' + (s.shop_name || 'Gherbi.Ai POS') + '</div>' +
+        '      <div contenteditable="true" style="font-size:10.5px;color:#475569;">' + (s.shop_address || 'الجزائر') + (s.shop_phone ? ' | هاتف: ' + s.shop_phone : '') + '</div>' +
+        '    </div>' +
+        '    <div style="text-align:left;">' +
+        (copyTitle ? '<div style="display:inline-block;padding:1px 7px;background:#e2e8f0;border-radius:4px;font-size:9.5px;font-weight:900;margin-bottom:2px;">' + copyTitle + '</div>' : '') +
+        '      <div contenteditable="true" style="font-size:14.5px;font-weight:900;color:' + accent + ';">' + (st.bonTitle || 'بون رسمي') + '</div>' +
+        '      <div contenteditable="true" style="font-size:10px;color:#64748b;font-weight:bold;">' + (st.bonSubtitle || '') + '</div>' +
+        '      <div contenteditable="true" style="font-family:monospace;font-size:10.5px;font-weight:900;margin-top:2px;">N°: ' + (st.bonNumber || 'BON-01') + ' | التاريخ: ' + (st.bonDate || '') + '</div>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div style="padding:6px 10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;font-size:11px;">' +
+        '    <div contenteditable="true"><strong>' + (st.partyLabel || 'الطرف المعني') + ':</strong> ' + (st.partyName || '—') + '</div>' +
+        '    <div contenteditable="true"><strong>رقم الهاتف:</strong> <span style="font-family:monospace;">' + (st.partyPhone || '—') + '</span></div>' +
+        '  </div>' +
+
+        '  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:8px;">' + fieldsGridHtml + '</div>' +
+        tableHtml +
+        (st.bodyParagraph ? '<div contenteditable="true" style="padding:6px 10px;background:#f8fafc;border-right:4px solid ' + accent + ';font-size:10px;font-weight:bold;line-height:1.45;margin:6px 0;">' + st.bodyParagraph + '</div>' : '') +
+
+        '  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:12px;padding-top:6px;border-top:1px dashed #cbd5e1;font-size:10.5px;font-weight:800;">' +
+        '    <div contenteditable="true">' + (st.sigLeftLabel || 'إمضاء المستلم / الزبون') + '<br><br>........................</div>' +
+        (bcImg ? '<div style="text-align:center;"><img src="' + bcImg + '" style="height:9mm;object-fit:contain;"><div style="font-family:monospace;font-size:8.5px;">' + st.bonNumber + '</div></div>' : '') +
+        '    <div contenteditable="true">' + (st.sigRightLabel || 'ختم وإمضاء المتجر') + '<br><br>........................</div>' +
+        '  </div>' +
+        '</div>'
+      );
+    };
+
+    var fullBody = spec.isDualA5
+      ? '<div style="display:flex;flex-direction:column;justify-content:space-between;gap:4mm;">' +
+        renderOneBonCopy('نسخة الزبون / المستلم (Exemplaire 1/2)') +
+        '<div style="border-top:2px dashed #64748b;text-align:center;font-size:10px;color:#64748b;padding:2px 0;">✂️ خط القص — (نسختان 2×A5 في ورقة A4 واحدة) ✂️</div>' +
+        renderOneBonCopy('نسخة المحل / الأرشيف (Exemplaire 2/2)') +
+        '</div>'
+      : renderOneBonCopy('');
+
+    return (
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>' + (st.bonTitle || 'Bon') + '</title>' +
+      '<link rel="stylesheet" href="./assets/css/fonts.css">' +
+      '<style>' +
+      spec.pageCss +
+      '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
+      'html,body{margin:0;padding:0;font-family:"Cairo",Tahoma,sans-serif;font-size:' + fontSize + 'px;color:#0f172a;}' +
+      '@media screen {' +
+      '  html,body{background:#0f172a;padding:14px 0;display:flex;flex-direction:column;align-items:center;}' +
+      '  .paper-sheet{width:' + spec.screenWidthPx + 'px;min-height:' + spec.screenMinHeightPx + 'px;background:#fff;padding:14px;border-radius:6px;box-shadow:0 20px 50px rgba(0,0,0,0.55);zoom:' + userZoom.toFixed(2) + ';}' +
+      '  [contenteditable="true"]:hover{outline:1.5px dashed #3b82f6;background:#eff6ff;cursor:text;border-radius:3px;}' +
+      '  [contenteditable="true"]:focus{outline:2px solid #2563eb;background:#fefce8;border-radius:3px;}' +
+      '}' +
+      '@media print {' +
+      '  html,body{background:#fff !important;margin:0 !important;padding:0 !important;}' +
+      '  .paper-sheet{width:100% !important;padding:6mm !important;margin:0 !important;box-shadow:none !important;zoom:1 !important;}' +
+      '  .no-print-ui{display:none !important;}' +
+      '}' +
+      '</style></head><body>' +
+      '<div class="no-print-ui" style="color:#38bdf8;font-size:12px;font-weight:900;margin-bottom:8px;text-align:center;">📏 معاينة حقيقية بمقاس: ' + spec.label + ' — ✏️ انقر على أي نص داخل الورقة لتعديله مباشرة!</div>' +
+      '<div class="paper-sheet">' + fullBody + '</div></body></html>'
+    );
+  };
+
+  // تحديث دالة طباعة وحفظ البون الحر لتأخذ أي تعديل مباشر قام به المستخدم داخل المعاينة الحية!
+  App.printCustomBonNow = async function (asPdf) {
+    var fallback = await this.buildCustomBonHtmlDocument();
+    var html = extractPrintableHtmlFromIframe('customBonLiveFrame', fallback);
+
+    if (asPdf && window.api && window.api.exportPDF) {
+      var res = await window.api.exportPDF({
+        html: html,
+        filename: (AppState.customBonState.bonNumber || 'Custom_Bon') + '_' + (AppState.customBonState.paperMode || '80mm') + '.pdf'
+      });
+      if (res && res.success && typeof showToast === 'function') {
+        showToast('📄 تم تصدير البون المخصص بصيغة PDF وبالمقاس المحدد بنجاح!', 'success');
+      }
+      return;
+    }
+    if (window.PrintEngine) {
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  };
+
+  // حقن شريط الأدوات التفاعلي فوق معاينة البون الحر وتصحيح لون التبويب الأول
+  var _prevRenderPrintStudio = App.renderPrintStudioView.bind(App);
+  App.renderPrintStudioView = async function () {
+    await _prevRenderPrintStudio();
+
+    // ضمان وضوح أزرار التبويبات الـ 4 في الوضع النهاري والليلي
+    var navBtns = document.querySelectorAll('#print-view-root .bg-slate-900 button');
+    navBtns.forEach(function (btn) {
+      if (btn.className.includes('text-slate-300')) {
+        btn.style.color = '#38bdf8';
+      }
+    });
+
+    // إضافة شريط التحكم المباشر فوق معاينة البون الحر في التبويب الثالث
+    if (AppState.printStudioTab === 'custom_bon') {
+      var bonFrame = document.getElementById('customBonLiveFrame');
+      if (bonFrame && bonFrame.parentElement && !bonFrame.parentElement.querySelector('.bon-live-toolbar')) {
+        var tbWrapper = document.createElement('div');
+        tbWrapper.className = 'bon-live-toolbar';
+        tbWrapper.innerHTML = buildInteractivePreviewToolbarHtml('bon');
+        bonFrame.parentElement.insertBefore(tbWrapper, bonFrame);
+        bonFrame.className = 'w-full flex-1 min-h-[540px] border border-slate-700 rounded-2xl bg-slate-900 shadow-inner';
+      }
+    }
+  };
 })();

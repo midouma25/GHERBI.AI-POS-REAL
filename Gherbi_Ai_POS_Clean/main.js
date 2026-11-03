@@ -2772,7 +2772,11 @@ function registerIpcHandlers() {
     try {
       await pdfWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
       await new Promise((r) => setTimeout(r, 350));
-      const pdfBuf = await pdfWin.webContents.printToPDF({ printBackground: true });
+      const pdfBuf = await pdfWin.webContents.printToPDF({
+        printBackground: true,
+        preferCSSPageSize: true,
+        margins: { marginType: 'none' }
+      });
       fs.writeFileSync(filePath, pdfBuf);
       pdfWin.close();
       return { success: true, filePath };

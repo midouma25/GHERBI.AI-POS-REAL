@@ -30,7 +30,7 @@ function dbRun(db, sql, params = []) {
  * إيجاد الجلسة المفتوحة حالياً للمستخدم أو للجهاز الحالي
  */
 async function resolveOpenSession(db, preferredSessionId = null, userId = null, deviceId = null) {
-  if (preferredSessionId) {
+  if (preferredSessionId && Number(preferredSessionId) > 0) {
     const row = await dbGet(
       db,
       "SELECT id FROM caisse_sessions WHERE id = ? AND status = 'open' AND deleted_at IS NULL",
@@ -39,13 +39,21 @@ async function resolveOpenSession(db, preferredSessionId = null, userId = null, 
     if (row && row.id) return row.id;
   }
 
-  if (userId) {
+  // عزل صارم لكل حساب مستخدم: إذا تم تمرير userId نبحث عن المناوبة المفتوحة الخاصة بهذا الحساب تحديداً
+  if (userId && Number(userId) > 0) {
     const userRow = await dbGet(
       db,
       "SELECT id FROM caisse_sessions WHERE user_id = ? AND status = 'open' AND deleted_at IS NULL ORDER BY opened_at DESC, id DESC LIMIT 1",
       [Number(userId)]
     );
     if (userRow && userRow.id) return userRow.id;
+
+    // في حال وجود مناوبة مفتوحة قديمة بدون user_id على نفس الجهاز نربطها به
+    const unownedRow = await dbGet(
+      db,
+      "SELECT id FROM caisse_sessions WHERE user_id IS NULL AND status = 'open' AND deleted_at IS NULL ORDER BY opened_at DESC, id DESC LIMIT 1"
+    );
+    return unownedRow ? unownedRow.id : null;
   }
 
   if (deviceId) {
