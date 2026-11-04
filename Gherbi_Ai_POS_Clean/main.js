@@ -1438,6 +1438,67 @@ function registerIpcHandlers() {
     );
   });
 
+  
+  ipcMain.handle('parse-supplier-pdf-base64', async (_e, base64Data) => {
+    const zlib = require('zlib');
+    const buf = Buffer.from(String(base64Data || ''), 'base64');
+    const rawStr = buf.toString('latin1');
+    const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+    let match;
+    let combined = '';
+    while ((match = streamRegex.exec(rawStr)) !== null) {
+      const bodyStr = match[1];
+      if (bodyStr.length < 2) continue;
+      const b0 = bodyStr.charCodeAt(0) & 0xff;
+      const b1 = bodyStr.charCodeAt(1) & 0xff;
+      if ((b0 & 0x0f) === 8 && (b0 * 256 + b1) % 31 === 0) {
+        try {
+          const dec = zlib.inflateSync(Buffer.from(bodyStr, 'latin1')).toString('latin1');
+          if (dec.includes('BT') || dec.includes('Tj') || dec.includes('Tm')) {
+            combined += dec + '\n';
+          }
+        } catch (_) {}
+      }
+    }
+    return { ok: true, contentStream: combined };
+  });
+
+  
+  ipcMain.handle('parse-universal-invoice-file', async (_e, payload = {}) => {
+    const zlib = require('zlib');
+    const fileName = String(payload.fileName || '').toLowerCase();
+    const buf = Buffer.from(String(payload.base64Data || ''), 'base64');
+
+    if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || fileName.endsWith('.csv')) {
+      const wb = XLSX.read(buf, { type: 'buffer' });
+      const sheetName = wb.SheetNames[0];
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '' });
+      return { ok: true, fileType: 'excel', rows };
+    }
+
+    const rawStr = buf.toString('latin1');
+    const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+    let match;
+    let combined = '';
+    while ((match = streamRegex.exec(rawStr)) !== null) {
+      const bodyStr = match[1];
+      if (!bodyStr || bodyStr.length < 2) continue;
+      const b0 = bodyStr.charCodeAt(0) & 0xff;
+      const b1 = bodyStr.charCodeAt(1) & 0xff;
+      if ((b0 & 0x0f) === 8 && (b0 * 256 + b1) % 31 === 0) {
+        try {
+          const dec = zlib.inflateSync(Buffer.from(bodyStr, 'latin1')).toString('latin1');
+          if (dec.includes('BT') || dec.includes('Tj') || dec.includes('TJ') || dec.includes('Tm') || dec.includes('Td')) {
+            combined += dec + '\n';
+          }
+        } catch (_) {}
+      } else if (bodyStr.includes('BT') && (bodyStr.includes('Tj') || bodyStr.includes('TJ'))) {
+        combined += bodyStr + '\n';
+      }
+    }
+    return { ok: true, fileType: 'pdf', contentStream: combined };
+  });
+
   ipcMain.handle('save-purchase', async (_e, data = {}) => {
     if (data.editInvoiceId || data.edit_invoice_id) {
       const oldId = Number(data.editInvoiceId || data.edit_invoice_id);
@@ -1456,10 +1517,15 @@ function registerIpcHandlers() {
     const additionalCosts = Number(data.additional_costs ?? 0);
     const total = Number(data.total ?? 0);
     const paidAmount = Number(data.paid_amount ?? 0);
+    const paymentMethod = String(data.payment_method || 'cash').trim();
+    const unifySellingPrice = data.unify_selling_price !== false;
     const invDate = data.date || new Date().toISOString().slice(0, 10);
     const invNumber = data.invoice_number || `ACH-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
 
-    const totalUnits = items.reduce((sum, it) => sum + Math.max(0, Number(it.quantity || 0)), 0);
+    const totalUnits = items.reduce(
+      (sum, it) => sum + Math.max(0, Number(it.quantity || 0) + Number(it.bonus_qty || 0)),
+      0
+    );
     const extraCostPerUnit = totalUnits > 0 ? additionalCosts / totalUnits : 0;
 
     return await db.withTransaction(async () => {
@@ -1472,18 +1538,33 @@ function registerIpcHandlers() {
       const invoiceId = ins.lastID;
 
       if (paidAmount > 0) {
+        const recNum = await generateNextDocNumber('payment_receipt');
         await dbRun(
-          'INSERT INTO invoice_payments (invoice_id, supplier_id, amount, date, payment_method) VALUES (?, ?, ?, ?, ?)',
-          [invoiceId, supplierId, paidAmount, invDate, 'cash']
+          'INSERT INTO invoice_payments (invoice_id, supplier_id, amount, date, payment_method, receipt_number, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [invoiceId, supplierId, paidAmount, invDate, paymentMethod, recNum, data.notes || null]
         );
       }
 
+      const supRow = supplierId ? await dbGet('SELECT name FROM suppliers WHERE id = ?', [supplierId]) : null;
+
       for (const it of items) {
         const pid = Number(it.product_id || it.productId);
-        const qty = Number(it.quantity ?? 1);
+        const paidQty = Math.max(0, Number(it.quantity ?? 1));
+        const bonusQty = Math.max(0, Number(it.bonus_qty ?? 0));
+        const totalStockReceived = Number((paidQty + bonusQty).toFixed(4));
+        if (totalStockReceived <= 0) continue;
+
         const baseCost = Number(it.cost_price ?? 0);
-        const effectiveCostPrice = Number((baseCost + extraCostPerUnit).toFixed(2));
+        const lineChargedTotal = paidQty * baseCost;
+        const effectiveBaseUnitCost = totalStockReceived > 0 ? lineChargedTotal / totalStockReceived : baseCost;
+        const effectiveCostPrice = Number(
+          (it.effective_cost_price !== undefined
+            ? Number(it.effective_cost_price)
+            : effectiveBaseUnitCost + extraCostPerUnit
+          ).toFixed(2)
+        );
         const sellPrice = Number(it.selling_price ?? 0);
+        const wholesalePrice = it.wholesale_price && Number(it.wholesale_price) > 0 ? Number(it.wholesale_price) : null;
 
         const batchIns = await dbRun(
           `INSERT INTO inventory_batches (
@@ -1492,15 +1573,32 @@ function registerIpcHandlers() {
           [
             pid,
             it.variant_id || null,
-            qty,
+            totalStockReceived,
             effectiveCostPrice,
             sellPrice,
-            it.wholesale_price || null,
+            wholesalePrice,
             it.expiry_date || null,
             it.location || null,
             supplierId
           ]
         );
+
+        if (unifySellingPrice && sellPrice > 0) {
+          await dbRun(
+            `UPDATE inventory_batches
+             SET selling_price = ?,
+                 wholesale_price = COALESCE(?, wholesale_price)
+             WHERE product_id = ? AND deleted_at IS NULL AND COALESCE(stock, 0) > 0`,
+            [sellPrice, wholesalePrice, pid]
+          );
+        }
+
+        if (supRow && supRow.name) {
+          await dbRun(
+            "UPDATE products SET supplier = ? WHERE id = ? AND (supplier IS NULL OR TRIM(supplier) = '')",
+            [supRow.name, pid]
+          );
+        }
 
         await dbRun(
           `INSERT INTO purchase_items (
@@ -1511,10 +1609,10 @@ function registerIpcHandlers() {
             pid,
             batchIns.lastID,
             it.variant_id || null,
-            qty,
+            totalStockReceived,
             effectiveCostPrice,
             sellPrice,
-            Number((qty * effectiveCostPrice).toFixed(2))
+            Number((paidQty * baseCost + totalStockReceived * extraCostPerUnit).toFixed(2))
           ]
         );
 
@@ -2115,6 +2213,31 @@ function registerIpcHandlers() {
       }
     }
     return { success: true, id: ins.lastID };
+  });
+
+  
+  ipcMain.handle('update-expense', async (_e, id, exp = {}) => {
+    const eid = Number(id);
+    const amt = Number(exp.amount || 0);
+    await dbRun(
+      'UPDATE expenses SET category = ?, description = ?, amount = ?, date = COALESCE(?, date) WHERE id = ?',
+      [exp.category || 'عام', exp.description || null, amt, exp.date || null, eid]
+    );
+    await dbRun(
+      "UPDATE caisse_transactions SET amount = ?, category = ?, description = ? WHERE reference_id = ? AND type = 'expense'",
+      [amt, exp.category || 'عام', exp.description || 'مصروف', eid]
+    );
+    return { success: true, id: eid };
+  });
+
+  ipcMain.handle('update-capital', async (_e, id, cap = {}) => {
+    const cid = Number(id);
+    const amt = Number(cap.amount || 0);
+    await dbRun(
+      'UPDATE capital_injections SET category = ?, description = ?, amount = ?, date = COALESCE(?, date) WHERE id = ?',
+      [cap.category || 'إيداع رأس مال', cap.description || null, amt, cap.date || null, cid]
+    );
+    return { success: true, id: cid };
   });
 
   ipcMain.handle('delete-expense', async (_e, id) => {
