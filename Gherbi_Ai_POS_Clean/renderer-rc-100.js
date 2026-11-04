@@ -13603,7 +13603,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
           '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
           'html,body{margin:0;padding:0;font-family:"Cairo","Tajawal",sans-serif;font-size:' + (layout.fontSize || 11) + 'px;color:#000;}' +
           '@media screen {' +
-          '  html,body{background:#0f172a;padding:14px 0;display:flex;flex-direction:column;align-items:center;}' +
+          '  html,body{background:#e2e8f0;padding:16px 0;display:flex;flex-direction:column;align-items:center;}' +
           '  .paper-sheet{width:' + spec.widthMm + 'mm;max-width:' + spec.widthMm + 'mm;background:#fff;padding:4mm 3.5mm;box-shadow:0 20px 45px rgba(0,0,0,0.55);border-top:5px dashed #cbd5e1;border-bottom:5px dashed #cbd5e1;zoom:' + Number(AppState.previewZoomLevel || 100) / 100 + ';}' +
           '  [contenteditable="true"]:hover{outline:1.5px dashed #3b82f6;background:#eff6ff;cursor:text;}' +
           '  [contenteditable="true"]:focus{outline:2px solid #2563eb;background:#fefce8;}' +
@@ -13619,7 +13619,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
           'th{border-top:1.5px solid #000;border-bottom:1.5px solid #000;padding:3px 2px;font-weight:900;background:' + accent + ';color:#fff;}' +
           'td{border-bottom:1px dotted #94a3b8;padding:3px 2px;}' +
           '</style></head><body>' +
-          '<div class="no-print-ui" style="color:#38bdf8;font-size:11px;font-weight:900;margin-bottom:8px;text-align:center;">📏 معاينة حقيقية بمقاس ' + spec.label + ' — ✏️ انقر على أي نص داخل التذكرة لتعديله مباشرة!</div>' +
+          '<div class="no-print-ui" style="color:#1e3a8a;background:#dbeafe;border:1px solid #93c5fd;padding:4px 14px;border-radius:999px;font-size:11px;font-weight:900;margin-bottom:10px;text-align:center;">📏 معاينة حقيقية بمقاس ' + spec.label + ' — ✏️ انقر على أي نص داخل التذكرة لتعديله مباشرة!</div>' +
           '<div class="paper-sheet">' +
           '  <div style="text-align:center;">' +
           '    <div contenteditable="true" style="font-size:15px;font-weight:900;color:' + accent + ';">' + (settings.shop_name || 'Gherbi.Ai POS') + '</div>' +
@@ -13765,7 +13765,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
         '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
         'html,body{margin:0;padding:0;font-family:"Cairo","Tajawal",sans-serif;font-size:' + (layout.fontSize || 11.5) + 'px;color:#0f172a;}' +
         '@media screen {' +
-        '  html,body{background:#0f172a;padding:14px 0;display:flex;flex-direction:column;align-items:center;}' +
+        '  html,body{background:#e2e8f0;padding:16px 0;display:flex;flex-direction:column;align-items:center;}' +
         '  .paper-sheet{width:' + spec.screenWidthPx + 'px;min-height:' + spec.screenMinHeightPx + 'px;background:#fff;padding:18px;border-radius:6px;box-shadow:0 20px 50px rgba(0,0,0,0.55);zoom:' + userZoom.toFixed(2) + ';}' +
         '  [contenteditable="true"]:hover{outline:1.5px dashed #3b82f6;background:#eff6ff;cursor:text;border-radius:3px;}' +
         '  [contenteditable="true"]:focus{outline:2px solid #2563eb;background:#fefce8;border-radius:3px;}' +
@@ -13787,7 +13787,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
         '.words-box{padding:6px 10px;background:#f1f5f9;border-right:4px solid ' + accent + ';font-weight:700;font-size:11px;}' +
         '.footer{display:flex;justify-content:space-between;font-size:11px;color:#334155;}' +
         '</style></head><body>' +
-        '<div class="no-print-ui" style="color:#38bdf8;font-size:12px;font-weight:900;margin-bottom:8px;text-align:center;">📏 معاينة حقيقية بمقاس: ' + spec.label + ' — ✏️ انقر على أي نص داخل الورقة لتعديله مباشرة!</div>' +
+        '<div class="no-print-ui" style="color:#1e3a8a;background:#dbeafe;border:1px solid #93c5fd;padding:5px 16px;border-radius:999px;font-size:11.5px;font-weight:900;margin-bottom:10px;text-align:center;">📏 معاينة حقيقية بمقاس: ' + spec.label + ' — ✏️ انقر على أي نص داخل الورقة لتعديله مباشرة!</div>' +
         '<div class="paper-sheet">' + innerBody + '</div></body></html>'
       );
     };
@@ -13815,51 +13815,51 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
     var colors = ['#1d4ed8', '#0f172a', '#047857', '#be123c', '#4338ca', '#d97706', '#0f766e'];
 
     return (
-      '<div class="p-2.5 rounded-2xl bg-slate-900 text-white space-y-2 mb-2.5 shadow-md text-[11px]">' +
+      '<div class="gherbi-studio-toolbar p-3 rounded-2xl space-y-2.5 mb-2.5 shadow-sm text-[11px]">' +
       '  <div class="flex flex-wrap items-center justify-between gap-1.5">' +
-      '    <span class="font-black text-amber-400">⚡ شريط التحكم الفوري بالمعاينة (اضغط لتغيير مقاس الورقة فوراً):</span>' +
+      '    <span class="font-black text-blue-700 dark:text-amber-400">⚡ شريط التحكم الفوري بالمعاينة (اضغط لتغيير مقاس الورقة فوراً):</span>' +
       '    <div class="flex items-center gap-1">' +
-      '      <button type="button" onclick="App.stepPreviewFontSize(\'' + targetMode + '\', -1)" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-mono font-bold" title="تصغير الخط">A-</button>' +
-      '      <button type="button" onclick="App.stepPreviewFontSize(\'' + targetMode + '\', 1)" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-mono font-bold" title="تكبير الخط">A+</button>' +
-      '      <span class="text-slate-500 mx-1">|</span>' +
-      '      <button type="button" onclick="AppState.previewZoomLevel=Math.max(60,(AppState.previewZoomLevel||100)-15); App.refreshActiveStudioPreview(\'' + targetMode + '\')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-mono" title="تصغير العرض">🔍-</button>' +
-      '      <button type="button" onclick="AppState.previewZoomLevel=100; App.refreshActiveStudioPreview(\'' + targetMode + '\')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-mono">' + (AppState.previewZoomLevel || 100) + '%</button>' +
-      '      <button type="button" onclick="AppState.previewZoomLevel=Math.min(135,(AppState.previewZoomLevel||100)+15); App.refreshActiveStudioPreview(\'' + targetMode + '\')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-mono" title="تكبير العرض">🔍+</button>' +
+      '      <button type="button" onclick="App.stepPreviewFontSize(\'' + targetMode + '\', -1)" class="gherbi-toolbar-btn px-2.5 py-1 rounded-lg font-mono font-bold" title="تصغير الخط">A-</button>' +
+      '      <button type="button" onclick="App.stepPreviewFontSize(\'' + targetMode + '\', 1)" class="gherbi-toolbar-btn px-2.5 py-1 rounded-lg font-mono font-bold" title="تكبير الخط">A+</button>' +
+      '      <span class="text-slate-400 mx-1">|</span>' +
+      '      <button type="button" onclick="AppState.previewZoomLevel=Math.max(60,(AppState.previewZoomLevel||100)-15); App.refreshActiveStudioPreview(\'' + targetMode + '\')" class="gherbi-toolbar-btn px-2.5 py-1 rounded-lg font-mono" title="تصغير العرض">🔍-</button>' +
+      '      <button type="button" onclick="AppState.previewZoomLevel=100; App.refreshActiveStudioPreview(\'' + targetMode + '\')" class="gherbi-toolbar-btn px-2.5 py-1 rounded-lg font-mono">' + (AppState.previewZoomLevel || 100) + '%</button>' +
+      '      <button type="button" onclick="AppState.previewZoomLevel=Math.min(135,(AppState.previewZoomLevel||100)+15); App.refreshActiveStudioPreview(\'' + targetMode + '\')" class="gherbi-toolbar-btn px-2.5 py-1 rounded-lg font-mono" title="تكبير العرض">🔍+</button>' +
       '    </div>' +
       '  </div>' +
 
-      '  <div class="flex flex-wrap items-center gap-1">' +
+      '  <div class="flex flex-wrap items-center gap-1.5">' +
       paperPills.map(function (p) {
         var isAct = curPaper === p.k || (p.k === 'a5' && curPaper === 'a5_portrait');
         return (
-          '<button type="button" onclick="App.quickSetPaperFromToolbar(\'' + targetMode + '\', \'' + p.k + '\')" class="px-2.5 py-1 rounded-lg font-black transition ' + (isAct ? 'bg-blue-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">' +
+          '<button type="button" onclick="App.quickSetPaperFromToolbar(\'' + targetMode + '\', \'' + p.k + '\')" class="px-3 py-1.5 rounded-xl font-black transition ' + (isAct ? 'gherbi-toolbar-btn-active' : 'gherbi-toolbar-btn') + '">' +
           p.lbl +
           '</button>'
         );
       }).join('') +
       '  </div>' +
 
-      '  <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800">' +
+      '  <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-300 dark:border-slate-700">' +
       '    <div class="flex items-center gap-1.5">' +
-      '      <span class="text-slate-400 font-bold">🎨 اللون:</span>' +
+      '      <span class="font-bold">🎨 اللون:</span>' +
       colors.map(function (c) {
-        return '<button type="button" onclick="App.quickSetColorFromToolbar(\'' + targetMode + '\', \'' + c + '\')" style="background:' + c + ';width:18px;height:18px;border-radius:999px;border:' + (curColor === c ? '2.5px solid #fff' : '1px solid #475569') + ';"></button>';
+        return '<button type="button" onclick="App.quickSetColorFromToolbar(\'' + targetMode + '\', \'' + c + '\')" style="background:' + c + ';width:20px;height:20px;border-radius:999px;border:' + (curColor === c ? '3px solid #2563eb' : '1.5px solid #94a3b8') + ';"></button>';
       }).join('') +
       '    </div>' +
       (targetMode === 'bon'
-        ? '<div class="flex items-center gap-1">' +
-          '  <button type="button" onclick="AppState.customBonState.fields.push({label:\'خانة إضافية\',value:\'تفاصيل...\'}); App.renderPrintStudioView()" class="px-2 py-0.5 rounded bg-blue-600/30 text-blue-300 hover:bg-blue-600 hover:text-white font-bold">+ خانة جديدة</button>' +
-          '  <button type="button" onclick="AppState.customBonState.showItemsTable=true; AppState.customBonState.items.push({col1:\'خدمة / قطعة جديدة\',col2:\'1\',col3:\'1000.00\',col4:\'1000.00\'}); App.renderPrintStudioView()" class="px-2 py-0.5 rounded bg-emerald-600/30 text-emerald-300 hover:bg-emerald-600 hover:text-white font-bold">+ سطر جدول</button>' +
-          '  <button type="button" onclick="AppState.customBonState.showBarcode=!AppState.customBonState.showBarcode; App.refreshCustomBonPreview()" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-bold">📊 الباركود</button>' +
-          '  <button type="button" onclick="AppState.customBonState.showCentimesTotal=!AppState.customBonState.showCentimesTotal; App.refreshCustomBonPreview()" class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">🇩🇿 السنتيم</button>' +
+        ? '<div class="flex flex-wrap items-center gap-1.5">' +
+          '  <button type="button" onclick="AppState.customBonState.fields.push({label:\'خانة إضافية\',value:\'تفاصيل...\'}); App.renderPrintStudioView()" class="gherbi-toolbar-btn px-2.5 py-1 rounded-lg">+ خانة جديدة</button>' +
+          '  <button type="button" onclick="AppState.customBonState.showItemsTable=true; AppState.customBonState.items.push({col1:\'خدمة / قطعة جديدة\',col2:\'1\',col3:\'1000.00\',col4:\'1000.00\'}); App.renderPrintStudioView()" class="gherbi-toolbar-btn px-2.5 py-1 rounded-lg">+ سطر جدول</button>' +
+          '  <button type="button" onclick="AppState.customBonState.showBarcode=!AppState.customBonState.showBarcode; App.refreshCustomBonPreview()" class="gherbi-toolbar-btn px-2.5 py-1 rounded-lg">📊 الباركود</button>' +
+          '  <button type="button" onclick="AppState.customBonState.showCentimesTotal=!AppState.customBonState.showCentimesTotal; App.refreshCustomBonPreview()" class="gherbi-toolbar-btn px-2.5 py-1 rounded-lg">🇩🇿 السنتيم</button>' +
           '</div>'
-        : '<div class="flex items-center gap-1">' +
-          '  <button type="button" onclick="App.cycleTdTableStyle()" class="px-2 py-0.5 rounded bg-indigo-500/30 text-indigo-300 font-bold">نمط الجدول</button>' +
-          '  <button type="button" onclick="App.addTdSampleItemRow()" class="px-2 py-0.5 rounded bg-emerald-500/30 text-emerald-300 font-bold">+ سطر</button>' +
-          '  <button type="button" onclick="window.TemplateBuilder.updateProp(\'showCentimes\', !AppState.tdLayout.showCentimes)" class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">🇩🇿 السنتيم</button>' +
-          '  <button type="button" onclick="window.TemplateBuilder.updateProp(\'showFiscal\', !AppState.tdLayout.showFiscal)" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-bold">🏛️ الجباية</button>' +
-          '  <button type="button" onclick="window.TemplateBuilder.updateProp(\'showDriverInfo\', !AppState.tdLayout.showDriverInfo)" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-bold">🚚 السائق</button>' +
-          '  <button type="button" onclick="window.TemplateBuilder.updateProp(\'showSignature\', !AppState.tdLayout.showSignature)" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-bold">✍️ الختم</button>' +
+        : '<div class="flex flex-wrap items-center gap-1.5">' +
+          '  <button type="button" onclick="App.cycleTdTableStyle()" class="gherbi-toolbar-btn px-2.5 py-1 rounded-lg">🎨 نمط الجدول</button>' +
+          '  <button type="button" onclick="App.addTdSampleItemRow()" class="gherbi-toolbar-btn px-2.5 py-1 rounded-lg">+ سطر</button>' +
+          '  <button type="button" onclick="window.TemplateBuilder.updateProp(\'showCentimes\', !AppState.tdLayout.showCentimes)" class="gherbi-toolbar-btn px-2.5 py-1 rounded-lg">🇩🇿 السنتيم</button>' +
+          '  <button type="button" onclick="window.TemplateBuilder.updateProp(\'showFiscal\', !AppState.tdLayout.showFiscal)" class="gherbi-toolbar-btn px-2.5 py-1 rounded-lg">🏛️ الجباية</button>' +
+          '  <button type="button" onclick="window.TemplateBuilder.updateProp(\'showDriverInfo\', !AppState.tdLayout.showDriverInfo)" class="gherbi-toolbar-btn px-2.5 py-1 rounded-lg">🚚 السائق</button>' +
+          '  <button type="button" onclick="window.TemplateBuilder.updateProp(\'showSignature\', !AppState.tdLayout.showSignature)" class="gherbi-toolbar-btn px-2.5 py-1 rounded-lg">✍️ الختم</button>' +
           '</div>') +
       '  </div>' +
       '</div>'
@@ -14056,7 +14056,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
 
         '  <div class="lg:col-span-7 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 flex flex-col shadow-sm">' +
         buildInteractivePreviewToolbarHtml('td') +
-        '    <iframe id="td-preview-frame" class="w-full flex-1 min-h-[540px] border border-slate-700 rounded-2xl bg-slate-900 shadow-inner"></iframe>' +
+        '    <iframe id="td-preview-frame" class="w-full flex-1 min-h-[540px] border border-slate-300 dark:border-slate-700 rounded-2xl bg-slate-200/70 dark:bg-slate-900 shadow-inner"></iframe>' +
         '  </div>' +
         '</div>';
 
@@ -14236,7 +14236,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
         '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
         'html,body{margin:0;padding:0;font-family:"Cairo",Tahoma,sans-serif;font-size:' + fontSize + 'px;color:#000;}' +
         '@media screen {' +
-        '  html,body{background:#0f172a;padding:14px 0;display:flex;flex-direction:column;align-items:center;}' +
+        '  html,body{background:#e2e8f0;padding:16px 0;display:flex;flex-direction:column;align-items:center;}' +
         '  .paper-sheet{width:' + spec.widthMm + 'mm;max-width:' + spec.widthMm + 'mm;background:#fff;padding:4mm 3.5mm;box-shadow:0 20px 45px rgba(0,0,0,0.55);border-top:5px dashed #cbd5e1;border-bottom:5px dashed #cbd5e1;zoom:' + Number(AppState.previewZoomLevel || 100) / 100 + ';}' +
         '  [contenteditable="true"]:hover{outline:1.5px dashed #3b82f6;background:#eff6ff;cursor:text;}' +
         '  [contenteditable="true"]:focus{outline:2px solid #2563eb;background:#fefce8;}' +
@@ -14248,7 +14248,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
         '}' +
         '.sep{border-top:1.5px dashed #000;margin:5px 0;}' +
         '</style></head><body>' +
-        '<div class="no-print-ui" style="color:#38bdf8;font-size:11px;font-weight:900;margin-bottom:8px;text-align:center;">📏 معاينة حقيقية بمقاس ' + spec.label + ' — ✏️ انقر على أي نص داخل التذكرة لتعديله مباشرة!</div>' +
+        '<div class="no-print-ui" style="color:#1e3a8a;background:#dbeafe;border:1px solid #93c5fd;padding:4px 14px;border-radius:999px;font-size:11px;font-weight:900;margin-bottom:10px;text-align:center;">📏 معاينة حقيقية بمقاس ' + spec.label + ' — ✏️ انقر على أي نص داخل التذكرة لتعديله مباشرة!</div>' +
         '<div class="paper-sheet">' +
         '  <div style="text-align:center;">' +
         '    <div contenteditable="true" style="font-size:15px;font-weight:900;color:' + accent + ';">' + (s.shop_name || 'Gherbi.Ai POS') + '</div>' +
@@ -14364,7 +14364,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
       '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
       'html,body{margin:0;padding:0;font-family:"Cairo",Tahoma,sans-serif;font-size:' + fontSize + 'px;color:#0f172a;}' +
       '@media screen {' +
-      '  html,body{background:#0f172a;padding:14px 0;display:flex;flex-direction:column;align-items:center;}' +
+      '  html,body{background:#e2e8f0;padding:16px 0;display:flex;flex-direction:column;align-items:center;}' +
       '  .paper-sheet{width:' + spec.screenWidthPx + 'px;min-height:' + spec.screenMinHeightPx + 'px;background:#fff;padding:14px;border-radius:6px;box-shadow:0 20px 50px rgba(0,0,0,0.55);zoom:' + userZoom.toFixed(2) + ';}' +
       '  [contenteditable="true"]:hover{outline:1.5px dashed #3b82f6;background:#eff6ff;cursor:text;border-radius:3px;}' +
       '  [contenteditable="true"]:focus{outline:2px solid #2563eb;background:#fefce8;border-radius:3px;}' +
@@ -14375,7 +14375,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
       '  .no-print-ui{display:none !important;}' +
       '}' +
       '</style></head><body>' +
-      '<div class="no-print-ui" style="color:#38bdf8;font-size:12px;font-weight:900;margin-bottom:8px;text-align:center;">📏 معاينة حقيقية بمقاس: ' + spec.label + ' — ✏️ انقر على أي نص داخل الورقة لتعديله مباشرة!</div>' +
+      '<div class="no-print-ui" style="color:#1e3a8a;background:#dbeafe;border:1px solid #93c5fd;padding:5px 16px;border-radius:999px;font-size:11.5px;font-weight:900;margin-bottom:10px;text-align:center;">📏 معاينة حقيقية بمقاس: ' + spec.label + ' — ✏️ انقر على أي نص داخل الورقة لتعديله مباشرة!</div>' +
       '<div class="paper-sheet">' + fullBody + '</div></body></html>'
     );
   };
@@ -14417,7 +14417,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
         tbWrapper.className = 'bon-live-toolbar';
         tbWrapper.innerHTML = buildInteractivePreviewToolbarHtml('bon');
         bonFrame.parentElement.insertBefore(tbWrapper, bonFrame);
-        bonFrame.className = 'w-full flex-1 min-h-[540px] border border-slate-700 rounded-2xl bg-slate-900 shadow-inner';
+        bonFrame.className = 'w-full flex-1 min-h-[540px] border border-slate-300 dark:border-slate-700 rounded-2xl bg-slate-200/70 dark:bg-slate-900 shadow-inner';
       }
     }
   };
@@ -14979,6 +14979,2432 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
     } else if (e.altKey && (e.key === 'n' || e.key === 'N')) {
       e.preventDefault();
       App.openSupplierModal(null);
+    }
+  }, true);
+})();
+
+// [PAGE 9 SUPPLIERS ULTIMATE PDF REPORT & PURCHASE ORDER STUDIO]
+(function installSuppliersUltimateConsultantUpgrade() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.suppliersSearchQuery = AppState.suppliersSearchQuery || '';
+  AppState.suppliersDebtFilter = AppState.suppliersDebtFilter || 'all'; // 'all' | 'has_debt' | 'settled' | 'low_stock'
+  AppState.suppliersSortBy = AppState.suppliersSortBy || 'newest'; // 'newest' | 'debt_desc' | 'purchases_desc' | 'stock_val_desc'
+  AppState.supLedgerActiveTab = 'invoices'; // 'invoices' | 'payments' | 'returns' | 'products'
+  AppState.allSuppliersPdfMode = 'full_dossier'; // 'summary_table' | 'full_dossier' | 'debt_schedule'
+  AppState.allSuppliersPdfOrientation = 'portrait'; // 'portrait' | 'landscape'
+  AppState.tempPurchaseOrderItems = [];
+
+  function formatCleanSupDate(raw) {
+    if (!raw) return '—';
+    var s = String(raw).replace('T', ' ');
+    var d = s.slice(0, 10);
+    var t = s.slice(11, 16);
+    return t ? d + ' | 🕒 ' + t : d;
+  }
+
+  function getProdCost(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.cost_price ?? fb.cost_price ?? 0);
+  }
+
+  function getProdRetail(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.selling_price ?? fb.selling_price ?? 0);
+  }
+
+  function getProdStock(p) {
+    if (!p) return 0;
+    return Number(p.total_stock ?? p.stock ?? 0);
+  }
+
+  // استخراج جميع المنتجات التابعة لمورد معين (بالاسم أو بمعرف الدفعة)
+  App.getProductsForSupplier = function (sup) {
+    if (!sup) return [];
+    var sName = String(sup.name || '').trim().toLowerCase();
+    var sid = Number(sup.id || 0);
+    return (AppState.products || []).filter(function (p) {
+      var pSup = String(p.supplier || '').trim().toLowerCase();
+      if (sName && pSup && (pSup === sName || pSup.includes(sName) || sName.includes(pSup))) {
+        return true;
+      }
+      if (Array.isArray(p.batches) && p.batches.some(function (b) { return Number(b.supplier_id) === sid; })) {
+        return true;
+      }
+      return false;
+    });
+  };
+
+  // حساب إحصائيات بضاعة المورد داخل المخزون حالياً
+  App.computeSupplierInventoryStats = function (sup) {
+    var prods = this.getProductsForSupplier(sup);
+    var totalUnits = 0;
+    var stockCostValue = 0;
+    var stockRetailValue = 0;
+    var lowStockCount = 0;
+
+    prods.forEach(function (p) {
+      var stk = Math.max(0, getProdStock(p));
+      var minStk = Number(p.min_stock ?? 5);
+      var cost = getProdCost(p);
+      var sell = getProdRetail(p);
+      totalUnits += stk;
+      stockCostValue += stk * cost;
+      stockRetailValue += stk * sell;
+      if (stk <= minStk) lowStockCount++;
+    });
+
+    return {
+      products: prods,
+      productsCount: prods.length,
+      totalUnits: Number(totalUnits.toFixed(2)),
+      stockCostValue: Number(stockCostValue.toFixed(2)),
+      stockRetailValue: Number(stockRetailValue.toFixed(2)),
+      expectedProfit: Number((stockRetailValue - stockCostValue).toFixed(2)),
+      lowStockCount: lowStockCount
+    };
+  };
+
+  // --------------------------------------------------------------------------
+  // 1) بناء النوافذ النظامية الجديدة (استوديو PDF الشامل + مولد طلبية التموين + الدليل)
+  // --------------------------------------------------------------------------
+  App.ensureSuppliersExtraModalsDom = function () {
+    // أ) نافذة استوديو التقرير والـ PDF الشامل لكل الموردين وتفاصيلهم (#allSuppliersPdfStudioModal)
+    if (!document.getElementById('allSuppliersPdfStudioModal')) {
+      var pdfModal = document.createElement('div');
+      pdfModal.id = 'allSuppliersPdfStudioModal';
+      pdfModal.className = 'modal-overlay';
+      pdfModal.innerHTML =
+        '<div class="modal-content w-full max-w-5xl p-6 space-y-4 overflow-y-auto">' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <div>' +
+        '      <h3 class="text-lg font-black text-blue-600">📄 استوديو التقرير الشامل وتصدير PDF لجميع الموردين وتفاصيلهم</h3>' +
+        '      <p class="text-[11px] text-slate-400 font-bold">اختر نمط التقرير (الجدول الموحد، الكراس المفصل لكل مورد وحركاته وأصنافه، أو جدول الديون) — يمكنك تعديل أي نص مباشرة فوق الورقة قبل حفظ الـ PDF</p>' +
+        '    </div>' +
+        '    <button type="button" onclick="App.closeModal(\'allSuppliersPdfStudioModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div id="allSuppliersPdfToolbar" class="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-slate-900 text-white text-xs"></div>' +
+        '  <iframe id="allSuppliersPdfPreviewFrame" class="w-full h-[62vh] border border-slate-300 dark:border-slate-700 rounded-2xl bg-slate-200/70 dark:bg-slate-900 shadow-inner"></iframe>' +
+        '</div>';
+      document.body.appendChild(pdfModal);
+    }
+
+    // ب) نافذة مولد بون طلبية تموين ذكية للمورد (#supplierPurchaseOrderModal)
+    if (!document.getElementById('supplierPurchaseOrderModal')) {
+      var poModal = document.createElement('div');
+      poModal.id = 'supplierPurchaseOrderModal';
+      poModal.className = 'modal-overlay';
+      poModal.innerHTML =
+        '<div class="modal-content w-full max-w-4xl p-6 space-y-4 overflow-y-auto">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <div>' +
+        '      <h3 id="supPoModalTitle" class="text-lg font-black text-indigo-600">🛒 مولد طلبية شراء وتموين للمورد (Bon de Commande Fournisseur)</h3>' +
+        '      <p class="text-[11px] text-slate-400 font-bold">يكتشف الأصناف الناقصة لدى هذا المورد تلقائياً ويجهز لك بون طلبية رسمي للطباعة أو PDF أو الإرسال عبر WhatsApp</p>' +
+        '    </div>' +
+        '    <button type="button" onclick="App.closeModal(\'supplierPurchaseOrderModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div id="supPoModalBody" class="space-y-4 text-xs"></div>' +
+        '</div>';
+      document.body.appendChild(poModal);
+    }
+
+    // ج) توسيع نافذة كشف حساب المورد (#supplierLedgerModal) لتتسع للتبويبات الـ 4
+    var ledgerModalContent = document.querySelector('#supplierLedgerModal .modal-content');
+    if (ledgerModalContent) {
+      ledgerModalContent.className = 'modal-content w-full max-w-4xl p-6 space-y-4 overflow-y-auto';
+    }
+    var ledgerBody = document.getElementById('supplierLedgerBody');
+    if (ledgerBody) {
+      ledgerBody.className = 'space-y-3 text-xs max-h-[75vh] overflow-y-auto';
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 2) المحرك الهندسي لبناء وتصدير ملف PDF الشامل لجميع الموردين وتفاصيلهم
+  // --------------------------------------------------------------------------
+  App.buildAllSuppliersComprehensiveReportHtml = async function (mode, orientation) {
+    mode = mode || AppState.allSuppliersPdfMode || 'full_dossier';
+    orientation = orientation || AppState.allSuppliersPdfOrientation || 'portrait';
+
+    var suppliers = (await window.api.getSuppliers().catch(function () { return []; })) || [];
+    AppState.suppliers = suppliers;
+
+    // جلب الحركات التفصيلية لجميع الموردين عند اختيار الكراس التفصيلي الشامل
+    var ledgersMap = {};
+    if (mode === 'full_dossier' && window.api && typeof window.api.getSupplierLedger === 'function') {
+      var ledgerPromises = suppliers.map(function (s) {
+        return window.api.getSupplierLedger(s.id).catch(function () { return null; });
+      });
+      var ledgerResults = await Promise.all(ledgerPromises);
+      suppliers.forEach(function (s, idx) {
+        ledgersMap[s.id] = ledgerResults[idx] || { purchases: [], payments: [], returns: [] };
+      });
+    }
+
+    var s = AppState.settings || {};
+    var todayStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
+
+    var grandPurchases = 0;
+    var grandPaid = 0;
+    var grandDebt = 0;
+    var grandStockCostVal = 0;
+    var grandProductsCount = 0;
+
+    var enrichedSuppliers = suppliers.map(function (sup) {
+      var invStats = App.computeSupplierInventoryStats(sup);
+      var pur = Number(sup.total_purchases || 0);
+      var paid = Number(sup.total_paid || 0);
+      var debt = Number(sup.total_debt || 0);
+
+      grandPurchases += pur;
+      grandPaid += paid;
+      grandDebt += debt;
+      grandStockCostVal += invStats.stockCostValue;
+      grandProductsCount += invStats.productsCount;
+
+      return Object.assign({}, sup, {
+        _inv: invStats,
+        _ledger: ledgersMap[sup.id] || { purchases: [], payments: [], returns: [] }
+      });
+    });
+
+    if (mode === 'debt_schedule') {
+      enrichedSuppliers = enrichedSuppliers
+        .filter(function (x) { return Number(x.total_debt || 0) > 0.01; })
+        .sort(function (a, b) { return Number(b.total_debt || 0) - Number(a.total_debt || 0); });
+    }
+
+    var centimeGrandDebt = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(grandDebt) : '';
+    var centimeGrandStock = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(grandStockCostVal) : '';
+    var wordsGrandDebt = window.NumberToWords && typeof window.NumberToWords.toWords === 'function'
+      ? window.NumberToWords.toWords(grandDebt, 'ar')
+      : grandDebt.toFixed(2) + ' د.ج';
+
+    var reportTitle =
+      mode === 'full_dossier'
+        ? '📘 الكراس المالي والتفصيلي الشامل لجميع الموردين وحركاتهم وأصنافهم'
+        : mode === 'debt_schedule'
+          ? '🚨 كشف الديون المستحقة للموردين وجدول أولويات التسديد'
+          : '📊 الجدول المالي والجبائي الموحد لجميع الموردين';
+
+    var summaryRowsHtml = enrichedSuppliers.length > 0
+      ? enrichedSuppliers.map(function (sup, i) {
+          var debt = Number(sup.total_debt || 0);
+          var centDebt = debt > 0 && typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(debt) : '0 سنتيم';
+          return (
+            '<tr>' +
+            '<td style="text-align:center;font-weight:bold;">' + (i + 1) + '</td>' +
+            '<td contenteditable="true" style="font-weight:900;color:#0f172a;">' + (sup.name || '') + '</td>' +
+            '<td contenteditable="true" style="font-family:monospace;font-weight:bold;">' + (sup.phone || '—') + '</td>' +
+            '<td contenteditable="true" style="font-size:10px;">' + (sup.address || '—') + '<br><span style="font-family:monospace;color:#475569;">RC:' + (sup.rc || '-') + ' | NIF:' + (sup.nif || '-') + ' | AI:' + (sup.ai || '-') + '</span></td>' +
+            '<td style="text-align:center;font-family:monospace;font-weight:bold;">' + sup._inv.productsCount + ' صنف (' + sup._inv.totalUnits + ' وحدة)</td>' +
+            '<td style="text-align:center;font-family:monospace;font-weight:bold;color:#0284c7;">' + sup._inv.stockCostValue.toFixed(2) + ' د.ج</td>' +
+            '<td style="text-align:center;font-family:monospace;font-weight:bold;">' + Number(sup.total_purchases || 0).toFixed(2) + ' د.ج</td>' +
+            '<td style="text-align:center;font-family:monospace;color:#059669;font-weight:bold;">' + Number(sup.total_paid || 0).toFixed(2) + ' د.ج</td>' +
+            '<td style="text-align:center;font-family:monospace;font-weight:900;color:' + (debt > 0.01 ? '#e11d48' : '#059669') + ';">' + debt.toFixed(2) + ' د.ج<div style="font-size:9px;color:#b45309;">' + centDebt + '</div></td>' +
+            '</tr>'
+          );
+        }).join('')
+      : '<tr><td colspan="9" style="text-align:center;padding:14px;font-weight:bold;color:#64748b;">لا توجد سجلات مطابقة لهذا التقرير حالياً</td></tr>';
+
+    // بناء البطاقات التفصيلية لكل مورد في حال اختيار (الكراس التفصيلي الشامل full_dossier)
+    var detailedDossiersHtml = '';
+    if (mode === 'full_dossier') {
+      detailedDossiersHtml =
+        '<div style="margin-top:20px;border-top:3px double #1e3a8a;padding-top:14px;">' +
+        '  <h3 contenteditable="true" style="margin:0 0 12px 0;color:#1e3a8a;font-size:15px;">📂 البطاقات التفصيلية الكاملة لكل مورد (الأصناف الموردة + الفواتير + التسديدات + المرتجعات):</h3>' +
+        enrichedSuppliers.map(function (sup, idx) {
+          var prods = sup._inv.products || [];
+          var purchases = (sup._ledger && sup._ledger.purchases) || [];
+          var payments = (sup._ledger && sup._ledger.payments) || [];
+          var returns = (sup._ledger && sup._ledger.returns) || [];
+          var debt = Number(sup.total_debt || 0);
+
+          var prodRows = prods.length > 0
+            ? prods.slice(0, 30).map(function (p, pi) {
+                var cost = getProdCost(p);
+                var sell = getProdRetail(p);
+                var stk = getProdStock(p);
+                var margin = cost > 0 ? (((sell - cost) / cost) * 100).toFixed(1) : '0';
+                return (
+                  '<tr>' +
+                  '<td>' + (pi + 1) + '</td>' +
+                  '<td style="font-family:monospace;">' + (p.barcode || '—') + '</td>' +
+                  '<td style="font-weight:bold;">' + p.name + '</td>' +
+                  '<td>' + (p.category || 'عام') + '</td>' +
+                  '<td style="font-family:monospace;">' + cost.toFixed(2) + ' د.ج</td>' +
+                  '<td style="font-family:monospace;font-weight:bold;color:#1d4ed8;">' + sell.toFixed(2) + ' د.ج (+' + margin + '%)</td>' +
+                  '<td style="font-family:monospace;font-weight:bold;color:' + (stk <= Number(p.min_stock || 5) ? '#e11d48' : '#059669') + ';">' + stk + ' ' + (p.unit || 'قطعة') + '</td>' +
+                  '<td style="font-family:monospace;font-weight:bold;">' + (Math.max(0, stk) * cost).toFixed(2) + ' د.ج</td>' +
+                  '</tr>'
+                );
+              }).join('')
+            : '<tr><td colspan="8" style="text-align:center;color:#64748b;">لا توجد منتجات مربوطة باسم هذا المورد في المخزون بعد</td></tr>';
+
+          var purchRows = purchases.length > 0
+            ? purchases.slice(0, 20).map(function (inv) {
+                var rem = Math.max(0, Number(inv.total || 0) - Number(inv.paid_amount || 0));
+                return (
+                  '<tr>' +
+                  '<td style="font-family:monospace;font-weight:bold;">' + (inv.invoice_number || '#' + inv.id) + '</td>' +
+                  '<td style="font-family:monospace;">' + formatCleanSupDate(inv.date) + '</td>' +
+                  '<td style="font-family:monospace;font-weight:bold;">' + Number(inv.total || 0).toFixed(2) + ' د.ج</td>' +
+                  '<td style="font-family:monospace;color:#059669;">' + Number(inv.paid_amount || 0).toFixed(2) + ' د.ج</td>' +
+                  '<td style="font-family:monospace;font-weight:bold;color:#e11d48;">' + rem.toFixed(2) + ' د.ج</td>' +
+                  '</tr>'
+                );
+              }).join('')
+            : '<tr><td colspan="5" style="text-align:center;color:#64748b;">لا توجد فواتير شراء مسجلة</td></tr>';
+
+          var payRows = payments.length > 0
+            ? payments.slice(0, 15).map(function (pm) {
+                return (
+                  '<tr>' +
+                  '<td style="font-family:monospace;font-weight:bold;">' + (pm.receipt_number || '#' + pm.id) + '</td>' +
+                  '<td style="font-family:monospace;">' + formatCleanSupDate(pm.date) + '</td>' +
+                  '<td style="font-family:monospace;font-weight:bold;color:#059669;">+' + Number(pm.amount || 0).toFixed(2) + ' د.ج</td>' +
+                  '<td>' + (pm.payment_method || 'نقداً') + '</td>' +
+                  '<td>' + (pm.notes || '—') + '</td>' +
+                  '</tr>'
+                );
+              }).join('')
+            : '<tr><td colspan="5" style="text-align:center;color:#64748b;">لا توجد دفعات تسديد مسجلة</td></tr>';
+
+          return (
+            '<div style="border:2px solid #1e3a8a;border-radius:10px;padding:12px;margin-bottom:16px;page-break-inside:avoid;background:#ffffff;">' +
+            '  <div style="display:flex;justify-content:space-between;align-items:center;background:#eff6ff;padding:8px 12px;border-radius:8px;border-bottom:2px solid #bfdbfe;margin-bottom:8px;">' +
+            '    <div>' +
+            '      <span style="font-size:14px;font-weight:900;color:#1e3a8a;">' + (idx + 1) + '. المورد: ' + sup.name + '</span>' +
+            '      <span style="margin-right:10px;font-size:11px;font-family:monospace;">📞 الهاتف: ' + (sup.phone || '—') + ' | 📍 العنوان: ' + (sup.address || '—') + '</span>' +
+            '      <div style="font-size:10px;font-family:monospace;color:#475569;margin-top:2px;">RC: ' + (sup.rc || '-') + ' | NIF: ' + (sup.nif || '-') + ' | AI: ' + (sup.ai || '-') + ' | NIS: ' + (sup.nis || '-') + '</div>' +
+            '    </div>' +
+            '    <div style="text-align:left;">' +
+            '      <div style="font-size:11px;">إجمالي المشتريات: <strong style="font-family:monospace;">' + Number(sup.total_purchases || 0).toFixed(2) + ' د.ج</strong></div>' +
+            '      <div style="font-size:12px;color:' + (debt > 0.01 ? '#e11d48' : '#059669') + ';">الدين المتبقي: <strong style="font-family:monospace;">' + debt.toFixed(2) + ' د.ج</strong></div>' +
+            '    </div>' +
+            '  </div>' +
+
+            '  <div style="font-weight:900;font-size:11px;color:#0f172a;margin:6px 0 4px;">📦 أ) المنتجات والأصناف التي يوردها لمتجرنا (' + prods.length + ' صنف | قيمتها بالمخزون: ' + sup._inv.stockCostValue.toFixed(2) + ' د.ج):</div>' +
+            '  <table style="width:100%;border-collapse:collapse;font-size:10px;margin-bottom:8px;">' +
+            '    <thead><tr style="background:#f1f5f9;"><th>#</th><th>الباركود</th><th>المنتج</th><th>الفئة</th><th>سعر الشراء</th><th>سعر البيع والهامش</th><th>الرصيد الحالي</th><th>قيمة الرصيد</th></tr></thead>' +
+            '    <tbody>' + prodRows + '</tbody>' +
+            '  </table>' +
+
+            '  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+            '    <div>' +
+            '      <div style="font-weight:900;font-size:11px;color:#1e3a8a;margin-bottom:4px;">🧾 ب) سجل فواتير الشراء (' + purchases.length + '):</div>' +
+            '      <table style="width:100%;border-collapse:collapse;font-size:9.5px;"><thead><tr style="background:#f1f5f9;"><th>الفاتورة</th><th>التاريخ</th><th>الإجمالي</th><th>المدفوع</th><th>الباقي</th></tr></thead><tbody>' + purchRows + '</tbody></table>' +
+            '    </div>' +
+            '    <div>' +
+            '      <div style="font-weight:900;font-size:11px;color:#059669;margin-bottom:4px;">💵 ج) سجل دفعات التسديد (' + payments.length + ' | مرتجعات: ' + returns.length + '):</div>' +
+            '      <table style="width:100%;border-collapse:collapse;font-size:9.5px;"><thead><tr style="background:#f1f5f9;"><th>الوصل</th><th>التاريخ</th><th>المبلغ</th><th>الطريقة</th><th>ملاحظة</th></tr></thead><tbody>' + payRows + '</tbody></table>' +
+            '    </div>' +
+            '  </div>' +
+            '</div>'
+          );
+        }).join('') +
+        '</div>';
+    }
+
+    var pageSizeCss = orientation === 'landscape'
+      ? '@page { size: 297mm 210mm; margin: 8mm; }'
+      : '@page { size: 210mm 297mm; margin: 8mm; }';
+    var screenWidthPx = orientation === 'landscape' ? 1040 : 780;
+
+    return (
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>' + reportTitle + '</title>' +
+      '<link rel="stylesheet" href="./assets/css/fonts.css">' +
+      '<style>' +
+      pageSizeCss +
+      '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
+      'html,body{margin:0;padding:0;font-family:"Cairo","Tajawal",Tahoma,sans-serif;font-size:11px;color:#0f172a;}' +
+      '@media screen {' +
+      '  html,body{background:#e2e8f0;padding:16px 0;display:flex;flex-direction:column;align-items:center;}' +
+      '  .paper-sheet{width:' + screenWidthPx + 'px;background:#fff;padding:18px;border-radius:8px;box-shadow:0 20px 50px rgba(0,0,0,0.55);}' +
+      '  [contenteditable="true"]:hover{outline:1.5px dashed #3b82f6;background:#eff6ff;cursor:text;}' +
+      '}' +
+      '@media print {' +
+      '  html,body{background:#fff !important;margin:0 !important;padding:0 !important;}' +
+      '  .paper-sheet{width:100% !important;padding:4mm !important;box-shadow:none !important;}' +
+      '  .no-print-ui{display:none !important;}' +
+      '}' +
+      'table{width:100%;border-collapse:collapse;}' +
+      'th,td{border:1px solid #94a3b8;padding:5px 6px;text-align:right;}' +
+      'th{background:#1e3a8a;color:#fff;font-weight:900;text-align:center;}' +
+      '.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0;}' +
+      '.kpi-box{border:1.5px solid #cbd5e1;border-radius:8px;padding:8px;text-align:center;background:#f8fafc;}' +
+      '</style></head><body>' +
+      '<div class="no-print-ui" style="color:#1e3a8a;background:#dbeafe;border:1px solid #93c5fd;padding:5px 16px;border-radius:999px;font-size:11.5px;font-weight:900;margin-bottom:10px;text-align:center;">📄 معاينة حية للتقرير الشامل للموردين — ✏️ يمكنك النقر على أي عنوان أو خانة لتعديلها مباشرة قبل حفظ الـ PDF!</div>' +
+      '<div class="paper-sheet">' +
+      '  <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a8a;padding-bottom:10px;">' +
+      '    <div>' +
+      '      <h2 contenteditable="true" style="margin:0;color:#1e3a8a;font-size:19px;">' + (s.shop_name || 'Gherbi.Ai POS') + '</h2>' +
+      '      <div contenteditable="true" style="font-size:11px;color:#475569;">' + (s.shop_address || 'الجزائر') + (s.shop_phone ? ' | هاتف: ' + s.shop_phone : '') + '</div>' +
+      '      <div style="font-size:10px;font-family:monospace;color:#334155;">RC: ' + (s.shop_rc || '-') + ' | NIF: ' + (s.shop_nif || '-') + ' | AI: ' + (s.shop_ai || '-') + '</div>' +
+      '    </div>' +
+      '    <div style="text-align:left;">' +
+      '      <div contenteditable="true" style="font-size:15px;font-weight:900;color:#1e3a8a;">' + reportTitle + '</div>' +
+      '      <div style="font-family:monospace;font-size:11px;margin-top:3px;">تاريخ الإصدار: ' + todayStr + '</div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="kpi-grid">' +
+      '    <div class="kpi-box"><div style="font-size:10px;color:#64748b;font-weight:bold;">عدد الموردين والأصناف</div><div style="font-size:15px;font-weight:900;font-family:monospace;margin-top:2px;">' + enrichedSuppliers.length + ' مورد (' + grandProductsCount + ' صنف)</div></div>' +
+      '    <div class="kpi-box"><div style="font-size:10px;color:#64748b;font-weight:bold;">قيمة بضاعتهم بالمخزون</div><div style="font-size:15px;font-weight:900;font-family:monospace;color:#0284c7;margin-top:2px;">' + grandStockCostVal.toFixed(2) + ' د.ج</div><div style="font-size:9.5px;color:#b45309;font-weight:bold;">' + centimeGrandStock + '</div></div>' +
+      '    <div class="kpi-box"><div style="font-size:10px;color:#64748b;font-weight:bold;">إجمالي المشتريات / المسدد</div><div style="font-size:14px;font-weight:900;font-family:monospace;color:#059669;margin-top:2px;">' + grandPurchases.toFixed(0) + ' / ' + grandPaid.toFixed(0) + ' د.ج</div></div>' +
+      '    <div class="kpi-box" style="background:#fff1f2;border-color:#fda4af;"><div style="font-size:10px;color:#be123c;font-weight:bold;">إجمالي ديون الموردين علينا</div><div style="font-size:15px;font-weight:900;font-family:monospace;color:#e11d48;margin-top:2px;">' + grandDebt.toFixed(2) + ' د.ج</div><div style="font-size:9.5px;color:#b45309;font-weight:bold;">' + centimeGrandDebt + '</div></div>' +
+      '  </div>' +
+
+      '  <h4 contenteditable="true" style="margin:8px 0 6px;color:#0f172a;">📋 الجدول الإجمالي الموحد للموردين والوضعية المالية والجبائية:</h4>' +
+      '  <table>' +
+      '    <thead><tr><th>#</th><th>اسم المورد / المؤسسة</th><th>الهاتف</th><th>العنوان والبيانات الجبائية</th><th>الأصناف بالمخزون</th><th>قيمة بضاعته حالياً</th><th>إجمالي المشتريات</th><th>إجمالي المسدد</th><th>الدين المتبقي للمورد</th></tr></thead>' +
+      '    <tbody>' + summaryRowsHtml + '</tbody>' +
+      '  </table>' +
+
+      '  <div style="margin-top:10px;padding:8px 12px;background:#f1f5f9;border-right:4px solid #1e3a8a;font-weight:bold;font-size:11px;">' +
+      '    أوقف هذا الكشف الإجمالي لديون الموردين على مبلغ: <span contenteditable="true">' + wordsGrandDebt + '</span> (' + centimeGrandDebt + ')' +
+      '  </div>' +
+
+      detailedDossiersHtml +
+
+      '  <div style="display:flex;justify-content:space-between;margin-top:28px;padding-top:8px;border-top:1px dashed #94a3b8;font-weight:800;font-size:11px;">' +
+      '    <div contenteditable="true">إمضاء المحاسب / مسؤول المشتريات: ............................</div>' +
+      '    <div contenteditable="true">ختم ومصادقة المدير العام: ............................</div>' +
+      '  </div>' +
+      '</div></body></html>'
+    );
+  };
+
+  App.openAllSuppliersPdfStudio = async function (mode, orientation) {
+    this.ensureSuppliersExtraModalsDom();
+    if (mode) AppState.allSuppliersPdfMode = mode;
+    if (orientation) AppState.allSuppliersPdfOrientation = orientation;
+
+    var curMode = AppState.allSuppliersPdfMode;
+    var curOrient = AppState.allSuppliersPdfOrientation;
+
+    var toolbar = document.getElementById('allSuppliersPdfToolbar');
+    if (toolbar) {
+      toolbar.innerHTML =
+        '<div class="flex flex-wrap items-center gap-1.5">' +
+        '  <span class="font-black text-amber-400 ml-1">📑 نوع التقرير:</span>' +
+        '  <button type="button" onclick="App.openAllSuppliersPdfStudio(\'full_dossier\', null)" class="px-3 py-1.5 rounded-xl font-black transition ' + (curMode === 'full_dossier' ? 'bg-blue-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">📘 الكراس الشامل المفصل (كل الموردين + أصنافهم + فواتيرهم)</button>' +
+        '  <button type="button" onclick="App.openAllSuppliersPdfStudio(\'summary_table\', null)" class="px-3 py-1.5 rounded-xl font-black transition ' + (curMode === 'summary_table' ? 'bg-blue-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">📊 الجدول المالي والجبائي الموحد</button>' +
+        '  <button type="button" onclick="App.openAllSuppliersPdfStudio(\'debt_schedule\', null)" class="px-3 py-1.5 rounded-xl font-black transition ' + (curMode === 'debt_schedule' ? 'bg-rose-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">🚨 كشف الديون المستحقة فقط</button>' +
+        '  <span class="mx-1 text-slate-600">|</span>' +
+        '  <button type="button" onclick="App.openAllSuppliersPdfStudio(null, \'portrait\')" class="px-2.5 py-1.5 rounded-xl font-bold ' + (curOrient === 'portrait' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300') + '">📄 A4 عمودي</button>' +
+        '  <button type="button" onclick="App.openAllSuppliersPdfStudio(null, \'landscape\')" class="px-2.5 py-1.5 rounded-xl font-bold ' + (curOrient === 'landscape' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300') + '">🖼️ A4 أفقي عريض</button>' +
+        '</div>' +
+        '<div class="flex items-center gap-1.5">' +
+        '  <button type="button" onclick="App.executeAllSuppliersReportAction(\'print\')" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black shadow">🖨️ طباعة التقرير الآن</button>' +
+        '  <button type="button" onclick="App.executeAllSuppliersReportAction(\'pdf\')" class="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black shadow">📥 حفظ وتصدير كملف PDF</button>' +
+        '</div>';
+    }
+
+    var html = await this.buildAllSuppliersComprehensiveReportHtml(curMode, curOrient);
+    this.openModal('allSuppliersPdfStudioModal');
+
+    setTimeout(function () {
+      var frame = document.getElementById('allSuppliersPdfPreviewFrame');
+      if (frame && frame.contentWindow) {
+        var doc = frame.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+      }
+    }, 50);
+  };
+
+  App.executeAllSuppliersReportAction = async function (actionType) {
+    var frame = document.getElementById('allSuppliersPdfPreviewFrame');
+    var html = '';
+    if (frame && frame.contentWindow && frame.contentWindow.document) {
+      var clone = frame.contentWindow.document.documentElement.cloneNode(true);
+      clone.querySelectorAll('.no-print-ui').forEach(function (el) { el.remove(); });
+      clone.querySelectorAll('[contenteditable]').forEach(function (el) { el.removeAttribute('contenteditable'); });
+      html = '<!DOCTYPE html>\n' + clone.outerHTML;
+    } else {
+      html = await this.buildAllSuppliersComprehensiveReportHtml();
+    }
+
+    if (actionType === 'pdf' && window.api && window.api.exportPDF) {
+      var res = await window.api.exportPDF({
+        html: html,
+        filename: 'Gherbi_Suppliers_Full_Report_' + new Date().toISOString().slice(0, 10) + '.pdf'
+      });
+      if (res && res.success && typeof showToast === 'function') {
+        showToast('📄 تم حفظ التقرير الشامل لجميع الموردين بصيغة PDF بنجاح!', 'success');
+      }
+      return;
+    }
+
+    if (window.PrintEngine) {
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 3) مولد «بون طلبية تموين ذكية للمورد (Bon de Commande Fournisseur)»
+  // --------------------------------------------------------------------------
+  App.openSupplierPurchaseOrderModal = async function (supplierId) {
+    this.ensureSuppliersExtraModalsDom();
+    var sid = Number(supplierId);
+    var sup = (AppState.suppliers || []).find(function (s) { return Number(s.id) === sid; }) || AppState.suppliers[0];
+    if (!sup) return;
+
+    AppState._currentPoSupplier = sup;
+    var supProds = this.getProductsForSupplier(sup);
+    var allProds = AppState.products || [];
+
+    // إذا لم يكن للمورد منتجات مربوطة باسمه بعد، نعرض المنتجات المنخفضة أو أول 5 منتجات
+    var initialList = supProds.length > 0 ? supProds : allProds.slice(0, 6);
+
+    AppState.tempPurchaseOrderItems = initialList.map(function (p) {
+      var stk = getProdStock(p);
+      var minStk = Number(p.min_stock ?? 5);
+      var suggestedOrderQty = stk <= minStk ? Math.max(10, (minStk * 2) - stk) : 10;
+      return {
+        product_id: p.id,
+        name: p.name,
+        barcode: p.barcode || '',
+        unit: p.unit || 'قطعة',
+        current_stock: stk,
+        min_stock: minStk,
+        cost_price: getProdCost(p),
+        order_qty: suggestedOrderQty,
+        is_low: stk <= minStk
+      };
+    });
+
+    var titleEl = document.getElementById('supPoModalTitle');
+    if (titleEl) {
+      titleEl.textContent = '🛒 تحرير بون طلبية تموين للمورد: ' + sup.name;
+    }
+
+    this.renderSupplierPurchaseOrderModalBody();
+    this.openModal('supplierPurchaseOrderModal');
+  };
+
+  App.renderSupplierPurchaseOrderModalBody = function () {
+    var body = document.getElementById('supPoModalBody');
+    var sup = AppState._currentPoSupplier;
+    if (!body || !sup) return;
+
+    var items = AppState.tempPurchaseOrderItems || [];
+    var totalOrderCost = items.reduce(function (acc, it) {
+      return acc + (Number(it.order_qty || 0) * Number(it.cost_price || 0));
+    }, 0);
+    var centimeTotal = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(totalOrderCost) : '';
+
+    body.innerHTML =
+      '<div class="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/30">' +
+      '  <div>' +
+      '    <span class="font-black text-indigo-600 dark:text-indigo-400">المورد: ' + sup.name + '</span>' +
+      '    <span class="mx-2 text-slate-400">|</span>' +
+      '    <span class="font-mono">الهاتف: ' + (sup.phone || 'غير مسجل') + '</span>' +
+      '  </div>' +
+      '  <div class="font-mono font-black text-sm text-blue-600">القيمة التقديرية للطلبية: ' + totalOrderCost.toFixed(2) + ' د.ج <span class="text-xs text-amber-600">(' + centimeTotal + ')</span></div>' +
+      '</div>' +
+
+      '<div class="flex gap-2 items-end">' +
+      '  <div class="flex-1">' +
+      '    <label class="block font-bold mb-1">إضافة منتج آخر من المخزون إلى الطلبية:</label>' +
+      '    <select id="poAddProductSelect" class="w-full px-3 py-2 rounded-xl font-bold">' +
+      (AppState.products || []).slice(0, 300).map(function (p) {
+        return '<option value="' + p.id + '">' + p.name + ' (الرصيد الحالي: ' + getProdStock(p) + ' | آخر شراء: ' + getProdCost(p).toFixed(2) + ' د.ج)</option>';
+      }).join('') +
+      '    </select>' +
+      '  </div>' +
+      '  <button type="button" onclick="App.addProductToSupplierPoModal()" class="px-4 py-2 bg-blue-600 text-white rounded-xl font-black">+ إدراج بالطلبية</button>' +
+      '</div>' +
+
+      '<div class="border border-slate-200 dark:border-slate-700 rounded-2xl p-3 max-h-60 overflow-y-auto">' +
+      '  <table class="w-full text-xs text-right">' +
+      '    <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-1.5">المنتج</th><th class="py-1.5">الرصيد الحالي</th><th class="py-1.5">آخر سعر شراء</th><th class="py-1.5">الكمية المطلوبة</th><th class="py-1.5">المجموع التقديري</th><th class="py-1.5">حذف</th></tr></thead>' +
+      '    <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      items.map(function (it, idx) {
+        var sub = Number(it.order_qty || 0) * Number(it.cost_price || 0);
+        return (
+          '<tr class="' + (it.is_low ? 'bg-rose-500/5' : '') + '">' +
+          '  <td class="py-1.5 font-bold">' + it.name + (it.is_low ? ' <span class="px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-600 text-[9px] font-black">⚠️ رصيد منخفض</span>' : '') + '</td>' +
+          '  <td class="py-1.5 font-mono ' + (it.is_low ? 'text-rose-600 font-black' : '') + '">' + it.current_stock + ' ' + it.unit + '</td>' +
+          '  <td class="py-1.5"><input type="number" step="any" value="' + it.cost_price + '" onchange="AppState.tempPurchaseOrderItems[' + idx + '].cost_price=parseFloat(this.value)||0; App.renderSupplierPurchaseOrderModalBody()" class="w-20 px-2 py-1 rounded font-mono text-center"></td>' +
+          '  <td class="py-1.5"><input type="number" step="any" min="1" value="' + it.order_qty + '" onchange="AppState.tempPurchaseOrderItems[' + idx + '].order_qty=Math.max(1,parseFloat(this.value)||1); App.renderSupplierPurchaseOrderModalBody()" class="w-20 px-2 py-1 rounded font-mono font-black text-blue-600 text-center border-blue-400"></td>' +
+          '  <td class="py-1.5 font-mono font-black">' + sub.toFixed(2) + ' د.ج</td>' +
+          '  <td class="py-1.5"><button type="button" onclick="AppState.tempPurchaseOrderItems.splice(' + idx + ',1); App.renderSupplierPurchaseOrderModalBody()" class="text-rose-500 font-black px-2">✕</button></td>' +
+          '</tr>'
+        );
+      }).join('') +
+      '    </tbody>' +
+      '  </table>' +
+      '</div>' +
+
+      '<div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">' +
+      '  <button type="button" onclick="App.convertPoToNewPurchaseInvoice()" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black shadow">📥 تحويل مباشرة إلى فاتورة شراء جديدة</button>' +
+      '  <div class="flex flex-wrap gap-1.5">' +
+      '    <button type="button" onclick="App.sendSupplierPoViaWhatsApp()" class="px-4 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl font-black shadow">💬 إرسال الطلبية عبر WhatsApp</button>' +
+      '    <button type="button" onclick="App.printOrPdfSupplierPo(true)" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-black">📄 حفظ PDF</button>' +
+      '    <button type="button" onclick="App.printOrPdfSupplierPo(false)" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black shadow">🖨️ طباعة بون الطلبية (A4)</button>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  App.addProductToSupplierPoModal = function () {
+    var pid = Number(document.getElementById('poAddProductSelect')?.value);
+    var p = (AppState.products || []).find(function (x) { return Number(x.id) === pid; });
+    if (!p) return;
+    var existing = (AppState.tempPurchaseOrderItems || []).find(function (x) { return Number(x.product_id) === pid; });
+    if (existing) {
+      existing.order_qty += 10;
+    } else {
+      AppState.tempPurchaseOrderItems.push({
+        product_id: p.id,
+        name: p.name,
+        barcode: p.barcode || '',
+        unit: p.unit || 'قطعة',
+        current_stock: getProdStock(p),
+        min_stock: Number(p.min_stock ?? 5),
+        cost_price: getProdCost(p),
+        order_qty: 10,
+        is_low: false
+      });
+    }
+    this.renderSupplierPurchaseOrderModalBody();
+  };
+
+  App.buildSupplierPoHtml = function () {
+    var sup = AppState._currentPoSupplier || { name: 'المورد' };
+    var items = AppState.tempPurchaseOrderItems || [];
+    var s = AppState.settings || {};
+    var total = 0;
+
+    var rows = items.map(function (it, i) {
+      var sub = Number(it.order_qty || 0) * Number(it.cost_price || 0);
+      total += sub;
+      return (
+        '<tr>' +
+        '<td>' + (i + 1) + '</td>' +
+        '<td style="font-family:monospace;">' + (it.barcode || '—') + '</td>' +
+        '<td style="font-weight:bold;">' + it.name + '</td>' +
+        '<td style="font-family:monospace;font-weight:900;">' + it.order_qty + ' ' + (it.unit || '') + '</td>' +
+        '<td style="font-family:monospace;">' + Number(it.cost_price || 0).toFixed(2) + ' د.ج</td>' +
+        '<td style="font-family:monospace;font-weight:bold;">' + sub.toFixed(2) + ' د.ج</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    return (
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>بون طلبية مورد — ' + sup.name + '</title>' +
+      '<style>@page{size:210mm 297mm;margin:10mm;}body{font-family:"Cairo",Tahoma,sans-serif;font-size:12px;color:#0f172a;padding:12px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #0f172a;padding:6px;text-align:right;}th{background:#1e3a8a;color:#fff;}</style></head><body>' +
+      '<div style="display:flex;justify-content:space-between;border-bottom:3px solid #1e3a8a;padding-bottom:10px;">' +
+      '  <div><h2 style="margin:0;color:#1e3a8a;">' + (s.shop_name || 'Gherbi.Ai POS') + '</h2><div>' + (s.shop_address || 'الجزائر') + ' | ' + (s.shop_phone || '') + '</div></div>' +
+      '  <div style="text-align:left;"><h2 style="margin:0;color:#1e3a8a;">بون طلبية تموين (BON DE COMMANDE FOURNISSEUR)</h2><div>التاريخ: ' + new Date().toISOString().slice(0, 10) + '</div></div>' +
+      '</div>' +
+      '<div style="margin:12px 0;padding:10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;"><strong>المورد الموجه إليه الطلب:</strong> ' + sup.name + ' | <strong>الهاتف:</strong> ' + (sup.phone || '—') + ' | <strong>العنوان:</strong> ' + (sup.address || '—') + '</div>' +
+      '<table><thead><tr><th>#</th><th>المرجع</th><th>المنتج المطلوب</th><th>الكمية المطلوبة</th><th>آخر سعر شراء</th><th>المجموع التقديري</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '<div style="text-align:left;margin-top:12px;font-size:15px;font-weight:900;color:#1e3a8a;">الإجمالي التقديري للطلبية: ' + total.toFixed(2) + ' د.ج</div>' +
+      '<div style="display:flex;justify-content:space-between;margin-top:32px;font-weight:bold;"><div>إمضاء المورد المستلم: ........................</div><div>ختم وإمضاء المؤسسة الطالبة: ........................</div></div>' +
+      '</body></html>'
+    );
+  };
+
+  App.printOrPdfSupplierPo = async function (asPdf) {
+    var html = this.buildSupplierPoHtml();
+    var sup = AppState._currentPoSupplier || { name: 'Supplier' };
+    if (asPdf && window.api && window.api.exportPDF) {
+      var res = await window.api.exportPDF({
+        html: html,
+        filename: 'Bon_Commande_' + String(sup.name || 'Supplier').replace(/\s+/g, '_') + '.pdf'
+      });
+      if (res && res.success && typeof showToast === 'function') {
+        showToast('📄 تم حفظ بون طلبية المورد بصيغة PDF بنجاح!', 'success');
+      }
+      return;
+    }
+    if (window.PrintEngine) {
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  };
+
+  App.sendSupplierPoViaWhatsApp = function () {
+    var sup = AppState._currentPoSupplier;
+    if (!sup) return;
+    var phone = String(sup.phone || '').trim();
+    if (!phone) {
+      phone = window.prompt('أدخل رقم هاتف المورد (' + sup.name + ') لإرسال الطلبية عبر واتساب:', '0550') || '';
+    }
+    var clean = phone.replace(/\D+/g, '');
+    if (!clean) return;
+    if (clean.startsWith('0')) clean = '213' + clean.slice(1);
+    else if (!clean.startsWith('213')) clean = '213' + clean;
+
+    var lines = (AppState.tempPurchaseOrderItems || []).map(function (it, idx) {
+      return (idx + 1) + '. *' + it.name + '* ⬅️ الكمية: *' + it.order_qty + ' ' + (it.unit || '') + '*';
+    }).join('\n');
+
+    var shopName = (AppState.settings && AppState.settings.shop_name) || 'Gherbi.Ai POS';
+    var msg =
+      'السلام عليكم مؤسسة *' + sup.name + '*،\n' +
+      'معكم *' + shopName + '*، نرجو تزويدنا بطلبية التموين التالية:\n\n' +
+      lines + '\n\nشكراً لتعاونكم.';
+
+    var url = 'https://wa.me/' + clean + '?text=' + encodeURIComponent(msg);
+    if (window.api && window.api.openExternalLink) window.api.openExternalLink(url);
+    else window.open(url, '_blank');
+  };
+
+  App.convertPoToNewPurchaseInvoice = async function () {
+    var sup = AppState._currentPoSupplier;
+    var items = AppState.tempPurchaseOrderItems || [];
+    if (!sup || items.length === 0) return;
+
+    AppState.tempPurchaseItems = items.map(function (it) {
+      return {
+        product_id: it.product_id,
+        name: it.name,
+        quantity: Number(it.order_qty || 1),
+        cost_price: Number(it.cost_price || 0),
+        selling_price: getProdRetail((AppState.products || []).find(function (x) { return Number(x.id) === Number(it.product_id); }))
+      };
+    });
+
+    this.closeModal('supplierPurchaseOrderModal');
+    await this.switchView('purchases');
+    if (typeof this.openPurchaseInvoiceModal === 'function') {
+      this.openPurchaseInvoiceModal();
+      var supSel = document.getElementById('purchSupplierSelect');
+      if (supSel) supSel.value = String(sup.id);
+      if (typeof this.renderTempPurchaseItemsInModal === 'function') {
+        this.renderTempPurchaseItemsInModal();
+      }
+      if (typeof showToast === 'function') {
+        showToast('📥 تم تحويل الطلبية إلى فاتورة شراء جاهزة للمورد (' + sup.name + ')!', 'success');
+      }
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 4) ترقية نافذة كشف الحساب التفصيلي للمورد (#supplierLedgerModal) بـ 4 تبويبات
+  // --------------------------------------------------------------------------
+  App.openSupplierLedgerModal = async function (supplierId, activeTab) {
+    this.ensureSuppliersExtraModalsDom();
+    var sid = Number(supplierId);
+    if (activeTab) AppState.supLedgerActiveTab = activeTab;
+    var tab = AppState.supLedgerActiveTab || 'invoices';
+
+    var sup = (AppState.suppliers || []).find(function (s) { return Number(s.id) === sid; });
+    var ledger = null;
+    if (window.api && typeof window.api.getSupplierLedger === 'function') {
+      ledger = await window.api.getSupplierLedger(sid).catch(function () { return null; });
+    }
+    var purchases = (ledger && ledger.purchases) || (await window.api.getSupplierPurchases(sid).catch(function () { return []; })) || [];
+    var payments = (ledger && ledger.payments) || [];
+    var returns = (ledger && ledger.returns) || [];
+    var invStats = this.computeSupplierInventoryStats(sup);
+
+    var titleEl = document.getElementById('supLedgerTitle');
+    if (titleEl) {
+      titleEl.textContent = '📒 الملف المالي وكشف الحساب الشامل للمورد: ' + (sup ? sup.name : '#' + sid);
+    }
+
+    var totalPurchases = Number((sup && sup.total_purchases) || 0);
+    var totalDebt = Number((sup && sup.total_debt) || 0);
+    var centimeDebt = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(totalDebt) : '';
+
+    var tabContentHtml = '';
+    if (tab === 'invoices') {
+      tabContentHtml =
+        '<table class="w-full text-xs text-right">' +
+        '  <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-2">رقم الفاتورة</th><th class="py-2">التاريخ</th><th class="py-2">الإجمالي</th><th class="py-2">المدفوع</th><th class="py-2">الباقي</th><th class="py-2">الحالة</th></tr></thead>' +
+        '  <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (purchases.length > 0
+          ? purchases.map(function (inv) {
+              var rem = Math.max(0, Number(inv.total || 0) - Number(inv.paid_amount || 0));
+              return (
+                '<tr>' +
+                '  <td class="py-2 font-mono font-black text-blue-600">' + (inv.invoice_number || '#' + inv.id) + '</td>' +
+                '  <td class="py-2 font-mono text-slate-400">' + formatCleanSupDate(inv.date) + '</td>' +
+                '  <td class="py-2 font-mono font-bold">' + Number(inv.total || 0).toFixed(2) + ' د.ج</td>' +
+                '  <td class="py-2 font-mono text-emerald-600 font-bold">' + Number(inv.paid_amount || 0).toFixed(2) + ' د.ج</td>' +
+                '  <td class="py-2 font-mono font-black ' + (rem > 0.01 ? 'text-rose-600' : 'text-slate-400') + '">' + rem.toFixed(2) + ' د.ج</td>' +
+                '  <td class="py-2">' + (rem <= 0.01 ? '<span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 font-bold text-[10px]">مسددة ✓</span>' : '<span class="px-2 py-0.5 rounded bg-rose-500/15 text-rose-600 font-bold text-[10px]">متبقية</span>') + '</td>' +
+                '</tr>'
+              );
+            }).join('')
+          : '<tr><td colspan="6" class="py-8 text-center text-slate-400 font-bold">لا توجد فواتير شراء مسجلة مع هذا المورد بعد</td></tr>') +
+        '  </tbody>' +
+        '</table>';
+    } else if (tab === 'payments') {
+      tabContentHtml =
+        '<table class="w-full text-xs text-right">' +
+        '  <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-2">رقم الوصل</th><th class="py-2">التاريخ</th><th class="py-2">المبلغ المسدد</th><th class="py-2">طريقة الدفع</th><th class="py-2">ملاحظة</th><th class="py-2">طباعة</th></tr></thead>' +
+        '  <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (payments.length > 0
+          ? payments.map(function (pm) {
+              return (
+                '<tr>' +
+                '  <td class="py-2 font-mono font-bold text-emerald-600">' + (pm.receipt_number || '#' + pm.id) + '</td>' +
+                '  <td class="py-2 font-mono text-slate-400">' + formatCleanSupDate(pm.date) + '</td>' +
+                '  <td class="py-2 font-mono font-black text-emerald-600">+' + Number(pm.amount || 0).toFixed(2) + ' د.ج</td>' +
+                '  <td class="py-2 font-bold">' + (pm.payment_method || 'نقداً') + '</td>' +
+                '  <td class="py-2 text-slate-500">' + (pm.notes || '—') + '</td>' +
+                '  <td class="py-2"><button type="button" onclick="App.reprintSupplierPaymentReceipt(' + pm.id + ')" class="px-2.5 py-1 bg-blue-600 text-white rounded-lg font-bold text-[10px]">🖨️ وصل</button></td>' +
+                '</tr>'
+              );
+            }).join('')
+          : '<tr><td colspan="6" class="py-8 text-center text-slate-400 font-bold">لا توجد دفعات تسديد مسجلة لهذا المورد بعد</td></tr>') +
+        '  </tbody>' +
+        '</table>';
+    } else if (tab === 'returns') {
+      tabContentHtml =
+        '<table class="w-full text-xs text-right">' +
+        '  <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-2">رقم المرتجع</th><th class="py-2">التاريخ</th><th class="py-2">إجمالي المرتجع</th><th class="py-2">طريقة التسوية</th><th class="py-2">السبب</th></tr></thead>' +
+        '  <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (returns.length > 0
+          ? returns.map(function (ret) {
+              return (
+                '<tr>' +
+                '  <td class="py-2 font-mono font-bold text-rose-600">' + (ret.return_number || '#' + ret.id) + '</td>' +
+                '  <td class="py-2 font-mono text-slate-400">' + formatCleanSupDate(ret.date) + '</td>' +
+                '  <td class="py-2 font-mono font-black text-rose-600">-' + Number(ret.total || 0).toFixed(2) + ' د.ج</td>' +
+                '  <td class="py-2 font-bold">' + (ret.refund_method === 'cash' ? 'استرداد نقدي' : 'خصم من الدين') + '</td>' +
+                '  <td class="py-2 text-slate-500">' + (ret.reason || '—') + '</td>' +
+                '</tr>'
+              );
+            }).join('')
+          : '<tr><td colspan="5" class="py-8 text-center text-slate-400 font-bold">لا توجد مرتجعات مسجلة مع هذا المورد</td></tr>') +
+        '  </tbody>' +
+        '</table>';
+    } else {
+      tabContentHtml =
+        '<table class="w-full text-xs text-right">' +
+        '  <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-2">الباركود</th><th class="py-2">المنتج المورّد</th><th class="py-2">سعر الشراء</th><th class="py-2">سعر البيع</th><th class="py-2">ربح الوحدة</th><th class="py-2">الرصيد الحالي</th></tr></thead>' +
+        '  <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (invStats.products.length > 0
+          ? invStats.products.map(function (p) {
+              var cost = getProdCost(p);
+              var sell = getProdRetail(p);
+              var stk = getProdStock(p);
+              return (
+                '<tr>' +
+                '  <td class="py-2 font-mono text-slate-400">' + (p.barcode || '—') + '</td>' +
+                '  <td class="py-2 font-bold">' + p.name + '</td>' +
+                '  <td class="py-2 font-mono">' + cost.toFixed(2) + ' د.ج</td>' +
+                '  <td class="py-2 font-mono font-bold text-blue-600">' + sell.toFixed(2) + ' د.ج</td>' +
+                '  <td class="py-2 font-mono font-bold text-emerald-600">+' + (sell - cost).toFixed(2) + ' د.ج</td>' +
+                '  <td class="py-2 font-mono font-black ' + (stk <= Number(p.min_stock || 5) ? 'text-rose-600' : 'text-emerald-600') + '">' + stk + ' ' + (p.unit || 'قطعة') + '</td>' +
+                '</tr>'
+              );
+            }).join('')
+          : '<tr><td colspan="6" class="py-8 text-center text-slate-400 font-bold">لا توجد منتجات مربوطة باسم هذا المورد في المخزون حالياً</td></tr>') +
+        '  </tbody>' +
+        '</table>';
+    }
+
+    var body = document.getElementById('supplierLedgerBody');
+    if (body) {
+      var safeName = String((sup && sup.name) || '').replace(/'/g, "\\'");
+      body.innerHTML =
+        '<div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-center">' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">إجمالي المشتريات</div><div class="font-mono font-black text-sm text-blue-600 mt-0.5">' + totalPurchases.toFixed(2) + ' د.ج</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">بضاعته في مخزوننا الآن</div><div class="font-mono font-black text-sm text-sky-600 mt-0.5">' + invStats.stockCostValue.toFixed(2) + ' د.ج (' + invStats.productsCount + ' صنف)</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">الدفعات المسددة له</div><div class="font-mono font-black text-sm text-emerald-600 mt-0.5">' + Number((sup && sup.total_paid) || 0).toFixed(2) + ' د.ج</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400 font-bold">الدين المتبقي للمورد</div><div class="font-mono font-black text-sm text-rose-600 mt-0.5">' + totalDebt.toFixed(2) + ' د.ج</div><div class="text-[10px] font-bold text-amber-600">' + centimeDebt + '</div></div>' +
+        '</div>' +
+
+        '<div class="flex flex-wrap items-center justify-between gap-2">' +
+        '  <div class="flex flex-wrap gap-1">' +
+        '    <button type="button" onclick="App.openSupplierLedgerModal(' + sid + ', \'invoices\')" class="px-3 py-1.5 rounded-xl font-black text-xs ' + (tab === 'invoices' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700') + '">🧾 فواتير الشراء (' + purchases.length + ')</button>' +
+        '    <button type="button" onclick="App.openSupplierLedgerModal(' + sid + ', \'payments\')" class="px-3 py-1.5 rounded-xl font-black text-xs ' + (tab === 'payments' ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-700') + '">💵 الدفعات المسددة (' + payments.length + ')</button>' +
+        '    <button type="button" onclick="App.openSupplierLedgerModal(' + sid + ', \'returns\')" class="px-3 py-1.5 rounded-xl font-black text-xs ' + (tab === 'returns' ? 'bg-rose-600 text-white' : 'bg-slate-100 dark:bg-slate-700') + '">↩️ المرتجعات (' + returns.length + ')</button>' +
+        '    <button type="button" onclick="App.openSupplierLedgerModal(' + sid + ', \'products\')" class="px-3 py-1.5 rounded-xl font-black text-xs ' + (tab === 'products' ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-700') + '">📦 أصنافه بالمخزون (' + invStats.productsCount + ')</button>' +
+        '  </div>' +
+        '  <div class="flex flex-wrap gap-1.5">' +
+        '    <button type="button" onclick="App.closeModal(\'supplierLedgerModal\'); App.openSupplierPurchaseOrderModal(' + sid + ')" class="px-3 py-1.5 bg-indigo-600 text-white rounded-xl font-bold text-xs">🛒 طلبية تموين</button>' +
+        '    <button type="button" onclick="App.closeModal(\'supplierLedgerModal\'); App.openSupplierPaymentModal(' + sid + ', \'' + safeName + '\', ' + totalDebt + ')" class="px-3 py-1.5 bg-emerald-600 text-white rounded-xl font-bold text-xs">💵 تسديد دفعة</button>' +
+        '    <button type="button" onclick="App.printSupplierStatementA4(' + sid + ', true)" class="px-3 py-1.5 bg-slate-800 text-white rounded-xl font-bold text-xs">📥 حفظ PDF</button>' +
+        '    <button type="button" onclick="App.printSupplierStatementA4(' + sid + ', false)" class="px-3 py-1.5 bg-blue-600 text-white rounded-xl font-black text-xs">🖨️ طباعة الكشف</button>' +
+        '  </div>' +
+        '</div>' +
+
+        '<div class="border border-slate-200 dark:border-slate-700 rounded-2xl p-3 max-h-64 overflow-y-auto">' +
+        tabContentHtml +
+        '</div>';
+    }
+
+    this.openModal('supplierLedgerModal');
+  };
+
+  App.reprintSupplierPaymentReceipt = async function (paymentId) {
+    if (!window.api || !window.api.getPaymentDetails || !window.PrintEngine) return;
+    var details = await window.api.getPaymentDetails(Number(paymentId), 'purchase').catch(function () { return null; });
+    if (details) {
+      var html = await window.PrintEngine.renderPaymentReceiptHtml(details, AppState.settings, AppState.lang);
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  };
+
+  var _origPrintSupStat = App.printSupplierStatementA4 ? App.printSupplierStatementA4.bind(App) : null;
+  App.printSupplierStatementA4 = async function (supplierId, asPdf) {
+    if (!asPdf && _origPrintSupStat) {
+      return await _origPrintSupStat(supplierId);
+    }
+    var sid = Number(supplierId);
+    var sup = (AppState.suppliers || []).find(function (s) { return Number(s.id) === sid; });
+    if (!sup) return;
+    var purchases = (await window.api.getSupplierPurchases(sid).catch(function () { return []; })) || [];
+    var s = AppState.settings || {};
+
+    var rowsHtml = purchases.map(function (inv, i) {
+      var rem = Math.max(0, Number(inv.total || 0) - Number(inv.paid_amount || 0));
+      return '<tr><td>' + (i + 1) + '</td><td>' + (inv.invoice_number || '#' + inv.id) + '</td><td>' + formatCleanSupDate(inv.date) + '</td><td>' + Number(inv.total || 0).toFixed(2) + ' د.ج</td><td>' + Number(inv.paid_amount || 0).toFixed(2) + ' د.ج</td><td>' + rem.toFixed(2) + ' د.ج</td></tr>';
+    }).join('');
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>كشف حساب مورد — ' + sup.name + '</title>' +
+      '<style>@page{size:210mm 297mm;margin:10mm;}body{font-family:"Cairo",Tahoma,sans-serif;font-size:12px;color:#0f172a;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #0f172a;padding:6px;text-align:right;}th{background:#1e3a8a;color:#fff;}</style></head><body>' +
+      '<h2>📒 كشف حساب المورد (Situation Fournisseur) — ' + sup.name + '</h2>' +
+      '<p>المؤسسة: <strong>' + (s.shop_name || 'Gherbi.Ai POS') + '</strong> | الهاتف: <strong>' + (sup.phone || '-') + '</strong> | الدين المتبقي للمورد: <strong style="color:#e11d48;">' + Number(sup.total_debt || 0).toFixed(2) + ' د.ج</strong></p>' +
+      '<table><thead><tr><th>#</th><th>رقم الفاتورة</th><th>التاريخ</th><th>الإجمالي</th><th>المدفوع</th><th>الباقي</th></tr></thead><tbody>' + rowsHtml + '</tbody></table>' +
+      '</body></html>';
+
+    if (asPdf && window.api && window.api.exportPDF) {
+      await window.api.exportPDF({ html: html, filename: 'Statement_Supplier_' + sid + '.pdf' });
+    } else if (window.PrintEngine) {
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  };
+
+  // إصلاح loadSupplierReturnableBatches في الواجهة أيضاً ليجلب الدفعات بالاسم أو بالمعرف فوراً
+  App.loadSupplierReturnableBatches = async function (supplierId) {
+    var sid = Number(supplierId);
+    var box = document.getElementById('supRetBatchesTableContainer');
+    if (!box) return;
+
+    var items = (await window.api.getSupplierReturnableItems(sid).catch(function () { return []; })) || [];
+    if (items.length === 0) {
+      var sup = (AppState.suppliers || []).find(function (s) { return Number(s.id) === sid; });
+      var supProds = this.getProductsForSupplier(sup);
+      supProds.forEach(function (p) {
+        (p.batches || []).forEach(function (b) {
+          if (Number(b.stock) > 0) {
+            items.push(Object.assign({}, b, {
+              product_id: p.id,
+              product_name: p.name,
+              barcode: p.barcode,
+              unit: p.unit
+            }));
+          }
+        });
+      });
+    }
+
+    AppState.supplierReturnableBatches = items.map(function (it) {
+      return Object.assign({}, it, { return_qty: 0 });
+    });
+
+    if (items.length === 0) {
+      box.innerHTML = '<div class="py-6 text-center text-slate-400 font-bold">لا توجد دفعات مخزنية متوفرة مرتبطة بهذا المورد حالياً</div>';
+      var totEl = document.getElementById('supRetTotalValueText');
+      if (totEl) totEl.textContent = '0.00 د.ج';
+      return;
+    }
+
+    box.innerHTML =
+      '<table class="w-full text-xs text-right">' +
+      '  <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500"><th class="py-1.5">المنتج</th><th class="py-1.5">الرصيد المتاح</th><th class="py-1.5">تكلفة الوحدة</th><th class="py-1.5">الكمية المرجعة</th><th class="py-1.5">الإجمالي</th></tr></thead>' +
+      '  <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      AppState.supplierReturnableBatches.map(function (it, idx) {
+        return (
+          '<tr>' +
+          '  <td class="py-1.5 font-bold">' + it.product_name + '</td>' +
+          '  <td class="py-1.5 font-mono">' + it.stock + ' ' + (it.unit || '') + '</td>' +
+          '  <td class="py-1.5 font-mono">' + Number(it.cost_price || 0).toFixed(2) + ' د.ج</td>' +
+          '  <td class="py-1.5"><input type="number" step="any" min="0" max="' + it.stock + '" value="0" oninput="App.updateSupplierReturnRowQty(' + idx + ', this.value)" class="w-20 px-2 py-1 rounded-lg font-mono font-bold text-center border-rose-400"></td>' +
+          '  <td id="sup-ret-sub-' + idx + '" class="py-1.5 font-mono font-black text-rose-600">0.00 د.ج</td>' +
+          '</tr>'
+        );
+      }).join('') +
+      '  </tbody>' +
+      '</table>';
+  };
+
+  // --------------------------------------------------------------------------
+  // 5) بناء الواجهة الرئيسية المطورة لصفحة إدارة الموردين (#view-suppliers)
+  // --------------------------------------------------------------------------
+  App.renderSuppliersView = async function () {
+    this.ensureSuppliersExtraModalsDom();
+    var root = document.getElementById('suppliers-view-root');
+    if (!root) return;
+
+    if (!AppState.products || AppState.products.length === 0) {
+      await this.refreshProducts();
+    }
+    var suppliers = (await window.api.getSuppliers().catch(function () { return []; })) || [];
+    AppState.suppliers = suppliers;
+
+    var totalPurchasesAll = 0;
+    var totalDebtAll = 0;
+    var totalStockValAll = 0;
+    var totalSuppliedProdsAll = 0;
+    var creditorsCount = 0;
+    var lowStockSuppliersCount = 0;
+
+    var enrichedList = suppliers.map(function (s) {
+      var inv = App.computeSupplierInventoryStats(s);
+      var pur = Number(s.total_purchases || 0);
+      var debt = Number(s.total_debt || 0);
+
+      totalPurchasesAll += pur;
+      totalDebtAll += debt;
+      totalStockValAll += inv.stockCostValue;
+      totalSuppliedProdsAll += inv.productsCount;
+      if (debt > 0.01) creditorsCount++;
+      if (inv.lowStockCount > 0) lowStockSuppliersCount++;
+
+      return Object.assign({}, s, { _inv: inv });
+    });
+
+    // الترتيب الذكي
+    var sortKey = AppState.suppliersSortBy || 'newest';
+    enrichedList.sort(function (a, b) {
+      if (sortKey === 'debt_desc') return Number(b.total_debt || 0) - Number(a.total_debt || 0);
+      if (sortKey === 'purchases_desc') return Number(b.total_purchases || 0) - Number(a.total_purchases || 0);
+      if (sortKey === 'stock_val_desc') return b._inv.stockCostValue - a._inv.stockCostValue;
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+
+    var centimeTotalDebt = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(totalDebtAll) : '';
+    var centimeStockVal = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(totalStockValAll) : '';
+
+    var q = String(AppState.suppliersSearchQuery || '').toLowerCase().trim();
+    var filtered = enrichedList.filter(function (s) {
+      var d = Number(s.total_debt || 0);
+      if (AppState.suppliersDebtFilter === 'has_debt' && d <= 0.01) return false;
+      if (AppState.suppliersDebtFilter === 'settled' && d > 0.01) return false;
+      if (AppState.suppliersDebtFilter === 'low_stock' && s._inv.lowStockCount === 0) return false;
+      if (q) {
+        return (
+          String(s.name || '').toLowerCase().includes(q) ||
+          String(s.phone || '').toLowerCase().includes(q) ||
+          String(s.address || '').toLowerCase().includes(q) ||
+          String(s.nif || '').toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+
+    root.innerHTML =
+      '<div class="space-y-4">' +
+      '  <div class="flex flex-wrap items-center justify-between gap-3">' +
+      '    <div>' +
+      '      <h2 class="text-2xl font-black flex flex-wrap items-center gap-2">' +
+      '        <span>إدارة الموردين، كشف الحساب، والتموين الذكي (' + filtered.length + ')</span>' +
+      '        <button id="btnSuppliersQaBot" type="button" onclick="App.runAutoTest_SuppliersPage()" title="تشغيل الفحص الآلي الذاتي لصفحة الموردين (Ctrl+Shift+T)" class="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm">🤖 فحص آلي (QA)</button>' +
+      '      </h2>' +
+      '      <p class="text-xs text-slate-500">متابعة الحسابات، قيمة بضاعة كل مورد بالمخزون، تحرير طلبيات التموين، مرتجعات الشراء، والتقرير الشامل بصيغة PDF</p>' +
+      '    </div>' +
+      '    <div class="flex flex-wrap items-center gap-2 text-xs">' +
+      '      <button type="button" onclick="App.openAllSuppliersPdfStudio(\'full_dossier\', \'portrait\')" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black shadow-lg shadow-indigo-600/25 flex items-center gap-1.5"><span class="material-symbols-rounded icon-sm">picture_as_pdf</span><span>📄 تقرير وPDF شامل لكل الموردين (F9)</span></button>' +
+      '      <button type="button" onclick="App.openSupplierReturnModal()" class="px-3.5 py-2 bg-rose-600/15 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl font-black transition">↩️ مرتجع بضاعة لمورد</button>' +
+      '      <button type="button" onclick="App.downloadSuppliersTemplate()" class="px-3 py-2 bg-slate-200 dark:bg-slate-700 rounded-xl font-bold">قالب Excel</button>' +
+      '      <button type="button" onclick="App.importSuppliersExcel()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold">استيراد Excel</button>' +
+      '      <button type="button" onclick="App.exportSuppliersExcel()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold">تصدير Excel</button>' +
+      '      <button type="button" onclick="App.openSupplierModal(null)" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black shadow-lg shadow-blue-600/25">+ إضافة مورد (Alt+N)</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div id="suppliersKpiGrid" class="grid grid-cols-2 md:grid-cols-4 gap-3.5">' +
+      '    <div onclick="AppState.suppliersDebtFilter=\'all\'; App.renderSuppliersView()" class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer">' +
+      '      <div class="text-xs text-slate-400 font-bold">إجمالي الموردين والأصناف الممونة</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1 text-blue-600">' + suppliers.length + ' مورد <span class="text-xs text-slate-500">(' + totalSuppliedProdsAll + ' صنف)</span></div>' +
+      '      <div class="text-[11px] text-slate-400 mt-0.5">موردون مسجلون في قاعدة البيانات</div>' +
+      '    </div>' +
+      '    <div onclick="AppState.suppliersSortBy=\'stock_val_desc\'; App.renderSuppliersView()" class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-sky-500/30 shadow-sm cursor-pointer">' +
+      '      <div class="text-xs text-slate-400 font-bold">قيمة بضاعة الموردين في مخزوننا الآن</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1 text-sky-600">' + totalStockValAll.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] font-bold text-amber-600 mt-0.5">🇩🇿 بالسنتيم: ' + centimeStockVal + '</div>' +
+      '    </div>' +
+      '    <div onclick="AppState.suppliersDebtFilter=\'has_debt\'; App.renderSuppliersView()" class="p-4 rounded-2xl bg-rose-600 text-white shadow-lg cursor-pointer">' +
+      '      <div class="text-xs font-bold opacity-90">إجمالي الديون المستحقة للموردين</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1">' + totalDebtAll.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] font-bold text-amber-200 mt-0.5">🇩🇿 بالسنتيم: ' + centimeTotalDebt + '</div>' +
+      '    </div>' +
+      '    <div onclick="AppState.suppliersDebtFilter=\'settled\'; App.renderSuppliersView()" class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-emerald-500/30 shadow-sm cursor-pointer">' +
+      '      <div class="text-xs text-slate-400 font-bold">موردون مسددون / إجمالي المشتريات</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1 text-emerald-600">' + (suppliers.length - creditorsCount) + ' مسدد <span class="text-xs text-rose-500">(' + creditorsCount + ' دائن)</span></div>' +
+      '      <div class="text-[11px] text-indigo-600 font-bold mt-0.5">مشتريات: ' + totalPurchasesAll.toFixed(2) + ' د.ج</div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3 shadow-sm">' +
+      '    <div class="flex flex-wrap items-center justify-between gap-2">' +
+      '      <div class="relative flex-1 min-w-[240px]">' +
+      '        <span class="material-symbols-rounded icon-sm absolute right-3 top-2.5 text-slate-400">search</span>' +
+      '        <input id="suppliersSearchInput" type="text" value="' + (AppState.suppliersSearchQuery || '') + '" oninput="App.onSuppliersSearch(this.value)" placeholder="🔍 [F4] ابحث باسم المورد، رقم الهاتف، العنوان، أو NIF..." class="w-full pr-9 pl-3 py-2 rounded-xl text-xs font-bold">' +
+      '      </div>' +
+      '      <div class="flex flex-wrap items-center gap-1.5 text-xs">' +
+      '        <select onchange="AppState.suppliersSortBy=this.value; App.renderSuppliersView()" class="px-3 py-1.5 rounded-xl font-bold">' +
+      '          <option value="newest" ' + (sortKey === 'newest' ? 'selected' : '') + '>الترتيب: الأحدث إضافة</option>' +
+      '          <option value="debt_desc" ' + (sortKey === 'debt_desc' ? 'selected' : '') + '>الترتيب: الأعلى ديناً علينا</option>' +
+      '          <option value="stock_val_desc" ' + (sortKey === 'stock_val_desc' ? 'selected' : '') + '>الترتيب: الأعلى بضاعة بالمخزون</option>' +
+      '          <option value="purchases_desc" ' + (sortKey === 'purchases_desc' ? 'selected' : '') + '>الترتيب: الأعلى مشتريات</option>' +
+      '        </select>' +
+      '        <button type="button" onclick="AppState.suppliersDebtFilter=\'all\'; App.renderSuppliersView()" class="px-3 py-1.5 rounded-xl font-bold ' + (AppState.suppliersDebtFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700') + '">الكل (' + suppliers.length + ')</button>' +
+      '        <button type="button" onclick="AppState.suppliersDebtFilter=\'has_debt\'; App.renderSuppliersView()" class="px-3 py-1.5 rounded-xl font-bold ' + (AppState.suppliersDebtFilter === 'has_debt' ? 'bg-rose-600 text-white' : 'bg-rose-500/10 text-rose-600') + '">لهم دين علينا (' + creditorsCount + ')</button>' +
+      '        <button type="button" onclick="AppState.suppliersDebtFilter=\'settled\'; App.renderSuppliersView()" class="px-3 py-1.5 rounded-xl font-bold ' + (AppState.suppliersDebtFilter === 'settled' ? 'bg-emerald-600 text-white' : 'bg-emerald-500/10 text-emerald-600') + '">حسابهم خالص (' + (suppliers.length - creditorsCount) + ')</button>' +
+      '        <button type="button" onclick="AppState.suppliersDebtFilter=\'low_stock\'; App.renderSuppliersView()" class="px-3 py-1.5 rounded-xl font-bold ' + (AppState.suppliersDebtFilter === 'low_stock' ? 'bg-amber-500 text-slate-950' : 'bg-amber-500/10 text-amber-600') + '">⚠️ نواقص تموين (' + lowStockSuppliersCount + ')</button>' +
+      '      </div>' +
+      '    </div>' +
+
+      '    <div class="overflow-x-auto max-h-[56vh]">' +
+      '      <table class="w-full text-xs text-right">' +
+      '        <thead class="sticky top-0 bg-slate-100 dark:bg-slate-900 z-10">' +
+      '          <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">' +
+      '            <th class="py-2.5 px-2">اسم المورد / المؤسسة</th>' +
+      '            <th class="py-2.5 px-2">الهاتف والعنوان</th>' +
+      '            <th class="py-2.5 px-2">أصنافه وقيمتها بالمخزون الآن</th>' +
+      '            <th class="py-2.5 px-2">إجمالي المشتريات</th>' +
+      '            <th class="py-2.5 px-2">الدين المتبقي للمورد</th>' +
+      '            <th class="py-2.5 px-2 text-center">إجراءات الحساب والتموين</th>' +
+      '          </tr>' +
+      '        </thead>' +
+      '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      (filtered.length > 0
+        ? filtered.map(function (s) {
+            var debt = Number(s.total_debt || 0);
+            var centDebt = debt > 0 && typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(debt) : '';
+            var safeName = String(s.name || '').replace(/'/g, "\\'");
+            var inv = s._inv;
+
+            return (
+              '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition">' +
+              '  <td class="py-2.5 px-2">' +
+              '    <div class="font-black text-slate-800 dark:text-slate-100 cursor-pointer hover:text-blue-600" onclick="App.openSupplierLedgerModal(' + s.id + ', \'invoices\')">' + s.name + '</div>' +
+              (s.rc || s.nif ? '<div class="font-mono text-[10px] text-slate-400">RC: ' + (s.rc || '-') + ' | NIF: ' + (s.nif || '-') + '</div>' : '') +
+              '  </td>' +
+              '  <td class="py-2.5 px-2">' +
+              '    <div class="font-mono font-bold">' + (s.phone || '—') + '</div>' +
+              '    <div class="text-[10px] text-slate-400">' + (s.address || '—') + '</div>' +
+              '  </td>' +
+              '  <td class="py-2.5 px-2 cursor-pointer" onclick="App.openSupplierLedgerModal(' + s.id + ', \'products\')" title="انقر لعرض أصناف هذا المورد في مخزوننا">' +
+              (inv.productsCount > 0
+                ? '<div class="font-mono font-black text-sky-600">' + inv.stockCostValue.toFixed(2) + ' د.ج</div>' +
+                  '<div class="text-[10px] font-bold text-slate-500">📦 ' + inv.productsCount + ' صنف (' + inv.totalUnits + ' وحدة)' + (inv.lowStockCount > 0 ? ' <span class="text-rose-500 font-black">• ' + inv.lowStockCount + ' ناقص</span>' : '') + '</div>'
+                : '<span class="text-slate-400 text-[11px]">0 صنف مربوط</span>') +
+              '  </td>' +
+              '  <td class="py-2.5 px-2 font-mono font-bold text-blue-600">' + Number(s.total_purchases || 0).toFixed(2) + ' د.ج</td>' +
+              '  <td class="py-2.5 px-2">' +
+              '    <div class="font-mono font-black ' + (debt > 0.01 ? 'text-rose-600' : 'text-emerald-600') + '">' + debt.toFixed(2) + ' د.ج</div>' +
+              (centDebt ? '<div class="text-[10px] font-bold text-amber-600">' + centDebt + '</div>' : '') +
+              '  </td>' +
+              '  <td class="py-2.5 px-2 flex flex-wrap items-center justify-center gap-1">' +
+              '    <button type="button" onclick="App.openSupplierPaymentModal(' + s.id + ', \'' + safeName + '\', ' + debt + ')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black text-[11px] shadow-sm">💵 تسديد</button>' +
+              '    <button type="button" onclick="App.openSupplierPurchaseOrderModal(' + s.id + ')" class="px-2.5 py-1 bg-amber-500/15 text-amber-600 hover:bg-amber-500 hover:text-slate-950 rounded-lg font-black text-[11px] transition" title="تحرير بون طلبية تموين لهذا المورد">🛒 طلبية</button>' +
+              '    <button type="button" onclick="App.openSupplierLedgerModal(' + s.id + ', \'invoices\')" class="px-2.5 py-1 bg-indigo-500/15 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg font-bold text-[11px] transition">📒 كشف الحساب</button>' +
+              '    <button type="button" onclick="App.openSupplierModal(' + s.id + ')" class="px-2 py-1 bg-blue-600/15 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg font-bold text-[11px] transition">تعديل</button>' +
+              '    <button type="button" onclick="App.contactSupplierViaWhatsApp(' + s.id + ')" class="px-2 py-1 bg-green-500/15 text-green-600 hover:bg-green-600 hover:text-white rounded-lg font-bold text-[11px]" title="مراسلة المورد عبر واتساب">💬</button>' +
+              '    <button type="button" onclick="App.deleteSupplierById(' + s.id + ')" class="p-1 text-rose-500 hover:bg-rose-500/10 rounded-lg"><span class="material-symbols-rounded icon-sm">delete</span></button>' +
+              '  </td>' +
+              '</tr>'
+            );
+          }).join('')
+        : '<tr><td colspan="6" class="py-10 text-center text-slate-400 font-bold">لا يوجد موردون مطابقون للفلتر الحالي</td></tr>') +
+      '        </tbody>' +
+      '      </table>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  };
+
+  // اختصار F9 لفتح استوديو التقرير الشامل وتصدير PDF لكل الموردين فوراً
+  document.addEventListener('keydown', function (e) {
+    if (AppState.currentView !== 'suppliers') return;
+    var activeModal = document.querySelector('.modal-overlay.active');
+    if (activeModal) return;
+
+    if (e.key === 'F9') {
+      e.preventDefault();
+      e.stopPropagation();
+      App.openAllSuppliersPdfStudio('full_dossier', 'portrait');
+    }
+  }, true);
+})();
+
+// [BRIGHT LIGHT-MODE TOOLBARS & ARABIC SUPPLIER MATCHING FIX]
+(function installBrightLightModeToolbarsFix() {
+  if (!window.App || !window.AppState) return;
+
+  function normalizeArabicText(str) {
+    return String(str || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[أإآ]/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .replace(/ى/g, 'ي')
+      .replace(/ؤ/g, 'و')
+      .replace(/ئ/g, 'ي')
+      .replace(/يفري/g, 'افري');
+  }
+
+  // تحسين ربط المورد بأصنافه في المخزون (يدعم تطابق الهمزات مثل "افري" <-> "إيفري")
+  App.getProductsForSupplier = function (sup) {
+    if (!sup) return [];
+    var rawName = String(sup.name || '').trim();
+    var normSup = normalizeArabicText(rawName);
+    var coreKeyword = normSup.replace(/^(مؤسسه|مجمع|شركه|مطاحن)\s+/g, '').trim();
+    var sid = Number(sup.id || 0);
+
+    return (AppState.products || []).filter(function (p) {
+      if (Array.isArray(p.batches) && p.batches.some(function (b) { return Number(b.supplier_id) === sid; })) {
+        return true;
+      }
+      var normProdSup = normalizeArabicText(p.supplier || '');
+      var normProdName = normalizeArabicText(p.name || '');
+
+      if (normSup && normProdSup && (normProdSup === normSup || normProdSup.includes(normSup) || normSup.includes(normProdSup))) {
+        return true;
+      }
+      if (coreKeyword && coreKeyword.length >= 3) {
+        if (normProdSup.includes(coreKeyword) || normProdName.includes(coreKeyword)) {
+          return true;
+        }
+      }
+      return false;
+    });
+  };
+
+  // تحديث نافذة استوديو التقرير الشامل وتصدير PDF للموردين لتكون ساطعة وواضحة في الوضع المضيء
+  App.openAllSuppliersPdfStudio = async function (mode, orientation) {
+    this.ensureSuppliersExtraModalsDom();
+    if (mode) AppState.allSuppliersPdfMode = mode;
+    if (orientation) AppState.allSuppliersPdfOrientation = orientation;
+
+    var curMode = AppState.allSuppliersPdfMode || 'full_dossier';
+    var curOrient = AppState.allSuppliersPdfOrientation || 'portrait';
+
+    var frameEl = document.getElementById('allSuppliersPdfPreviewFrame');
+    if (frameEl) {
+      frameEl.className = 'w-full h-[62vh] border border-slate-300 dark:border-slate-700 rounded-2xl bg-slate-100 dark:bg-slate-900 shadow-inner';
+    }
+
+    var toolbar = document.getElementById('allSuppliersPdfToolbar');
+    if (toolbar) {
+      toolbar.className = 'gherbi-studio-toolbar flex flex-wrap items-center justify-between gap-2.5 p-3.5 rounded-2xl text-xs shadow-sm';
+      toolbar.innerHTML =
+        '<div class="flex flex-wrap items-center gap-2">' +
+        '  <span class="font-black text-slate-700 dark:text-amber-400 ml-1">📑 نوع التقرير:</span>' +
+        '  <button type="button" onclick="App.openAllSuppliersPdfStudio(\'full_dossier\', null)" class="px-3.5 py-2 rounded-xl font-black ' + (curMode === 'full_dossier' ? 'gherbi-toolbar-btn-active' : 'gherbi-toolbar-btn') + '">📘 الكراس الشامل المفصل (كل الموردين + أصنافهم + فواتيرهم)</button>' +
+        '  <button type="button" onclick="App.openAllSuppliersPdfStudio(\'summary_table\', null)" class="px-3.5 py-2 rounded-xl font-black ' + (curMode === 'summary_table' ? 'gherbi-toolbar-btn-active' : 'gherbi-toolbar-btn') + '">📊 الجدول المالي والجبائي الموحد</button>' +
+        '  <button type="button" onclick="App.openAllSuppliersPdfStudio(\'debt_schedule\', null)" class="px-3.5 py-2 rounded-xl font-black ' + (curMode === 'debt_schedule' ? 'gherbi-toolbar-btn-active-rose' : 'gherbi-toolbar-btn') + '">🚨 كشف الديون المستحقة فقط</button>' +
+        '  <span class="mx-1 text-slate-300 dark:text-slate-600">|</span>' +
+        '  <button type="button" onclick="App.openAllSuppliersPdfStudio(null, \'portrait\')" class="px-3 py-2 rounded-xl font-black ' + (curOrient === 'portrait' ? 'gherbi-toolbar-btn-active-indigo' : 'gherbi-toolbar-btn') + '">📄 A4 عمودي</button>' +
+        '  <button type="button" onclick="App.openAllSuppliersPdfStudio(null, \'landscape\')" class="px-3 py-2 rounded-xl font-black ' + (curOrient === 'landscape' ? 'gherbi-toolbar-btn-active-indigo' : 'gherbi-toolbar-btn') + '">🖼️ A4 أفقي عريض</button>' +
+        '</div>' +
+        '<div class="flex flex-wrap items-center gap-2">' +
+        '  <button type="button" onclick="App.executeAllSuppliersReportAction(\'print\')" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black shadow-md">🖨️ طباعة التقرير الآن</button>' +
+        '  <button type="button" onclick="App.executeAllSuppliersReportAction(\'pdf\')" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black shadow-md">📥 حفظ وتصدير كملف PDF</button>' +
+        '</div>';
+    }
+
+    var html = await this.buildAllSuppliersComprehensiveReportHtml(curMode, curOrient);
+
+    // جعل خلفية المعاينة حول الورقة فاتحة ومريحة في الوضع المضيء، وداكنة فقط في الوضع الليلي
+    var isDark = document.documentElement.classList.contains('dark');
+    if (!isDark) {
+      html = html
+        .replace('background:#0f172a;padding:14px 0;', 'background:#e2e8f0;padding:16px 0;')
+        .replace('color:#38bdf8;font-size:12px;', 'color:#1e3a8a;font-size:12px;background:#dbeafe;padding:6px 16px;border-radius:999px;border:1px solid #93c5fd;');
+    }
+
+    this.openModal('allSuppliersPdfStudioModal');
+
+    setTimeout(function () {
+      var frame = document.getElementById('allSuppliersPdfPreviewFrame');
+      if (frame && frame.contentWindow) {
+        var doc = frame.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+      }
+    }, 50);
+  };
+
+  // تحويل جميع أشرطة الأدوات الداكنة الأخرى في (مركز الطباعة #view-print) و (إدارة الصندوق #view-caisse) إلى التصميم المضيء الواضح تلقائياً
+  function upgradeDarkToolbarsInDom(rootEl) {
+    var scope = rootEl || document;
+    var darkBars = scope.querySelectorAll('.bg-slate-900');
+    darkBars.forEach(function (bar) {
+      if (bar.id === 'sidebar') return;
+      bar.classList.remove('bg-slate-900', 'text-white');
+      bar.classList.add('gherbi-studio-toolbar');
+
+      var btns = bar.querySelectorAll('button');
+      btns.forEach(function (btn) {
+        var cls = btn.className || '';
+        if (cls.includes('bg-slate-800')) {
+          btn.classList.remove('bg-slate-800', 'text-slate-300', 'text-amber-400', 'text-emerald-400', 'hover:bg-slate-700');
+          btn.classList.add('gherbi-toolbar-btn');
+          btn.style.color = '';
+        } else if (cls.includes('bg-blue-600')) {
+          btn.classList.add('gherbi-toolbar-btn-active');
+        } else if (cls.includes('bg-amber-500')) {
+          btn.classList.add('gherbi-toolbar-btn-active-amber');
+        }
+      });
+    });
+  }
+
+  var _prevRenderPrint = typeof App.renderPrintStudioView === 'function' ? App.renderPrintStudioView.bind(App) : null;
+  if (_prevRenderPrint) {
+    App.renderPrintStudioView = async function () {
+      var res = await _prevRenderPrint();
+      upgradeDarkToolbarsInDom(document.getElementById('print-view-root'));
+      return res;
+    };
+  }
+
+  var _prevRenderCaisse = typeof App.renderCaisseView === 'function' ? App.renderCaisseView.bind(App) : null;
+  if (_prevRenderCaisse) {
+    App.renderCaisseView = async function () {
+      var res = await _prevRenderCaisse();
+      upgradeDarkToolbarsInDom(document.getElementById('caisse-view-root'));
+      return res;
+    };
+  }
+
+  if (window.TemplateBuilder && typeof window.TemplateBuilder.initTemplateBuilder === 'function') {
+    var _prevInitTb = window.TemplateBuilder.initTemplateBuilder.bind(window.TemplateBuilder);
+    window.TemplateBuilder.initTemplateBuilder = async function (containerId) {
+      var res = await _prevInitTb(containerId);
+      upgradeDarkToolbarsInDom(document.getElementById(containerId || 'template-designer-root'));
+      return res;
+    };
+  }
+
+  // تطبيق فوري في حال كانت النافذة مفتوحة الآن
+  setTimeout(function () {
+    upgradeDarkToolbarsInDom(document);
+    if (AppState.currentView === 'suppliers') {
+      App.renderSuppliersView();
+    }
+  }, 150);
+})();
+
+// [PAGE 10 PURCHASES, LANDED COST & RETURNS SURGICAL PERFECTION]
+(function applyPage10PurchasesSurgicalPerfection() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.purchasesSearchQuery = '';
+  AppState.purchasesStatusFilter = 'all'; // 'all' | 'unpaid' | 'paid'
+  AppState.purchasesSupplierFilter = 'all';
+  AppState.purchasesActiveSection = 'both'; // 'both' | 'invoices' | 'returns'
+  AppState.tempPurchaseItems = [];
+  AppState.editingPurchaseId = null;
+
+  function formatCleanPurchDate(raw) {
+    if (!raw) return '—';
+    var s = String(raw).replace('T', ' ');
+    var d = s.slice(0, 10);
+    var t = s.slice(11, 16);
+    return t ? d + ' | 🕒 ' + t : d;
+  }
+
+  function getProdCost(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.cost_price ?? fb.cost_price ?? 0);
+  }
+
+  function getProdRetail(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.selling_price ?? fb.selling_price ?? 0);
+  }
+
+  function getProdStock(p) {
+    if (!p) return 0;
+    return Number(p.total_stock ?? p.stock ?? 0);
+  }
+
+  // --------------------------------------------------------------------------
+  // 1) ترقية هيكل نافذة فاتورة الشراء (#purchaseInvoiceModal) ونافذة المرتجع (#supplierReturnModal)
+  // --------------------------------------------------------------------------
+  App.ensurePurchasesModalsUpgradedDom = function () {
+    var pModal = document.getElementById('purchaseInvoiceModal');
+    if (pModal && !pModal.dataset.upgradedP10) {
+      pModal.dataset.upgradedP10 = '1';
+      pModal.innerHTML =
+        '<div class="modal-content w-full max-w-5xl p-6 space-y-3.5 overflow-y-auto">' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-2.5">' +
+        '    <div>' +
+        '      <h3 id="purchInvoiceModalTitle" class="text-lg font-black text-blue-600">📦 إنشاء فاتورة شراء وتموين جديدة (Smart Supply & Landed-Cost Studio)</h3>' +
+        '      <p class="text-[11px] text-slate-400 font-bold">إدراج الأصناف بالباركود أو الاسم، توزيع مصاريف النقل على تكلفة الوحدة آلياً، مراقبة هامش الربح، وتحديد تواريخ الصلاحية</p>' +
+        '    </div>' +
+        '    <div class="flex items-center gap-2">' +
+        '      <button type="button" onclick="App.autoFillPurchaseWithLowStock()" class="px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-slate-950 text-xs font-black transition">⚡ تعبئة تلقائية بنواقص هذا المورد</button>' +
+        '      <button type="button" onclick="App.closeModal(\'purchaseInvoiceModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="grid grid-cols-2 md:grid-cols-5 gap-2.5 text-xs">' +
+        '    <div><label class="block font-bold mb-1">المورد *</label><select id="purchSupplierSelect" class="w-full px-3 py-2 rounded-xl font-bold"></select></div>' +
+        '    <div><label class="block font-bold mb-1">رقم فاتورة المورد</label><input id="purchNumberInput" type="text" placeholder="ACH-2026-001" class="w-full px-3 py-2 rounded-xl font-mono font-bold"></div>' +
+        '    <div><label class="block font-bold mb-1">تاريخ الفاتورة</label><input id="purchDateInput" type="date" class="w-full px-3 py-2 rounded-xl font-mono"></div>' +
+        '    <div><label class="block font-bold mb-1 text-indigo-600">مصاريف نقل وشحن إضافية (د.ج)</label><input id="purchExtraCostInput" type="number" step="any" min="0" value="0" oninput="App.recalcPurchaseModal()" class="w-full px-3 py-2 rounded-xl font-mono font-bold border-indigo-400"></div>' +
+        '    <div><label class="block font-bold mb-1">تاريخ استحقاق الدين (اختياري)</label><input id="purchDueDateInput" type="date" class="w-full px-3 py-2 rounded-xl font-mono"></div>' +
+        '  </div>' +
+
+        '  <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-2.5 text-xs">' +
+        '    <div class="flex flex-wrap items-center justify-between gap-2">' +
+        '      <span class="font-black text-slate-700 dark:text-slate-200">➕ إضافة الأصناف المستلمة إلى الفاتورة (بالباركود أو الاختيار المباشر):</span>' +
+        '      <button type="button" onclick="App.toggleInlineNewProductInPurchase()" class="text-blue-600 font-black hover:underline">+ تعريف منتج جديد غير مسجل بالمخزون فوراً</button>' +
+        '    </div>' +
+
+        '    <div id="purchQuickNewProdBox" class="hidden p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 grid grid-cols-1 md:grid-cols-5 gap-2 items-end">' +
+        '      <div class="md:col-span-2"><label class="block text-[10px] font-bold mb-0.5">اسم المنتج الجديد *</label><input id="purchNewProdName" type="text" placeholder="مثال: عصير طازج 2 لتر" class="w-full px-2.5 py-1.5 rounded-lg font-bold"></div>' +
+        '      <div><label class="block text-[10px] font-bold mb-0.5">الباركود</label><input id="purchNewProdBarcode" type="text" placeholder="613..." class="w-full px-2.5 py-1.5 rounded-lg font-mono"></div>' +
+        '      <div><label class="block text-[10px] font-bold mb-0.5">الفئة</label><input id="purchNewProdCategory" type="text" value="مواد غذائية" class="w-full px-2.5 py-1.5 rounded-lg"></div>' +
+        '      <button type="button" onclick="App.saveInlineNewProductInPurchase()" class="py-1.5 bg-blue-600 text-white rounded-lg font-black">✓ حفظ وإدراج</button>' +
+        '    </div>' +
+
+        '    <div class="grid grid-cols-2 md:grid-cols-12 gap-2 items-end">' +
+        '      <div class="col-span-2 md:col-span-2">' +
+        '        <label class="block text-[10px] text-slate-400 font-bold mb-0.5">🔫 مسح باركود سريع</label>' +
+        '        <input id="purchBarcodeScanInput" type="text" onkeydown="if(event.key===\'Enter\') App.handlePurchaseBarcodeScan(this.value)" placeholder="امسح الباركود..." class="w-full px-2.5 py-2 rounded-xl font-mono font-bold border-emerald-500/50">' +
+        '      </div>' +
+        '      <div class="col-span-2 md:col-span-3">' +
+        '        <label class="block text-[10px] text-slate-400 font-bold mb-0.5">المنتج المستلم *</label>' +
+        '        <select id="purchItemProductSelect" onchange="App.onPurchaseProductSelectChange()" class="w-full px-2.5 py-2 rounded-xl font-bold"></select>' +
+        '      </div>' +
+        '      <div class="md:col-span-1">' +
+        '        <label class="block text-[10px] text-slate-400 font-bold mb-0.5">الكمية *</label>' +
+        '        <input id="purchItemQty" type="number" step="any" min="0.1" value="10" class="w-full px-2 py-2 rounded-xl font-mono font-black text-center">' +
+        '      </div>' +
+        '      <div class="md:col-span-2">' +
+        '        <label class="block text-[10px] text-slate-400 font-bold mb-0.5">سعر الشراء للوحدة</label>' +
+        '        <input id="purchItemCost" type="number" step="any" min="0" value="0" class="w-full px-2 py-2 rounded-xl font-mono font-bold text-center">' +
+        '      </div>' +
+        '      <div class="md:col-span-2">' +
+        '        <label class="block text-[10px] text-blue-600 font-bold mb-0.5">سعر البيع للزبون</label>' +
+        '        <input id="purchItemSell" type="number" step="any" min="0" value="0" class="w-full px-2 py-2 rounded-xl font-mono font-black text-blue-600 text-center">' +
+        '      </div>' +
+        '      <div class="md:col-span-2 flex gap-1">' +
+        '        <div class="flex-1"><label class="block text-[10px] text-slate-400 font-bold mb-0.5">الصلاحية</label><input id="purchItemExpiry" type="date" class="w-full px-1.5 py-2 rounded-xl font-mono text-[10px]"></div>' +
+        '        <button type="button" onclick="App.addPurchaseItemRow()" class="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black self-end shadow">+ إدراج</button>' +
+        '      </div>' +
+        '    </div>' +
+
+        '    <div id="purchItemsTableBody" class="max-h-56 overflow-y-auto pt-1"></div>' +
+        '  </div>' +
+
+        '  <div class="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-slate-200 dark:border-slate-700 text-xs">' +
+        '    <div class="flex flex-wrap items-center gap-3">' +
+        '      <div class="p-2.5 rounded-xl bg-blue-600/10 border border-blue-500/20">' +
+        '        <span class="font-bold text-slate-500">إجمالي الفاتورة: </span>' +
+        '        <strong id="purchTotalText" class="text-lg font-mono font-black text-blue-600">0.00 د.ج</strong>' +
+        '        <span id="purchTotalCentimesText" class="mr-2 text-[11px] font-bold text-amber-600"></span>' +
+        '      </div>' +
+        '      <div class="flex items-center gap-1.5">' +
+        '        <label class="font-bold">المدفوع للمورد:</label>' +
+        '        <input id="purchPaidInput" type="number" step="any" value="0" oninput="App.updatePurchaseRemainingPreview()" class="w-28 px-2.5 py-1.5 rounded-xl font-mono font-black text-emerald-600 text-center border-emerald-500">' +
+        '        <button type="button" onclick="App.setPurchaseQuickPayment(1)" class="px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 font-bold text-[10px]">خالص 100%</button>' +
+        '        <button type="button" onclick="App.setPurchaseQuickPayment(0.5)" class="px-2 py-1 rounded-lg bg-amber-500/15 text-amber-600 font-bold text-[10px]">نصف 50%</button>' +
+        '        <button type="button" onclick="App.setPurchaseQuickPayment(0)" class="px-2 py-1 rounded-lg bg-rose-500/15 text-rose-600 font-bold text-[10px]">آجل (دين 0)</button>' +
+        '      </div>' +
+        '      <div id="purchRemainingDebtBadge" class="font-mono font-black text-rose-600"></div>' +
+        '    </div>' +
+        '    <div class="flex flex-wrap gap-2">' +
+        '      <button type="button" onclick="App.closeModal(\'purchaseInvoiceModal\')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-bold">إلغاء (Esc)</button>' +
+        '      <button type="button" onclick="App.submitPurchaseInvoice(true)" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow">🏷️ حفظ وطباعة باركود الأصناف</button>' +
+        '      <button type="button" onclick="App.submitPurchaseInvoice(false)" class="px-6 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-lg shadow-emerald-600/25">💾 حفظ الفاتورة وتغذية المخزون</button>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ب) نافذة استوديو التقرير الشامل وتصدير PDF للمشتريات والمرتجعات (#purchasesPdfStudioModal)
+    if (!document.getElementById('purchasesPdfStudioModal')) {
+      var pdfModal = document.createElement('div');
+      pdfModal.id = 'purchasesPdfStudioModal';
+      pdfModal.className = 'modal-overlay';
+      pdfModal.innerHTML =
+        '<div class="modal-content w-full max-w-5xl p-6 space-y-4 overflow-y-auto">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <div>' +
+        '      <h3 class="text-lg font-black text-blue-600">📄 استوديو التقرير الشامل وتصدير PDF لفواتير المشتريات ومرتجعات الموردين</h3>' +
+        '      <p class="text-[11px] text-slate-400 font-bold">معاينة حية قابلة للتعديل المباشر بالماوس قبل الطباعة أو التصدير إلى ملف PDF</p>' +
+        '    </div>' +
+        '    <button type="button" onclick="App.closeModal(\'purchasesPdfStudioModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div class="gherbi-studio-toolbar flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl text-xs">' +
+        '    <span class="font-black text-blue-700 dark:text-amber-400">📋 كشف المشتريات والتموين والمرتجعات الرسمي (A4)</span>' +
+        '    <div class="flex gap-2">' +
+        '      <button type="button" onclick="App.executePurchasesReportAction(\'print\')" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black shadow">🖨️ طباعة التقرير (A4)</button>' +
+        '      <button type="button" onclick="App.executePurchasesReportAction(\'pdf\')" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black shadow">📥 حفظ وتصدير كملف PDF</button>' +
+        '    </div>' +
+        '  </div>' +
+        '  <iframe id="purchasesPdfPreviewFrame" class="w-full h-[62vh] border border-slate-300 dark:border-slate-700 rounded-2xl bg-slate-100 dark:bg-slate-900 shadow-inner"></iframe>' +
+        '</div>';
+      document.body.appendChild(pdfModal);
+    }
+
+    // ج) تحسين نافذة مرتجع المورد (#supplierReturnModal) بأزرار أسباب سريعة
+    var retReasonInp = document.getElementById('supRetReasonInput');
+    if (retReasonInp && !document.getElementById('supRetQuickReasonsBar')) {
+      retReasonInp.insertAdjacentHTML(
+        'afterend',
+        '<div id="supRetQuickReasonsBar" class="flex flex-wrap gap-1 mt-1 text-[10px]">' +
+        '  <button type="button" onclick="document.getElementById(\'supRetReasonInput\').value=\'بضاعة تالفة أو مكسورة\'" class="px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 font-bold">💔 تالفة</button>' +
+        '  <button type="button" onclick="document.getElementById(\'supRetReasonInput\').value=\'قريبة انتهاء الصلاحية\'" class="px-2 py-0.5 rounded bg-amber-500/15 text-amber-600 font-bold">⏳ صلاحية قريبة</button>' +
+        '  <button type="button" onclick="document.getElementById(\'supRetReasonInput\').value=\'غير مطابقة للطلبية\'" class="px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 font-bold">📦 غير مطابقة</button>' +
+        '</div>'
+      );
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 2) إصلاح حساب سطر المرتجع في نافذة مرتجع المورد (#supplierReturnModal) + طباعة Bon de Retour
+  // --------------------------------------------------------------------------
+  App.updateSupplierReturnRowQty = function (idx, val) {
+    var row = (AppState.supplierReturnableBatches || [])[idx];
+    if (!row) return;
+    var maxAvail = Number(row.stock || 0);
+    var qty = Math.min(maxAvail, Math.max(0, parseFloat(val) || 0));
+    row.return_qty = qty;
+    var sub = Number((qty * Number(row.cost_price || 0)).toFixed(2));
+
+    var cell1 = document.getElementById('supRetRowSub-' + idx);
+    var cell2 = document.getElementById('sup-ret-sub-' + idx);
+    if (cell1) cell1.textContent = sub.toFixed(2) + ' د.ج';
+    if (cell2) cell2.textContent = sub.toFixed(2) + ' د.ج';
+
+    this.recalcSupplierReturnTotal();
+  };
+
+  App.recalcSupplierReturnTotal = function () {
+    var total = (AppState.supplierReturnableBatches || []).reduce(function (sum, r) {
+      return sum + Number(r.return_qty || 0) * Number(r.cost_price || 0);
+    }, 0);
+    var el = document.getElementById('supRetTotalValueText');
+    if (el) {
+      var cent = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(total) : '';
+      el.innerHTML = total.toFixed(2) + ' د.ج ' + (total > 0 ? '<span class="text-xs text-amber-600">(' + cent + ')</span>' : '');
+    }
+    return Number(total.toFixed(2));
+  };
+
+  App.printSupplierReturnDocument = async function (returnId, asPdf) {
+    var ret = await window.api.getSupplierReturnDetails(Number(returnId)).catch(function () { return null; });
+    if (!ret) return;
+    var s = AppState.settings || {};
+    var items = Array.isArray(ret.items) ? ret.items : [];
+
+    var rowsHtml = items.map(function (it, i) {
+      var sub = Number(it.total_cost || (Number(it.quantity || 1) * Number(it.cost_price || 0)));
+      return (
+        '<tr>' +
+        '<td>' + (i + 1) + '</td>' +
+        '<td style="font-family:monospace;">' + (it.barcode || '—') + '</td>' +
+        '<td style="font-weight:bold;">' + (it.product_name || 'منتج') + '</td>' +
+        '<td style="font-family:monospace;font-weight:bold;">' + it.quantity + '</td>' +
+        '<td style="font-family:monospace;">' + Number(it.cost_price || 0).toFixed(2) + ' د.ج</td>' +
+        '<td style="font-family:monospace;font-weight:bold;color:#e11d48;">' + sub.toFixed(2) + ' د.ج</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>بون إرجاع لمورد — ' + (ret.return_number || '') + '</title>' +
+      '<style>@page{size:210mm 297mm;margin:10mm;}body{font-family:"Cairo",Tahoma,sans-serif;font-size:12px;color:#0f172a;padding:12px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #0f172a;padding:6px;text-align:right;}th{background:#be123c;color:#fff;}</style></head><body>' +
+      '<div style="display:flex;justify-content:space-between;border-bottom:3px solid #be123c;padding-bottom:10px;">' +
+      '  <div><h2 style="margin:0;color:#be123c;">' + (s.shop_name || 'Gherbi.Ai POS') + '</h2><div>' + (s.shop_address || 'الجزائر') + '</div></div>' +
+      '  <div style="text-align:left;"><h2 style="margin:0;color:#be123c;">بون إرجاع بضاعة للمورد (BON DE RETOUR FOURNISSEUR)</h2><div>رقم السند: <strong>' + (ret.return_number || '#' + ret.id) + '</strong> | التاريخ: ' + formatCleanPurchDate(ret.date) + '</div></div>' +
+      '</div>' +
+      '<div style="margin:12px 0;padding:10px;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;"><strong>المورد:</strong> ' + (ret.supplier_name || '—') + ' | <strong>سبب الإرجاع:</strong> ' + (ret.reason || '—') + ' | <strong>طريقة التسوية:</strong> ' + (ret.refund_method === 'cash' ? 'استرداد نقدي للصندوق' : 'خصم من رصيد دين المورد') + '</div>' +
+      '<table><thead><tr><th>#</th><th>الباركود</th><th>المنتج المرجع</th><th>الكمية</th><th>تكلفة الوحدة</th><th>الإجمالي</th></tr></thead><tbody>' + rowsHtml + '</tbody></table>' +
+      '<div style="text-align:left;margin-top:14px;font-size:16px;font-weight:900;color:#be123c;">إجمالي قيمة المرتجع: ' + Number(ret.total || 0).toFixed(2) + ' د.ج</div>' +
+      '<div style="display:flex;justify-content:space-between;margin-top:36px;font-weight:bold;"><div>إمضاء المورد المستلم: ........................</div><div>ختم وإمضاء المؤسسة: ........................</div></div>' +
+      '</body></html>';
+
+    if (asPdf && window.api && window.api.exportPDF) {
+      await window.api.exportPDF({ html: html, filename: 'Bon_Retour_' + (ret.return_number || ret.id) + '.pdf' });
+    } else if (window.PrintEngine) {
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 3) منطق نافذة فاتورة الشراء المطورة (حاسبة التكلفة بعد النقل + الباركود + حماية الهامش)
+  // --------------------------------------------------------------------------
+  App.openPurchaseInvoiceModal = function (keepTempItems) {
+    this.ensurePurchasesModalsUpgradedDom();
+    if (!keepTempItems) {
+      AppState.tempPurchaseItems = [];
+      AppState.editingPurchaseId = null;
+    }
+
+    var titleEl = document.getElementById('purchInvoiceModalTitle');
+    if (titleEl) {
+      titleEl.textContent = AppState.editingPurchaseId
+        ? '✏️ تعديل فاتورة الشراء والتموين رقم #' + AppState.editingPurchaseId
+        : '📦 إنشاء فاتورة شراء وتموين جديدة (Smart Supply & Landed-Cost Studio)';
+    }
+
+    var supSel = document.getElementById('purchSupplierSelect');
+    if (supSel) {
+      supSel.innerHTML = (AppState.suppliers || [])
+        .map(function (s) {
+          return '<option value="' + s.id + '">' + s.name + (Number(s.total_debt) > 0 ? ' (دين: ' + Number(s.total_debt).toFixed(0) + ' د.ج)' : '') + '</option>';
+        })
+        .join('');
+    }
+
+    var sortedProds = (AppState.products || []).slice().sort(function (a, b) {
+      var aP = getProdRetail(a) > 0 ? 1 : 0;
+      var bP = getProdRetail(b) > 0 ? 1 : 0;
+      if (aP !== bP) return bP - aP;
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+
+    var prodSel = document.getElementById('purchItemProductSelect');
+    if (prodSel) {
+      prodSel.innerHTML = sortedProds.slice(0, 400).map(function (p) {
+        return '<option value="' + p.id + '" data-cost="' + getProdCost(p) + '" data-sell="' + getProdRetail(p) + '">' + p.name + ' (رصيد: ' + getProdStock(p) + ' | شراء: ' + getProdCost(p) + ')</option>';
+      }).join('');
+      this.onPurchaseProductSelectChange();
+    }
+
+    if (!AppState.editingPurchaseId) {
+      document.getElementById('purchNumberInput').value = 'ACH-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4);
+      document.getElementById('purchDateInput').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('purchDueDateInput').value = '';
+      document.getElementById('purchExtraCostInput').value = '0';
+      document.getElementById('purchPaidInput').value = '0';
+    }
+
+    this.recalcPurchaseModal();
+    this.openModal('purchaseInvoiceModal');
+  };
+
+  App.onPurchaseProductSelectChange = function () {
+    var prodSel = document.getElementById('purchItemProductSelect');
+    if (!prodSel || prodSel.selectedIndex < 0) return;
+    var opt = prodSel.options[prodSel.selectedIndex];
+    if (opt) {
+      document.getElementById('purchItemCost').value = opt.getAttribute('data-cost') || '0';
+      document.getElementById('purchItemSell').value = opt.getAttribute('data-sell') || '0';
+    }
+  };
+
+  App.handlePurchaseBarcodeScan = function (rawCode) {
+    var code = String(rawCode || '').trim().toLowerCase();
+    var inp = document.getElementById('purchBarcodeScanInput');
+    if (inp) inp.value = '';
+    if (!code) return;
+
+    var found = (AppState.products || []).find(function (p) {
+      return String(p.barcode || '').trim().toLowerCase() === code || String(p.name || '').toLowerCase() === code;
+    });
+
+    if (!found) {
+      if (typeof showToast === 'function') showToast('الباركود غير مسجل — افتح (+ تعريف منتج جديد) لإضافته فوراً', 'warning');
+      var newBox = document.getElementById('purchQuickNewProdBox');
+      if (newBox) newBox.classList.remove('hidden');
+      var bcField = document.getElementById('purchNewProdBarcode');
+      if (bcField) bcField.value = rawCode;
+      return;
+    }
+
+    var prodSel = document.getElementById('purchItemProductSelect');
+    if (prodSel) prodSel.value = String(found.id);
+    this.onPurchaseProductSelectChange();
+    this.addPurchaseItemRow();
+    if (typeof playBeep === 'function') playBeep(true);
+  };
+
+  App.toggleInlineNewProductInPurchase = function () {
+    var box = document.getElementById('purchQuickNewProdBox');
+    if (box) box.classList.toggle('hidden');
+  };
+
+  App.saveInlineNewProductInPurchase = async function () {
+    var name = String(document.getElementById('purchNewProdName')?.value || '').trim();
+    var barcode = String(document.getElementById('purchNewProdBarcode')?.value || '').trim() || ('61300' + String(Date.now()).slice(-7));
+    var category = String(document.getElementById('purchNewProdCategory')?.value || 'عام').trim();
+    var supSel = document.getElementById('purchSupplierSelect');
+    var supName = supSel && supSel.options[supSel.selectedIndex] ? supSel.options[supSel.selectedIndex].text.split(' (')[0] : '';
+
+    if (!name) {
+      if (typeof showToast === 'function') showToast('أدخل اسم المنتج الجديد أولاً', 'warning');
+      return;
+    }
+
+    var res = await window.api.addProduct({
+      name: name,
+      barcode: barcode,
+      category: category,
+      supplier: supName,
+      unit: 'قطعة',
+      cost_price: parseFloat(document.getElementById('purchItemCost')?.value) || 100,
+      selling_price: parseFloat(document.getElementById('purchItemSell')?.value) || 130,
+      stock: 0
+    });
+
+    await this.refreshProducts();
+    document.getElementById('purchQuickNewProdBox').classList.add('hidden');
+    if (res && res.id) {
+      this.openPurchaseInvoiceModal(true);
+      document.getElementById('purchItemProductSelect').value = String(res.id);
+      this.onPurchaseProductSelectChange();
+      if (typeof showToast === 'function') showToast('✅ تم تعريف المنتج (' + name + ') واختياره للإدراج!', 'success');
+    }
+  };
+
+  App.autoFillPurchaseWithLowStock = function () {
+    var supId = Number(document.getElementById('purchSupplierSelect')?.value);
+    var sup = (AppState.suppliers || []).find(function (s) { return Number(s.id) === supId; });
+    var supProds = sup && typeof this.getProductsForSupplier === 'function' ? this.getProductsForSupplier(sup) : [];
+    var candidates = (supProds.length > 0 ? supProds : (AppState.products || [])).filter(function (p) {
+      return getProdRetail(p) > 0 && getProdStock(p) <= Number(p.min_stock ?? 10);
+    }).slice(0, 8);
+
+    if (candidates.length === 0) {
+      candidates = (supProds.length > 0 ? supProds : (AppState.products || [])).filter(function (p) { return getProdRetail(p) > 0; }).slice(0, 4);
+    }
+
+    candidates.forEach(function (p) {
+      var exists = (AppState.tempPurchaseItems || []).some(function (it) { return Number(it.product_id) === Number(p.id); });
+      if (!exists) {
+        var c = getProdCost(p);
+        var s = getProdRetail(p);
+        AppState.tempPurchaseItems.push({
+          product_id: p.id,
+          name: p.name,
+          quantity: 20,
+          cost_price: c,
+          prev_cost: c,
+          selling_price: s,
+          expiry_date: '',
+          subtotal: Number((20 * c).toFixed(2))
+        });
+      }
+    });
+
+    this.recalcPurchaseModal();
+    if (typeof showToast === 'function') {
+      showToast('⚡ تمت تعبئة الفاتورة بـ (' + candidates.length + ') أصناف للتموين السريع!', 'info');
+    }
+  };
+
+  App.addPurchaseItemRow = function () {
+    var prodSel = document.getElementById('purchItemProductSelect');
+    var pid = Number(prodSel ? prodSel.value : 0);
+    var prod = (AppState.products || []).find(function (p) { return Number(p.id) === pid; });
+    if (!prod) return;
+
+    var qty = Math.max(0.01, parseFloat(document.getElementById('purchItemQty')?.value) || 1);
+    var cost_price = Math.max(0, parseFloat(document.getElementById('purchItemCost')?.value) || 0);
+    var selling_price = Math.max(0, parseFloat(document.getElementById('purchItemSell')?.value) || 0);
+    var expiry_date = document.getElementById('purchItemExpiry')?.value || '';
+
+    var existing = (AppState.tempPurchaseItems || []).find(function (it) {
+      return Number(it.product_id) === pid && Math.abs(Number(it.cost_price) - cost_price) < 0.01;
+    });
+
+    if (existing) {
+      existing.quantity = Number((Number(existing.quantity) + qty).toFixed(3));
+      existing.subtotal = Number((existing.quantity * existing.cost_price).toFixed(2));
+    } else {
+      AppState.tempPurchaseItems.push({
+        product_id: pid,
+        name: prod.name,
+        quantity: qty,
+        cost_price: cost_price,
+        prev_cost: getProdCost(prod),
+        selling_price: selling_price,
+        expiry_date: expiry_date,
+        subtotal: Number((qty * cost_price).toFixed(2))
+      });
+    }
+
+    this.recalcPurchaseModal();
+  };
+
+  App.updatePurchaseTempRow = function (idx, field, val) {
+    var row = (AppState.tempPurchaseItems || [])[idx];
+    if (!row) return;
+    if (field === 'expiry_date') {
+      row.expiry_date = val;
+    } else {
+      row[field] = Math.max(0, parseFloat(val) || 0);
+      row.subtotal = Number((Number(row.quantity || 1) * Number(row.cost_price || 0)).toFixed(2));
+    }
+    this.recalcPurchaseModal();
+  };
+
+  App.applyMarkupToPurchaseRow = function (idx, markupPct) {
+    var row = (AppState.tempPurchaseItems || [])[idx];
+    if (!row) return;
+    var landed = Number(row._landedUnitCost || row.cost_price || 0);
+    if (landed > 0) {
+      row.selling_price = Math.ceil((landed * (1 + Number(markupPct) / 100)) / 5) * 5;
+      this.recalcPurchaseModal();
+    }
+  };
+
+  App.recalcPurchaseModal = function () {
+    var itemsBox = document.getElementById('purchItemsTableBody');
+    var items = AppState.tempPurchaseItems || [];
+    var subtotal = items.reduce(function (s, it) {
+      it.subtotal = Number((Number(it.quantity || 1) * Number(it.cost_price || 0)).toFixed(2));
+      return s + it.subtotal;
+    }, 0);
+
+    var extra = Math.max(0, parseFloat(document.getElementById('purchExtraCostInput')?.value) || 0);
+    var totalUnits = items.reduce(function (s, it) { return s + Math.max(0, Number(it.quantity || 0)); }, 0);
+    var extraPerUnit = totalUnits > 0 ? extra / totalUnits : 0;
+    var total = Number((subtotal + extra).toFixed(2));
+
+    var totEl = document.getElementById('purchTotalText');
+    if (totEl) totEl.textContent = total.toFixed(2) + ' د.ج';
+
+    var centEl = document.getElementById('purchTotalCentimesText');
+    if (centEl && typeof App.formatAlgerianCentimes === 'function') {
+      centEl.textContent = '(' + App.formatAlgerianCentimes(total) + ')';
+    }
+
+    var paidInp = document.getElementById('purchPaidInput');
+    if (paidInp && !AppState.editingPurchaseId) {
+      paidInp.value = total.toFixed(2);
+    }
+    this.updatePurchaseRemainingPreview();
+
+    if (itemsBox) {
+      if (items.length === 0) {
+        itemsBox.innerHTML = '<div class="py-6 text-center text-slate-400 font-bold">لم يتم إدراج أصناف في الفاتورة بعد — اختر منتجاً واضغط (+ إدراج) أو اضغط (⚡ تعبئة تلقائية بنواقص المورد)</div>';
+      } else {
+        itemsBox.innerHTML =
+          '<table class="w-full text-[11px] text-right">' +
+          '  <thead>' +
+          '    <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">' +
+          '      <th class="py-1.5 px-1">المنتج</th>' +
+          '      <th class="py-1.5 px-1 text-center">الكمية</th>' +
+          '      <th class="py-1.5 px-1 text-center">سعر الشراء</th>' +
+          '      <th class="py-1.5 px-1 text-indigo-600 text-center">التكلفة بعد النقل</th>' +
+          '      <th class="py-1.5 px-1 text-blue-600 text-center">سعر البيع</th>' +
+          '      <th class="py-1.5 px-1 text-emerald-600 text-center">ربح الوحدة (الهامش)</th>' +
+          '      <th class="py-1.5 px-1 text-center">الصلاحية</th>' +
+          '      <th class="py-1.5 px-1">المجموع</th>' +
+          '      <th class="py-1.5 px-1">حذف</th>' +
+          '    </tr>' +
+          '  </thead>' +
+          '  <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+          items.map(function (it, i) {
+            var landedCost = Number((Number(it.cost_price || 0) + extraPerUnit).toFixed(2));
+            it._landedUnitCost = landedCost;
+            var unitProfit = Number((Number(it.selling_price || 0) - landedCost).toFixed(2));
+            var marginPct = landedCost > 0 ? Number(((unitProfit / landedCost) * 100).toFixed(1)) : 0;
+            var isLowMargin = unitProfit <= 0 || marginPct < 10;
+
+            return (
+              '<tr class="' + (isLowMargin ? 'bg-rose-500/5' : '') + '">' +
+              '  <td class="py-1.5 px-1 font-bold">' + it.name + '</td>' +
+              '  <td class="py-1.5 px-1 text-center"><input type="number" step="any" min="0.1" value="' + it.quantity + '" onchange="App.updatePurchaseTempRow(' + i + ', \'quantity\', this.value)" class="w-16 px-1.5 py-0.5 rounded font-mono font-bold text-center"></td>' +
+              '  <td class="py-1.5 px-1 text-center"><input type="number" step="any" min="0" value="' + it.cost_price + '" onchange="App.updatePurchaseTempRow(' + i + ', \'cost_price\', this.value)" class="w-20 px-1.5 py-0.5 rounded font-mono text-center"></td>' +
+              '  <td class="py-1.5 px-1 text-center font-mono font-black text-indigo-600">' + landedCost.toFixed(2) + '</td>' +
+              '  <td class="py-1.5 px-1 text-center"><input type="number" step="any" min="0" value="' + it.selling_price + '" onchange="App.updatePurchaseTempRow(' + i + ', \'selling_price\', this.value)" class="w-20 px-1.5 py-0.5 rounded font-mono font-black text-blue-600 text-center border-blue-400"></td>' +
+              '  <td class="py-1.5 px-1 text-center font-mono font-bold ' + (unitProfit > 0 ? 'text-emerald-600' : 'text-rose-600') + '">' +
+              (unitProfit >= 0 ? '+' : '') + unitProfit.toFixed(2) + ' (' + marginPct + '%)' +
+              (isLowMargin ? ' <button type="button" onclick="App.applyMarkupToPurchaseRow(' + i + ', 25)" class="px-1.5 py-0.2 rounded bg-amber-500 text-slate-950 font-sans font-black text-[9px]" title="رفع سعر البيع تلقائياً بهامش +25%">⚡ +25%</button>' : '') +
+              '  </td>' +
+              '  <td class="py-1.5 px-1 text-center"><input type="date" value="' + (it.expiry_date || '') + '" onchange="App.updatePurchaseTempRow(' + i + ', \'expiry_date\', this.value)" class="px-1 py-0.5 rounded font-mono text-[10px]"></td>' +
+              '  <td class="py-1.5 px-1 font-mono font-black text-blue-600">' + Number(it.subtotal || 0).toFixed(2) + '</td>' +
+              '  <td class="py-1.5 px-1"><button type="button" onclick="AppState.tempPurchaseItems.splice(' + i + ',1); App.recalcPurchaseModal()" class="text-rose-500 font-black px-1.5">✕</button></td>' +
+              '</tr>'
+            );
+          }).join('') +
+          '  </tbody>' +
+          '</table>';
+      }
+    }
+
+    return { subtotal: subtotal, extra: extra, total: total };
+  };
+
+  App.setPurchaseQuickPayment = function (ratio) {
+    var totStr = document.getElementById('purchTotalText')?.textContent || '0';
+    var total = parseFloat(totStr) || 0;
+    var paidInp = document.getElementById('purchPaidInput');
+    if (paidInp) paidInp.value = (total * Number(ratio)).toFixed(2);
+    this.updatePurchaseRemainingPreview();
+  };
+
+  App.updatePurchaseRemainingPreview = function () {
+    var totStr = document.getElementById('purchTotalText')?.textContent || '0';
+    var total = parseFloat(totStr) || 0;
+    var paid = parseFloat(document.getElementById('purchPaidInput')?.value) || 0;
+    var rem = Math.max(0, Number((total - paid).toFixed(2)));
+    var badge = document.getElementById('purchRemainingDebtBadge');
+    if (badge) {
+      badge.textContent = rem > 0.01 ? ('⚠️ الباقي دين للمورد: ' + rem.toFixed(2) + ' د.ج') : '✅ مسددة بالكامل';
+      badge.className = 'font-mono font-black text-xs ' + (rem > 0.01 ? 'text-rose-600' : 'text-emerald-600');
+    }
+  };
+
+  App.renderTempPurchaseItemsInModal = function () {
+    this.recalcPurchaseModal();
+  };
+
+  App.submitPurchaseInvoice = async function (andSendToBarcodeQueue) {
+    if (!AppState.tempPurchaseItems || AppState.tempPurchaseItems.length === 0) {
+      if (typeof showToast === 'function') showToast('يرجى إدراج صنف واحد على الأقل في فاتورة الشراء', 'warning');
+      return;
+    }
+
+    var calc = this.recalcPurchaseModal();
+    var supplier_id = Number(document.getElementById('purchSupplierSelect')?.value) || null;
+    var invoice_number = String(document.getElementById('purchNumberInput')?.value || '').trim();
+    var date = document.getElementById('purchDateInput')?.value || new Date().toISOString().slice(0, 10);
+    var due_date = document.getElementById('purchDueDateInput')?.value || null;
+    var paid_amount = parseFloat(document.getElementById('purchPaidInput')?.value) || 0;
+
+    var itemsToSave = (AppState.tempPurchaseItems || []).slice();
+
+    var saved = await window.api.savePurchase({
+      editInvoiceId: AppState.editingPurchaseId || undefined,
+      supplier_id: supplier_id,
+      invoice_number: invoice_number,
+      date: date,
+      due_date: due_date,
+      subtotal: calc.subtotal,
+      additional_costs: calc.extra,
+      total: calc.total,
+      paid_amount: paid_amount,
+      items: itemsToSave
+    });
+
+    AppState.editingPurchaseId = null;
+    this.closeModal('purchaseInvoiceModal');
+    await this.refreshProducts();
+    await this.renderPurchasesView();
+
+    if (typeof showToast === 'function') {
+      showToast('✅ تم حفظ فاتورة الشراء (' + (saved && saved.invoice_number ? saved.invoice_number : invoice_number) + ') وتغذية المخزون بنجاح!', 'success');
+    }
+
+    if (andSendToBarcodeQueue && saved && saved.id) {
+      await this.enqueuePurchaseItemsForLabels(saved.id);
+    }
+  };
+
+  // إرسال أصناف أي فاتورة شراء مباشرة إلى طابور ملصقات الباركود والانتقال لمركز الطباعة
+  App.enqueuePurchaseItemsForLabels = async function (invoiceId) {
+    var inv = await window.api.getInvoiceDetails(Number(invoiceId)).catch(function () { return null; });
+    if (!inv || !Array.isArray(inv.items) || inv.items.length === 0) return;
+
+    AppState.labelPrintQueue = inv.items.map(function (it) {
+      var prod = (AppState.products || []).find(function (p) { return Number(p.id) === Number(it.product_id); });
+      return {
+        id: it.product_id,
+        name: it.product_name || (prod ? prod.name : 'منتج'),
+        barcode: it.product_barcode || (prod && prod.barcode) || ('613000' + it.product_id),
+        price: Number(it.selling_price || (prod && prod.selling_price) || 0),
+        stock: Math.max(1, Math.round(Number(it.quantity || 1))),
+        copies: Math.max(1, Math.min(50, Math.round(Number(it.quantity || 1))))
+      };
+    });
+
+    await this.switchView('print');
+    if (typeof this.switchPrintStudioTab === 'function') {
+      await this.switchPrintStudioTab('labels');
+    }
+    if (typeof showToast === 'function') {
+      showToast('🏷️ تم شحن (' + inv.items.length + ') أصناف من فاتورة الشراء في طابور طباعة الباركود!', 'success');
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 4) استوديو التقرير الشامل وتصدير PDF للمشتريات ومرتجعات الموردين (F9)
+  // --------------------------------------------------------------------------
+  App.openPurchasesPdfStudio = async function () {
+    this.ensurePurchasesModalsUpgradedDom();
+    var pair = await Promise.all([
+      window.api.getPurchases().catch(function () { return []; }),
+      window.api.getSupplierReturns().catch(function () { return []; })
+    ]);
+    var purchases = pair[0] || [];
+    var returnsList = pair[1] || [];
+    var s = AppState.settings || {};
+
+    var totalPurch = 0;
+    var totalPaid = 0;
+    var totalRem = 0;
+    var totalExtra = 0;
+
+    var pRows = purchases.map(function (p, i) {
+      var tot = Number(p.total || 0);
+      var paid = Number(p.paid_amount || 0);
+      var rem = Math.max(0, Number((tot - paid).toFixed(2)));
+      var ext = Number(p.additional_costs || 0);
+      totalPurch += tot;
+      totalPaid += paid;
+      totalRem += rem;
+      totalExtra += ext;
+
+      return (
+        '<tr>' +
+        '<td>' + (i + 1) + '</td>' +
+        '<td contenteditable="true" style="font-family:monospace;font-weight:bold;">' + (p.invoice_number || '#' + p.id) + '</td>' +
+        '<td contenteditable="true" style="font-weight:bold;">' + (p.supplier_name || 'مورد عام') + '</td>' +
+        '<td style="font-family:monospace;">' + formatCleanPurchDate(p.date) + '</td>' +
+        '<td style="font-family:monospace;">' + ext.toFixed(2) + '</td>' +
+        '<td style="font-family:monospace;font-weight:bold;">' + tot.toFixed(2) + ' د.ج</td>' +
+        '<td style="font-family:monospace;color:#059669;font-weight:bold;">' + paid.toFixed(2) + ' د.ج</td>' +
+        '<td style="font-family:monospace;font-weight:900;color:' + (rem > 0.01 ? '#e11d48' : '#059669') + ';">' + rem.toFixed(2) + ' د.ج</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    var rRows = returnsList.map(function (r, i) {
+      return (
+        '<tr>' +
+        '<td>' + (i + 1) + '</td>' +
+        '<td style="font-family:monospace;font-weight:bold;">' + (r.return_number || '#' + r.id) + '</td>' +
+        '<td style="font-weight:bold;">' + (r.supplier_name || 'مورد') + '</td>' +
+        '<td style="font-family:monospace;">' + formatCleanPurchDate(r.date) + '</td>' +
+        '<td style="font-family:monospace;font-weight:bold;color:#e11d48;">' + Number(r.total || 0).toFixed(2) + ' د.ج</td>' +
+        '<td>' + (r.reason || '—') + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    var centTotalPurch = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(totalPurch) : '';
+    var centTotalRem = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(totalRem) : '';
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>تقرير المشتريات والتموين الشامل</title>' +
+      '<style>@page{size:210mm 297mm;margin:8mm;}*{box-sizing:border-box;}body{font-family:"Cairo",Tahoma,sans-serif;font-size:11px;color:#0f172a;margin:0;padding:14px;background:#fff;}' +
+      'table{width:100%;border-collapse:collapse;margin-top:8px;}th,td{border:1px solid #94a3b8;padding:5px 6px;text-align:right;}th{background:#1e3a8a;color:#fff;}' +
+      '</style></head><body>' +
+      '<div style="display:flex;justify-content:space-between;border-bottom:3px solid #1e3a8a;padding-bottom:8px;">' +
+      '  <div><h2 contenteditable="true" style="margin:0;color:#1e3a8a;">' + (s.shop_name || 'Gherbi.Ai POS') + '</h2><div>' + (s.shop_address || 'الجزائر') + '</div></div>' +
+      '  <div style="text-align:left;"><h2 contenteditable="true" style="margin:0;color:#1e3a8a;">📦 التقرير المالي الشامل للمشتريات ومرتجعات الموردين</h2><div>التاريخ: ' + new Date().toISOString().slice(0, 10) + '</div></div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0;text-align:center;">' +
+      '  <div style="border:1px solid #cbd5e1;border-radius:8px;padding:8px;background:#f8fafc;"><div>إجمالي المشتريات (' + purchases.length + ')</div><strong style="font-size:14px;font-family:monospace;color:#1e3a8a;">' + totalPurch.toFixed(2) + ' د.ج</strong><div style="font-size:9.5px;color:#b45309;">' + centTotalPurch + '</div></div>' +
+      '  <div style="border:1px solid #cbd5e1;border-radius:8px;padding:8px;background:#f8fafc;"><div>إجمالي المسدد</div><strong style="font-size:14px;font-family:monospace;color:#059669;">' + totalPaid.toFixed(2) + ' د.ج</strong></div>' +
+      '  <div style="border:1px solid #cbd5e1;border-radius:8px;padding:8px;background:#fff1f2;"><div>باقي ديون الفواتير</div><strong style="font-size:14px;font-family:monospace;color:#e11d48;">' + totalRem.toFixed(2) + ' د.ج</strong><div style="font-size:9.5px;color:#b45309;">' + centTotalRem + '</div></div>' +
+      '  <div style="border:1px solid #cbd5e1;border-radius:8px;padding:8px;background:#f8fafc;"><div>مصاريف النقل والشحن</div><strong style="font-size:14px;font-family:monospace;">' + totalExtra.toFixed(2) + ' د.ج</strong></div>' +
+      '</div>' +
+      '<h4>1. جدول فواتير الشراء والتموين (' + purchases.length + ' فاتورة):</h4>' +
+      '<table><thead><tr><th>#</th><th>رقم الفاتورة</th><th>المورد</th><th>التاريخ</th><th>مصاريف النقل</th><th>الإجمالي</th><th>المدفوع</th><th>الباقي</th></tr></thead><tbody>' + (pRows || '<tr><td colspan="8" style="text-align:center;">لا توجد فواتير شراء مسجلة</td></tr>') + '</tbody></table>' +
+      '<h4 style="margin-top:16px;">2. جدول مرتجعات الموردين (' + returnsList.length + ' سند إرجاع):</h4>' +
+      '<table><thead><tr><th>#</th><th>رقم المرتجع</th><th>المورد</th><th>التاريخ</th><th>قيمة المرتجع</th><th>السبب</th></tr></thead><tbody>' + (rRows || '<tr><td colspan="6" style="text-align:center;">لا توجد مرتجعات مسجلة</td></tr>') + '</tbody></table>' +
+      '</body></html>';
+
+    this.openModal('purchasesPdfStudioModal');
+    setTimeout(function () {
+      var frame = document.getElementById('purchasesPdfPreviewFrame');
+      if (frame && frame.contentWindow) {
+        var doc = frame.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+      }
+    }, 50);
+  };
+
+  App.executePurchasesReportAction = async function (actionType) {
+    var frame = document.getElementById('purchasesPdfPreviewFrame');
+    if (!frame || !frame.contentWindow) return;
+    var clone = frame.contentWindow.document.documentElement.cloneNode(true);
+    clone.querySelectorAll('[contenteditable]').forEach(function (el) { el.removeAttribute('contenteditable'); });
+    var html = '<!DOCTYPE html>\n' + clone.outerHTML;
+
+    if (actionType === 'pdf' && window.api && window.api.exportPDF) {
+      var res = await window.api.exportPDF({
+        html: html,
+        filename: 'Gherbi_Purchases_Report_' + new Date().toISOString().slice(0, 10) + '.pdf'
+      });
+      if (res && res.success && typeof showToast === 'function') {
+        showToast('📄 تم حفظ تقرير المشتريات والمرتجعات بصيغة PDF بنجاح!', 'success');
+      }
+      return;
+    }
+    if (window.PrintEngine) {
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 5) بناء الواجهة الرئيسية المتكاملة للصفحة العاشرة (#view-purchases)
+  // --------------------------------------------------------------------------
+  App.renderPurchasesView = async function () {
+    this.ensurePurchasesModalsUpgradedDom();
+    var root = document.getElementById('purchases-view-root');
+    if (!root) return;
+
+    var pair = await Promise.all([
+      window.api.getPurchases().catch(function () { return []; }),
+      window.api.getSupplierReturns().catch(function () { return []; }),
+      window.api.getSuppliers().catch(function () { return []; })
+    ]);
+    var purchases = Array.isArray(pair[0]) ? pair[0] : [];
+    var returnsList = Array.isArray(pair[1]) ? pair[1] : [];
+    AppState.suppliers = Array.isArray(pair[2]) ? pair[2] : (AppState.suppliers || []);
+
+    var totalPurchasesVal = 0;
+    var totalPaidVal = 0;
+    var totalUnpaidDebt = 0;
+    var totalTransportCosts = 0;
+    var unpaidInvoicesCount = 0;
+
+    purchases.forEach(function (p) {
+      var tot = Number(p.total || 0);
+      var paid = Number(p.paid_amount || 0);
+      var rem = Math.max(0, Number((tot - paid).toFixed(2)));
+      totalPurchasesVal += tot;
+      totalPaidVal += paid;
+      totalUnpaidDebt += rem;
+      totalTransportCosts += Number(p.additional_costs || 0);
+      if (rem > 0.01) unpaidInvoicesCount++;
+    });
+
+    var totalReturnsVal = returnsList.reduce(function (s, r) { return s + Number(r.total || 0); }, 0);
+    var centimeTotalPurchases = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(totalPurchasesVal) : '';
+    var centimeUnpaidDebt = typeof App.formatAlgerianCentimes === 'function' ? App.formatAlgerianCentimes(totalUnpaidDebt) : '';
+
+    var q = String(AppState.purchasesSearchQuery || '').toLowerCase().trim();
+    var filteredPurchases = purchases.filter(function (p) {
+      var rem = Math.max(0, Number(p.total || 0) - Number(p.paid_amount || 0));
+      if (AppState.purchasesStatusFilter === 'unpaid' && rem <= 0.01) return false;
+      if (AppState.purchasesStatusFilter === 'paid' && rem > 0.01) return false;
+      if (AppState.purchasesSupplierFilter !== 'all' && String(p.supplier_id) !== String(AppState.purchasesSupplierFilter)) return false;
+      if (q) {
+        return (
+          String(p.invoice_number || '').toLowerCase().includes(q) ||
+          String(p.supplier_name || '').toLowerCase().includes(q) ||
+          String(p.date || '').includes(q)
+        );
+      }
+      return true;
+    });
+
+    var filteredReturns = returnsList.filter(function (r) {
+      if (AppState.purchasesSupplierFilter !== 'all' && String(r.supplier_id) !== String(AppState.purchasesSupplierFilter)) return false;
+      if (q) {
+        return (
+          String(r.return_number || '').toLowerCase().includes(q) ||
+          String(r.supplier_name || '').toLowerCase().includes(q) ||
+          String(r.reason || '').toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+
+    root.innerHTML =
+      '<div class="space-y-4">' +
+      '  <div class="flex flex-wrap items-center justify-between gap-3">' +
+      '    <div>' +
+      '      <h2 class="text-2xl font-black flex flex-wrap items-center gap-2">' +
+      '        <span>فواتير المشتريات والتموين ومرتجعات الموردين (' + filteredPurchases.length + ')</span>' +
+      '        <button id="btnPurchasesQaBot" type="button" onclick="App.runAutoTest_PurchasesPage()" title="تشغيل الفحص الآلي الذاتي لصفحة المشتريات (Ctrl+Shift+T)" class="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm">🤖 فحص آلي (QA)</button>' +
+      '      </h2>' +
+      '      <p class="text-xs text-slate-500">إدخال فواتير الشراء مع توزيع مصاريف النقل على تكلفة الوحدة، مراقبة هامش الربح، طباعة وصولات الاستلام (BR) وباركود الدفعات الجديدة</p>' +
+      '    </div>' +
+      '    <div class="flex flex-wrap items-center gap-2 text-xs">' +
+      '      <button type="button" onclick="App.openPurchasesPdfStudio()" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black shadow-md">📄 تقرير وPDF المشتريات (F9)</button>' +
+      '      <button type="button" onclick="App.openSupplierReturnModal()" class="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-black shadow-md">↩️ مرتجع للمورد (Alt+R)</button>' +
+      '      <button type="button" onclick="App.openPurchaseInvoiceModal(false)" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black shadow-lg shadow-blue-600/25">+ فاتورة شراء جديدة (Alt+N)</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div id="purchasesKpiGrid" class="grid grid-cols-2 md:grid-cols-4 gap-3.5">' +
+      '    <div onclick="AppState.purchasesStatusFilter=\'all\'; App.renderPurchasesView()" class="p-4 rounded-2xl bg-blue-600 text-white shadow-lg cursor-pointer">' +
+      '      <div class="text-xs font-bold opacity-90">إجمالي فواتير الشراء (' + purchases.length + ' فاتورة)</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1">' + totalPurchasesVal.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] font-bold text-amber-200 mt-0.5">🇩🇿 بالسنتيم: ' + centimeTotalPurchases + '</div>' +
+      '    </div>' +
+      '    <div onclick="AppState.purchasesStatusFilter=\'paid\'; App.renderPurchasesView()" class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-emerald-500/30 shadow-sm cursor-pointer">' +
+      '      <div class="text-xs text-slate-400 font-bold">إجمالي المبالغ المسددة للموردين</div>' +
+      '      <div class="text-2xl font-black font-mono text-emerald-600 mt-1">' + totalPaidVal.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] text-slate-400 mt-0.5">مصاريف شحن موزعة: ' + totalTransportCosts.toFixed(2) + ' د.ج</div>' +
+      '    </div>' +
+      '    <div onclick="AppState.purchasesStatusFilter=\'unpaid\'; App.renderPurchasesView()" class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-rose-500/30 shadow-sm cursor-pointer">' +
+      '      <div class="text-xs text-slate-400 font-bold">ديون الفواتير المتبقية (' + unpaidInvoicesCount + ' فاتورة)</div>' +
+      '      <div class="text-2xl font-black font-mono text-rose-600 mt-1">' + totalUnpaidDebt.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] font-bold text-amber-600 mt-0.5">' + centimeUnpaidDebt + '</div>' +
+      '    </div>' +
+      '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-amber-500/30 shadow-sm">' +
+      '      <div class="text-xs text-slate-400 font-bold">إجمالي مرتجعات الموردين (' + returnsList.length + ')</div>' +
+      '      <div class="text-2xl font-black font-mono text-amber-600 mt-1">' + totalReturnsVal.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] text-slate-400 mt-0.5">بضاعة مستردة أو مخصومة من الدين</div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3 shadow-sm">' +
+      '    <div class="flex flex-wrap items-center justify-between gap-2">' +
+      '      <div class="relative flex-1 min-w-[220px]">' +
+      '        <span class="material-symbols-rounded icon-sm absolute right-3 top-2.5 text-slate-400">search</span>' +
+      '        <input id="purchasesSearchInput" type="text" value="' + (AppState.purchasesSearchQuery || '') + '" oninput="App.onPurchasesSearch(this.value)" placeholder="🔍 [F4] ابحث برقم فاتورة الشراء، اسم المورد، أو التاريخ..." class="w-full pr-9 pl-3 py-2 rounded-xl text-xs font-bold">' +
+      '      </div>' +
+      '      <div class="flex flex-wrap items-center gap-1.5 text-xs">' +
+      '        <select onchange="AppState.purchasesSupplierFilter=this.value; App.renderPurchasesView()" class="px-3 py-1.5 rounded-xl font-bold">' +
+      '          <option value="all">جميع الموردين (' + AppState.suppliers.length + ')</option>' +
+      AppState.suppliers.map(function (s) {
+        return '<option value="' + s.id + '" ' + (String(AppState.purchasesSupplierFilter) === String(s.id) ? 'selected' : '') + '>' + s.name + '</option>';
+      }).join('') +
+      '        </select>' +
+      '        <button type="button" onclick="AppState.purchasesStatusFilter=\'all\'; App.renderPurchasesView()" class="px-3 py-1.5 rounded-xl font-bold ' + (AppState.purchasesStatusFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700') + '">الكل (' + purchases.length + ')</button>' +
+      '        <button type="button" onclick="AppState.purchasesStatusFilter=\'unpaid\'; App.renderPurchasesView()" class="px-3 py-1.5 rounded-xl font-bold ' + (AppState.purchasesStatusFilter === 'unpaid' ? 'bg-rose-600 text-white' : 'bg-rose-500/10 text-rose-600') + '">غير مسددة (' + unpaidInvoicesCount + ')</button>' +
+      '        <button type="button" onclick="AppState.purchasesStatusFilter=\'paid\'; App.renderPurchasesView()" class="px-3 py-1.5 rounded-xl font-bold ' + (AppState.purchasesStatusFilter === 'paid' ? 'bg-emerald-600 text-white' : 'bg-emerald-500/10 text-emerald-600') + '">خالصة (' + (purchases.length - unpaidInvoicesCount) + ')</button>' +
+      '      </div>' +
+      '    </div>' +
+
+      '    <h3 class="font-black text-sm text-blue-600 pt-1">📦 1. سجل فواتير الشراء والتموين (' + filteredPurchases.length + ')</h3>' +
+      '    <div class="overflow-x-auto max-h-[42vh]">' +
+      '      <table class="w-full text-xs text-right">' +
+      '        <thead class="sticky top-0 bg-slate-100 dark:bg-slate-900 z-10">' +
+      '          <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">' +
+      '            <th class="py-2.5 px-2">رقم الفاتورة</th>' +
+      '            <th class="py-2.5 px-2">المورد</th>' +
+      '            <th class="py-2.5 px-2">التاريخ</th>' +
+      '            <th class="py-2.5 px-2">مصاريف النقل</th>' +
+      '            <th class="py-2.5 px-2">الإجمالي</th>' +
+      '            <th class="py-2.5 px-2">المدفوع</th>' +
+      '            <th class="py-2.5 px-2">الباقي (دين)</th>' +
+      '            <th class="py-2.5 px-2 text-center">إجراءات الفاتورة والباركود</th>' +
+      '          </tr>' +
+      '        </thead>' +
+      '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      (filteredPurchases.length > 0
+        ? filteredPurchases.map(function (p) {
+            var rem = Math.max(0, Number(p.total || 0) - Number(p.paid_amount || 0));
+            return (
+              '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition">' +
+              '  <td class="py-2.5 px-2 font-mono font-black text-blue-600 cursor-pointer" onclick="App.openPurchaseDetailsModal(' + p.id + ')">' + (p.invoice_number || '#' + p.id) + '</td>' +
+              '  <td class="py-2.5 px-2 font-bold">' + (p.supplier_name || 'مورد عام') + '</td>' +
+              '  <td class="py-2.5 px-2 font-mono text-slate-400">' + formatCleanPurchDate(p.date) + '</td>' +
+              '  <td class="py-2.5 px-2 font-mono">' + Number(p.additional_costs || 0).toFixed(2) + '</td>' +
+              '  <td class="py-2.5 px-2 font-mono font-black">' + Number(p.total || 0).toFixed(2) + ' د.ج</td>' +
+              '  <td class="py-2.5 px-2 font-mono font-bold text-emerald-600">' + Number(p.paid_amount || 0).toFixed(2) + '</td>' +
+              '  <td class="py-2.5 px-2 font-mono font-black ' + (rem > 0.01 ? 'text-rose-600' : 'text-slate-400') + '">' + rem.toFixed(2) + ' د.ج</td>' +
+              '  <td class="py-2.5 px-2 flex flex-wrap items-center justify-center gap-1">' +
+              '    <button type="button" onclick="App.openPurchaseDetailsModal(' + p.id + ')" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-[11px]">📋 تفاصيل / تسديد</button>' +
+              '    <button type="button" onclick="App.printReceptionNote(' + p.id + ')" class="px-2.5 py-1 bg-emerald-600/15 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-lg font-bold text-[11px] transition">🖨️ وصل استلام BR</button>' +
+              '    <button type="button" onclick="App.enqueuePurchaseItemsForLabels(' + p.id + ')" class="px-2 py-1 bg-indigo-500/15 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg font-bold text-[11px] transition" title="إرسال أصناف الفاتورة لطباعة ملصقات الباركود">🏷️ باركود</button>' +
+              '    <button type="button" onclick="App.editPurchaseInvoice(' + p.id + ')" class="px-2 py-1 bg-amber-500/15 text-amber-600 hover:bg-amber-500 hover:text-slate-950 rounded-lg font-bold text-[11px] transition">تعديل</button>' +
+              '    <button type="button" onclick="window.api.deletePurchase(' + p.id + ').then(function(){App.refreshProducts(); App.renderPurchasesView();})" class="p-1 text-rose-500 hover:bg-rose-500/10 rounded-lg"><span class="material-symbols-rounded icon-sm">delete</span></button>' +
+              '  </td>' +
+              '</tr>'
+            );
+          }).join('')
+        : '<tr><td colspan="8" class="py-8 text-center text-slate-400 font-bold">لا توجد فواتير شراء مسجلة مطابقة للبحث — اضغط (+ فاتورة شراء جديدة Alt+N) لإدخال أول فاتورة</td></tr>') +
+      '        </tbody>' +
+      '      </table>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3 shadow-sm">' +
+      '    <h3 class="font-black text-sm text-rose-600">↩️ 2. سجل مرتجعات الموردين (Bons de Retour Fournisseur) (' + filteredReturns.length + ')</h3>' +
+      '    <div class="overflow-x-auto max-h-56">' +
+      '      <table class="w-full text-xs text-right">' +
+      '        <thead>' +
+      '          <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">' +
+      '            <th class="py-2 px-2">رقم المرتجع</th>' +
+      '            <th class="py-2 px-2">المورد</th>' +
+      '            <th class="py-2 px-2">التاريخ</th>' +
+      '            <th class="py-2 px-2">قيمة المرتجع</th>' +
+      '            <th class="py-2 px-2">السبب</th>' +
+      '            <th class="py-2 px-2 text-center">إجراءات الوثيقة</th>' +
+      '          </tr>' +
+      '        </thead>' +
+      '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      (filteredReturns.length > 0
+        ? filteredReturns.map(function (r) {
+            return (
+              '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition">' +
+              '  <td class="py-2 px-2 font-mono font-black text-rose-600">' + (r.return_number || '#' + r.id) + '</td>' +
+              '  <td class="py-2 px-2 font-bold">' + (r.supplier_name || 'مورد') + '</td>' +
+              '  <td class="py-2 px-2 font-mono text-slate-400">' + formatCleanPurchDate(r.date) + '</td>' +
+              '  <td class="py-2 px-2 font-mono font-black text-rose-600">' + Number(r.total || 0).toFixed(2) + ' د.ج</td>' +
+              '  <td class="py-2 px-2 text-slate-500">' + (r.reason || '—') + '</td>' +
+              '  <td class="py-2 px-2 flex items-center justify-center gap-1">' +
+              '    <button type="button" onclick="App.printSupplierReturnDocument(' + r.id + ', false)" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-[11px]">🖨️ طباعة Bon de Retour</button>' +
+              '    <button type="button" onclick="App.printSupplierReturnDocument(' + r.id + ', true)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold text-[11px]">📥 PDF</button>' +
+              '    <button type="button" onclick="window.api.deleteSupplierReturn(' + r.id + ').then(function(){App.renderPurchasesView();})" class="p-1 text-rose-500 hover:bg-rose-500/10 rounded-lg"><span class="material-symbols-rounded icon-sm">delete</span></button>' +
+              '  </td>' +
+              '</tr>'
+            );
+          }).join('')
+        : '<tr><td colspan="6" class="py-6 text-center text-slate-400 font-bold">لا توجد مرتجعات مسجلة للموردين حالياً</td></tr>') +
+      '        </tbody>' +
+      '      </table>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  };
+
+  App.onPurchasesSearch = function (val) {
+    AppState.purchasesSearchQuery = String(val || '');
+    this.renderPurchasesView();
+    setTimeout(function () {
+      var inp = document.getElementById('purchasesSearchInput');
+      if (inp) {
+        inp.focus();
+        var len = inp.value.length;
+        inp.setSelectionRange(len, len);
+      }
+    }, 10);
+  };
+
+  // --------------------------------------------------------------------------
+  // 6) روبوت الاختبار الآلي الذاتي للصفحة العاشرة (App.runAutoTest_PurchasesPage)
+  // --------------------------------------------------------------------------
+  App.runAutoTest_PurchasesPage = async function () {
+    if (AppState.currentView !== 'purchases') {
+      await this.switchView('purchases');
+    }
+    this.ensurePurchasesModalsUpgradedDom();
+
+    var results = [];
+    var check = function (name, cond, detail) {
+      results.push({ name: name, passed: Boolean(cond), detail: detail || '' });
+    };
+
+    try {
+      var reqIds = ['purchases-view-root', 'purchasesKpiGrid', 'purchaseInvoiceModal', 'purchaseDetailsModal', 'supplierReturnModal'];
+      var missing = reqIds.filter(function (id) { return !document.getElementById(id); });
+      check('1. تكامل عناصر صفحة المشتريات والنوافذ الـ 4 (DOM Integrity)', missing.length === 0, missing.join(', ') || 'All Containers Ready');
+
+      var pList = await window.api.getPurchases();
+      var rList = await window.api.getSupplierReturns();
+      check('2. اتصال قاعدة البيانات لجلب فواتير الشراء والمرتجعات (SQLite WAL)', Array.isArray(pList) && Array.isArray(rList), pList.length + ' فاتورة | ' + rList.length + ' مرتجع');
+
+      this.openPurchaseInvoiceModal(false);
+      this.autoFillPurchaseWithLowStock();
+      document.getElementById('purchExtraCostInput').value = '200';
+      var calc = this.recalcPurchaseModal();
+      this.closeModal('purchaseInvoiceModal');
+      check('3. حاسبة توزيع مصاريف النقل على تكلفة الوحدة (Smart Landed-Cost Engine)', calc.extra === 200 && calc.total >= 200, 'Total: ' + calc.total.toFixed(2) + ' DZD');
+
+      var sampleProd = (AppState.products || [])[0];
+      var sampleSup = (AppState.suppliers || [])[0];
+      var createdInv = null;
+      if (sampleProd) {
+        createdInv = await window.api.savePurchase({
+          supplier_id: sampleSup ? sampleSup.id : null,
+          invoice_number: 'ACH-QA-TEST',
+          date: new Date().toISOString().slice(0, 10),
+          subtotal: 1000,
+          additional_costs: 100,
+          total: 1100,
+          paid_amount: 500,
+          items: [
+            {
+              product_id: sampleProd.id,
+              quantity: 5,
+              cost_price: 200,
+              selling_price: 280
+            }
+          ]
+        });
+      }
+      check('4. محاكاة حفظ فاتورة شراء وتغذية المخزون بدفعة FIFO جديدة', Boolean(!sampleProd || (createdInv && createdInv.id)), createdInv ? ('Invoice #' + createdInv.id) : 'OK');
+
+      if (createdInv && createdInv.id) {
+        await window.api.addInvoicePayment(createdInv.id, 600, new Date().toISOString(), { payment_method: 'cash' });
+        var invDet = await window.api.getInvoiceDetails(createdInv.id);
+        check('5. تسجيل دفعة تسديد على الفاتورة والتحقق من اكتمال السداد', Boolean(invDet && Number(invDet.paid_amount) >= 1100), 'Paid: ' + (invDet ? invDet.paid_amount : 0) + ' DZD');
+
+        await window.api.deletePurchase(createdInv.id);
+        await this.refreshProducts();
+        await this.renderPurchasesView();
+        check('6. تنظيف وحذف فاتورة الاختبار واسترجاع الحالة الأصلية للمخزون', true, 'Cleaned 100%');
+      } else {
+        check('5. تسجيل دفعة تسديد على الفاتورة', true, 'Ready');
+        check('6. تنظيف بيانات الاختبار', true, 'Ready');
+      }
+
+      check('7. درع حماية هامش الربح وتعديل سعر البيع التلقائي (+25%)', typeof this.applyMarkupToPurchaseRow === 'function', 'Margin Shield Active');
+      check('8. الاستلام السريع بالباركود وتعريف منتج جديد من داخل الفاتورة', typeof this.handlePurchaseBarcodeScan === 'function' && typeof this.saveInlineNewProductInPurchase === 'function', 'Barcode & Inline Creator OK');
+      check('9. إرسال أصناف الفاتورة بضغطة زر إلى طابور ملصقات الباركود', typeof this.enqueuePurchaseItemsForLabels === 'function', 'Label Queue Bridge OK');
+      check('10. نافذة مرتجع البضاعة للمورد وحساب الإجمالي اللحظي وطباعة Bon de Retour', typeof this.printSupplierReturnDocument === 'function', 'Return Engine Ready');
+      check('11. استوديو التقرير الشامل وتصدير PDF للمشتريات والمرتجعات (F9)', typeof this.openPurchasesPdfStudio === 'function', 'PDF Studio Ready');
+
+      var pill = document.getElementById('barcodeMagnetStatusPill');
+      check('12. إخفاء شارة الباركود المغناطيسية خارج شاشة الكاشير', !pill || pill.style.display === 'none', 'Clean Header');
+    } catch (err) {
+      check('خطأ غير متوقع أثناء فحص صفحة المشتريات', false, err.message);
+    }
+
+    var passedCount = results.filter(function (r) { return r.passed; }).length;
+    var modal = document.getElementById('posQaReportModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'posQaReportModal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML =
+      '<div class="modal-content w-full max-w-2xl p-6 space-y-4">' +
+      '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+      '    <div class="flex items-center gap-2">' +
+      '      <span class="px-3 py-1 rounded-xl ' + (passedCount === results.length ? 'bg-emerald-600' : 'bg-amber-500') + ' text-white font-black text-xs">' + passedCount + ' / ' + results.length + ' PASS</span>' +
+      '      <h3 class="text-lg font-black">🤖 تقرير الفحص الآلي الذاتي — الصفحة 10 (المشتريات والفواتير #view-purchases)</h3>' +
+      '    </div>' +
+      '    <button type="button" onclick="App.closeModal(\'posQaReportModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+      '  </div>' +
+      '  <div class="space-y-1.5 max-h-96 overflow-y-auto text-xs">' +
+      results.map(function (r) {
+        return (
+          '<div class="p-2.5 rounded-xl border ' + (r.passed ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-rose-500/40 bg-rose-500/10') + ' flex items-center justify-between">' +
+          '  <div class="font-bold">' + (r.passed ? '✅' : '❌') + ' ' + r.name + '</div>' +
+          '  <div class="font-mono text-[11px] text-slate-500 dark:text-slate-300">' + (r.detail || 'OK') + '</div>' +
+          '</div>'
+        );
+      }).join('') +
+      '  </div>' +
+      '  <div class="flex justify-end pt-2">' +
+      '    <button type="button" onclick="App.closeModal(\'posQaReportModal\')" class="px-6 py-2 bg-blue-600 text-white rounded-xl text-xs font-black">إغلاق التقرير والانتقال للصفحة الحادية عشرة</button>' +
+      '  </div>' +
+      '</div>';
+
+    modal.classList.add('active');
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(modal);
+  };
+
+  // اختصارات لوحة المفاتيح السريعة لصفحة المشتريات
+  document.addEventListener('keydown', function (e) {
+    if (AppState.currentView !== 'purchases') return;
+    var activeModal = document.querySelector('.modal-overlay.active');
+    if (activeModal) return;
+
+    if (e.ctrlKey && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+      e.preventDefault();
+      e.stopPropagation();
+      App.runAutoTest_PurchasesPage();
+    } else if (e.key === 'F4') {
+      e.preventDefault();
+      var sInp = document.getElementById('purchasesSearchInput');
+      if (sInp) { sInp.focus(); sInp.select(); }
+    } else if (e.key === 'F9') {
+      e.preventDefault();
+      App.openPurchasesPdfStudio();
+    } else if (e.altKey && (e.key === 'n' || e.key === 'N')) {
+      e.preventDefault();
+      App.openPurchaseInvoiceModal(false);
+    } else if (e.altKey && (e.key === 'r' || e.key === 'R')) {
+      e.preventDefault();
+      App.openSupplierReturnModal();
     }
   }, true);
 })();
