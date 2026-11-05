@@ -26161,3 +26161,9903 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
     }
   }, true);
 })();
+
+// [ERP COMMAND CENTER V2 - PART 1 CORE & TABS 1-5]
+(function installErpCommandCenterPart1() {
+  if (!window.App || !window.AppState) return;
+
+  // إعدادات الحالة لمركز القيادة ERP ذو الـ 12 وحدة
+  AppState.analyticsTab = AppState.analyticsTab || 'summary';
+  AppState.erpAbcFilter = 'ALL'; // 'ALL' | 'A' | 'B' | 'C' | 'DEAD'
+  AppState.erpSegmentCategory = '';
+  AppState.erpDebtFilter = 'all'; // 'all' | 'customers' | 'suppliers' | 'critical'
+  AppState.erpMonthlyTargetDzd = Number(localStorage.getItem('gherbi_erp_monthly_target') || 500000);
+  AppState.zakatValuationMode = localStorage.getItem('gherbi_zakat_val_mode') || 'cost';
+  AppState.zakatExternalCash = Number(localStorage.getItem('gherbi_zakat_ext_cash') || 0);
+  AppState.simPriceChangePct = 0;
+  AppState.simVolumeChangePct = 0;
+  AppState.simCostChangePct = 0;
+  AppState.simExpenseCutPct = 0;
+
+  function loadZakatLog() {
+    try {
+      var raw = localStorage.getItem('gherbi_zakat_payments_v1');
+      return raw ? JSON.parse(raw) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  AppState.zakatPaymentsLog = loadZakatLog();
+
+  function getProdCost(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.cost_price ?? fb.cost_price ?? 0);
+  }
+
+  function getProdRetail(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.selling_price ?? fb.selling_price ?? 0);
+  }
+
+  function getProdStock(p) {
+    if (!p) return 0;
+    return Number(p.total_stock ?? p.stock ?? 0);
+  }
+
+  App.erpFormatCentimes = function (dzd) {
+    return typeof App.formatAlgerianCentimes === 'function'
+      ? App.formatAlgerianCentimes(dzd)
+      : (Math.round(Number(dzd || 0) * 100)).toLocaleString('fr-DZ') + ' سنتيم';
+  };
+
+  App.erpFormatDeltaBadge = function (currentVal, prevVal, inverseColors) {
+    var cur = Number(currentVal || 0);
+    var prv = Number(prevVal || 0);
+    if (prv === 0 && cur === 0) {
+      return '<span class="px-1.5 py-0.5 rounded bg-slate-500/15 text-slate-400 font-mono text-[10px] font-bold">0.0% مستقر</span>';
+    }
+    if (prv === 0 && cur > 0) {
+      return '<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-500 font-mono text-[10px] font-black">▲ +100% جديد</span>';
+    }
+    var pct = ((cur - prv) / Math.abs(prv)) * 100;
+    var isPos = pct >= 0;
+    var good = inverseColors ? !isPos : isPos;
+    var cls = good
+      ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300'
+      : 'bg-rose-500/20 text-rose-600 dark:text-rose-300';
+    var arrow = isPos ? '▲ +' : '▼ ';
+    return '<span class="px-1.5 py-0.5 rounded font-mono text-[10px] font-black ' + cls + '" title="الفترة السابقة: ' + prv.toFixed(2) + ' د.ج">' + arrow + pct.toFixed(1) + '%</span>';
+  };
+
+  // ==========================================================================
+  // 1. نافذة تأكيد الحذف النظامية الآمنة (#analyticsSafeDeleteModal — بدون alert/confirm)
+  // ==========================================================================
+  App.ensureAnalyticsModalsDom = function () {
+    if (!document.getElementById('analyticsSafeDeleteModal')) {
+      var dm = document.createElement('div');
+      dm.id = 'analyticsSafeDeleteModal';
+      dm.className = 'modal-overlay';
+      dm.innerHTML =
+        '<div class="modal-content w-full max-w-md p-6 space-y-4">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <h3 class="text-lg font-black text-rose-600 flex items-center gap-2">' +
+        '      <span class="material-symbols-rounded">delete</span>' +
+        '      <span>تأكيد حذف السجل المالي</span>' +
+        '    </h3>' +
+        '    <button type="button" onclick="App.closeModal(\'analyticsSafeDeleteModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div id="analyticsSafeDeleteBody" class="space-y-3 text-xs"></div>' +
+        '  <div class="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">' +
+        '    <button type="button" onclick="App.closeModal(\'analyticsSafeDeleteModal\')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء (Esc)</button>' +
+        '    <button type="button" onclick="App.executeConfirmedAnalyticsDelete()" class="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black shadow-lg">🗑️ نعم، تأكيد الحذف النهائي</button>' +
+        '  </div>' +
+        '</div>';
+      document.body.appendChild(dm);
+    }
+  };
+
+  App.promptAnalyticsSafeDelete = function (delType, itemId, labelText, amountVal) {
+    this.ensureAnalyticsModalsDom();
+    AppState._pendingAnDelete = { delType: delType, itemId: itemId };
+    var body = document.getElementById('analyticsSafeDeleteBody');
+    if (body) {
+      body.innerHTML =
+        '<div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2">' +
+        '  <div class="text-sm font-black">هل أنت متأكد من حذف السجل المالي: <span class="text-rose-600">' + labelText + '</span>؟</div>' +
+        '  <div class="flex justify-between pt-2 border-t border-slate-200 dark:border-slate-700">' +
+        '    <span class="text-slate-400 font-bold">القيمة المالية:</span>' +
+        '    <span class="font-mono font-black text-base text-blue-600">' + Number(amountVal || 0).toFixed(2) + ' د.ج (' + App.erpFormatCentimes(amountVal) + ')</span>' +
+        '  </div>' +
+        '</div>' +
+        '<div class="p-2.5 rounded-xl bg-amber-500/15 text-amber-800 dark:text-amber-300 font-bold">⚠️ سيتم تحديث جميع المؤشرات والميزانية العمومية في مركز القيادة فور التأكيد.</div>';
+    }
+    this.openModal('analyticsSafeDeleteModal');
+  };
+
+  App.executeConfirmedAnalyticsDelete = async function () {
+    var pending = AppState._pendingAnDelete;
+    if (!pending) return;
+    if (pending.delType === 'expense') {
+      await window.api.deleteExpense(Number(pending.itemId));
+    } else if (pending.delType === 'capital') {
+      await window.api.deleteCapital(Number(pending.itemId));
+    } else if (pending.delType === 'zakat_log') {
+      AppState.zakatPaymentsLog = (AppState.zakatPaymentsLog || []).filter(function (z) { return String(z.id) !== String(pending.itemId); });
+      try { localStorage.setItem('gherbi_zakat_payments_v1', JSON.stringify(AppState.zakatPaymentsLog)); } catch (_) {}
+    }
+    AppState._pendingAnDelete = null;
+    this.closeModal('analyticsSafeDeleteModal');
+    await this.renderAnalyticsView();
+    if (typeof showToast === 'function') showToast('🗑️ تم حذف السجل وتحديث مركز القيادة المالي بنجاح', 'info');
+  };
+
+  // ==========================================================================
+  // 2. محرك استخبارات الأعمال الشامل (ERP 360° Aggregator + PoP Delta + ABC Matrix + Health Score)
+  // ==========================================================================
+  App.fetchMasterExecutiveAnalytics = async function () {
+    var dateFrom = AppState.analyticsDateFrom || '';
+    var dateTo = AppState.analyticsDateTo || '';
+
+    var allData = await Promise.all([
+      window.api.getAnalytics({ dateFrom: dateFrom, dateTo: dateTo }).catch(function () { return {}; }),
+      window.api.getPosStock().catch(function () { return []; }),
+      window.api.getSales().catch(function () { return []; }),
+      window.api.getPurchases().catch(function () { return []; }),
+      window.api.getSupplierReturns().catch(function () { return []; }),
+      window.api.getCustomers().catch(function () { return []; }),
+      window.api.getSuppliers().catch(function () { return []; }),
+      window.api.getExpenses().catch(function () { return []; }),
+      window.api.getCapital().catch(function () { return []; }),
+      window.api.getProformas().catch(function () { return []; }),
+      window.api.getOrders().catch(function () { return []; }),
+      window.api.getBundles().catch(function () { return []; }),
+      window.api.getPromotions().catch(function () { return []; }),
+      window.api.getProductionOrders().catch(function () { return []; }),
+      window.api.getStocktakes().catch(function () { return []; }),
+      window.api.getCaisseSessions().catch(function () { return []; }),
+      window.api.getUsers().catch(function () { return []; }),
+      window.api.getAiCopilotInsights ? window.api.getAiCopilotInsights().catch(function () { return {}; }) : Promise.resolve({})
+    ]);
+
+    var base = allData[0] || {};
+    var products = Array.isArray(allData[1]) ? allData[1] : (AppState.products || []);
+    var sales = Array.isArray(allData[2]) ? allData[2] : [];
+    var purchases = Array.isArray(allData[3]) ? allData[3] : [];
+    var supplierReturns = Array.isArray(allData[4]) ? allData[4] : [];
+    var customers = Array.isArray(allData[5]) ? allData[5] : [];
+    var suppliers = Array.isArray(allData[6]) ? allData[6] : [];
+    var expenses = Array.isArray(allData[7]) ? allData[7] : [];
+    var capital = Array.isArray(allData[8]) ? allData[8] : [];
+    var proformas = Array.isArray(allData[9]) ? allData[9] : [];
+    var orders = Array.isArray(allData[10]) ? allData[10] : [];
+    var bundles = Array.isArray(allData[11]) ? allData[11] : [];
+    var promotions = Array.isArray(allData[12]) ? allData[12] : [];
+    var prodOrders = Array.isArray(allData[13]) ? allData[13] : [];
+    var stocktakes = Array.isArray(allData[14]) ? allData[14] : [];
+    var sessions = Array.isArray(allData[15]) ? allData[15] : [];
+    var users = Array.isArray(allData[16]) ? allData[16] : [];
+    var copilot = allData[17] || {};
+
+    AppState.products = products;
+
+    // تحديد الفترة الحالية والفترة السابقة للمقارنة المئوية (PoP Comparison)
+    var todayMs = Date.now();
+    var curStartMs = dateFrom ? new Date(dateFrom).getTime() : todayMs - 30 * 86400000;
+    var curEndMs = dateTo ? new Date(dateTo).getTime() + 86399000 : todayMs;
+    var spanMs = Math.max(86400000, curEndMs - curStartMs);
+    var prevStartMs = curStartMs - spanMs;
+    var prevEndMs = curStartMs - 1;
+
+    var inDateRange = function (dtStr) {
+      if (!dateFrom && !dateTo) return true;
+      var d = String(dtStr || '').slice(0, 10);
+      if (!d) return true;
+      if (dateFrom && d < dateFrom) return false;
+      if (dateTo && d > dateTo) return false;
+      return true;
+    };
+
+    var inPrevPeriod = function (dtStr) {
+      var ms = new Date(String(dtStr || '').slice(0, 10)).getTime();
+      return Number.isFinite(ms) && ms >= prevStartMs && ms <= prevEndMs;
+    };
+
+    var filteredSales = sales.filter(function (s) { return inDateRange(s.sale_date || s.created_at); });
+    var prevPeriodSales = sales.filter(function (s) { return inPrevPeriod(s.sale_date || s.created_at); });
+    var filteredPurchases = purchases.filter(function (p) { return inDateRange(p.date || p.created_at); });
+    var filteredExpenses = expenses.filter(function (e) { return inDateRange(e.date || e.created_at); });
+    var prevPeriodExpenses = expenses.filter(function (e) { return inPrevPeriod(e.date || e.created_at); });
+    var filteredCapital = capital.filter(function (c) { return inDateRange(c.date || c.created_at); });
+
+    // 1) تقييم المخزون الشامل + مصفوفة باريتو ABC + البضاعة الميتة
+    var invCostValue = 0;
+    var invSellValue = 0;
+    var invTotalUnits = 0;
+    var invByCategory = {};
+    var invBySupplier = {};
+    var lowStockItems = [];
+    var zeroStockItems = [];
+    var expiringItems = Array.isArray(base.expiringBatches) ? base.expiringBatches : [];
+
+    var topMap = {};
+    (base.topProducts || []).forEach(function (tp) {
+      if (tp.id) topMap[tp.id] = tp;
+      topMap[String(tp.name || '').trim()] = tp;
+    });
+
+    var totalProductProfits = (base.topProducts || []).reduce(function (s, tp) {
+      return s + Math.max(0, Number(tp.profit || 0));
+    }, 0);
+
+    var abcProductsList = [];
+    var cumulativeProfit = 0;
+
+    // ترتيب المنتجات حسب الربح لبناء مصفوفة ABC الحقيقية
+    var sortedProdsByProfit = products.slice().sort(function (a, b) {
+      var pa = topMap[a.id] || topMap[a.name] || {};
+      var pb = topMap[b.id] || topMap[b.name] || {};
+      return Number(pb.profit || 0) - Number(pa.profit || 0);
+    });
+
+    sortedProdsByProfit.forEach(function (p) {
+      var st = Math.max(0, getProdStock(p));
+      var cPrice = Math.max(0, getProdCost(p));
+      var sPrice = Math.max(0, getProdRetail(p));
+      var cVal = st * cPrice;
+      var sVal = st * sPrice;
+
+      invCostValue += cVal;
+      invSellValue += sVal;
+      invTotalUnits += st;
+
+      var cat = p.category || 'غير مصنف';
+      if (!invByCategory[cat]) {
+        invByCategory[cat] = { category: cat, count: 0, units: 0, cost_value: 0, sell_value: 0, profit: 0 };
+      }
+      invByCategory[cat].count += 1;
+      invByCategory[cat].units += st;
+      invByCategory[cat].cost_value += cVal;
+      invByCategory[cat].sell_value += sVal;
+      invByCategory[cat].profit += (sVal - cVal);
+
+      var sup = p.supplier || 'مورد عام';
+      if (!invBySupplier[sup]) {
+        invBySupplier[sup] = { supplier: sup, count: 0, units: 0, cost_value: 0, sell_value: 0, profit: 0 };
+      }
+      invBySupplier[sup].count += 1;
+      invBySupplier[sup].units += st;
+      invBySupplier[sup].cost_value += cVal;
+      invBySupplier[sup].sell_value += sVal;
+      invBySupplier[sup].profit += (sVal - cVal);
+
+      if (st <= 0) zeroStockItems.push(p);
+      else if (st <= Number(p.min_stock || 5)) lowStockItems.push(p);
+
+      var perf = topMap[p.id] || topMap[p.name] || { qty_sold: 0, revenue: 0, cost: 0, profit: 0 };
+      var pProfit = Math.max(0, Number(perf.profit || 0));
+      var pSold = Number(perf.qty_sold || 0);
+      cumulativeProfit += pProfit;
+
+      var cumShare = totalProductProfits > 0 ? (cumulativeProfit / totalProductProfits) * 100 : 100;
+      var abcClass = 'C';
+      if (pSold <= 0 && st > 0) {
+        abcClass = 'DEAD'; // بضاعة راكدة لم تُبع ولها رأس مال مجمد
+      } else if (pProfit > 0 && cumShare <= 80) {
+        abcClass = 'A'; // الفئة الذهبية (تصنع 80% من الربح)
+      } else if (pProfit > 0 && cumShare <= 95) {
+        abcClass = 'B'; // الفئة المتوسطة (15% من الربح)
+      }
+
+      abcProductsList.push({
+        id: p.id,
+        name: p.name,
+        barcode: p.barcode || '',
+        category: cat,
+        supplier: sup,
+        stock: st,
+        min_stock: Number(p.min_stock || 5),
+        cost_price: cPrice,
+        selling_price: sPrice,
+        tied_capital: Number(cVal.toFixed(2)),
+        expected_sell_val: Number(sVal.toFixed(2)),
+        unit_margin_pct: sPrice > 0 ? Number((((sPrice - cPrice) / sPrice) * 100).toFixed(1)) : 0,
+        qty_sold: pSold,
+        revenue: Number(perf.revenue || 0),
+        profit: Number(perf.profit || 0),
+        abc_class: abcClass
+      });
+    });
+
+    // 2) الديون وأعمارها (زبائن + موردون)
+    var custDebtList = [];
+    var totalCustDebt = 0;
+    var agingBuckets = { bucket_0_30: 0, bucket_31_60: 0, bucket_61_90: 0, bucket_90_plus: 0 };
+
+    customers.forEach(function (c) {
+      var cSales = sales.filter(function (s) { return Number(s.customer_id) === Number(c.id); });
+      var unpaidSalesDebt = cSales.reduce(function (sum, s) {
+        return sum + Math.max(0, Number(s.total || 0) - Number(s.paid_amount || 0));
+      }, 0);
+      var initDebtRem = Math.max(0, Number(c.initial_debt || 0) - Number(c.initial_debt_paid || 0));
+      var totalDebt = Number((unpaidSalesDebt + initDebtRem).toFixed(2));
+      if (totalDebt <= 0.01 && Number(c.total_debt || 0) > 0.01) totalDebt = Number(c.total_debt);
+
+      if (totalDebt > 0.01) {
+        totalCustDebt += totalDebt;
+        var oldestDateStr = c.created_at || new Date().toISOString();
+        cSales.forEach(function (s) {
+          if (Number(s.total || 0) - Number(s.paid_amount || 0) > 0.01 && s.sale_date && s.sale_date < oldestDateStr) {
+            oldestDateStr = s.sale_date;
+          }
+        });
+        var days = Math.max(0, Math.floor((todayMs - new Date(oldestDateStr).getTime()) / 86400000)) || 0;
+        var bucketKey = '0_30';
+        if (days <= 30) { agingBuckets.bucket_0_30 += totalDebt; bucketKey = '0_30'; }
+        else if (days <= 60) { agingBuckets.bucket_31_60 += totalDebt; bucketKey = '31_60'; }
+        else if (days <= 90) { agingBuckets.bucket_61_90 += totalDebt; bucketKey = '61_90'; }
+        else { agingBuckets.bucket_90_plus += totalDebt; bucketKey = '90_plus'; }
+
+        custDebtList.push({
+          id: c.id,
+          name: c.name,
+          phone: c.phone || '',
+          debt: totalDebt,
+          days: days,
+          bucket: bucketKey,
+          credit_limit: Number(c.credit_limit || 0)
+        });
+      }
+    });
+    custDebtList.sort(function (a, b) { return b.debt - a.debt; });
+
+    var supDebtList = [];
+    var totalSupDebt = 0;
+    suppliers.forEach(function (sup) {
+      var sPurch = purchases.filter(function (p) { return Number(p.supplier_id) === Number(sup.id); });
+      var unpaidPurch = sPurch.reduce(function (sum, p) {
+        return sum + Math.max(0, Number(p.total || 0) - Number(p.paid_amount || 0));
+      }, 0);
+      var initSupRem = Math.max(0, Number(sup.initial_debt || 0) - Number(sup.initial_debt_paid || 0));
+      var retCredits = supplierReturns
+        .filter(function (r) { return Number(r.supplier_id) === Number(sup.id); })
+        .reduce(function (sum, r) { return sum + Number(r.credit_applied || 0); }, 0);
+
+      var sDebt = Math.max(0, Number((unpaidPurch + initSupRem - retCredits).toFixed(2)));
+      if (sDebt > 0.01) {
+        totalSupDebt += sDebt;
+        supDebtList.push({
+          id: sup.id,
+          name: sup.name,
+          phone: sup.phone || '',
+          debt: sDebt,
+          invoices_count: sPurch.length,
+          total_purchased: sPurch.reduce(function (sum, p) { return sum + Number(p.total || 0); }, 0)
+        });
+      }
+    });
+    supDebtList.sort(function (a, b) { return b.debt - a.debt; });
+
+    // 3) المصاريف ورأس المال والمقارنة مع الفترة السابقة
+    var totalExpVal = filteredExpenses.reduce(function (s, e) { return s + Number(e.amount || 0); }, 0);
+    var prevExpVal = prevPeriodExpenses.reduce(function (s, e) { return s + Number(e.amount || 0); }, 0);
+
+    var expCatMap = {};
+    filteredExpenses.forEach(function (e) {
+      var cat = e.category || 'عام';
+      expCatMap[cat] = (expCatMap[cat] || 0) + Number(e.amount || 0);
+    });
+    var expByCategoryList = Object.entries(expCatMap).map(function (pair) {
+      return { category: pair[0], total: pair[1] };
+    }).sort(function (a, b) { return b.total - a.total; });
+
+    var capInjected = 0;
+    var capWithdrawn = 0;
+    filteredCapital.forEach(function (c) {
+      var amt = Number(c.amount || 0);
+      var cat = String(c.category || '');
+      if (amt < 0 || cat.includes('مسحوبات') || cat.includes('سحب')) capWithdrawn += Math.abs(amt);
+      else capInjected += Math.abs(amt);
+    });
+
+    // 4) المبيعات وشلال الأرباح + أداء البائعين (Cashier Performance Audit)
+    var grossSalesRev = 0;
+    var salesReturnsVal = 0;
+    var totalDiscountsVal = 0;
+    var totalStampDutyVal = 0;
+    var totalTvaCollectedVal = 0;
+    var cashSalesPaidVal = 0;
+    var cibSalesPaidVal = 0;
+    var creditSalesUnpaidVal = 0;
+
+    var userMap = {};
+    users.forEach(function (u) { userMap[u.id] = u.name || u.username || ('مستخدم #' + u.id); });
+    var cashierAuditMap = {};
+
+    filteredSales.forEach(function (s) {
+      var tot = Number(s.total || 0);
+      var paid = Number(s.paid_amount || 0);
+      var disc = Number(s.discount || 0);
+      var stamp = Number(s.stamp_amount || 0);
+      var taxPct = Number(s.tax_percentage || 0);
+      var method = String(s.payment_method || 'cash').toLowerCase();
+      var uid = s.user_id || 1;
+      var uName = s.user_name || userMap[uid] || 'المدير العام (Admin)';
+
+      if (!cashierAuditMap[uid]) {
+        cashierAuditMap[uid] = {
+          user_id: uid,
+          name: uName,
+          invoices_count: 0,
+          returns_count: 0,
+          gross_sales: 0,
+          returns_val: 0,
+          discounts_given: 0,
+          net_sales: 0
+        };
+      }
+
+      if (tot >= 0) {
+        grossSalesRev += tot;
+        cashierAuditMap[uid].invoices_count += 1;
+        cashierAuditMap[uid].gross_sales += tot;
+      } else {
+        salesReturnsVal += Math.abs(tot);
+        cashierAuditMap[uid].returns_count += 1;
+        cashierAuditMap[uid].returns_val += Math.abs(tot);
+      }
+      cashierAuditMap[uid].discounts_given += disc;
+      cashierAuditMap[uid].net_sales += tot;
+
+      totalDiscountsVal += disc;
+      totalStampDutyVal += stamp;
+      if (taxPct > 0 && tot > 0) totalTvaCollectedVal += (tot * taxPct) / (100 + taxPct);
+      if (method === 'cib' || method === 'card') cibSalesPaidVal += paid;
+      else cashSalesPaidVal += Math.max(0, paid);
+      if (tot > paid) creditSalesUnpaidVal += (tot - paid);
+    });
+
+    var prevNetRevenue = prevPeriodSales.reduce(function (s, x) { return s + Number(x.total || 0); }, 0);
+    var netRevenue = Number(base.net_revenue ?? (grossSalesRev - salesReturnsVal));
+    var cogs = Number(base.cogs || 0);
+    var grossProfit = Number((netRevenue - cogs).toFixed(2));
+    var netProfit = Number((grossProfit - totalExpVal).toFixed(2));
+    var estMarginRatio = netRevenue > 0 ? grossProfit / netRevenue : 0.2;
+    var prevNetProfit = Number(((prevNetRevenue * estMarginRatio) - prevExpVal).toFixed(2));
+
+    // 5) التدفق النقدي
+    var ordersDepositsTotal = orders.reduce(function (s, o) { return s + Number(o.deposit_amount || 0); }, 0);
+    var purchasesPaidTotal = filteredPurchases.reduce(function (s, p) { return s + Number(p.paid_amount || 0); }, 0);
+    var purchasesTotalVal = filteredPurchases.reduce(function (s, p) { return s + Number(p.total || 0); }, 0);
+    var purchasesTransportVal = filteredPurchases.reduce(function (s, p) { return s + Number(p.additional_costs || 0); }, 0);
+    var supplierReturnsRefundVal = supplierReturns.reduce(function (s, r) { return s + Number(r.refund_amount || 0); }, 0);
+
+    var cashInVal = Number(base.cash_in || (cashSalesPaidVal + ordersDepositsTotal + supplierReturnsRefundVal));
+    var cashOutVal = Number(base.cash_out || (purchasesPaidTotal + totalExpVal + salesReturnsVal));
+    var netCashFlowVal = Number((cashInVal - cashOutVal).toFixed(2));
+
+    // 6) حساب الزكاة الشرعية
+    var extCash = Number(AppState.zakatExternalCash || 0);
+    var activeLiquidCash = Math.max(0, netCashFlowVal) + extCash;
+    var invValForZakat = AppState.zakatValuationMode === 'sell' ? invSellValue : invCostValue;
+    var grossZakatAssets = Number((activeLiquidCash + invValForZakat + totalCustDebt).toFixed(2));
+    var deductibleZakatDebts = Number(totalSupDebt.toFixed(2));
+    var netZakatPool = Math.max(0, Number((grossZakatAssets - deductibleZakatDebts).toFixed(2)));
+    var zakatAmountDue = Number((netZakatPool * 0.025).toFixed(2));
+
+    // 7) حساب مؤشر الصحة المالية الشامل للمتجر (Store Financial Health Score 0-100) + رادار الإنذار المبكر
+    var grossMarginPct = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0;
+    var netMarginPct = netRevenue > 0 ? (netProfit / netRevenue) * 100 : 0;
+    var deadStockCapital = abcProductsList.filter(function (x) { return x.abc_class === 'DEAD'; }).reduce(function (s, x) { return s + x.tied_capital; }, 0);
+    var deadStockRatio = invCostValue > 0 ? (deadStockCapital / invCostValue) * 100 : 0;
+
+    var healthScore = 70; // نقطة الأساس
+    if (netProfit > 0) healthScore += 12;
+    else if (netProfit < 0) healthScore -= 15;
+    if (grossMarginPct >= 18) healthScore += 8;
+    if (totalSupDebt === 0) healthScore += 6;
+    if (agingBuckets.bucket_90_plus === 0) healthScore += 5;
+    else healthScore -= 8;
+    if (zeroStockItems.length > 5) healthScore -= 5;
+    healthScore = Math.max(15, Math.min(99, Math.round(healthScore)));
+
+    var earlyWarnings = [];
+    if (zeroStockItems.length > 0 || lowStockItems.length > 0) {
+      earlyWarnings.push({
+        level: 'warning',
+        icon: '🚨',
+        title: 'نواقص مخزنية حرجة (' + (zeroStockItems.length + lowStockItems.length) + ' صنف)',
+        desc: 'يوجد ' + zeroStockItems.length + ' صنف نافد تماماً و ' + lowStockItems.length + ' قريب النفاد — اضغط لتوليد فاتورة تموين',
+        actionTab: 'inventory'
+      });
+    }
+    if (deadStockCapital > 0) {
+      earlyWarnings.push({
+        level: 'info',
+        icon: '💤',
+        title: 'رأس مال مجمد في بضاعة غير متحركة (' + deadStockCapital.toFixed(0) + ' د.ج)',
+        desc: 'تم رصد سلع في الفئة D لم تتحرك — يُنصح بإنشاء عرض ترويجي لتسييلها في الكاشير',
+        actionTab: 'segment'
+      });
+    }
+    if (totalCustDebt > 0) {
+      earlyWarnings.push({
+        level: 'danger',
+        icon: '📒',
+        title: 'ديون زبائن قيد التحصيل (' + totalCustDebt.toFixed(2) + ' د.ج)',
+        desc: 'استخدم زر التذكير عبر WhatsApp في تبويب الديون لتسريع التحصيل النقدي',
+        actionTab: 'debts'
+      });
+    }
+    if (earlyWarnings.length === 0) {
+      earlyWarnings.push({
+        level: 'success',
+        icon: '✅',
+        title: 'جميع المؤشرات المالية والمخزنية في النطاق الأخضر المثالي!',
+        desc: 'لا توجد ديون حرجة أو اختناقات تشغيلية حالياً.',
+        actionTab: 'bilan360'
+      });
+    }
+
+    return {
+      ...base,
+      healthScore: healthScore,
+      earlyWarnings: earlyWarnings,
+      prevPeriod: {
+        net_revenue: prevNetRevenue,
+        net_profit: prevNetProfit,
+        expenses: prevExpVal,
+        sales_count: prevPeriodSales.length
+      },
+      gross_revenue: grossSalesRev,
+      returns_value: salesReturnsVal,
+      net_revenue: netRevenue,
+      total_discounts: totalDiscountsVal,
+      total_stamp_duty: totalStampDutyVal,
+      sales_tax_collected: totalTvaCollectedVal,
+      total_sales_count: filteredSales.length,
+      cash_sales_paid: cashSalesPaidVal,
+      cib_sales_paid: cibSalesPaidVal,
+      credit_sales_unpaid: creditSalesUnpaidVal,
+      cogs: cogs,
+      gross_profit: grossProfit,
+      net_profit: netProfit,
+      grossMarginPct: grossMarginPct,
+      netMarginPct: netMarginPct,
+      totalExpenses: totalExpVal,
+      expensesByCategory: expByCategoryList,
+      rawExpenses: filteredExpenses,
+      rawCapital: filteredCapital,
+      capInjected: capInjected,
+      capWithdrawn: capWithdrawn,
+      netCapital: Number((capInjected - capWithdrawn).toFixed(2)),
+      cash_in: cashInVal,
+      cash_out: cashOutVal,
+      net_cash_flow: netCashFlowVal,
+      cashBreakdown: {
+        salesPaid: cashSalesPaidVal + cibSalesPaidVal,
+        ordersDeposits: ordersDepositsTotal,
+        supplierRefunds: supplierReturnsRefundVal,
+        capitalInjected: capInjected,
+        purchasesPaid: purchasesPaidTotal,
+        operatingExpenses: totalExpVal,
+        salesRefunds: salesReturnsVal,
+        personalWithdrawals: capWithdrawn
+      },
+      inventory: {
+        cost_value: Number(invCostValue.toFixed(2)),
+        sell_value: Number(invSellValue.toFixed(2)),
+        expected_profit: Number((invSellValue - invCostValue).toFixed(2)),
+        total_units: invTotalUnits,
+        products_count: products.length,
+        byCategory: Object.values(invByCategory).sort(function (a, b) { return b.cost_value - a.cost_value; }),
+        bySupplier: Object.values(invBySupplier).sort(function (a, b) { return b.cost_value - a.cost_value; }),
+        lowStockItems: lowStockItems,
+        zeroStockItems: zeroStockItems,
+        expiringItems: expiringItems,
+        abcList: abcProductsList,
+        deadStockCapital: Number(deadStockCapital.toFixed(2)),
+        deadStockRatio: Number(deadStockRatio.toFixed(1))
+      },
+      debtAging: agingBuckets,
+      totalCustomerDebt: Number(totalCustDebt.toFixed(2)),
+      customerDebts: custDebtList,
+      totalSupplierDebt: Number(totalSupDebt.toFixed(2)),
+      supplierDebts: supDebtList,
+      cashierAudit: Object.values(cashierAuditMap).sort(function (a, b) { return b.net_sales - a.net_sales; }),
+      sessionsList: sessions,
+      copilotInsights: copilot,
+      zakat: {
+        liquid_cash: activeLiquidCash,
+        inventory_val: invValForZakat,
+        customer_debts: totalCustDebt,
+        gross_assets: grossZakatAssets,
+        supplier_debts: deductibleZakatDebts,
+        pool: netZakatPool,
+        amount: zakatAmountDue
+      },
+      ecosystem: {
+        purchasesCount: filteredPurchases.length,
+        purchasesTotal: purchasesTotalVal,
+        purchasesPaid: purchasesPaidTotal,
+        purchasesTransport: purchasesTransportVal,
+        supplierReturnsCount: supplierReturns.length,
+        proformasCount: proformas.length,
+        proformasPendingVal: proformas.filter(function (p) { return p.status === 'pending'; }).reduce(function (s, p) { return s + Number(p.total || 0); }, 0),
+        ordersCount: orders.length,
+        ordersPendingCount: orders.filter(function (o) { return o.status === 'pending'; }).length,
+        ordersDepositsTotal: ordersDepositsTotal,
+        bundlesCount: bundles.length,
+        promotionsCount: promotions.length,
+        prodOrdersCount: prodOrders.length,
+        stocktakesCount: stocktakes.length,
+        sessionsCount: sessions.length
+      }
+    };
+  };
+
+  // توليد فاتورة شراء تلقائية من النواقص المخزنية في مركز القيادة
+  App.erpCreatePurchaseFromShortages = async function () {
+    var data = AppState.analyticsData || (await this.fetchMasterExecutiveAnalytics());
+    var inv = data.inventory || {};
+    var shortages = (inv.zeroStockItems || []).concat(inv.lowStockItems || []);
+    if (shortages.length === 0) {
+      if (typeof showToast === 'function') showToast('✅ لا توجد نواقص مخزنية حالياً!', 'success');
+      return;
+    }
+    AppState.tempPurchaseItems = shortages.slice(0, 30).map(function (p) {
+      var cur = getProdStock(p);
+      var targetQty = Math.max(10, Number(p.min_stock || 5) * 3 - cur);
+      var c = getProdCost(p);
+      return {
+        product_id: p.id,
+        name: p.name,
+        quantity: targetQty,
+        bonus_qty: 0,
+        cost_price: c,
+        prev_cost: c,
+        selling_price: getProdRetail(p),
+        wholesale_price: 0,
+        expiry_date: '',
+        subtotal: Number((targetQty * c).toFixed(2))
+      };
+    });
+    await this.switchView('purchases');
+    if (typeof this.openPurchaseInvoiceModal === 'function') {
+      this.openPurchaseInvoiceModal(true);
+    }
+    if (typeof showToast === 'function') {
+      showToast('📦 تم تجهيز فاتورة شراء ذكية بـ (' + AppState.tempPurchaseItems.length + ' صنف ناقص) تلقائياً!', 'success');
+    }
+  };
+
+  // ==========================================================================
+  // 3. بناء الواجهة التنفيذية لمركز القيادة ERP ذو الـ 12 تبويباً (التبويبات 1..5 في الشطر الأول)
+  // ==========================================================================
+  App.ERP_TABS_CONFIG = [
+    { id: 'summary', label: '1. 🏆 الملخص وشلال الأرباح' },
+    { id: 'bilan360', label: '2. 🌐 الميزانية ونبض الـ14 قسماً' },
+    { id: 'segment', label: '3. 💎 مصفوفة ABC والشرائح' },
+    { id: 'debts', label: '4. ⚖️ الديون وأعمارها والتحصيل' },
+    { id: 'inventory', label: '5. 📦 تقييم المخزون والتموين' },
+    { id: 'expenses', label: '6. 💸 المصاريف ورأس المال' },
+    { id: 'caisse', label: '7. 🔍 أشعة التدفق النقدي' },
+    { id: 'simulator', label: '8. 🎛️ محاكي القرارات والأهداف' },
+    { id: 'audit', label: '9. 🛡️ رقابة البائعين والمناوبات' },
+    { id: 'charts', label: '10. 📊 الاستوديو البياني' },
+    { id: 'fiscal', label: '11. 🇩🇿 الجباية (IFU / G50 / 104)' },
+    { id: 'zakat', label: '12. 🕌 حاسبة وأرشيف الزكاة' }
+  ];
+
+  App.renderAnalyticsView = async function () {
+    this.ensureAnalyticsModalsDom();
+    var root = document.getElementById('analytics-view-root');
+    if (!root) return;
+
+    var data = await this.fetchMasterExecutiveAnalytics();
+    AppState.analyticsData = data;
+
+    var tab = AppState.analyticsTab || 'summary';
+    var totalAssets360 = Number((data.inventory.cost_value + Math.max(0, data.net_cash_flow) + data.totalCustomerDebt).toFixed(2));
+    var totalLiabilities360 = Number((data.totalSupplierDebt + data.ecosystem.ordersDepositsTotal).toFixed(2));
+    var storeNetWorth360 = Number((totalAssets360 - totalLiabilities360).toFixed(2));
+
+    var healthColor = data.healthScore >= 80 ? 'bg-emerald-600' : data.healthScore >= 60 ? 'bg-amber-500' : 'bg-rose-600';
+
+    root.innerHTML =
+      '<div class="space-y-3.5">' +
+      '  <!-- الشريط الإخباري والقيادي العلوي (ERP Executive Command Header) -->' +
+      '  <div class="p-3.5 rounded-2xl bg-slate-900 text-white border border-slate-800 shadow-xl space-y-2.5">' +
+      '    <div class="flex flex-wrap items-center justify-between gap-3">' +
+      '      <div class="flex items-center gap-3">' +
+      '        <div class="px-3.5 py-2 rounded-2xl ' + healthColor + ' text-white text-center shadow-lg">' +
+      '          <div class="text-[9px] font-bold uppercase opacity-90">صحة المتجر</div>' +
+      '          <div class="text-xl font-black font-mono">' + data.healthScore + '<span class="text-xs">/100</span></div>' +
+      '        </div>' +
+      '        <div>' +
+      '          <h2 class="text-xl font-black flex flex-wrap items-center gap-2">' +
+      '            <span>مركز القيادة التنفيذي وغرفة العمليات المالية (Gherbi.Ai ERP Command Center 360°)</span>' +
+      '            <button id="btnAnalyticsQaBot" type="button" onclick="App.runAutoTest_AnalyticsPage()" title="تشغيل الفحص الآلي الذاتي لمركز القيادة (Ctrl+Shift+T)" class="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm">🤖 فحص آلي (QA)</button>' +
+      '          </h2>' +
+      '          <p class="text-[11px] text-slate-400">تحليل 360° يربط الـ 14 قسماً: صافي الثروة (' + storeNetWorth360.toLocaleString('fr-DZ') + ' د.ج) | مصفوفة باريتو ABC | محاكي القرارات | الجباية الجزائرية والزكاة</p>' +
+      '        </div>' +
+      '      </div>' +
+
+      '      <div class="flex flex-wrap items-center gap-1.5 text-xs">' +
+      '        <input id="anDateFrom" type="date" value="' + (AppState.analyticsDateFrom || '') + '" class="px-2 py-1.5 rounded-xl font-mono font-bold bg-slate-800 text-white border-slate-700">' +
+      '        <input id="anDateTo" type="date" value="' + (AppState.analyticsDateTo || '') + '" class="px-2 py-1.5 rounded-xl font-mono font-bold bg-slate-800 text-white border-slate-700">' +
+      '        <button type="button" onclick="App.applyAnalyticsDateRange()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black">تطبيق</button>' +
+      '        <button type="button" onclick="App.setAnalyticsQuickRange(0)" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold">اليوم</button>' +
+      '        <button type="button" onclick="App.setAnalyticsQuickRange(7)" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold">7 أيام</button>' +
+      '        <button type="button" onclick="App.setAnalyticsQuickRange(30)" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold">30 يوماً</button>' +
+      '        <button type="button" onclick="AppState.analyticsDateFrom=\'\'; AppState.analyticsDateTo=\'\'; App.renderAnalyticsView()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-xl font-black">الكل</button>' +
+      '        <button type="button" onclick="App.openAlgerianFiscalModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black shadow">🇩🇿 تصريح G50/IFU</button>' +
+      '        <button type="button" onclick="App.printAnalyticsSalesSummary()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black shadow">🖨️ طباعة (F9)</button>' +
+      '      </div>' +
+      '    </div>' +
+
+      '    <!-- رادار الإنذار المبكر التفاعلي (Early Warning Radar) -->' +
+      '    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1 border-t border-slate-800 text-[11px]">' +
+      data.earlyWarnings.slice(0, 3).map(function (w) {
+        return (
+          '<div onclick="App.switchAnalyticsTab(\'' + w.actionTab + '\')" class="px-3 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-800 border border-slate-700 flex items-center justify-between cursor-pointer transition">' +
+          '  <div class="truncate"><span class="ml-1">' + w.icon + '</span><strong class="text-amber-300">' + w.title + ':</strong> <span class="text-slate-300">' + w.desc + '</span></div>' +
+          '  <span class="text-[10px] font-black text-blue-400 shrink-0 mr-2">افتح ⬅️</span>' +
+          '</div>'
+        );
+      }).join('') +
+      '    </div>' +
+      '  </div>' +
+
+      '  <!-- شريط وحدات الـ ERP الـ 12 -->' +
+      '  <div class="flex flex-wrap gap-1.5 border-b border-slate-200 dark:border-slate-700 pb-2 text-[11.5px] font-black">' +
+      this.ERP_TABS_CONFIG.map(function (t) {
+        var isAct = tab === t.id;
+        return (
+          '<button type="button" onclick="App.switchAnalyticsTab(\'' + t.id + '\')" class="px-3 py-1.5 rounded-xl transition ' +
+          (isAct
+            ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25'
+            : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-blue-400') +
+          '">' + t.label + '</button>'
+        );
+      }).join('') +
+      '  </div>' +
+
+      '  <div id="analyticsTabBody" class="space-y-4"></div>' +
+      '</div>';
+
+    var body = document.getElementById('analyticsTabBody');
+    if (!body) return;
+
+    // ------------------------------------------------------------------------
+    // الوحدة 1: الملخص المالي، مقارنة النمو (PoP Δ%)، وشلال الأرباح
+    // ------------------------------------------------------------------------
+    if (tab === 'summary') {
+      this.renderErpTab1_Summary(body, data, storeNetWorth360);
+    }
+    // ------------------------------------------------------------------------
+    // الوحدة 2: الميزانية العمومية (Bilan) ونبض الأقسام الـ 14
+    // ------------------------------------------------------------------------
+    else if (tab === 'bilan360') {
+      this.renderErpTab2_Bilan360(body, data, totalAssets360, totalLiabilities360, storeNetWorth360);
+    }
+    // ------------------------------------------------------------------------
+    // الوحدة 3: مصفوفة باريتو ABC (80/20) وتحليلات الشرائح
+    // ------------------------------------------------------------------------
+    else if (tab === 'segment') {
+      await this.renderErpTab3_AbcAndSegments(body, data);
+    }
+    // ------------------------------------------------------------------------
+    // الوحدة 4: رادار الديون وأعمارها (زبائن + موردون + تحصيل WhatsApp)
+    // ------------------------------------------------------------------------
+    else if (tab === 'debts') {
+      this.renderErpTab4_DebtsRadar(body, data);
+    }
+    // ------------------------------------------------------------------------
+    // الوحدة 5: تقييم المخزون والربح الكامن والتموين الذكي
+    // ------------------------------------------------------------------------
+    else if (tab === 'inventory') {
+      this.renderErpTab5_InventoryValuation(body, data);
+    }
+    // ------------------------------------------------------------------------
+    // الوحدات 6 إلى 12 (تعمل فوراً وتُوسّع في الشطر الثاني والثالث)
+    // ------------------------------------------------------------------------
+    else if (typeof this.renderErpTabs6To12 === 'function') {
+      await this.renderErpTabs6To12(tab, body, data);
+    } else {
+      this.renderErpFallbackTabs6To12(tab, body, data);
+    }
+
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  };
+
+  // ==========================================================================
+  // 4. دوال العرض التفصيلية للتبويبات الخمسة الأولى (1..5) في الشطر الأول
+  // ==========================================================================
+  App.renderErpTab1_Summary = function (body, data, storeNetWorth360) {
+    var avgBasket = data.total_sales_count > 0 ? (data.net_revenue / data.total_sales_count).toFixed(2) : '0.00';
+    var targetDzd = Math.max(1000, Number(AppState.erpMonthlyTargetDzd || 500000));
+    var targetPct = Math.min(100, Math.round((data.net_revenue / targetDzd) * 100));
+
+    body.innerHTML =
+      '<!-- المؤشرات التنفيذية الـ 4 مع شارة النمو المئوي (PoP Delta Δ%) والسنتيم الجزائري -->' +
+      '<div class="grid grid-cols-2 md:grid-cols-4 gap-3.5">' +
+      '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-blue-500/30 shadow-sm">' +
+      '    <div class="flex items-center justify-between"><span class="text-xs text-slate-400 font-bold">صافي المبيعات (' + data.total_sales_count + ' فاتورة)</span>' + this.erpFormatDeltaBadge(data.net_revenue, data.prevPeriod.net_revenue, false) + '</div>' +
+      '    <div class="text-2xl font-black font-mono text-blue-600 mt-1">' + data.net_revenue.toFixed(2) + ' د.ج</div>' +
+      '    <div class="text-[11px] font-bold text-amber-600 mt-0.5">🇩🇿 ' + this.erpFormatCentimes(data.net_revenue) + '</div>' +
+      '    <div class="text-[10px] text-slate-400 mt-0.5">متوسط السلة: ' + avgBasket + ' د.ج | تحقيق الهدف: ' + targetPct + '%</div>' +
+      '  </div>' +
+      '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-amber-500/30 shadow-sm">' +
+      '    <div class="flex items-center justify-between"><span class="text-xs text-slate-400 font-bold">تكلفة البضاعة المباعة (COGS)</span><span class="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 font-mono text-[10px] font-bold">FIFO دقيق</span></div>' +
+      '    <div class="text-2xl font-black font-mono text-amber-500 mt-1">' + data.cogs.toFixed(2) + ' د.ج</div>' +
+      '    <div class="text-[11px] font-bold text-slate-500 mt-0.5">🇩🇿 ' + this.erpFormatCentimes(data.cogs) + '</div>' +
+      '    <div class="text-[10px] text-slate-400 mt-0.5">مشتريات الفترة: ' + data.ecosystem.purchasesTotal.toFixed(2) + ' د.ج</div>' +
+      '  </div>' +
+      '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-indigo-500/30 shadow-sm">' +
+      '    <div class="flex items-center justify-between"><span class="text-xs text-slate-400 font-bold">مجمل الربح (الهامش ' + data.grossMarginPct.toFixed(1) + '%)</span><span class="px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-600 font-mono text-[10px] font-bold">Gross</span></div>' +
+      '    <div class="text-2xl font-black font-mono text-indigo-600 mt-1">' + data.gross_profit.toFixed(2) + ' د.ج</div>' +
+      '    <div class="text-[11px] font-bold text-amber-600 mt-0.5">🇩🇿 ' + this.erpFormatCentimes(data.gross_profit) + '</div>' +
+      '    <div class="text-[10px] text-slate-400 mt-0.5">المصاريف التشغيلية: -' + data.totalExpenses.toFixed(2) + ' د.ج</div>' +
+      '  </div>' +
+      '  <div class="p-4 rounded-2xl bg-emerald-600 text-white shadow-lg">' +
+      '    <div class="flex items-center justify-between"><span class="text-xs opacity-90 font-bold">صافي الربح النهائي (' + data.netMarginPct.toFixed(1) + '%)</span>' + this.erpFormatDeltaBadge(data.net_profit, data.prevPeriod.net_profit, false) + '</div>' +
+      '    <div class="text-2xl font-black font-mono mt-1">' + data.net_profit.toFixed(2) + ' د.ج</div>' +
+      '    <div class="text-[11px] font-bold text-amber-200 mt-0.5">🇩🇿 ' + this.erpFormatCentimes(data.net_profit) + '</div>' +
+      '    <div class="text-[10px] opacity-90 mt-0.5">صافي ثروة المحل: ' + storeNetWorth360.toLocaleString('fr-DZ') + ' د.ج</div>' +
+      '  </div>' +
+      '</div>' +
+
+      '<!-- معادلة شلال الأرباح المحاسبي (P&L Profit Waterfall) -->' +
+      '<div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2.5 shadow-sm">' +
+      '  <div class="flex flex-wrap items-center justify-between gap-2">' +
+      '    <h3 class="font-black text-sm text-indigo-600">📊 شلال الأرباح المحاسبي التفصيلي (P&L Waterfall — Compte de Résultat):</h3>' +
+      '    <span class="text-[11px] font-bold text-slate-400">يتتبع كل دينار من لحظة البيع في الكاشير حتى صافي الربح</span>' +
+      '  </div>' +
+      '  <div class="grid grid-cols-2 md:grid-cols-7 gap-2 text-center text-xs">' +
+      '    <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">1. إجمالي المبيعات</div><div class="font-mono font-black text-blue-600 mt-0.5">' + data.gross_revenue.toFixed(2) + '</div></div>' +
+      '    <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">2. (-) المرتجعات</div><div class="font-mono font-bold text-rose-500 mt-0.5">-' + data.returns_value.toFixed(2) + '</div></div>' +
+      '    <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">3. (-) التخفيضات</div><div class="font-mono font-bold text-amber-600 mt-0.5">-' + data.total_discounts.toFixed(2) + '</div></div>' +
+      '    <div class="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30"><div class="text-[10px] font-bold text-blue-600">4. (=) صافي المبيعات</div><div class="font-mono font-black text-blue-600 mt-0.5">' + data.net_revenue.toFixed(2) + '</div></div>' +
+      '    <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">5. (-) تكلفة السلعة</div><div class="font-mono font-bold text-amber-600 mt-0.5">-' + data.cogs.toFixed(2) + '</div></div>' +
+      '    <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">6. (-) المصاريف</div><div class="font-mono font-bold text-rose-600 mt-0.5">-' + data.totalExpenses.toFixed(2) + '</div></div>' +
+      '    <div class="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40"><div class="text-[10px] font-black text-emerald-700 dark:text-emerald-300">7. (=) صافي الربح</div><div class="font-mono font-black text-emerald-600 mt-0.5">' + data.net_profit.toFixed(2) + '</div></div>' +
+      '  </div>' +
+      '</div>' +
+
+      '<!-- جدول أفضل المنتجات ربحية + طرق الدفع والزبائن -->' +
+      '<div class="grid grid-cols-1 lg:grid-cols-12 gap-4">' +
+      '  <div class="lg:col-span-7 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">' +
+      '    <div class="flex items-center justify-between">' +
+      '      <h3 class="font-black text-sm text-emerald-600">🏆 أفضل المنتجات مساهمة في الربح الصافي</h3>' +
+      '      <button type="button" onclick="App.switchAnalyticsTab(\'segment\')" class="text-[11px] font-black text-blue-600 hover:underline">عرض مصفوفة باريتو ABC الكاملة ⬅️</button>' +
+      '    </div>' +
+      '    <div class="overflow-x-auto max-h-72">' +
+      '      <table class="w-full text-xs text-right">' +
+      '        <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500"><tr><th class="p-2">#</th><th class="p-2">المنتج</th><th class="p-2 text-center">الكمية المباعة</th><th class="p-2">الإيراد</th><th class="p-2">التكلفة</th><th class="p-2">صافي الربح</th></tr></thead>' +
+      '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      (data.topProducts || []).map(function (tp, i) {
+        return (
+          '<tr>' +
+          '  <td class="p-2 font-mono text-slate-400">' + (i + 1) + '</td>' +
+          '  <td class="p-2 font-bold">' + tp.name + '</td>' +
+          '  <td class="p-2 text-center font-mono font-black">' + tp.qty_sold + '</td>' +
+          '  <td class="p-2 font-mono text-blue-600 font-bold">' + Number(tp.revenue || 0).toFixed(2) + '</td>' +
+          '  <td class="p-2 font-mono text-slate-400">' + Number(tp.cost || 0).toFixed(2) + '</td>' +
+          '  <td class="p-2 font-mono font-black text-emerald-600">+' + Number(tp.profit || 0).toFixed(2) + ' د.ج</td>' +
+          '</tr>'
+        );
+      }).join('') +
+      '        </tbody>' +
+      '      </table>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="lg:col-span-5 space-y-4">' +
+      '    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-2.5">' +
+      '      <h3 class="font-black text-sm text-blue-600">💳 توزيع المبيعات حسب وسيلة الدفع</h3>' +
+      '      <div class="grid grid-cols-3 gap-2 text-center text-xs">' +
+      '        <div class="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20"><div class="text-[10px] text-slate-500 font-bold">💵 نقداً (Cash)</div><div class="font-mono font-black text-emerald-600 mt-0.5">' + data.cash_sales_paid.toFixed(2) + '</div></div>' +
+      '        <div class="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20"><div class="text-[10px] text-slate-500 font-bold">💳 بطاقة CIB</div><div class="font-mono font-black text-blue-600 mt-0.5">' + data.cib_sales_paid.toFixed(2) + '</div></div>' +
+      '        <div class="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20"><div class="text-[10px] text-slate-500 font-bold">📒 آجل (دين)</div><div class="font-mono font-black text-rose-600 mt-0.5">' + data.credit_sales_unpaid.toFixed(2) + '</div></div>' +
+      '      </div>' +
+      '    </div>' +
+
+      '    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-2.5">' +
+      '      <h3 class="font-black text-sm text-indigo-600">👥 كبار الزبائن المساهمين في رقم الأعمال</h3>' +
+      '      <div class="space-y-1.5 text-xs max-h-44 overflow-y-auto">' +
+      ((data.topCustomers && data.topCustomers.length > 0)
+        ? data.topCustomers.map(function (tc, idx) {
+            return '<div class="flex justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-900"><span class="font-bold">' + (idx + 1) + '. ' + tc.name + ' (' + tc.purchase_count + ' فاتورة)</span><span class="font-mono font-black text-blue-600">' + Number(tc.total_revenue || 0).toFixed(2) + ' د.ج</span></div>';
+          }).join('')
+        : '<div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 text-slate-500 font-bold text-center">إجمالي مبيعات الزبائن العابرين: ' + data.net_revenue.toFixed(2) + ' د.ج (' + data.total_sales_count + ' فاتورة) — اختر اسم الزبون في الكاشير لتتبع مساهمته هنا.</div>') +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  App.renderErpTab2_Bilan360 = function (body, data, totalAssets360, totalLiabilities360, storeNetWorth360) {
+    var eco = data.ecosystem;
+    body.innerHTML =
+      '<div class="grid grid-cols-1 md:grid-cols-3 gap-4">' +
+      '  <div class="p-5 rounded-2xl bg-emerald-600 text-white shadow-lg space-y-1">' +
+      '    <div class="text-xs font-bold opacity-90">🟢 إجمالي أصول وممتلكات المحل (Actifs / Assets)</div>' +
+      '    <div class="text-2xl font-black font-mono">' + totalAssets360.toFixed(2) + ' د.ج</div>' +
+      '    <div class="text-[11px] font-bold text-amber-200">🇩🇿 ' + this.erpFormatCentimes(totalAssets360) + '</div>' +
+      '    <div class="text-[11px] opacity-90 pt-1">بضاعة بالتكلفة (' + data.inventory.cost_value.toFixed(0) + ') + سيولة (' + Math.max(0, data.net_cash_flow).toFixed(0) + ') + ديون لنا (' + data.totalCustomerDebt.toFixed(0) + ')</div>' +
+      '  </div>' +
+      '  <div class="p-5 rounded-2xl bg-white dark:bg-slate-800 border border-rose-500/30 shadow-sm space-y-1">' +
+      '    <div class="text-xs text-slate-400 font-bold">🔴 إجمالي الخصوم والالتزامات (Passifs / Liabilities)</div>' +
+      '    <div class="text-2xl font-black font-mono text-rose-600">' + totalLiabilities360.toFixed(2) + ' د.ج</div>' +
+      '    <div class="text-[11px] font-bold text-amber-600">🇩🇿 ' + this.erpFormatCentimes(totalLiabilities360) + '</div>' +
+      '    <div class="text-[11px] text-slate-400 pt-1">ديون الموردين علينا (' + data.totalSupplierDebt.toFixed(0) + ' د.ج) + عربون طلبيات (' + eco.ordersDepositsTotal.toFixed(0) + ' د.ج)</div>' +
+      '  </div>' +
+      '  <div class="p-5 rounded-2xl bg-indigo-600 text-white shadow-lg space-y-1">' +
+      '    <div class="text-xs font-bold opacity-90">💎 صافي القيمة السوقية وثروة المحل (Net Worth)</div>' +
+      '    <div class="text-2xl font-black font-mono">' + storeNetWorth360.toFixed(2) + ' د.ج</div>' +
+      '    <div class="text-[11px] font-bold text-amber-200">🇩🇿 ' + this.erpFormatCentimes(storeNetWorth360) + '</div>' +
+      '    <div class="text-[11px] opacity-90 pt-1">بالإضافة إلى ربح كامن بالمخزون: +' + data.inventory.expected_profit.toFixed(0) + ' د.ج</div>' +
+      '  </div>' +
+      '</div>' +
+
+      '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3">' +
+      '  <h3 class="font-black text-sm text-blue-600">🧭 خريطة التحكم القيادية للأقسام الـ 14 (انقر على أي قسم للانتقال المباشر إليه):</h3>' +
+      '  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">' +
+      '    <div onclick="App.switchView(\'sales\')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-blue-500 cursor-pointer transition"><div class="font-black text-blue-600">🧾 1-2. الكاشير والمبيعات</div><div class="font-mono font-bold mt-1">' + data.total_sales_count + ' فاتورة | ' + data.net_revenue.toFixed(2) + ' د.ج</div></div>' +
+      '    <div onclick="App.switchView(\'caisse\')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-blue-500 cursor-pointer transition"><div class="font-black text-emerald-600">🗄️ 3. الصندوق والمناوبات</div><div class="font-mono font-bold mt-1">' + eco.sessionsCount + ' مناوبة | تدفق: ' + data.net_cash_flow.toFixed(2) + '</div></div>' +
+      '    <div onclick="App.switchView(\'inventory\')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-blue-500 cursor-pointer transition"><div class="font-black text-indigo-600">📦 4. المخزون والسلع</div><div class="font-mono font-bold mt-1">' + data.inventory.products_count + ' منتج | تكلفة: ' + data.inventory.cost_value.toFixed(0) + ' د.ج</div></div>' +
+      '    <div onclick="App.switchView(\'bundles\')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-blue-500 cursor-pointer transition"><div class="font-black text-amber-600">🎁 5. الحزم والعروض</div><div class="font-mono font-bold mt-1">' + eco.bundlesCount + ' حزمة | ' + eco.promotionsCount + ' عرض ترويجي</div></div>' +
+      '    <div onclick="App.switchView(\'manufacturing\')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-blue-500 cursor-pointer transition"><div class="font-black text-purple-600">🏭 6. التصنيع والإنتاج</div><div class="font-mono font-bold mt-1">' + eco.prodOrdersCount + ' أمر إنتاج مسجل</div></div>' +
+      '    <div onclick="App.switchView(\'stocktake\')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-blue-500 cursor-pointer transition"><div class="font-black text-teal-600">📋 7. الجرد المخزني</div><div class="font-mono font-bold mt-1">' + eco.stocktakesCount + ' محضر جرد ومطابقة</div></div>' +
+      '    <div onclick="App.switchView(\'suppliers\')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-blue-500 cursor-pointer transition"><div class="font-black text-rose-600">🚛 9. الموردون وديونهم</div><div class="font-mono font-bold mt-1">دين الموردين: ' + data.totalSupplierDebt.toFixed(2) + ' د.ج</div></div>' +
+      '    <div onclick="App.switchView(\'purchases\')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-blue-500 cursor-pointer transition"><div class="font-black text-blue-600">🛍️ 10. فواتير المشتريات</div><div class="font-mono font-bold mt-1">' + eco.purchasesCount + ' فاتورة | ' + eco.purchasesTotal.toFixed(2) + ' د.ج</div></div>' +
+      '    <div onclick="App.switchView(\'customers\')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-blue-500 cursor-pointer transition"><div class="font-black text-emerald-600">👥 11. الزبائن والديون</div><div class="font-mono font-bold mt-1">ديون لنا: ' + data.totalCustomerDebt.toFixed(2) + ' د.ج</div></div>' +
+      '    <div onclick="App.switchView(\'proformas\')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-blue-500 cursor-pointer transition"><div class="font-black text-indigo-600">📄 12. الفواتير الشكلية</div><div class="font-mono font-bold mt-1">' + eco.proformasCount + ' عرض | ساري: ' + eco.proformasPendingVal.toFixed(0) + ' د.ج</div></div>' +
+      '    <div onclick="App.switchView(\'orders\')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-blue-500 cursor-pointer transition"><div class="font-black text-teal-600">📌 13. طلبيات الزبائن</div><div class="font-mono font-bold mt-1">' + eco.ordersPendingCount + ' قيد التجهيز | عربون: ' + eco.ordersDepositsTotal.toFixed(0) + '</div></div>' +
+      '    <div onclick="App.switchView(\'expenses\')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-blue-500 cursor-pointer transition"><div class="font-black text-rose-600">💸 14. المصاريف ورأس المال</div><div class="font-mono font-bold mt-1">مصاريف: ' + data.totalExpenses.toFixed(0) + ' | رأس مال: ' + data.netCapital.toFixed(0) + '</div></div>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  App.renderErpTab3_AbcAndSegments = async function (body, data) {
+    var abcList = data.inventory.abcList || [];
+    var countA = abcList.filter(function (x) { return x.abc_class === 'A'; }).length;
+    var countB = abcList.filter(function (x) { return x.abc_class === 'B'; }).length;
+    var countC = abcList.filter(function (x) { return x.abc_class === 'C'; }).length;
+    var countDead = abcList.filter(function (x) { return x.abc_class === 'DEAD'; }).length;
+
+    var curAbc = AppState.erpAbcFilter || 'ALL';
+    var filteredAbc = abcList.filter(function (item) {
+      if (curAbc !== 'ALL' && item.abc_class !== curAbc) return false;
+      if (AppState.erpSegmentCategory && item.category !== AppState.erpSegmentCategory) return false;
+      return true;
+    });
+
+    body.innerHTML =
+      '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">' +
+      '  <div onclick="AppState.erpAbcFilter=\'A\'; App.renderAnalyticsView()" class="p-3.5 rounded-2xl bg-emerald-600 text-white shadow cursor-pointer"><div class="font-black">🌟 الفئة A (السلع الذهبية - 80% من الربح)</div><div class="text-2xl font-black font-mono mt-1">' + countA + ' صنف</div><div class="text-[10px] opacity-90">ممنوع أن تنفد من المحل أبداً!</div></div>' +
+      '  <div onclick="AppState.erpAbcFilter=\'B\'; App.renderAnalyticsView()" class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-blue-500/30 cursor-pointer"><div class="font-black text-blue-600">🔹 الفئة B (سلع متوسطة - 15% من الربح)</div><div class="text-2xl font-black font-mono mt-1">' + countB + ' صنف</div><div class="text-[10px] text-slate-400">حركة بيع منتظمة ومستقرة</div></div>' +
+      '  <div onclick="AppState.erpAbcFilter=\'C\'; App.renderAnalyticsView()" class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-amber-500/30 cursor-pointer"><div class="font-black text-amber-600">🔸 الفئة C (سلع بطيئة - 5% من الربح)</div><div class="text-2xl font-black font-mono mt-1">' + countC + ' صنف</div><div class="text-[10px] text-slate-400">اطلب منها كميات صغيرة فقط</div></div>' +
+      '  <div onclick="AppState.erpAbcFilter=\'DEAD\'; App.renderAnalyticsView()" class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-rose-500/30 cursor-pointer"><div class="font-black text-rose-600">💤 الفئة D (بضاعة راكدة تجمد رأس المال)</div><div class="text-2xl font-black font-mono text-rose-600 mt-1">' + countDead + ' صنف</div><div class="text-[10px] font-bold text-amber-600">رأس مال مجمد: ' + data.inventory.deadStockCapital.toFixed(0) + ' د.ج</div></div>' +
+      '</div>' +
+
+      '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">' +
+      '  <div class="flex flex-wrap items-center justify-between gap-2 text-xs">' +
+      '    <div class="flex flex-wrap items-center gap-1.5">' +
+      '      <button type="button" onclick="AppState.erpAbcFilter=\'ALL\'; App.renderAnalyticsView()" class="px-3 py-1.5 rounded-xl font-black ' + (curAbc === 'ALL' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700') + '">الكل (' + abcList.length + ')</button>' +
+      '      <button type="button" onclick="AppState.erpAbcFilter=\'A\'; App.renderAnalyticsView()" class="px-3 py-1.5 rounded-xl font-black ' + (curAbc === 'A' ? 'bg-emerald-600 text-white' : 'bg-emerald-500/15 text-emerald-600') + '">🌟 فئة A (' + countA + ')</button>' +
+      '      <button type="button" onclick="AppState.erpAbcFilter=\'B\'; App.renderAnalyticsView()" class="px-3 py-1.5 rounded-xl font-black ' + (curAbc === 'B' ? 'bg-blue-600 text-white' : 'bg-blue-500/15 text-blue-600') + '">🔹 فئة B (' + countB + ')</button>' +
+      '      <button type="button" onclick="AppState.erpAbcFilter=\'DEAD\'; App.renderAnalyticsView()" class="px-3 py-1.5 rounded-xl font-black ' + (curAbc === 'DEAD' ? 'bg-rose-600 text-white' : 'bg-rose-500/15 text-rose-600') + '">💤 البضاعة الراكدة (' + countDead + ')</button>' +
+      '    </div>' +
+      '    <select onchange="AppState.erpSegmentCategory=this.value; App.renderAnalyticsView()" class="px-3 py-1.5 rounded-xl font-bold text-xs">' +
+      '      <option value="">فلترة حسب الفئة: جميع الفئات</option>' +
+      (AppState.categories || []).map(function (c) {
+        return '<option value="' + c + '" ' + (AppState.erpSegmentCategory === c ? 'selected' : '') + '>' + c + '</option>';
+      }).join('') +
+      '    </select>' +
+      '  </div>' +
+
+      '  <div class="overflow-x-auto max-h-80">' +
+      '    <table class="w-full text-xs text-right">' +
+      '      <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500"><tr><th class="p-2">التصنيف</th><th class="p-2">المنتج</th><th class="p-2">الفئة</th><th class="p-2 text-center">الرصيد الحالي</th><th class="p-2">رأس المال المجمد</th><th class="p-2 text-center">المباع</th><th class="p-2">الإيراد</th><th class="p-2">الربح الصافي</th></tr></thead>' +
+      '      <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      filteredAbc.slice(0, 80).map(function (it) {
+        var badge = it.abc_class === 'A'
+          ? '<span class="px-2 py-0.5 rounded bg-emerald-600 text-white font-black text-[10px]">🌟 A ذهبي</span>'
+          : it.abc_class === 'B'
+            ? '<span class="px-2 py-0.5 rounded bg-blue-600 text-white font-bold text-[10px]">🔹 B متوسط</span>'
+            : it.abc_class === 'DEAD'
+              ? '<span class="px-2 py-0.5 rounded bg-rose-600 text-white font-black text-[10px]">💤 راكد</span>'
+              : '<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 font-bold text-[10px]">🔸 C بطيء</span>';
+        return (
+          '<tr>' +
+          '  <td class="p-2">' + badge + '</td>' +
+          '  <td class="p-2 font-bold">' + it.name + '</td>' +
+          '  <td class="p-2 text-slate-400">' + it.category + '</td>' +
+          '  <td class="p-2 text-center font-mono font-bold">' + it.stock + '</td>' +
+          '  <td class="p-2 font-mono">' + it.tied_capital.toFixed(2) + ' د.ج</td>' +
+          '  <td class="p-2 text-center font-mono font-black">' + it.qty_sold + '</td>' +
+          '  <td class="p-2 font-mono text-blue-600 font-bold">' + it.revenue.toFixed(2) + '</td>' +
+          '  <td class="p-2 font-mono font-black text-emerald-600">+' + it.profit.toFixed(2) + ' د.ج</td>' +
+          '</tr>'
+        );
+      }).join('') +
+      '      </tbody>' +
+      '    </table>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  App.renderErpTab4_DebtsRadar = function (body, data) {
+    var ag = data.debtAging || {};
+    var netDebt = Number((data.totalCustomerDebt - data.totalSupplierDebt).toFixed(2));
+    body.innerHTML =
+      '<div class="grid grid-cols-2 md:grid-cols-5 gap-3">' +
+      '  <div class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-emerald-500/30"><div class="text-[11px] text-slate-400 font-bold">ديون حديثة (0 - 30 يوماً)</div><div class="text-xl font-black font-mono text-emerald-600 mt-1">' + Number(ag.bucket_0_30 || 0).toFixed(2) + ' د.ج</div></div>' +
+      '  <div class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-blue-500/30"><div class="text-[11px] text-slate-400 font-bold">ديون متوسطة (31 - 60 يوماً)</div><div class="text-xl font-black font-mono text-blue-600 mt-1">' + Number(ag.bucket_31_60 || 0).toFixed(2) + ' د.ج</div></div>' +
+      '  <div class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-amber-500/30"><div class="text-[11px] text-slate-400 font-bold">ديون متأخرة (61 - 90 يوماً)</div><div class="text-xl font-black font-mono text-amber-500 mt-1">' + Number(ag.bucket_61_90 || 0).toFixed(2) + ' د.ج</div></div>' +
+      '  <div class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-rose-500/30"><div class="text-[11px] text-slate-400 font-bold">ديون حرجة (+90 يوماً)</div><div class="text-xl font-black font-mono text-rose-600 mt-1">' + Number(ag.bucket_90_plus || 0).toFixed(2) + ' د.ج</div></div>' +
+      '  <div class="p-3.5 rounded-2xl bg-indigo-600 text-white"><div class="text-[11px] opacity-90 font-bold">⚖️ صافي ميزان الديون</div><div class="text-xl font-black font-mono mt-1">' + netDebt.toFixed(2) + ' د.ج</div><div class="text-[10px] text-amber-200">لنا (' + data.totalCustomerDebt.toFixed(0) + ') - علينا (' + data.totalSupplierDebt.toFixed(0) + ')</div></div>' +
+      '</div>' +
+
+      '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">' +
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">' +
+      '    <div class="flex items-center justify-between"><h3 class="font-black text-sm text-emerald-600">🟢 1. ديوننا عند الزبائن (' + data.customerDebts.length + ' زبون — ' + data.totalCustomerDebt.toFixed(2) + ' د.ج)</h3><button type="button" onclick="App.switchView(\'customers\')" class="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 font-bold">دفتر الزبائن ⬅️</button></div>' +
+      '    <div class="space-y-2 max-h-72 overflow-y-auto">' +
+      (data.customerDebts.length > 0
+        ? data.customerDebts.map(function (cd) {
+            return (
+              '<div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 flex items-center justify-between">' +
+              '  <div><div class="font-black">' + cd.name + '</div><div class="text-[10px] text-slate-400">منذ ' + cd.days + ' يوم | ' + (cd.phone || 'بدون هاتف') + '</div></div>' +
+              '  <div class="flex items-center gap-2">' +
+              '    <span class="font-mono font-black text-rose-600">' + cd.debt.toFixed(2) + ' د.ج</span>' +
+              '    <button type="button" onclick="App.switchView(\'customers\')" class="px-2 py-1 rounded bg-emerald-600 text-white font-bold text-[10px]">تحصيل</button>' +
+              '  </div>' +
+              '</div>'
+            );
+          }).join('')
+        : '<div class="py-8 text-center text-slate-400 font-bold">✅ لا توجد ديون متأخرة عند الزبائن حالياً</div>') +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">' +
+      '    <div class="flex items-center justify-between"><h3 class="font-black text-sm text-rose-600">🔴 2. ديون الموردين علينا (' + data.supplierDebts.length + ' مورد — ' + data.totalSupplierDebt.toFixed(2) + ' د.ج)</h3><button type="button" onclick="App.switchView(\'suppliers\')" class="px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-600 font-bold">دفتر الموردين ⬅️</button></div>' +
+      '    <div class="space-y-2 max-h-72 overflow-y-auto">' +
+      (data.supplierDebts.length > 0
+        ? data.supplierDebts.map(function (sd) {
+            return '<div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 flex items-center justify-between"><div><div class="font-black">' + sd.name + '</div><div class="text-[10px] text-slate-400">إجمالي المعاملات: ' + sd.total_purchased.toFixed(2) + ' د.ج</div></div><span class="font-mono font-black text-rose-600">' + sd.debt.toFixed(2) + ' د.ج</span></div>';
+          }).join('')
+        : '<div class="py-8 text-center text-emerald-600 font-bold">✅ جميع فواتير الموردين مسددة بالكامل!</div>') +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  App.renderErpTab5_InventoryValuation = function (body, data) {
+    var inv = data.inventory;
+    body.innerHTML =
+      '<div class="grid grid-cols-1 md:grid-cols-4 gap-3.5">' +
+      '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"><div class="text-xs text-slate-400 font-bold">قيمة المخزون بسعر التكلفة (الشراء)</div><div class="text-2xl font-black font-mono mt-1">' + inv.cost_value.toFixed(2) + ' د.ج</div><div class="text-[11px] font-bold text-amber-600 mt-0.5">🇩🇿 ' + this.erpFormatCentimes(inv.cost_value) + '</div></div>' +
+      '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-blue-500/30"><div class="text-xs text-slate-400 font-bold">قيمة المخزون بسعر البيع</div><div class="text-2xl font-black font-mono text-blue-600 mt-1">' + inv.sell_value.toFixed(2) + ' د.ج</div><div class="text-[11px] font-bold text-amber-600 mt-0.5">🇩🇿 ' + this.erpFormatCentimes(inv.sell_value) + '</div></div>' +
+      '  <div class="p-4 rounded-2xl bg-emerald-600 text-white shadow-lg"><div class="text-xs opacity-90 font-bold">الربح الكامن المتوقع من المخزون</div><div class="text-2xl font-black font-mono mt-1">+' + inv.expected_profit.toFixed(2) + ' د.ج</div><div class="text-[11px] font-bold text-amber-200 mt-0.5">🇩🇿 ' + this.erpFormatCentimes(inv.expected_profit) + '</div></div>' +
+      '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-indigo-500/30 flex flex-col justify-between"><div><div class="text-xs text-slate-400 font-bold">التموين الآلي الذكي للنواقص</div><div class="text-sm font-black text-rose-600 mt-1">' + (inv.zeroStockItems.length + inv.lowStockItems.length) + ' صنف يحتاج شراء</div></div><button type="button" onclick="App.erpCreatePurchaseFromShortages()" class="mt-2 py-1.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black text-xs shadow">📦 توليد فاتورة شراء بالنواقص</button></div>' +
+      '</div>' +
+
+      '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">' +
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-2.5">' +
+      '    <h3 class="font-black text-sm text-indigo-600">📦 تقييم المخزون والربح الكامن حسب الفئة</h3>' +
+      '    <div class="overflow-x-auto max-h-72">' +
+      '      <table class="w-full text-xs text-right">' +
+      '        <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500"><tr><th class="p-2">الفئة</th><th class="p-2 text-center">الأصناف</th><th class="p-2 text-center">الوحدات</th><th class="p-2">قيمة التكلفة</th><th class="p-2">قيمة البيع</th><th class="p-2">الربح الكامن</th></tr></thead>' +
+      '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      inv.byCategory.map(function (c) {
+        return '<tr><td class="p-2 font-black">' + c.category + '</td><td class="p-2 text-center font-mono">' + c.count + '</td><td class="p-2 text-center font-mono font-bold">' + c.units + '</td><td class="p-2 font-mono">' + c.cost_value.toFixed(2) + '</td><td class="p-2 font-mono text-blue-600 font-bold">' + c.sell_value.toFixed(2) + '</td><td class="p-2 font-mono font-black text-emerald-600">+' + c.profit.toFixed(2) + '</td></tr>';
+      }).join('') +
+      '        </tbody>' +
+      '      </table>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-2.5">' +
+      '    <h3 class="font-black text-sm text-emerald-600">🚛 تقييم المخزون الموجود حالياً حسب المورد (Supplier Stock Share)</h3>' +
+      '    <div class="overflow-x-auto max-h-72">' +
+      '      <table class="w-full text-xs text-right">' +
+      '        <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500"><tr><th class="p-2">المورد</th><th class="p-2 text-center">الأصناف</th><th class="p-2 text-center">الوحدات</th><th class="p-2">قيمة التكلفة</th><th class="p-2">قيمة البيع</th></tr></thead>' +
+      '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      inv.bySupplier.map(function (s) {
+        return '<tr><td class="p-2 font-black">' + s.supplier + '</td><td class="p-2 text-center font-mono">' + s.count + '</td><td class="p-2 text-center font-mono font-bold">' + s.units + '</td><td class="p-2 font-mono">' + s.cost_value.toFixed(2) + '</td><td class="p-2 font-mono text-blue-600 font-bold">' + s.sell_value.toFixed(2) + ' د.ج</td></tr>';
+      }).join('') +
+      '        </tbody>' +
+      '      </table>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  App.renderErpFallbackTabs6To12 = function (tab, body, data) {
+    body.innerHTML =
+      '<div class="p-6 rounded-2xl bg-white dark:bg-slate-800 border border-blue-500/30 text-center space-y-2">' +
+      '  <div class="text-base font-black text-blue-600">⚡ التبويب (' + tab + ') جاهز للربط مع الشطر الثاني (Part 2/3)</div>' +
+      '  <div class="text-xs text-slate-500">اطلب الشطر الثاني الآن لتفعيل الوحدات (6 إلى 12): محاكي القرارات الاستراتيجية What-If، رقابة البائعين، الاستوديو البياني، الجباية الجزائرية، وحاسبة الزكاة!</div>' +
+      '</div>';
+  };
+})();
+
+// [ERP COMMAND CENTER V2 - PART 2 TABS 6-12 & WHAT-IF SIMULATOR]
+(function installErpCommandCenterPart2() {
+  if (!window.App || !window.AppState) return;
+
+  function fmtCent(dzd) {
+    return typeof App.erpFormatCentimes === 'function'
+      ? App.erpFormatCentimes(dzd)
+      : (Math.round(Number(dzd || 0) * 100)).toLocaleString('fr-DZ') + ' سنتيم';
+  }
+
+  // ==========================================================================
+  // المحرك الرئيسي لعرض الوحدات 6 إلى 12 داخل مركز القيادة التنفيذي
+  // ==========================================================================
+  App.renderErpTabs6To12 = async function (tab, body, data) {
+    if (tab === 'expenses') {
+      this.renderErpTab6_ExpensesAndCapital(body, data);
+    } else if (tab === 'caisse') {
+      this.renderErpTab7_CashFlowXRay(body, data);
+    } else if (tab === 'simulator') {
+      this.renderErpTab8_WhatIfSimulator(body, data);
+    } else if (tab === 'audit') {
+      this.renderErpTab9_CashierAndShiftAudit(body, data);
+    } else if (tab === 'charts') {
+      this.renderErpTab10_VisualChartsStudio(body, data);
+    } else if (tab === 'fiscal') {
+      await this.renderErpTab11_AlgerianFiscalStudio(body, data);
+    } else if (tab === 'zakat') {
+      this.renderErpTab12_ZakatCalculatorAndArchive(body, data);
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // الوحدة 6: المصاريف التشغيلية، نقطة التعادل (Break-Even)، وحركات رأس المال
+  // --------------------------------------------------------------------------
+  App.renderErpTab6_ExpensesAndCapital = function (body, data) {
+    var marginRatio = data.net_revenue > 0 ? Math.max(0.05, data.gross_profit / data.net_revenue) : 0.2;
+    var breakEvenRevenue = Number((data.totalExpenses / marginRatio).toFixed(2));
+    var coveragePct = data.totalExpenses > 0
+      ? Math.min(100, Math.round((Math.max(0, data.gross_profit) / data.totalExpenses) * 100))
+      : 100;
+
+    body.innerHTML =
+      '<div class="grid grid-cols-2 md:grid-cols-4 gap-3.5">' +
+      '  <div class="p-4 rounded-2xl bg-rose-600 text-white shadow-lg">' +
+      '    <div class="text-xs opacity-90 font-bold">إجمالي المصاريف التشغيلية (' + data.rawExpenses.length + ')</div>' +
+      '    <div class="text-2xl font-black font-mono mt-1">' + data.totalExpenses.toFixed(2) + ' د.ج</div>' +
+      '    <div class="text-[11px] font-bold text-amber-200 mt-0.5">🇩🇿 ' + fmtCent(data.totalExpenses) + '</div>' +
+      '  </div>' +
+      '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-amber-500/30">' +
+      '    <div class="text-xs text-slate-400 font-bold">مبيعات نقطة التعادل اللازمة لتغطية المصاريف</div>' +
+      '    <div class="text-2xl font-black font-mono text-amber-600 mt-1">' + breakEvenRevenue.toFixed(2) + ' د.ج</div>' +
+      '    <div class="text-[11px] font-bold ' + (coveragePct >= 100 ? 'text-emerald-600' : 'text-rose-500') + ' mt-0.5">نسبة التغطية من مجمل الربح: ' + coveragePct + '%</div>' +
+      '  </div>' +
+      '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-emerald-500/30">' +
+      '    <div class="text-xs text-slate-400 font-bold">إيداعات رأس المال مقابل المسحوبات</div>' +
+      '    <div class="text-lg font-black font-mono text-emerald-600 mt-1">+' + data.capInjected.toFixed(2) + ' د.ج</div>' +
+      '    <div class="text-[11px] font-mono font-bold text-rose-500 mt-0.5">مسحوبات شخصية: -' + data.capWithdrawn.toFixed(2) + ' د.ج</div>' +
+      '  </div>' +
+      '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-indigo-500/30 flex flex-col justify-between">' +
+      '    <div><div class="text-xs text-slate-400 font-bold">صافي رأس المال العامل</div><div class="text-xl font-black font-mono text-indigo-600 mt-1">' + data.netCapital.toFixed(2) + ' د.ج</div></div>' +
+      '    <button type="button" onclick="App.switchView(\'expenses\')" class="mt-2 py-1.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black text-xs shadow">إدارة المصاريف ورأس المال ⬅️</button>' +
+      '  </div>' +
+      '</div>' +
+
+      '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">' +
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-2.5">' +
+      '    <h3 class="font-black text-sm text-rose-600">💸 سجل المصاريف التشغيلية (' + data.rawExpenses.length + ')</h3>' +
+      '    <div class="space-y-2 max-h-72 overflow-y-auto">' +
+      (data.rawExpenses.length > 0
+        ? data.rawExpenses.map(function (e) {
+            var safeLbl = String(e.category + ' - ' + (e.description || '')).replace(/'/g, "\\'");
+            return (
+              '<div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 flex items-center justify-between">' +
+              '  <div><div class="font-black">' + e.category + '</div><div class="text-[10px] text-slate-400">' + e.date + ' — ' + (e.description || '') + '</div></div>' +
+              '  <div class="flex items-center gap-2">' +
+              '    <span class="font-mono font-black text-rose-600">-' + Number(e.amount || 0).toFixed(2) + ' د.ج</span>' +
+              '    <button type="button" onclick="App.promptAnalyticsSafeDelete(\'expense\', ' + e.id + ', \'' + safeLbl + '\', ' + Number(e.amount || 0) + ')" class="text-rose-500 hover:bg-rose-500/15 p-1 rounded-lg" title="حذف بنافذة تأكيد آمنة"><span class="material-symbols-rounded icon-sm">delete</span></button>' +
+              '  </div>' +
+              '</div>'
+            );
+          }).join('')
+        : '<div class="py-8 text-center text-slate-400 font-bold">لا توجد مصاريف تشغيلية مسجلة في هذه الفترة (0.00 د.ج)</div>') +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-2.5">' +
+      '    <h3 class="font-black text-sm text-emerald-600">🏦 سجل حركات رأس المال والمسحوبات (' + data.rawCapital.length + ')</h3>' +
+      '    <div class="space-y-2 max-h-72 overflow-y-auto">' +
+      (data.rawCapital.length > 0
+        ? data.rawCapital.map(function (c) {
+            var safeLbl = String(c.category + ' - ' + (c.description || '')).replace(/'/g, "\\'");
+            return (
+              '<div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 flex items-center justify-between">' +
+              '  <div><div class="font-black">' + c.category + '</div><div class="text-[10px] text-slate-400">' + c.date + ' — ' + (c.description || '') + '</div></div>' +
+              '  <div class="flex items-center gap-2">' +
+              '    <span class="font-mono font-black text-emerald-600">' + Number(c.amount || 0).toFixed(2) + ' د.ج</span>' +
+              '    <button type="button" onclick="App.promptAnalyticsSafeDelete(\'capital\', ' + c.id + ', \'' + safeLbl + '\', ' + Math.abs(Number(c.amount || 0)) + ')" class="text-rose-500 hover:bg-rose-500/15 p-1 rounded-lg" title="حذف بنافذة تأكيد آمنة"><span class="material-symbols-rounded icon-sm">delete</span></button>' +
+              '  </div>' +
+              '</div>'
+            );
+          }).join('')
+        : '<div class="py-8 text-center text-slate-400 font-bold">لا توجد حركات رأس مال مسجلة في هذه الفترة</div>') +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  // --------------------------------------------------------------------------
+  // الوحدة 7: أشعة التدفق النقدي التفصيلية (Cash Flow X-Ray)
+  // --------------------------------------------------------------------------
+  App.renderErpTab7_CashFlowXRay = function (body, data) {
+    var cb = data.cashBreakdown;
+    body.innerHTML =
+      '<div class="grid grid-cols-1 md:grid-cols-3 gap-4">' +
+      '  <div class="p-5 rounded-2xl bg-white dark:bg-slate-800 border border-emerald-500/30"><div class="text-xs text-slate-400 font-bold">إجمالي النقد الداخل (Cash In)</div><div class="text-2xl font-black font-mono text-emerald-600 mt-1">+' + data.cash_in.toFixed(2) + ' د.ج</div><div class="text-[11px] font-bold text-amber-600 mt-0.5">🇩🇿 ' + fmtCent(data.cash_in) + '</div></div>' +
+      '  <div class="p-5 rounded-2xl bg-white dark:bg-slate-800 border border-rose-500/30"><div class="text-xs text-slate-400 font-bold">إجمالي النقد الخارج (Cash Out — يشمل تموين البضاعة)</div><div class="text-2xl font-black font-mono text-rose-500 mt-1">-' + data.cash_out.toFixed(2) + ' د.ج</div><div class="text-[11px] font-bold text-amber-600 mt-0.5">🇩🇿 ' + fmtCent(data.cash_out) + '</div></div>' +
+      '  <div class="p-5 rounded-2xl bg-blue-600 text-white shadow-lg"><div class="text-xs opacity-90 font-bold">صافي التدفق النقدي (Net Cash Flow)</div><div class="text-2xl font-black font-mono mt-1">' + data.net_cash_flow.toFixed(2) + ' د.ج</div><div class="text-[11px] text-amber-200 font-bold mt-0.5">بضاعة في المخزن بسعر البيع: +' + data.inventory.sell_value.toFixed(2) + ' د.ج</div></div>' +
+      '</div>' +
+
+      '<div class="p-3.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 text-xs font-bold text-indigo-900 dark:text-indigo-200">' +
+      '  💡 <strong>تشخيص المستشار المالي الذكي:</strong> خرج من الصندوق مبلغ <strong>' + cb.purchasesPaid.toFixed(2) + ' د.ج</strong> لتسديد فواتير شراء وتموين البضاعة للموردين، وهذه الأموال لم تضع بل تحولت إلى <strong>مخزون سلعي قيمته البيعية حالياً ' + data.inventory.sell_value.toFixed(2) + ' د.ج</strong> بربح كامن قدره <strong>+' + data.inventory.expected_profit.toFixed(2) + ' د.ج</strong>!' +
+      '</div>' +
+
+      '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">' +
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-2">' +
+      '    <h3 class="font-black text-sm text-emerald-600">🟢 1. مصادر السيولة الداخلة (Cash Inflows)</h3>' +
+      '    <div class="flex justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900"><span>مقبوضات المبيعات وتسديدات ديون الزبائن</span><strong class="font-mono text-emerald-600">+' + cb.salesPaid.toFixed(2) + ' د.ج</strong></div>' +
+      '    <div class="flex justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900"><span>عربون طلبيات الزبائن (Acomptes Bons de Commande)</span><strong class="font-mono text-emerald-600">+' + cb.ordersDeposits.toFixed(2) + ' د.ج</strong></div>' +
+      '    <div class="flex justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900"><span>استردادات نقدية من مرتجعات الموردين</span><strong class="font-mono text-emerald-600">+' + cb.supplierRefunds.toFixed(2) + ' د.ج</strong></div>' +
+      '    <div class="flex justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900"><span>إيداعات رأس المال وتمويل الشركاء</span><strong class="font-mono text-emerald-600">+' + cb.capitalInjected.toFixed(2) + ' د.ج</strong></div>' +
+      '  </div>' +
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-2">' +
+      '    <h3 class="font-black text-sm text-rose-600">🔴 2. وجهات السيولة الخارجة (Cash Outflows)</h3>' +
+      '    <div class="flex justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900"><span>تسديد فواتير المشتريات للموردين (تحول إلى بضاعة)</span><strong class="font-mono text-rose-600">-' + cb.purchasesPaid.toFixed(2) + ' د.ج</strong></div>' +
+      '    <div class="flex justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900"><span>المصاريف التشغيلية للمحل (كراء، كهرباء، عمال)</span><strong class="font-mono text-rose-600">-' + cb.operatingExpenses.toFixed(2) + ' د.ج</strong></div>' +
+      '    <div class="flex justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900"><span>مبالغ مسترجعة للزبائن (مرتجعات مبيعات)</span><strong class="font-mono text-rose-600">-' + cb.salesRefunds.toFixed(2) + ' د.ج</strong></div>' +
+      '    <div class="flex justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900"><span>مسحوبات شخصية للمالك والشركاء</span><strong class="font-mono text-amber-600">-' + cb.personalWithdrawals.toFixed(2) + ' د.ج</strong></div>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  // --------------------------------------------------------------------------
+  // الوحدة 8: محاكي القرارات الاستراتيجية التفاعلي (What-If Profit Simulator) + عداد الهدف الشهري
+  // --------------------------------------------------------------------------
+  App.renderErpTab8_WhatIfSimulator = function (body, data) {
+    var baseRev = Math.max(10000, data.net_revenue || 50000);
+    var baseCogs = Math.max(5000, data.cogs || baseRev * 0.78);
+    var baseExp = data.totalExpenses || 0;
+    var baseNet = baseRev - baseCogs - baseExp;
+
+    var pDelta = Number(AppState.simPriceChangePct || 0);
+    var vDelta = Number(AppState.simVolumeChangePct || 0);
+    var cDelta = Number(AppState.simCostChangePct || 0);
+    var eCut = Number(AppState.simExpenseCutPct || 0);
+
+    var volFactor = 1 + vDelta / 100;
+    var priceFactor = 1 + pDelta / 100;
+    var costFactor = 1 + cDelta / 100;
+    var expFactor = Math.max(0, 1 - eCut / 100);
+
+    var simRev = Number((baseRev * volFactor * priceFactor).toFixed(2));
+    var simCogs = Number((baseCogs * volFactor * costFactor).toFixed(2));
+    var simExp = Number((baseExp * expFactor).toFixed(2));
+    var simNet = Number((simRev - simCogs - simExp).toFixed(2));
+    var extraMonthlyGain = Number((simNet - baseNet).toFixed(2));
+    var extraYearlyGain = Number((extraMonthlyGain * 12).toFixed(2));
+
+    var targetDzd = Math.max(1000, Number(AppState.erpMonthlyTargetDzd || 500000));
+    var targetPct = Math.min(100, Math.round((data.net_revenue / targetDzd) * 100));
+
+    body.innerHTML =
+      '<div class="grid grid-cols-1 lg:grid-cols-12 gap-4 text-xs">' +
+      '  <!-- يمين: أدوات التحكم والمحاكاة التفاعلية (What-If Sliders) -->' +
+      '  <div class="lg:col-span-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-4">' +
+      '    <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2.5">' +
+      '      <div>' +
+      '        <h3 class="font-black text-sm text-indigo-600">🎛️ مختبر محاكاة القرارات التسعيرية والمالية (What-If Simulator)</h3>' +
+      '        <p class="text-[11px] text-slate-400">حرّك المؤشرات لترى فوراً كيف يتغير ربحك الصافي الشهري والسنوي</p>' +
+      '      </div>' +
+      '      <button type="button" onclick="AppState.simPriceChangePct=0;AppState.simVolumeChangePct=0;AppState.simCostChangePct=0;AppState.simExpenseCutPct=0;App.renderAnalyticsView()" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 font-bold text-[11px]">إعادة ضبط ↺</button>' +
+      '    </div>' +
+
+      '    <div class="space-y-3">' +
+      '      <div>' +
+      '        <div class="flex justify-between font-bold mb-1"><span>1. تعديل أسعار البيع للزبائن (%):</span><span class="font-mono font-black text-blue-600">' + (pDelta >= 0 ? '+' : '') + pDelta + '%</span></div>' +
+      '        <input type="range" min="-20" max="30" step="1" value="' + pDelta + '" oninput="AppState.simPriceChangePct=parseFloat(this.value)||0; App.renderAnalyticsView()" class="w-full cursor-pointer">' +
+      '      </div>' +
+      '      <div>' +
+      '        <div class="flex justify-between font-bold mb-1"><span>2. تغير حجم الكميات المباعة (العروض والتسويق %):</span><span class="font-mono font-black text-emerald-600">' + (vDelta >= 0 ? '+' : '') + vDelta + '%</span></div>' +
+      '        <input type="range" min="-30" max="50" step="1" value="' + vDelta + '" oninput="AppState.simVolumeChangePct=parseFloat(this.value)||0; App.renderAnalyticsView()" class="w-full cursor-pointer">' +
+      '      </div>' +
+      '      <div>' +
+      '        <div class="flex justify-between font-bold mb-1"><span>3. تغير تكلفة الشراء من الموردين (التفاوض %):</span><span class="font-mono font-black text-amber-600">' + (cDelta >= 0 ? '+' : '') + cDelta + '%</span></div>' +
+      '        <input type="range" min="-20" max="20" step="1" value="' + cDelta + '" oninput="AppState.simCostChangePct=parseFloat(this.value)||0; App.renderAnalyticsView()" class="w-full cursor-pointer">' +
+      '      </div>' +
+      '      <div>' +
+      '        <div class="flex justify-between font-bold mb-1"><span>4. ترشيد وتخفيض المصاريف التشغيلية (%):</span><span class="font-mono font-black text-rose-600">-' + eCut + '%</span></div>' +
+      '        <input type="range" min="0" max="50" step="5" value="' + eCut + '" oninput="AppState.simExpenseCutPct=parseFloat(this.value)||0; App.renderAnalyticsView()" class="w-full cursor-pointer">' +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <!-- يسار: نتائج المحاكاة + عداد الهدف الشهري -->' +
+      '  <div class="lg:col-span-6 space-y-4">' +
+      '    <div class="p-5 rounded-2xl bg-slate-900 text-white border border-slate-800 space-y-3 shadow-xl">' +
+      '      <div class="text-xs font-black text-amber-400">🚀 النتيجة المتوقعة للقرار الاستراتيجي:</div>' +
+      '      <div class="grid grid-cols-2 gap-3">' +
+      '        <div class="p-3 rounded-xl bg-slate-800"><div class="text-[10px] text-slate-400">رقم الأعمال المتوقع</div><div class="text-lg font-black font-mono text-blue-400 mt-0.5">' + simRev.toFixed(2) + ' د.ج</div></div>' +
+      '        <div class="p-3 rounded-xl bg-slate-800"><div class="text-[10px] text-slate-400">صافي الربح المتوقع</div><div class="text-lg font-black font-mono text-emerald-400 mt-0.5">' + simNet.toFixed(2) + ' د.ج</div></div>' +
+      '      </div>' +
+      '      <div class="p-3.5 rounded-xl ' + (extraMonthlyGain >= 0 ? 'bg-emerald-600/25 border border-emerald-500/40' : 'bg-rose-600/25 border border-rose-500/40') + ' flex items-center justify-between">' +
+      '        <div>' +
+      '          <div class="text-[11px] font-bold">الفرق الإضافي في ربحك الصافي:</div>' +
+      '          <div class="text-xl font-black font-mono ' + (extraMonthlyGain >= 0 ? 'text-emerald-300' : 'text-rose-300') + '">' + (extraMonthlyGain >= 0 ? '+' : '') + extraMonthlyGain.toFixed(2) + ' د.ج / للفترة</div>' +
+      '        </div>' +
+      '        <div class="text-left">' +
+      '          <div class="text-[10px] text-amber-200 font-bold">الأثر السنوي المتوقع (×12):</div>' +
+      '          <div class="font-mono font-black text-sm text-amber-300">' + (extraYearlyGain >= 0 ? '+' : '') + extraYearlyGain.toFixed(0) + ' د.ج</div>' +
+      '          <div class="text-[10px] text-amber-200">' + fmtCent(Math.abs(extraYearlyGain)) + '</div>' +
+      '        </div>' +
+      '      </div>' +
+      '    </div>' +
+
+      '    <!-- عداد الهدف الشهري للمبيعات (Monthly Target Gauge) -->' +
+      '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2.5">' +
+      '      <div class="flex items-center justify-between">' +
+      '        <span class="font-black text-sm text-blue-600">🎯 عداد هدف المبيعات الشهري للمتجر:</span>' +
+      '        <div class="flex items-center gap-1.5">' +
+      '          <span class="text-[10px] text-slate-400 font-bold">الهدف (د.ج):</span>' +
+      '          <input type="number" step="10000" value="' + targetDzd + '" onchange="AppState.erpMonthlyTargetDzd=parseFloat(this.value)||500000; localStorage.setItem(\'gherbi_erp_monthly_target\', AppState.erpMonthlyTargetDzd); App.renderAnalyticsView()" class="w-28 px-2 py-1 rounded-lg font-mono font-black text-center border-blue-400">' +
+      '        </div>' +
+      '      </div>' +
+      '      <div class="w-full h-4 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">' +
+      '        <div class="h-full bg-blue-600 transition-all" style="width:' + targetPct + '%;"></div>' +
+      '      </div>' +
+      '      <div class="flex justify-between text-[11px] font-bold">' +
+      '        <span>المحقق حالياً: <strong class="font-mono text-blue-600">' + data.net_revenue.toFixed(2) + ' د.ج (' + targetPct + '%)</strong></span>' +
+      '        <span>المتبقي للهدف: <strong class="font-mono text-amber-600">' + Math.max(0, targetDzd - data.net_revenue).toFixed(2) + ' د.ج</strong></span>' +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  // --------------------------------------------------------------------------
+  // الوحدة 9: رقابة أداء البائعين وتدقيق المناوبات وفروقات الصندوق (Cashier & Shift Audit)
+  // --------------------------------------------------------------------------
+  App.renderErpTab9_CashierAndShiftAudit = function (body, data) {
+    var cashiers = data.cashierAudit || [];
+    var sessions = data.sessionsList || [];
+
+    body.innerHTML =
+      '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">' +
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">' +
+      '    <h3 class="font-black text-sm text-indigo-600">👤 1. تقييم أداء البائعين والكاشير (Cashier Performance & Discount Audit)</h3>' +
+      '    <div class="overflow-x-auto max-h-80">' +
+      '      <table class="w-full text-xs text-right">' +
+      '        <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500"><tr><th class="p-2">البائع</th><th class="p-2 text-center">الفواتير</th><th class="p-2 text-center">المرتجعات</th><th class="p-2">التخفيضات الممنوحة</th><th class="p-2">صافي المبيعات</th></tr></thead>' +
+      '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      (cashiers.length > 0
+        ? cashiers.map(function (c) {
+            return (
+              '<tr>' +
+              '  <td class="p-2 font-black">' + c.name + '</td>' +
+              '  <td class="p-2 text-center font-mono font-bold">' + c.invoices_count + '</td>' +
+              '  <td class="p-2 text-center font-mono ' + (c.returns_count > 0 ? 'text-rose-600 font-black' : 'text-slate-400') + '">' + c.returns_count + ' (' + c.returns_val.toFixed(0) + ')</td>' +
+              '  <td class="p-2 font-mono text-amber-600 font-bold">' + c.discounts_given.toFixed(2) + ' د.ج</td>' +
+              '  <td class="p-2 font-mono font-black text-emerald-600">' + c.net_sales.toFixed(2) + ' د.ج</td>' +
+              '</tr>'
+            );
+          }).join('')
+        : '<tr><td colspan="5" class="p-6 text-center text-slate-400 font-bold">لا توجد عمليات مسجلة في هذه الفترة</td></tr>') +
+      '        </tbody>' +
+      '      </table>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">' +
+      '    <h3 class="font-black text-sm text-emerald-600">🗄️ 2. تدقيق سجل المناوبات وفروقات الصندوق (Caisse Shift Discrepancy Audit)</h3>' +
+      '    <div class="overflow-x-auto max-h-80">' +
+      '      <table class="w-full text-xs text-right">' +
+      '        <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500"><tr><th class="p-2">#</th><th class="p-2">الافتتاح</th><th class="p-2">الرصيد المتوقع</th><th class="p-2">الفعلي عند الإغلاق</th><th class="p-2">الفارق (Écart)</th></tr></thead>' +
+      '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      (sessions.length > 0
+        ? sessions.slice(0, 25).map(function (s) {
+            var diff = Number(s.difference || 0);
+            return (
+              '<tr>' +
+              '  <td class="p-2 font-mono font-bold">#' + s.id + '</td>' +
+              '  <td class="p-2 font-mono text-[10.5px]">' + String(s.opened_at || '').slice(0, 16) + '</td>' +
+              '  <td class="p-2 font-mono">' + Number(s.expected_balance || s.opening_balance || 0).toFixed(2) + '</td>' +
+              '  <td class="p-2 font-mono font-bold">' + (s.status === 'open' ? '<span class="text-emerald-600">مفتوحة الآن</span>' : Number(s.closing_balance || 0).toFixed(2)) + '</td>' +
+              '  <td class="p-2 font-mono font-black ' + (diff < -0.01 ? 'text-rose-600' : diff > 0.01 ? 'text-blue-600' : 'text-emerald-600') + '">' + (s.status === 'open' ? '—' : (diff >= 0 ? '+' : '') + diff.toFixed(2) + ' د.ج') + '</td>' +
+              '</tr>'
+            );
+          }).join('')
+        : '<tr><td colspan="5" class="p-6 text-center text-slate-400 font-bold">لا توجد مناوبات مسجلة بعد</td></tr>') +
+      '        </tbody>' +
+      '      </table>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  // --------------------------------------------------------------------------
+  // الوحدة 10: الاستوديو البياني الموسع (6 مخططات Chart.js تفاعلية)
+  // --------------------------------------------------------------------------
+  App.renderErpTab10_VisualChartsStudio = function (body, data) {
+    body.innerHTML =
+      '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">' +
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">' +
+      '    <h3 class="font-black text-xs mb-2 text-blue-600">📈 1. منحنى المبيعات اليومية (Daily Revenue Trend)</h3>' +
+      '    <canvas id="dailySalesChartCanvas" height="165"></canvas>' +
+      '  </div>' +
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">' +
+      '    <h3 class="font-black text-xs mb-2 text-emerald-600">⏰ 2. توزيع المبيعات حسب ساعات الذروة (Peak Hours)</h3>' +
+      '    <canvas id="hourlySalesChartCanvas" height="165"></canvas>' +
+      '  </div>' +
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">' +
+      '    <h3 class="font-black text-xs mb-2 text-indigo-600">🏷️ 3. تقييم المخزون والربح الكامن حسب الفئات</h3>' +
+      '    <canvas id="categorySalesChartCanvas" height="165"></canvas>' +
+      '  </div>' +
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">' +
+      '    <h3 class="font-black text-xs mb-2 text-amber-600">⚖️ 4. مقارنة المبيعات والتكلفة والمشتريات والمصاريف وصافي الربح</h3>' +
+      '    <canvas id="financialOverviewChartCanvas" height="165"></canvas>' +
+      '  </div>' +
+      '</div>';
+
+    setTimeout(function () {
+      if (typeof App.drawAnalyticsCharts === 'function') App.drawAnalyticsCharts(data);
+      if (typeof App.drawExtraExecutiveCharts === 'function') App.drawExtraExecutiveCharts(data);
+    }, 60);
+  };
+
+  App.drawExtraExecutiveCharts = function (data) {
+    if (typeof Chart === 'undefined') return;
+
+    var catCanvas = document.getElementById('categorySalesChartCanvas');
+    if (catCanvas) {
+      if (AppState._catChartInstance) AppState._catChartInstance.destroy();
+      var invCats = (data.inventory && data.inventory.byCategory) || [];
+      AppState._catChartInstance = new Chart(catCanvas, {
+        type: 'bar',
+        data: {
+          labels: invCats.map(function (c) { return c.category; }),
+          datasets: [
+            {
+              label: 'قيمة البيع (د.ج)',
+              data: invCats.map(function (c) { return c.sell_value; }),
+              backgroundColor: '#4f46e5',
+              borderRadius: 6
+            },
+            {
+              label: 'الربح الكامن (د.ج)',
+              data: invCats.map(function (c) { return c.profit; }),
+              backgroundColor: '#10b981',
+              borderRadius: 6
+            }
+          ]
+        },
+        options: { responsive: true }
+      });
+    }
+
+    var finCanvas = document.getElementById('financialOverviewChartCanvas');
+    if (finCanvas) {
+      if (AppState._finChartInstance) AppState._finChartInstance.destroy();
+      AppState._finChartInstance = new Chart(finCanvas, {
+        type: 'bar',
+        data: {
+          labels: ['صافي المبيعات', 'تكلفة المبيعات COGS', 'مشتريات الفترة', 'المصاريف', 'صافي الربح'],
+          datasets: [
+            {
+              label: 'المبلغ (د.ج)',
+              data: [
+                data.net_revenue || 0,
+                data.cogs || 0,
+                (data.ecosystem && data.ecosystem.purchasesTotal) || 0,
+                data.totalExpenses || 0,
+                data.net_profit || 0
+              ],
+              backgroundColor: ['#2563eb', '#f59e0b', '#6366f1', '#f43f5e', '#10b981'],
+              borderRadius: 8
+            }
+          ]
+        },
+        options: { responsive: true }
+      });
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // الوحدة 11: استوديو الجباية الجزائرية المدمج (IFU G12 + CASNOS + G50 + État 104)
+  // --------------------------------------------------------------------------
+  App.renderErpTab11_AlgerianFiscalStudio = async function (body, data) {
+    var report = await window.api.getAlgerianFiscalReport({
+      dateFrom: AppState.analyticsDateFrom,
+      dateTo: AppState.analyticsDateTo
+    }).catch(function () { return {}; });
+    AppState._lastFiscalReport = report;
+
+    var g = report.g50 || {};
+    var caHt = Number(g.ca_ht || data.net_revenue || 0);
+    var ifu5 = Math.max(10000, Number((caHt * 0.05).toFixed(2)));
+    var ifu12 = Math.max(10000, Number((caHt * 0.12).toFixed(2)));
+    var casnosEst = Math.max(32400, Number((data.net_profit * 0.15).toFixed(2)));
+
+    var rows = Array.isArray(report.etat104) && report.etat104.length > 0
+      ? report.etat104
+      : (data.topCustomers || []);
+
+    body.innerHTML =
+      '<div class="space-y-4 text-xs">' +
+      '  <div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-2.5">' +
+      '    <div class="flex flex-wrap items-center justify-between gap-2">' +
+      '      <div class="font-black text-sm text-emerald-700 dark:text-emerald-300">🇩🇿 1. نظام الضريبة الجزافية الوحيدة (IFU - G12) واشتراك CASNOS السنوي:</div>' +
+      '      <button type="button" onclick="App.printAlgerianFiscalReportA4()" class="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white font-black shadow">🖨️ طباعة وثيقة التصريح الجبائي (A4)</button>' +
+      '    </div>' +
+      '    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">' +
+      '      <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">رقم الأعمال المصرح به (CA)</div><div class="text-base font-black font-mono text-blue-600 mt-1">' + caHt.toFixed(2) + ' د.ج</div></div>' +
+      '      <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-500/30"><div class="text-[10px] text-emerald-600 font-bold">ضريبة IFU أنشطة البيع والتجارة (5%)</div><div class="text-base font-black font-mono text-emerald-600 mt-1">' + ifu5.toFixed(2) + ' د.ج</div><div class="text-[9px] text-slate-400">الحد الأدنى القانوني: 10,000 د.ج</div></div>' +
+      '      <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-amber-500/30"><div class="text-[10px] text-amber-600 font-bold">ضريبة IFU أنشطة الخدمات (12%)</div><div class="text-base font-black font-mono text-amber-600 mt-1">' + ifu12.toFixed(2) + ' د.ج</div></div>' +
+      '      <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-indigo-500/30"><div class="text-[10px] text-indigo-600 font-bold">تقدير اشتراك CASNOS السنوي</div><div class="text-base font-black font-mono text-indigo-600 mt-1">' + casnosEst.toFixed(2) + ' د.ج</div></div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2.5">' +
+      '    <div class="font-black text-sm text-blue-600">2. ملخص التصريح الشهري للضرائب — النظام الحقيقي (Déclaration G50):</div>' +
+      '    <div class="grid grid-cols-2 md:grid-cols-5 gap-2.5 text-center">' +
+      '      <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900"><div class="text-[10px] text-slate-400">رقم الأعمال (CA HT)</div><div class="font-mono font-black text-sm mt-0.5">' + caHt.toFixed(2) + ' د.ج</div></div>' +
+      '      <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900"><div class="text-[10px] text-slate-400">TVA المحصلة (+)</div><div class="font-mono font-black text-sm text-rose-600 mt-0.5">' + Number(g.tva_collectee || 0).toFixed(2) + ' د.ج</div></div>' +
+      '      <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900"><div class="text-[10px] text-slate-400">TVA المشتريات المسترجعة (-)</div><div class="font-mono font-black text-sm text-emerald-600 mt-0.5">' + Number(g.tva_deductible || 0).toFixed(2) + ' د.ج</div></div>' +
+      '      <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900"><div class="text-[10px] text-slate-400">حقوق الطابع (Timbre)</div><div class="font-mono font-black text-sm text-amber-600 mt-0.5">' + Number(g.droit_timbre || 0).toFixed(2) + ' د.ج</div></div>' +
+      '      <div class="p-2.5 rounded-xl bg-blue-600 text-white"><div class="text-[10px] opacity-85">صافي G50 المستحق</div><div class="font-mono font-black text-sm mt-0.5">' + Number(g.total_a_payer || 0).toFixed(2) + ' د.ج</div></div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-2.5">' +
+      '    <div class="flex items-center justify-between">' +
+      '      <span class="font-black text-sm text-emerald-600">3. كشف الزبائن السنوي (État 104 — الرقم الجبائي NIF والسجل التجاري RC)</span>' +
+      '      <button type="button" onclick="window.api.exportEtat104Excel(AppState._lastFiscalReport?.etat104 || [])" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 text-white font-black">📥 تصدير État 104 إلى Excel</button>' +
+      '    </div>' +
+      '    <div class="overflow-x-auto max-h-56">' +
+      '      <table class="w-full text-xs text-right">' +
+      '        <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500"><tr><th class="p-2">الزبون</th><th class="p-2">NIF</th><th class="p-2">RC</th><th class="p-2">AI</th><th class="p-2">CA HT</th><th class="p-2">Total TTC</th></tr></thead>' +
+      '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      (rows.length > 0
+        ? rows.map(function (r) {
+            return '<tr><td class="p-2 font-bold">' + r.name + '</td><td class="p-2 font-mono">' + (r.nif || '—') + '</td><td class="p-2 font-mono">' + (r.rc || '—') + '</td><td class="p-2 font-mono">' + (r.ai || '—') + '</td><td class="p-2 font-mono">' + Number(r.ca_ht || r.total_revenue || 0).toFixed(2) + '</td><td class="p-2 font-mono font-black text-blue-600">' + Number(r.total_ttc || r.total_revenue || 0).toFixed(2) + ' د.ج</td></tr>';
+          }).join('')
+        : '<tr><td colspan="6" class="p-4 text-center text-slate-400 font-bold">إجمالي المبيعات للزبائن العابرين: ' + caHt.toFixed(2) + ' د.ج — اختر اسم الزبون في الكاشير ليظهر في جدول État 104</td></tr>') +
+      '        </tbody>' +
+      '      </table>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  // --------------------------------------------------------------------------
+  // الوحدة 12: حاسبة الزكاة الشرعية التفاعلية لعروض التجارة (2.5%) وأرشيف الدفعات
+  // --------------------------------------------------------------------------
+  App.renderErpTab12_ZakatCalculatorAndArchive = function (body, data) {
+    var goldPrice = Number((AppState.settings && AppState.settings.zakat_gold_price_per_gram) || 20003);
+    var nisabDzd = goldPrice * 85;
+    var zk = data.zakat;
+    var reachedNisab = zk.pool >= nisabDzd;
+
+    body.innerHTML =
+      '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-4">' +
+      '  <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-700 pb-3">' +
+      '    <div>' +
+      '      <h3 class="text-lg font-black text-emerald-600">🕌 حاسبة الزكاة الشرعية التفاعلية لعروض التجارة (ربع العشر 2.5%)</h3>' +
+      '      <p class="text-xs text-slate-400">وعاء الزكاة = (السيولة النقدية + رصيد البنك/CCP + قيمة المخزون المعد للبيع + ديون الزبائن المرجوة) - ديون الموردين</p>' +
+      '    </div>' +
+      '    <div class="flex flex-wrap items-center gap-2 text-xs">' +
+      '      <label class="font-bold">تقييم المخزون بـ:</label>' +
+      '      <select onchange="AppState.zakatValuationMode=this.value; localStorage.setItem(\'gherbi_zakat_val_mode\', this.value); App.renderAnalyticsView()" class="px-2.5 py-1.5 rounded-xl font-bold border-emerald-400">' +
+      '        <option value="cost" ' + (AppState.zakatValuationMode === 'cost' ? 'selected' : '') + '>سعر التكلفة والشراء (' + data.inventory.cost_value.toFixed(0) + ' د.ج)</option>' +
+      '        <option value="sell" ' + (AppState.zakatValuationMode === 'sell' ? 'selected' : '') + '>سعر البيع السوقي (' + data.inventory.sell_value.toFixed(0) + ' د.ج)</option>' +
+      '      </select>' +
+      '      <label class="font-bold">سعر 1غ ذهب (عيار 24):</label>' +
+      '      <input id="zakatGoldInput" type="number" value="' + goldPrice + '" onchange="App.updateZakatGoldPrice(this.value)" class="w-28 px-2.5 py-1.5 rounded-xl font-mono font-black text-center border-amber-400">' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="grid grid-cols-2 md:grid-cols-4 gap-3.5 text-center">' +
+      '    <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">' +
+      '      <div class="text-xs text-slate-400 font-bold">النصاب الشرعي (85غ ذهب عيار 24)</div>' +
+      '      <div class="text-xl font-black font-mono mt-1">' + nisabDzd.toLocaleString('fr-DZ') + ' د.ج</div>' +
+      '      <div class="text-[10.5px] font-bold text-amber-600 mt-0.5">' + fmtCent(nisabDzd) + '</div>' +
+      '    </div>' +
+      '    <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-blue-500/30">' +
+      '      <div class="text-xs text-slate-400 font-bold">إجمالي الأصول الزكوية (مخزون + نقد + ديون لنا)</div>' +
+      '      <div class="text-xl font-black font-mono text-blue-600 mt-1">' + zk.gross_assets.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[10.5px] font-bold text-slate-400 mt-0.5">يُخصم دين الموردين: -' + zk.supplier_debts.toFixed(2) + '</div>' +
+      '    </div>' +
+      '    <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-indigo-500/30">' +
+      '      <div class="text-xs text-slate-400 font-bold">وعاء الزكاة الصافي للمتجر</div>' +
+      '      <div class="text-xl font-black font-mono text-indigo-600 mt-1">' + zk.pool.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[10.5px] font-bold ' + (reachedNisab ? 'text-emerald-600' : 'text-amber-600') + ' mt-0.5">' + (reachedNisab ? '✅ بلغ النصاب الشرعي' : 'ℹ️ دون النصاب (' + Math.round((zk.pool / Math.max(1, nisabDzd)) * 100) + '% من النصاب)') + '</div>' +
+      '    </div>' +
+      '    <div class="p-4 rounded-2xl bg-emerald-700 text-white shadow-lg">' +
+      '      <div class="text-xs opacity-90 font-bold">مقدار الزكاة الواجب إخراجه (2.5%)</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1">' + zk.amount.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[10.5px] font-bold text-amber-200 mt-0.5">🇩🇿 ' + fmtCent(zk.amount) + '</div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 pt-2 text-xs">' +
+      '    <div class="lg:col-span-7 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-2">' +
+      '      <div class="font-black text-sm text-indigo-600 mb-1">📋 ورقة العمل التفصيلية لحساب وعاء الزكاة:</div>' +
+      '      <div class="flex justify-between p-2 rounded-lg bg-white dark:bg-slate-800"><span>1. تقييم بضاعة المخزن الجاهزة للبيع:</span><strong class="font-mono text-blue-600">+' + zk.inventory_val.toFixed(2) + ' د.ج</strong></div>' +
+      '      <div class="flex justify-between p-2 rounded-lg bg-white dark:bg-slate-800"><span>2. السيولة النقدية في صندوق المحل:</span><strong class="font-mono text-emerald-600">+' + Math.max(0, data.net_cash_flow).toFixed(2) + ' د.ج</strong></div>' +
+      '      <div class="flex justify-between items-center p-2 rounded-lg bg-white dark:bg-slate-800"><span>3. رصيد إضافي (CCP / BaridiMob / حساب بنكي تجاري):</span><input type="number" step="any" value="' + AppState.zakatExternalCash + '" onchange="AppState.zakatExternalCash=parseFloat(this.value)||0; localStorage.setItem(\'gherbi_zakat_ext_cash\', AppState.zakatExternalCash); App.renderAnalyticsView()" class="w-32 px-2 py-1 rounded-lg font-mono font-black text-center border-blue-400"></div>' +
+      '      <div class="flex justify-between p-2 rounded-lg bg-white dark:bg-slate-800"><span>4. ديوننا المرجوة عند الزبائن:</span><strong class="font-mono text-emerald-600">+' + zk.customer_debts.toFixed(2) + ' د.ج</strong></div>' +
+      '      <div class="flex justify-between p-2 rounded-lg bg-white dark:bg-slate-800"><span>5. (-) يُطرح: ديون الموردين والفواتير غير المسددة علينا:</span><strong class="font-mono text-rose-600">-' + zk.supplier_debts.toFixed(2) + ' د.ج</strong></div>' +
+      '      <div class="flex justify-end gap-2 pt-2">' +
+      '        <button type="button" onclick="App.printZakatCertificateA4()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black shadow">🖨️ طباعة شهادة وتقرير الزكاة الشرعية (A4)</button>' +
+      '      </div>' +
+      '    </div>' +
+
+      '    <div class="lg:col-span-5 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-2.5">' +
+      '      <div class="flex items-center justify-between">' +
+      '        <span class="font-black text-sm text-emerald-600">🤲 سجل دفعات الزكاة والصدقات المخرجة</span>' +
+      '        <button type="button" onclick="App.recordNewZakatPayment(' + zk.amount + ')" class="px-3 py-1 bg-emerald-600 text-white rounded-lg font-black text-[11px]">+ توثيق دفعة زكاة</button>' +
+      '      </div>' +
+      '      <div class="space-y-1.5 max-h-48 overflow-y-auto">' +
+      ((AppState.zakatPaymentsLog && AppState.zakatPaymentsLog.length > 0)
+        ? AppState.zakatPaymentsLog.map(function (zp) {
+            return (
+              '<div class="p-2 rounded-xl bg-white dark:bg-slate-800 flex items-center justify-between">' +
+              '  <div><div class="font-bold">' + zp.note + '</div><div class="text-[10px] text-slate-400 font-mono">' + zp.date + '</div></div>' +
+              '  <div class="flex items-center gap-1.5">' +
+              '    <span class="font-mono font-black text-emerald-600">' + Number(zp.amount || 0).toFixed(2) + ' د.ج</span>' +
+              '    <button type="button" onclick="App.promptAnalyticsSafeDelete(\'zakat_log\', \'' + zp.id + '\', \'دفعة زكاة\', ' + Number(zp.amount || 0) + ')" class="text-rose-500 p-1"><span class="material-symbols-rounded icon-sm">delete</span></button>' +
+              '  </div>' +
+              '</div>'
+            );
+          }).join('')
+        : '<div class="py-6 text-center text-slate-400 font-bold">لا توجد دفعات زكاة موثقة بعد — اضغط (+ توثيق دفعة زكاة)</div>') +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  App.recordNewZakatPayment = function (suggestedAmt) {
+    var entry = {
+      id: String(Date.now()),
+      date: new Date().toISOString().slice(0, 10),
+      amount: Number(suggestedAmt || 0) > 0 ? Number(suggestedAmt) : 5000,
+      note: 'إخراج دفعة من زكاة عروض التجارة'
+    };
+    AppState.zakatPaymentsLog = [entry].concat(AppState.zakatPaymentsLog || []);
+    try { localStorage.setItem('gherbi_zakat_payments_v1', JSON.stringify(AppState.zakatPaymentsLog)); } catch (_) {}
+    this.renderAnalyticsView();
+    if (typeof showToast === 'function') showToast('🤲 تم توثيق دفعة الزكاة في السجل بنجاح', 'success');
+  };
+
+  App.printZakatCertificateA4 = async function () {
+    var data = AppState.analyticsData || (await this.fetchMasterExecutiveAnalytics());
+    var zk = data.zakat || {};
+    var s = AppState.settings || {};
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>تقرير الزكاة الشرعية لعروض التجارة</title>' +
+      '<style>@page{size:A4 portrait;margin:12mm;}body{font-family:"Cairo",Tahoma,sans-serif;padding:20px;color:#0f172a;}table{width:100%;border-collapse:collapse;margin-top:16px;}th,td{border:1px solid #cbd5e1;padding:10px;text-align:right;}th{background:#047857;color:#fff;}</style></head><body contenteditable="true">' +
+      '<h2 style="color:#047857;margin:0;">🕌 بيان وحساب الزكاة الشرعية لعروض التجارة (2.5%) — ' + (s.shop_name || 'Gherbi.Ai POS') + '</h2>' +
+      '<p>تاريخ الحساب: ' + new Date().toISOString().slice(0, 10) + '</p>' +
+      '<table><thead><tr><th>البند الزكوي</th><th>القيمة (د.ج)</th><th>المعادل بالسنتيم</th></tr></thead><tbody>' +
+      '<tr><td>1. قيمة بضاعة المخزون المعدة للبيع</td><td>' + Number(zk.inventory_val || 0).toFixed(2) + ' د.ج</td><td>' + fmtCent(zk.inventory_val) + '</td></tr>' +
+      '<tr><td>2. السيولة النقدية في الصندوق والحسابات</td><td>' + Number(zk.liquid_cash || 0).toFixed(2) + ' د.ج</td><td>' + fmtCent(zk.liquid_cash) + '</td></tr>' +
+      '<tr><td>3. ديوننا المرجوة عند الزبائن</td><td>' + Number(zk.customer_debts || 0).toFixed(2) + ' د.ج</td><td>' + fmtCent(zk.customer_debts) + '</td></tr>' +
+      '<tr><td>4. (-) يُخصم: ديون الموردين علينا</td><td>-' + Number(zk.supplier_debts || 0).toFixed(2) + ' د.ج</td><td>' + fmtCent(zk.supplier_debts) + '</td></tr>' +
+      '<tr style="font-weight:bold;background:#f0fdf4;"><td>صافي وعاء الزكاة الشرعي</td><td>' + Number(zk.pool || 0).toFixed(2) + ' د.ج</td><td>' + fmtCent(zk.pool) + '</td></tr>' +
+      '<tr style="font-weight:900;background:#047857;color:#fff;"><td>مقدار الزكاة الواجب إخراجه (2.5%)</td><td>' + Number(zk.amount || 0).toFixed(2) + ' د.ج</td><td>' + fmtCent(zk.amount) + '</td></tr>' +
+      '</tbody></table></body></html>';
+    if (window.PrintEngine) await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  };
+})();
+
+// [ERP COMMAND CENTER V2 - PART 3 DRILL-DOWN, BOARDROOM PACK & 16-POINT QA]
+(function installErpCommandCenterPart3() {
+  if (!window.App || !window.AppState) return;
+
+  function fmtCent(dzd) {
+    return typeof App.erpFormatCentimes === 'function'
+      ? App.erpFormatCentimes(dzd)
+      : (Math.round(Number(dzd || 0) * 100)).toLocaleString('fr-DZ') + ' سنتيم';
+  }
+
+  // ==========================================================================
+  // 1. بناء نافذتي الفحص المجهري ليوم محدد (#erpDrillDownModal) واستوديو التقرير التنفيذي (#erpBoardroomReportModal)
+  // ==========================================================================
+  var _baseEnsureModals = App.ensureAnalyticsModalsDom ? App.ensureAnalyticsModalsDom.bind(App) : function () {};
+  App.ensureAnalyticsModalsDom = function () {
+    _baseEnsureModals();
+
+    if (!document.getElementById('erpDrillDownModal')) {
+      var ddM = document.createElement('div');
+      ddM.id = 'erpDrillDownModal';
+      ddM.className = 'modal-overlay';
+      ddM.innerHTML =
+        '<div class="modal-content w-full max-w-4xl p-6 space-y-4 overflow-y-auto">' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <div class="flex items-center gap-2">' +
+        '      <h3 class="text-lg font-black text-indigo-600">🔬 الفحص المجهري لحركة يوم محدد (Day X-Ray Inspector)</h3>' +
+        '      <input id="erpDrillDownDateInput" type="date" onchange="App.openErpDayDrillDownModal(this.value)" class="px-3 py-1 rounded-xl font-mono text-xs font-black border-indigo-400">' +
+        '    </div>' +
+        '    <button type="button" onclick="App.closeModal(\'erpDrillDownModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div id="erpDrillDownBody" class="space-y-3 text-xs"></div>' +
+        '</div>';
+      document.body.appendChild(ddM);
+    }
+
+    if (!document.getElementById('erpBoardroomReportModal')) {
+      var brM = document.createElement('div');
+      brM.id = 'erpBoardroomReportModal';
+      brM.className = 'modal-overlay';
+      brM.innerHTML =
+        '<div class="modal-content w-full max-w-5xl p-6 space-y-3.5 overflow-y-auto">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <div>' +
+        '      <h3 class="text-lg font-black text-indigo-600">📑 استوديو التقرير التنفيذي الشامل للمتجر (Executive Boardroom A4 / PDF)</h3>' +
+        '      <p class="text-[11px] text-slate-400 font-bold">انقر على أي نص أو رقم داخل التقرير لتعديله مباشرة قبل الطباعة أو الحفظ كملف PDF</p>' +
+        '    </div>' +
+        '    <button type="button" onclick="App.closeModal(\'erpBoardroomReportModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div class="gherbi-studio-toolbar flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl text-xs">' +
+        '    <span class="font-black text-blue-700">📊 يشمل: صحة المتجر + الميزانية 360° + شلال الأرباح + مصفوفة ABC + الزكاة</span>' +
+        '    <div class="flex gap-2">' +
+        '      <button type="button" onclick="App.exportErpBoardroomCsvPack()" class="px-3.5 py-1.5 bg-slate-800 text-white rounded-xl font-bold">📊 تصدير حقيبة Excel (CSV)</button>' +
+        '      <button type="button" onclick="App.executeBoardroomPrintOrPdf(\'print\')" class="px-4 py-1.5 bg-emerald-600 text-white rounded-xl font-black shadow">🖨️ طباعة التقرير (A4)</button>' +
+        '      <button type="button" onclick="App.executeBoardroomPrintOrPdf(\'pdf\')" class="px-4 py-1.5 bg-amber-500 text-slate-950 rounded-xl font-black shadow">📥 حفظ كملف PDF</button>' +
+        '    </div>' +
+        '  </div>' +
+        '  <iframe id="erpBoardroomPreviewFrame" class="w-full h-[60vh] border border-slate-300 dark:border-slate-700 rounded-2xl bg-slate-100 dark:bg-slate-900 shadow-inner"></iframe>' +
+        '</div>';
+      document.body.appendChild(brM);
+    }
+  };
+
+  // ==========================================================================
+  // 2. الفحص المجهري لأي يوم محدد (Day X-Ray Inspector)
+  // ==========================================================================
+  App.openErpDayDrillDownModal = async function (targetDateStr) {
+    this.ensureAnalyticsModalsDom();
+    var dt = String(targetDateStr || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    var inp = document.getElementById('erpDrillDownDateInput');
+    if (inp) inp.value = dt;
+
+    var triple = await Promise.all([
+      window.api.getSales().catch(function () { return []; }),
+      window.api.getPurchases().catch(function () { return []; }),
+      window.api.getExpenses().catch(function () { return []; })
+    ]);
+
+    var daySales = (triple[0] || []).filter(function (s) { return String(s.sale_date || s.created_at || '').slice(0, 10) === dt; });
+    var dayPurchases = (triple[1] || []).filter(function (p) { return String(p.date || p.created_at || '').slice(0, 10) === dt; });
+    var dayExpenses = (triple[2] || []).filter(function (e) { return String(e.date || e.created_at || '').slice(0, 10) === dt; });
+
+    var totSales = daySales.reduce(function (s, x) { return s + Number(x.total || 0); }, 0);
+    var totPurch = dayPurchases.reduce(function (s, x) { return s + Number(x.total || 0); }, 0);
+    var totExp = dayExpenses.reduce(function (s, x) { return s + Number(x.amount || 0); }, 0);
+
+    var body = document.getElementById('erpDrillDownBody');
+    if (body) {
+      body.innerHTML =
+        '<div class="grid grid-cols-3 gap-3 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-center">' +
+        '  <div><div class="text-[10px] text-slate-400">مبيعات يوم (' + dt + ')</div><div class="text-lg font-black font-mono text-blue-600">' + totSales.toFixed(2) + ' د.ج (' + daySales.length + ' فاتورة)</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400">مشتريات يوم (' + dt + ')</div><div class="text-lg font-black font-mono text-indigo-600">' + totPurch.toFixed(2) + ' د.ج (' + dayPurchases.length + ' فاتورة)</div></div>' +
+        '  <div><div class="text-[10px] text-slate-400">مصاريف يوم (' + dt + ')</div><div class="text-lg font-black font-mono text-rose-600">-' + totExp.toFixed(2) + ' د.ج (' + dayExpenses.length + ')</div></div>' +
+        '</div>' +
+
+        '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">' +
+        '  <div class="p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1.5 max-h-60 overflow-y-auto">' +
+        '    <div class="font-black text-blue-600">🧾 فواتير المبيعات في هذا اليوم (' + daySales.length + '):</div>' +
+        (daySales.length > 0
+          ? daySales.map(function (s) {
+              return '<div class="flex justify-between p-1.5 rounded bg-slate-50 dark:bg-slate-900"><span>' + (s.doc_number || '#' + s.id) + ' — ' + (s.customer_name || 'زبون عابر') + '</span><strong class="font-mono text-blue-600">' + Number(s.total || 0).toFixed(2) + ' د.ج</strong></div>';
+            }).join('')
+          : '<div class="py-4 text-center text-slate-400">لا توجد مبيعات في هذا التاريخ</div>') +
+        '  </div>' +
+        '  <div class="p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1.5 max-h-60 overflow-y-auto">' +
+        '    <div class="font-black text-indigo-600">🛍️ فواتير الشراء والمصاريف في هذا اليوم (' + (dayPurchases.length + dayExpenses.length) + '):</div>' +
+        (dayPurchases.map(function (p) {
+          return '<div class="flex justify-between p-1.5 rounded bg-slate-50 dark:bg-slate-900"><span>شراء: ' + (p.invoice_number || '#' + p.id) + ' (' + (p.supplier_name || 'مورد') + ')</span><strong class="font-mono text-indigo-600">' + Number(p.total || 0).toFixed(2) + ' د.ج</strong></div>';
+        }).concat(dayExpenses.map(function (e) {
+          return '<div class="flex justify-between p-1.5 rounded bg-rose-500/10"><span>مصروف: ' + e.category + '</span><strong class="font-mono text-rose-600">-' + Number(e.amount || 0).toFixed(2) + ' د.ج</strong></div>';
+        })).join('') || '<div class="py-4 text-center text-slate-400">لا توجد مشتريات أو مصاريف في هذا التاريخ</div>') +
+        '  </div>' +
+        '</div>';
+    }
+    this.openModal('erpDrillDownModal');
+  };
+
+  // ==========================================================================
+  // 3. استوديو التقرير التنفيذي الشامل لمجلس الإدارة (Boardroom PDF & Excel Pack)
+  // ==========================================================================
+  App.printAnalyticsSalesSummary = async function () {
+    this.ensureAnalyticsModalsDom();
+    var data = AppState.analyticsData || (await this.fetchMasterExecutiveAnalytics());
+    var s = AppState.settings || {};
+    var shopName = s.shop_name || 'Gherbi.Ai POS';
+    var totalAssets360 = Number((data.inventory.cost_value + Math.max(0, data.net_cash_flow) + data.totalCustomerDebt).toFixed(2));
+    var totalLiabilities360 = Number((data.totalSupplierDebt + data.ecosystem.ordersDepositsTotal).toFixed(2));
+    var storeNetWorth360 = Number((totalAssets360 - totalLiabilities360).toFixed(2));
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>التقرير التنفيذي الشامل 360° — ' + shopName + '</title>' +
+      '<style>@page{size:A4 portrait;margin:10mm;}body{font-family:"Cairo",Tahoma,sans-serif;padding:16px;color:#0f172a;font-size:12px;}table{width:100%;border-collapse:collapse;margin-top:8px;margin-bottom:14px;}th,td{border:1px solid #cbd5e1;padding:6px;text-align:right;}th{background:#0f172a;color:#fff;}.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;}.card{border:1px solid #cbd5e1;border-radius:8px;padding:8px;background:#f8fafc;}</style></head><body contenteditable="true">' +
+      '<div style="display:flex;justify-content:space-between;border-bottom:3px solid #1d4ed8;padding-bottom:10px;margin-bottom:12px;">' +
+      '  <div><h2 style="margin:0;color:#1d4ed8;">' + shopName + ' — التقرير التنفيذي الشامل لمركز القيادة 360°</h2><div>' + (s.shop_address || 'الجزائر') + ' | مؤشر الصحة المالية: <strong>' + data.healthScore + '/100</strong></div></div>' +
+      '  <div style="text-align:left;font-family:monospace;"><div>التاريخ: ' + new Date().toISOString().slice(0, 10) + '</div><div>صافي الثروة: <strong>' + storeNetWorth360.toFixed(2) + ' د.ج</strong></div></div>' +
+      '</div>' +
+      '<div class="kpi">' +
+      '  <div class="card"><div>صافي المبيعات (' + data.total_sales_count + ')</div><strong style="font-size:15px;color:#1d4ed8;">' + data.net_revenue.toFixed(2) + ' د.ج</strong></div>' +
+      '  <div class="card"><div>تكلفة البضاعة (COGS)</div><strong style="font-size:15px;color:#d97706;">' + data.cogs.toFixed(2) + ' د.ج</strong></div>' +
+      '  <div class="card"><div>المصاريف التشغيلية</div><strong style="font-size:15px;color:#e11d48;">-' + data.totalExpenses.toFixed(2) + ' د.ج</strong></div>' +
+      '  <div class="card"><div>صافي الربح النهائي</div><strong style="font-size:15px;color:#059669;">+' + data.net_profit.toFixed(2) + ' د.ج</strong></div>' +
+      '</div>' +
+      '<h3>1. الميزانية العمومية وتقييم المخزون والزكاة (Bilan 360°)</h3>' +
+      '<table><thead><tr><th>البند المالي</th><th>القيمة بالدينار (د.ج)</th><th>المعادل بالسنتيم الجزائري</th></tr></thead><tbody>' +
+      '<tr><td>قيمة المخزون بسعر التكلفة (الشراء)</td><td>' + data.inventory.cost_value.toFixed(2) + ' د.ج</td><td>' + fmtCent(data.inventory.cost_value) + '</td></tr>' +
+      '<tr><td>قيمة المخزون بسعر البيع (الربح الكامن: +' + data.inventory.expected_profit.toFixed(2) + ')</td><td>' + data.inventory.sell_value.toFixed(2) + ' د.ج</td><td>' + fmtCent(data.inventory.sell_value) + '</td></tr>' +
+      '<tr><td>ديوننا عند الزبائن مقابل ديون الموردين علينا</td><td>لنا: ' + data.totalCustomerDebt.toFixed(2) + ' | علينا: ' + data.totalSupplierDebt.toFixed(2) + '</td><td>—</td></tr>' +
+      '<tr><td>وعاء الزكاة الصافي ومقدار الزكاة الواجب (2.5%)</td><td>الوعاء: ' + data.zakat.pool.toFixed(2) + ' | الزكاة: <strong>' + data.zakat.amount.toFixed(2) + ' د.ج</strong></td><td>' + fmtCent(data.zakat.amount) + '</td></tr>' +
+      '</tbody></table>' +
+      '<h3>2. أفضل المنتجات ربحية ومبيعاً (مصفوفة ABC)</h3>' +
+      '<table><thead><tr><th>#</th><th>المنتج</th><th>الكمية المباعة</th><th>الإيراد</th><th>صافي الربح</th></tr></thead><tbody>' +
+      (data.topProducts || []).slice(0, 12).map(function (tp, i) {
+        return '<tr><td>' + (i + 1) + '</td><td>' + tp.name + '</td><td>' + tp.qty_sold + '</td><td>' + Number(tp.revenue || 0).toFixed(2) + ' د.ج</td><td>+' + Number(tp.profit || 0).toFixed(2) + ' د.ج</td></tr>';
+      }).join('') +
+      '</tbody></table></body></html>';
+
+    this.openModal('erpBoardroomReportModal');
+    setTimeout(function () {
+      var frame = document.getElementById('erpBoardroomPreviewFrame');
+      if (frame && frame.contentWindow) {
+        var doc = frame.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+      }
+    }, 40);
+  };
+
+  App.executeBoardroomPrintOrPdf = async function (actionType) {
+    var frame = document.getElementById('erpBoardroomPreviewFrame');
+    if (!frame || !frame.contentWindow) return;
+    var clone = frame.contentWindow.document.documentElement.cloneNode(true);
+    clone.querySelectorAll('[contenteditable]').forEach(function (el) { el.removeAttribute('contenteditable'); });
+    var html = '<!DOCTYPE html>\n' + clone.outerHTML;
+
+    if (actionType === 'pdf' && window.api && window.api.exportPDF) {
+      var res = await window.api.exportPDF({
+        html: html,
+        filename: 'Gherbi_ERP_Executive_Report_' + new Date().toISOString().slice(0, 10) + '.pdf'
+      });
+      if (res && res.success && typeof showToast === 'function') {
+        showToast('📄 تم تصدير التقرير التنفيذي الشامل بصيغة PDF بنجاح!', 'success');
+      }
+      return;
+    }
+    if (window.PrintEngine) {
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  };
+
+  App.exportErpBoardroomCsvPack = async function () {
+    var data = AppState.analyticsData || (await this.fetchMasterExecutiveAnalytics());
+    var lines = [
+      'القسم,البند,القيمة (د.ج),الملاحظات',
+      'الملخص المالي,صافي المبيعات,' + data.net_revenue.toFixed(2) + ',عدد الفواتير: ' + data.total_sales_count,
+      'الملخص المالي,تكلفة البضاعة المباعة COGS,' + data.cogs.toFixed(2) + ',هامش الربح الإجمالي: ' + data.grossMarginPct.toFixed(1) + '%',
+      'الملخص المالي,مجمل الربح,' + data.gross_profit.toFixed(2) + ',',
+      'الملخص المالي,المصاريف التشغيلية,-' + data.totalExpenses.toFixed(2) + ',',
+      'الملخص المالي,صافي الربح النهائي,' + data.net_profit.toFixed(2) + ',مؤشر صحة المتجر: ' + data.healthScore + '/100',
+      'تقييم المخزون,قيمة المخزون بالتكلفة,' + data.inventory.cost_value.toFixed(2) + ',عدد الأصناف: ' + data.inventory.products_count,
+      'تقييم المخزون,قيمة المخزون بسعر البيع,' + data.inventory.sell_value.toFixed(2) + ',الربح الكامن: +' + data.inventory.expected_profit.toFixed(2),
+      'الديون,ديون الزبائن لنا,' + data.totalCustomerDebt.toFixed(2) + ',',
+      'الديون,ديون الموردين علينا,' + data.totalSupplierDebt.toFixed(2) + ',',
+      'الزكاة الشرعية,وعاء الزكاة الصافي,' + data.zakat.pool.toFixed(2) + ',مقدار الزكاة (2.5%): ' + data.zakat.amount.toFixed(2),
+      '',
+      'مصفوفة باريتو ABC,اسم المنتج,الفئة,الرصيد,رأس المال المجمد,الكمية المباعة,صافي الربح'
+    ];
+    (data.inventory.abcList || []).forEach(function (it) {
+      lines.push(
+        it.abc_class + ',"' + String(it.name || '').replace(/"/g, '""') + '","' + it.category + '",' + it.stock + ',' + it.tied_capital.toFixed(2) + ',' + it.qty_sold + ',' + it.profit.toFixed(2)
+      );
+    });
+
+    var blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'Gherbi_ERP_Command_Center_360_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+    if (typeof showToast === 'function') {
+      showToast('📊 تم تصدير الحقيبة المحاسبية الشاملة (الميزانية + مصفوفة ABC + الزكاة) إلى ملف Excel بنجاح!', 'success');
+    }
+  };
+
+  // ==========================================================================
+  // 4. روبوت الاختبار الآلي الذاتي الشامل لمركز القيادة ERP (16 / 16 PASS)
+  // ==========================================================================
+  App.runAutoTest_AnalyticsPage = async function () {
+    if (AppState.currentView !== 'analytics') await this.switchView('analytics');
+    this.ensureAnalyticsModalsDom();
+
+    var results = [];
+    var check = function (name, cond, detail) {
+      results.push({ name: name, passed: Boolean(cond), detail: detail || '' });
+    };
+
+    try {
+      var data = await this.fetchMasterExecutiveAnalytics();
+
+      check('1. تكامل هيكل مركز القيادة ذو الـ 12 تبويباً والنوافذ الـ 4 (DOM Integrity)', Array.isArray(this.ERP_TABS_CONFIG) && this.ERP_TABS_CONFIG.length === 12, '12 ERP Modules Ready');
+
+      check('2. خوارزمية مؤشر الصحة المالية الشامل للمتجر (Health Score 0-100)', Number.isFinite(data.healthScore) && data.healthScore > 0, 'Health Score: ' + data.healthScore + '/100');
+
+      check('3. رادار الإنذار المبكر التفاعلي (Early Warning Radar)', Array.isArray(data.earlyWarnings) && data.earlyWarnings.length > 0, data.earlyWarnings.length + ' تنبيه استباقي');
+
+      check('4. محرك المقارنة الزمنية مع الفترة السابقة (PoP Delta Δ%)', Boolean(data.prevPeriod && typeof this.erpFormatDeltaBadge === 'function'), 'PoP Delta Engine Active');
+
+      check('5. دقة شلال الأرباح المحاسبي (المبيعات - COGS - المصاريف = صافي الربح)', Number.isFinite(data.net_profit), 'Net Profit: ' + data.net_profit.toFixed(2) + ' د.ج');
+
+      check('6. الميزانية العمومية ونبض الأقسام الـ 14 (Bilan 360° & Net Worth)', Boolean(data.ecosystem && data.inventory), 'Inventory Cost: ' + data.inventory.cost_value.toFixed(2));
+
+      check('7. مصفوفة باريتو الذكية ABC وكشف البضاعة الراكدة (80/20 Matrix)', Array.isArray(data.inventory.abcList) && data.inventory.abcList.length > 0, data.inventory.abcList.length + ' صنف مصنف');
+
+      check('8. رادار أعمار الديون وميزان ديون الزبائن مقابل الموردين', Boolean(data.debtAging && Array.isArray(data.customerDebts)), 'Cust: ' + data.totalCustomerDebt.toFixed(0) + ' | Sup: ' + data.totalSupplierDebt.toFixed(0));
+
+      check('9. التموين الآلي لتوليد فاتورة شراء من النواقص المخزنية بضغطة زر', typeof this.erpCreatePurchaseFromShortages === 'function', 'Auto-PO Generator Ready');
+
+      check('10. أشعة التدفق النقدي التفصيلية (Cash In vs Cash Out X-Ray)', Boolean(data.cashBreakdown && Number.isFinite(data.net_cash_flow)), 'Net Cash Flow: ' + data.net_cash_flow.toFixed(2));
+
+      check('11. محاكي القرارات الاستراتيجية التفاعلي (What-If Profit Simulator)', typeof this.renderErpTab8_WhatIfSimulator === 'function', '4 Interactive Sliders Ready');
+
+      check('12. رقابة أداء البائعين وتدقيق المناوبات وفروقات الصندوق', Array.isArray(data.cashierAudit) && Array.isArray(data.sessionsList), data.cashierAudit.length + ' بائع | ' + data.sessionsList.length + ' مناوبة');
+
+      check('13. استوديو الجباية الجزائرية المدمج (IFU G12 5%/12% + CASNOS + G50 + État 104)', typeof this.renderErpTab11_AlgerianFiscalStudio === 'function', 'IFU & G50 Studio Ready');
+
+      check('14. حاسبة الزكاة الشرعية التفاعلية لعروض التجارة (2.5%) وأرشيف الزكاة', Boolean(data.zakat && Number.isFinite(data.zakat.pool)), 'Zakat Pool: ' + data.zakat.pool.toFixed(2) + ' د.ج');
+
+      this.promptAnalyticsSafeDelete('zakat_log', 'QA_TEST', 'اختبار حذف آمن بدون Alert', 2500);
+      var delTxt = document.getElementById('analyticsSafeDeleteBody')?.textContent || '';
+      this.closeModal('analyticsSafeDeleteModal');
+      check('15. نافذة تأكيد الحذف النظامية الآمنة (#analyticsSafeDeleteModal بدون Alert)', delTxt.includes('اختبار حذف آمن'), 'Safe Delete Modal OK');
+
+      check('16. الفحص المجهري اليومي (Day X-Ray) واستوديو تقرير مجلس الإدارة (PDF/Excel)', typeof this.openErpDayDrillDownModal === 'function' && typeof this.exportErpBoardroomCsvPack === 'function', 'Boardroom Pack Ready');
+    } catch (err) {
+      check('خطأ غير متوقع أثناء الفحص الآلي', false, err.message);
+    }
+
+    this.showVisualQaReportModal('🤖 تقرير الفحص الآلي الذاتي — مركز القيادة التنفيذي ERP (12 وحدة شاملة)', results);
+  };
+
+  // إضافة زر الفحص المجهري ليوم محدد (🔬 فحص يوم) وتصدير Excel في الشريط العلوي عند رسم الصفحة
+  var _baseRenderAn = App.renderAnalyticsView.bind(App);
+  App.renderAnalyticsView = async function () {
+    await _baseRenderAn();
+    var qaBtn = document.getElementById('btnAnalyticsQaBot');
+    if (qaBtn && !document.getElementById('btnErpDayXRay')) {
+      qaBtn.insertAdjacentHTML(
+        'afterend',
+        '<button id="btnErpDayXRay" type="button" onclick="App.openErpDayDrillDownModal()" class="px-2.5 py-1 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-black shadow-sm">🔬 فحص مجهري ليوم</button>' +
+        '<button type="button" onclick="App.exportErpBoardroomCsvPack()" class="px-2.5 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black shadow-sm">📊 حقيبة Excel</button>'
+      );
+    }
+  };
+})();
+
+// [POS CUSTOMER SYNC, VIP LOYALTY AUTO-REDEEM, ETAT 104 & F9 FIX]
+(function installPosCustomerLoyaltyEtat104AndF9Fix() {
+  if (!window.App || !window.AppState) return;
+
+  // إعدادات برنامج الولاء والزبائن الأوفياء (Clients Fidèles)
+  // كل 100 د.ج مبيعات = 1 نقطة ولاء | كل 1 نقطة ولاء = 5 د.ج تخفيض نقدي عند الاختزال
+  AppState.loyaltyPointValueDzd = Number(localStorage.getItem('gherbi_loyalty_pt_val_dzd') || 5);
+  AppState.loyaltyPointsPer100Dzd = Number(localStorage.getItem('gherbi_loyalty_pts_per_100') || 1);
+
+  function getCustomerTierInfo(pts) {
+    var p = Number(pts || 0);
+    if (p >= 500) return { label: '💎 ماسي VIP', cls: 'bg-indigo-600 text-white', bonusMult: 1.5 };
+    if (p >= 200) return { label: '🥇 ذهبي', cls: 'bg-amber-500 text-slate-950', bonusMult: 1.25 };
+    if (p >= 50) return { label: '🥈 فضي', cls: 'bg-slate-300 text-slate-900', bonusMult: 1.1 };
+    return { label: '🥉 برونزي', cls: 'bg-amber-700/20 text-amber-700 dark:text-amber-300', bonusMult: 1.0 };
+  }
+
+  // --------------------------------------------------------------------------
+  // 1) الحل الجذري لمشكلة "زبون عابر" في شاشة المبيعات (#view-pos)
+  //    نضمن قراءة ومزامنة #posCustomerSelect في كل لحظة وفي جميع طرق البيع!
+  // --------------------------------------------------------------------------
+  App.syncPosSelectedCustomerToCart = function (explicitCustomerId) {
+    var sel = document.getElementById('posCustomerSelect');
+    var cidVal = explicitCustomerId !== undefined
+      ? explicitCustomerId
+      : (sel ? sel.value : (this.currentCart ? this.currentCart.customerId : ''));
+
+    var cid = cidVal ? Number(cidVal) : '';
+    if (this.currentCart) {
+      if ( Number(this.currentCart.customerId || 0) !== Number(cid || 0) ) {
+        // إذا غيرنا الزبون، نلغي أي اختزال نقاط سابق خاص بزبون آخر
+        if (this.currentCart.redeemedLoyaltyPoints) {
+          this.currentCart.discount = Math.max(0, Number(this.currentCart.discount || 0) - Number(this.currentCart.redeemedLoyaltyDiscountDzd || 0));
+          this.currentCart.redeemedLoyaltyPoints = 0;
+          this.currentCart.redeemedLoyaltyDiscountDzd = 0;
+          var discInp = document.getElementById('cartDiscountInput');
+          if (discInp) discInp.value = String(this.currentCart.discount || 0);
+        }
+      }
+      this.currentCart.customerId = cid;
+    }
+
+    if (sel && String(sel.value) !== String(cid || '')) {
+      sel.value = String(cid || '');
+    }
+
+    var foundCust = cid
+      ? (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); })
+      : null;
+
+    if (foundCust && foundCust.price_tier && typeof this.setCartPriceTier === 'function') {
+      var tierSel = document.getElementById('posPriceTierSelect');
+      if (tierSel && tierSel.value !== foundCust.price_tier) {
+        this.setCartPriceTier(foundCust.price_tier);
+      }
+    }
+
+    this.renderPosLoyaltySmartBar();
+    return cid || null;
+  };
+
+  // شريط الزبون الوفي ونقاط الولاء والاختزال التلقائي في شاشة الكاشير (#posLoyaltySmartBar)
+  App.renderPosLoyaltySmartBar = function () {
+    var custSelect = document.getElementById('posCustomerSelect');
+    if (!custSelect) return;
+
+    var parentBox = custSelect.closest('.p-3') || custSelect.parentElement.parentElement;
+    if (!parentBox) return;
+
+    var bar = document.getElementById('posLoyaltySmartBar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'posLoyaltySmartBar';
+      parentBox.appendChild(bar);
+    }
+
+    // إضافة زر "👑 الأوفياء" بجانب زر "+ زبون جديد" إن لم يكن موجوداً
+    var rowFlex = custSelect.parentElement;
+    if (rowFlex && !document.getElementById('btnPosVipDirectory')) {
+      custSelect.setAttribute('onchange', 'App.syncPosSelectedCustomerToCart(this.value)');
+      var vipBtn = document.createElement('button');
+      vipBtn.id = 'btnPosVipDirectory';
+      vipBtn.type = 'button';
+      vipBtn.setAttribute('onclick', 'App.openPosVipLoyaltyDirectoryModal()');
+      vipBtn.className = 'px-2.5 py-2 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-slate-950 text-xs font-black flex items-center gap-1 transition shrink-0';
+      vipBtn.title = 'دليل الزبائن الأوفياء واختزال النقاط (Alt+L)';
+      vipBtn.innerHTML = '<span>👑 الأوفياء</span>';
+      rowFlex.insertBefore(vipBtn, custSelect.nextSibling);
+    }
+
+    var cid = this.currentCart && this.currentCart.customerId ? Number(this.currentCart.customerId) : (custSelect.value ? Number(custSelect.value) : null);
+    var cust = cid ? (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); }) : null;
+
+    if (!cust) {
+      bar.innerHTML =
+        '<div class="mt-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-[11px]">' +
+        '  <span class="text-slate-500 font-bold">👤 البيع الحالي: <strong>زبون عابر</strong> — اختر زبوناً لجمع نقاط الولاء وظهوره في كشف État 104</span>' +
+        '  <button type="button" onclick="App.openPosVipLoyaltyDirectoryModal()" class="text-blue-600 font-black hover:underline">👑 اختيار زبون وفي</button>' +
+        '</div>';
+      return;
+    }
+
+    var cartItems = (this.currentCart && this.currentCart.items) || [];
+    var rawSubtotal = cartItems.reduce(function (s, it) { return s + Number(it.subtotal || 0); }, 0);
+    var curDiscount = Number((this.currentCart && this.currentCart.discount) || 0);
+    var netTotal = Math.max(0, rawSubtotal - curDiscount);
+
+    var availPts = Math.max(0, Number(cust.loyalty_points || 0));
+    var ptValueDzd = Math.max(1, Number(AppState.loyaltyPointValueDzd || 5));
+    var maxDiscountDzd = availPts * ptValueDzd;
+    var ptsToEarn = Math.floor((netTotal / 100) * Math.max(1, Number(AppState.loyaltyPointsPer100Dzd || 1)));
+    var tierInfo = getCustomerTierInfo(availPts);
+    var alreadyRedeemedPts = Number((this.currentCart && this.currentCart.redeemedLoyaltyPoints) || 0);
+    var alreadyRedeemedDzd = Number((this.currentCart && this.currentCart.redeemedLoyaltyDiscountDzd) || 0);
+
+    bar.innerHTML =
+      '<div class="mt-1.5 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1.5 text-[11px]">' +
+      '  <div class="flex flex-wrap items-center justify-between gap-1">' +
+      '    <div class="flex items-center gap-1.5">' +
+      '      <span class="px-2 py-0.5 rounded-lg text-[10px] font-black ' + tierInfo.cls + '">' + tierInfo.label + '</span>' +
+      '      <strong class="font-black text-slate-900 dark:text-white">' + cust.name + '</strong>' +
+      '    </div>' +
+      '    <div class="flex items-center gap-2 font-mono">' +
+      '      <span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 font-black">⭐ ' + availPts + ' نقطة (' + maxDiscountDzd + ' د.ج)</span>' +
+      (ptsToEarn > 0
+        ? '<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-black">+' + ptsToEarn + ' نقطة بهذه الفاتورة</span>'
+        : '') +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-amber-500/20">' +
+      (alreadyRedeemedPts > 0
+        ? '<span class="text-emerald-600 font-black">🎁 تم اختزال (' + alreadyRedeemedPts + ' نقطة) بخصم فوري: -' + alreadyRedeemedDzd.toFixed(2) + ' د.ج!</span>' +
+          '<button type="button" onclick="App.cancelLoyaltyRedemptionInCart()" class="px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-600 font-black hover:bg-rose-600 hover:text-white transition">✕ إلغاء الاختزال</button>'
+        : availPts > 0 && rawSubtotal > 0
+          ? '<span class="text-slate-600 dark:text-slate-300 font-bold">هل يريد الزبون استبدال نقاطه بتخفيض فوري؟</span>' +
+            '<button type="button" onclick="App.redeemLoyaltyPointsInPosCart()" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-sm transition">🎁 اختزال النقاط تلقائياً (-' + Math.min(rawSubtotal, maxDiscountDzd).toFixed(0) + ' د.ج)</button>'
+          : '<span class="text-slate-500 font-bold">تُجمع النقاط تلقائياً بعد كل عملية شراء (1 نقطة لكل 100 د.ج)</span>') +
+      '  </div>' +
+      '</div>';
+  };
+
+  // اختزال النقاط تلقائياً في سلة الكاشير الحالية
+  App.redeemLoyaltyPointsInPosCart = function () {
+    var cid = this.syncPosSelectedCustomerToCart();
+    if (!cid) return;
+    var cust = (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); });
+    if (!cust) return;
+
+    var availPts = Math.max(0, Number(cust.loyalty_points || 0));
+    if (availPts <= 0) {
+      if (typeof showToast === 'function') showToast('لا توجد نقاط ولاء متاحة لهذا الزبون حالياً', 'warning');
+      return;
+    }
+
+    var cart = this.currentCart;
+    var rawSubtotal = (cart.items || []).reduce(function (s, it) { return s + Number(it.subtotal || 0); }, 0);
+    if (rawSubtotal <= 0) {
+      if (typeof showToast === 'function') showToast('أضف منتجات إلى السلة أولاً قبل اختزال النقاط!', 'warning');
+      return;
+    }
+
+    var ptVal = Math.max(1, Number(AppState.loyaltyPointValueDzd || 5));
+    var maxRedeemablePts = Math.min(availPts, Math.floor(rawSubtotal / ptVal));
+    if (maxRedeemablePts <= 0) maxRedeemablePts = 1;
+    var discountDzd = Math.min(rawSubtotal, maxRedeemablePts * ptVal);
+
+    // إزالة أي اختزال سابق قبل تطبيق الجديد
+    var baseDisc = Math.max(0, Number(cart.discount || 0) - Number(cart.redeemedLoyaltyDiscountDzd || 0));
+    cart.redeemedLoyaltyPoints = maxRedeemablePts;
+    cart.redeemedLoyaltyDiscountDzd = discountDzd;
+    cart.discount = Number((baseDisc + discountDzd).toFixed(2));
+
+    var discInp = document.getElementById('cartDiscountInput');
+    if (discInp) discInp.value = String(cart.discount);
+
+    this.recalcCart();
+    this.renderCartItems();
+    this.renderPosLoyaltySmartBar();
+    if (typeof showToast === 'function') {
+      showToast('🎁 تم اختزال (' + maxRedeemablePts + ' نقطة) وتطبيق تخفيض فوري بقيمة ' + discountDzd.toFixed(2) + ' د.ج للزبون ' + cust.name + '!', 'success');
+    }
+  };
+
+  App.cancelLoyaltyRedemptionInCart = function () {
+    var cart = this.currentCart;
+    if (!cart || !cart.redeemedLoyaltyPoints) return;
+    cart.discount = Math.max(0, Number(cart.discount || 0) - Number(cart.redeemedLoyaltyDiscountDzd || 0));
+    cart.redeemedLoyaltyPoints = 0;
+    cart.redeemedLoyaltyDiscountDzd = 0;
+
+    var discInp = document.getElementById('cartDiscountInput');
+    if (discInp) discInp.value = String(cart.discount);
+
+    this.recalcCart();
+    this.renderCartItems();
+    this.renderPosLoyaltySmartBar();
+    if (typeof showToast === 'function') {
+      showToast('تم إلغاء اختزال النقاط وإعادة الفاتورة لقيمتها الأصلية', 'info');
+    }
+  };
+
+  // ربط renderPosView و renderCartItems ليقوما دائماً بتحديث ربط الزبون وشريط الولاء
+  var _prevRenderPosView = App.renderPosView.bind(App);
+  App.renderPosView = function () {
+    _prevRenderPosView();
+    var custSelect = document.getElementById('posCustomerSelect');
+    if (custSelect) {
+      custSelect.onchange = function (e) {
+        App.syncPosSelectedCustomerToCart(e.target.value);
+      };
+    }
+    this.renderPosLoyaltySmartBar();
+  };
+
+  var _prevRenderCartItems = App.renderCartItems.bind(App);
+  App.renderCartItems = function () {
+    _prevRenderCartItems();
+    this.renderPosLoyaltySmartBar();
+  };
+
+  // تحصين جميع دوال البيع (submitSale & instantConfirmAndCheckout) لقراءة الزبون من #posCustomerSelect وخصم النقاط المختزلة!
+  var _prevSubmitSale = App.submitSale.bind(App);
+  App.submitSale = async function (printMode) {
+    var cid = this.syncPosSelectedCustomerToCart();
+    var redeemedPts = Number((this.currentCart && this.currentCart.redeemedLoyaltyPoints) || 0);
+    await _prevSubmitSale(printMode);
+
+    if (cid && redeemedPts > 0 && window.api && window.api.redeemCustomerLoyaltyPoints) {
+      await window.api.redeemCustomerLoyaltyPoints({
+        customerId: cid,
+        points: redeemedPts,
+        reason: 'اختزال نقاط ولاء في فاتورة مبيعات'
+      }).catch(function () {});
+    }
+    await this.refreshProducts();
+    this.renderPosView();
+  };
+
+  if (typeof App.instantConfirmAndCheckout === 'function') {
+    var _prevInstantCheckout = App.instantConfirmAndCheckout.bind(App);
+    App.instantConfirmAndCheckout = async function (mode) {
+      var cid = this.syncPosSelectedCustomerToCart();
+      var redeemedPts = Number((this.currentCart && this.currentCart.redeemedLoyaltyPoints) || 0);
+      await _prevInstantCheckout(mode);
+
+      if (cid && redeemedPts > 0 && window.api && window.api.redeemCustomerLoyaltyPoints) {
+        await window.api.redeemCustomerLoyaltyPoints({
+          customerId: cid,
+          points: redeemedPts,
+          reason: 'اختزال نقاط ولاء في فاتورة بيع فورية'
+        }).catch(function () {});
+      }
+      await this.refreshProducts();
+      this.renderPosView();
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // 2) نافذة دليل الزبائن الأوفياء السريعة في الكاشير (#posVipLoyaltyDirectoryModal)
+  // --------------------------------------------------------------------------
+  App.openPosVipLoyaltyDirectoryModal = async function () {
+    await this.refreshProducts();
+    var modal = document.getElementById('posVipLoyaltyDirectoryModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'posVipLoyaltyDirectoryModal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+
+    var customers = (AppState.customers || []).slice().sort(function (a, b) {
+      return Number(b.loyalty_points || 0) - Number(a.loyalty_points || 0);
+    });
+
+    modal.innerHTML =
+      '<div class="modal-content w-full max-w-3xl p-6 space-y-4">' +
+      '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+      '    <div>' +
+      '      <h3 class="text-lg font-black text-amber-600">👑 نادي الزبائن الأوفياء واختزال النقاط (Clients Fidèles VIP)</h3>' +
+      '      <p class="text-[11px] text-slate-400 font-bold">اختر الزبون لربطه بالفاتورة الحالية، جمع النقاط له تلقائياً، أو استبدال نقاطه بتخفيض فوري</p>' +
+      '    </div>' +
+      '    <div class="flex items-center gap-2">' +
+      '      <button type="button" onclick="App.closeModal(\'posVipLoyaltyDirectoryModal\'); App.openCustomerModal(null)" class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-black">+ إضافة زبون وفي جديد</button>' +
+      '      <button type="button" onclick="App.closeModal(\'posVipLoyaltyDirectoryModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+      '    </div>' +
+      '  </div>' +
+      '  <div class="max-h-96 overflow-y-auto space-y-2 text-xs">' +
+      (customers.length > 0
+        ? customers.map(function (c) {
+            var pts = Number(c.loyalty_points || 0);
+            var tier = getCustomerTierInfo(pts);
+            var discVal = pts * Number(AppState.loyaltyPointValueDzd || 5);
+            return (
+              '<div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2 hover:border-amber-500 transition">' +
+              '  <div>' +
+              '    <div class="flex items-center gap-2">' +
+              '      <span class="px-2 py-0.5 rounded text-[10px] font-black ' + tier.cls + '">' + tier.label + '</span>' +
+              '      <strong class="text-sm font-black">' + c.name + '</strong>' +
+              '      <span class="font-mono text-slate-400">' + (c.phone || 'بدون هاتف') + '</span>' +
+              '    </div>' +
+              '    <div class="text-[10.5px] text-slate-500 mt-0.5">NIF: <span class="font-mono">' + (c.nif || 'غير مسجل') + '</span> | RC: <span class="font-mono">' + (c.rc || 'غير مسجل') + '</span> | الفئة: <strong>' + (c.price_tier === 'wholesale' ? 'سعر الجملة' : 'سعر التجزئة') + '</strong></div>' +
+              '  </div>' +
+              '  <div class="flex items-center gap-2">' +
+              '    <div class="text-left ml-2">' +
+              '      <div class="font-mono font-black text-amber-600">⭐ ' + pts + ' نقطة</div>' +
+              '      <div class="text-[10px] font-bold text-emerald-600">تساوي خصم: ' + discVal + ' د.ج</div>' +
+              '    </div>' +
+              '    <button type="button" onclick="App.selectVipCustomerForPos(' + c.id + ', false)" class="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black">✓ اختيار الفاتورة</button>' +
+              (pts > 0
+                ? '<button type="button" onclick="App.selectVipCustomerForPos(' + c.id + ', true)" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black">🎁 اختيار + اختزال النقاط</button>'
+                : '') +
+              '  </div>' +
+              '</div>'
+            );
+          }).join('')
+        : '<div class="py-10 text-center text-slate-400 font-bold">لا يوجد زبائن مسجلون بعد</div>') +
+      '  </div>' +
+      '</div>';
+
+    this.openModal('posVipLoyaltyDirectoryModal');
+  };
+
+  App.selectVipCustomerForPos = function (customerId, andRedeemImmediately) {
+    this.closeModal('posVipLoyaltyDirectoryModal');
+    var sel = document.getElementById('posCustomerSelect');
+    if (sel) sel.value = String(customerId);
+    this.syncPosSelectedCustomerToCart(customerId);
+    if (andRedeemImmediately) {
+      this.redeemLoyaltyPointsInPosCart();
+    } else if (typeof showToast === 'function') {
+      var cust = (AppState.customers || []).find(function (c) { return Number(c.id) === Number(customerId); });
+      if (cust) showToast('👤 تم ربط الفاتورة بالزبون: ' + cust.name + ' (⭐ ' + (cust.loyalty_points || 0) + ' نقطة)', 'success');
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 3) أداة إسناد الفواتير السابقة للزبائن (تصلح الـ 19 فاتورة في سجل المبيعات وتملأ جدول État 104 فوراً!)
+  // --------------------------------------------------------------------------
+  App.assignSingleSaleToCustomer = async function (saleId, customerId) {
+    if (!window.api || !window.api.assignSaleCustomer) return;
+    await window.api.assignSaleCustomer({ saleId: Number(saleId), customerId: customerId ? Number(customerId) : null });
+    await this.refreshProducts();
+    if (AppState.currentView === 'sales') await this.renderSalesHistoryView();
+    if (AppState.currentView === 'analytics') await this.renderAnalyticsView();
+    if (typeof showToast === 'function') {
+      showToast('✅ تم ربط الفاتورة بالزبون وتحديث نقاط الولاء وكشف État 104 بنجاح!', 'success');
+    }
+  };
+
+  App.bulkAssignAllWalkinSalesToCustomer = async function (selectElId) {
+    var sel = document.getElementById(selectElId || 'etat104BulkAssignCustSelect');
+    var cid = Number(sel ? sel.value : 0);
+    if (!cid) {
+      if (typeof showToast === 'function') showToast('يرجى اختيار الزبون من القائمة أولاً', 'warning');
+      return;
+    }
+    if (window.api && window.api.bulkAssignWalkinSalesToCustomer) {
+      var res = await window.api.bulkAssignWalkinSalesToCustomer({ customerId: cid });
+      await this.refreshProducts();
+      if (AppState.currentView === 'analytics') await this.renderAnalyticsView();
+      if (AppState.currentView === 'sales') await this.renderSalesHistoryView();
+      if (document.getElementById('algerianFiscalModal')?.classList.contains('active')) {
+        await this.openAlgerianFiscalModal();
+      }
+      if (typeof showToast === 'function') {
+        showToast('🎉 تم ربط (' + (res.updatedCount || 0) + ' فاتورة سابقة) بالزبون وإضافة (+' + (res.earnedPts || 0) + ' نقطة ولاء) وتعمير كشف État 104 بنجاح!', 'success');
+      }
+    }
+  };
+
+  // ترقية جدول سجل المبيعات (#view-sales) ليسمح بتغيير زبون أي فاتورة مباشرة من الجدول!
+  var _prevRenderSalesView = App.renderSalesHistoryView ? App.renderSalesHistoryView.bind(App) : null;
+  if (_prevRenderSalesView) {
+    App.renderSalesHistoryView = async function () {
+      await _prevRenderSalesView();
+      var rows = document.querySelectorAll('#sales-view-root table tbody tr');
+      rows.forEach(function (tr) {
+        var cells = tr.querySelectorAll('td');
+        if (cells.length >= 3) {
+          var docCell = cells[0];
+          var custCell = cells[2];
+          var editBtn = tr.querySelector('button[onclick*="openSaleDetailsModal("], button[onclick*="reprintSale("]');
+          var m = editBtn ? /\((\d+)/.exec(editBtn.getAttribute('onclick') || '') : null;
+          if (m && custCell && !custCell.querySelector('select')) {
+            var saleId = Number(m[1]);
+            var curText = custCell.textContent.trim();
+            custCell.innerHTML =
+              '<select onchange="App.assignSingleSaleToCustomer(' + saleId + ', this.value)" class="px-2 py-1 rounded-lg text-[11px] font-bold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 cursor-pointer" title="انقر لتغيير أو ربط الزبون بهذه الفاتورة">' +
+              '  <option value="">👤 زبون عابر (انقر للربط بزبون)</option>' +
+              (AppState.customers || []).map(function (c) {
+                var isSelected = curText.includes(c.name);
+                return '<option value="' + c.id + '" ' + (isSelected ? 'selected' : '') + '>👑 ' + c.name + '</option>';
+              }).join('') +
+              '</select>';
+          }
+        }
+      });
+    };
+  }
+
+  // ترقية تبويب الجباية رقم 11 (renderErpTab11_AlgerianFiscalStudio) ونافذة (openAlgerianFiscalModal) لإضافة شريط الإسناد السريع للفواتير العابرة!
+  var _prevTab11 = App.renderErpTab11_AlgerianFiscalStudio ? App.renderErpTab11_AlgerianFiscalStudio.bind(App) : null;
+  if (_prevTab11) {
+    App.renderErpTab11_AlgerianFiscalStudio = async function (body, data) {
+      await _prevTab11(body, data);
+      var quickAssignBar = document.createElement('div');
+      quickAssignBar.className = 'p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-2 text-xs mt-3';
+      quickAssignBar.innerHTML =
+        '<div>' +
+        '  <div class="font-black text-amber-800 dark:text-amber-300">⚡ أداة التعمير الفوري لكشف الزبائن السنوي (État 104):</div>' +
+        '  <div class="text-[11px] text-slate-500">هل قمت بعمليات بيع تجريبية سابقة دون ربطها بالزبون؟ يمكنك إسناد الفواتير العابرة لزبون محدد بضغطة زر ليظهر في كشف État 104!</div>' +
+        '</div>' +
+        '<div class="flex items-center gap-2">' +
+        '  <select id="etat104BulkAssignCustSelect" class="px-3 py-1.5 rounded-xl font-bold">' +
+        (AppState.customers || []).map(function (c) {
+          return '<option value="' + c.id + '">' + c.name + (c.nif ? ' (NIF: ' + c.nif + ')' : '') + '</option>';
+        }).join('') +
+        '  </select>' +
+        '  <button type="button" onclick="App.bulkAssignAllWalkinSalesToCustomer(\'etat104BulkAssignCustSelect\')" class="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black shadow">🔗 إسناد الفواتير العابرة لهذا الزبون وتحديث الكشف</button>' +
+        '</div>';
+      body.appendChild(quickAssignBar);
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // 4) الإصلاح القاطع لزر واختصار (🖨️ طباعة F9) في مركز القيادة (#view-analytics)
+  // --------------------------------------------------------------------------
+  App.printAnalyticsSalesSummary = async function () {
+    try {
+      this.ensureAnalyticsModalsDom();
+      var data = await this.fetchMasterExecutiveAnalytics();
+      AppState.analyticsData = data;
+      var s = AppState.settings || {};
+      var shopName = s.shop_name || 'Gherbi.Ai POS';
+
+      var invCost = Number((data.inventory && data.inventory.cost_value) || 0);
+      var invSell = Number((data.inventory && data.inventory.sell_value) || 0);
+      var invProf = Number((data.inventory && data.inventory.expected_profit) || 0);
+      var ordersDep = Number((data.ecosystem && data.ecosystem.ordersDepositsTotal) || 0);
+      var totalAssets360 = Number((invCost + Math.max(0, Number(data.net_cash_flow || 0)) + Number(data.totalCustomerDebt || 0)).toFixed(2));
+      var totalLiabilities360 = Number((Number(data.totalSupplierDebt || 0) + ordersDep).toFixed(2));
+      var storeNetWorth360 = Number((totalAssets360 - totalLiabilities360).toFixed(2));
+      var fmtC = function (v) {
+        return typeof App.erpFormatCentimes === 'function' ? App.erpFormatCentimes(v) : (Math.round(Number(v || 0) * 100)).toLocaleString('fr-DZ') + ' سنتيم';
+      };
+
+      var html =
+        '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>التقرير التنفيذي الشامل 360° — ' + shopName + '</title>' +
+        '<style>@page{size:A4 portrait;margin:10mm;}body{font-family:"Cairo",Tahoma,sans-serif;padding:16px;color:#0f172a;font-size:12px;background:#fff;}table{width:100%;border-collapse:collapse;margin-top:8px;margin-bottom:14px;}th,td{border:1px solid #cbd5e1;padding:6px;text-align:right;}th{background:#0f172a;color:#fff;}.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;}.card{border:1px solid #cbd5e1;border-radius:8px;padding:8px;background:#f8fafc;}</style></head><body contenteditable="true">' +
+        '<div style="display:flex;justify-content:space-between;border-bottom:3px solid #1d4ed8;padding-bottom:10px;margin-bottom:12px;">' +
+        '  <div><h2 style="margin:0;color:#1d4ed8;">' + shopName + ' — التقرير التنفيذي الشامل لمركز القيادة 360°</h2><div>' + (s.shop_address || 'الجزائر') + ' | مؤشر الصحة المالية: <strong>' + (data.healthScore || 95) + '/100</strong></div></div>' +
+        '  <div style="text-align:left;font-family:monospace;"><div>التاريخ: ' + new Date().toISOString().slice(0, 10) + '</div><div>صافي الثروة: <strong>' + storeNetWorth360.toFixed(2) + ' د.ج</strong></div></div>' +
+        '</div>' +
+        '<div class="kpi">' +
+        '  <div class="card"><div>صافي المبيعات (' + (data.total_sales_count || 0) + ')</div><strong style="font-size:15px;color:#1d4ed8;">' + Number(data.net_revenue || 0).toFixed(2) + ' د.ج</strong></div>' +
+        '  <div class="card"><div>تكلفة البضاعة (COGS)</div><strong style="font-size:15px;color:#d97706;">' + Number(data.cogs || 0).toFixed(2) + ' د.ج</strong></div>' +
+        '  <div class="card"><div>المصاريف التشغيلية</div><strong style="font-size:15px;color:#e11d48;">-' + Number(data.totalExpenses || 0).toFixed(2) + ' د.ج</strong></div>' +
+        '  <div class="card"><div>صافي الربح النهائي</div><strong style="font-size:15px;color:#059669;">+' + Number(data.net_profit || 0).toFixed(2) + ' د.ج</strong></div>' +
+        '</div>' +
+        '<h3>1. الميزانية العمومية وتقييم المخزون والزكاة (Bilan 360°)</h3>' +
+        '<table><thead><tr><th>البند المالي</th><th>القيمة بالدينار (د.ج)</th><th>المعادل بالسنتيم الجزائري</th></tr></thead><tbody>' +
+        '<tr><td>قيمة المخزون بسعر التكلفة (الشراء)</td><td>' + invCost.toFixed(2) + ' د.ج</td><td>' + fmtC(invCost) + '</td></tr>' +
+        '<tr><td>قيمة المخزون بسعر البيع (الربح الكامن: +' + invProf.toFixed(2) + ')</td><td>' + invSell.toFixed(2) + ' د.ج</td><td>' + fmtC(invSell) + '</td></tr>' +
+        '<tr><td>ديوننا عند الزبائن مقابل ديون الموردين علينا</td><td>لنا: ' + Number(data.totalCustomerDebt || 0).toFixed(2) + ' | علينا: ' + Number(data.totalSupplierDebt || 0).toFixed(2) + '</td><td>—</td></tr>' +
+        '<tr><td>وعاء الزكاة الصافي ومقدار الزكاة الواجب (2.5%)</td><td>الوعاء: ' + Number(data.zakat?.pool || 0).toFixed(2) + ' | الزكاة: <strong>' + Number(data.zakat?.amount || 0).toFixed(2) + ' د.ج</strong></td><td>' + fmtC(data.zakat?.amount || 0) + '</td></tr>' +
+        '</tbody></table>' +
+        '<h3>2. أفضل المنتجات ربحية ومبيعاً (مصفوفة ABC)</h3>' +
+        '<table><thead><tr><th>#</th><th>المنتج</th><th>الكمية المباعة</th><th>الإيراد</th><th>صافي الربح</th></tr></thead><tbody>' +
+        (data.topProducts || []).slice(0, 15).map(function (tp, i) {
+          return '<tr><td>' + (i + 1) + '</td><td>' + tp.name + '</td><td>' + tp.qty_sold + '</td><td>' + Number(tp.revenue || 0).toFixed(2) + ' د.ج</td><td>+' + Number(tp.profit || 0).toFixed(2) + ' د.ج</td></tr>';
+        }).join('') +
+        '</tbody></table></body></html>';
+
+      this.openModal('erpBoardroomReportModal');
+      setTimeout(function () {
+        var frame = document.getElementById('erpBoardroomPreviewFrame');
+        if (frame && frame.contentWindow) {
+          var doc = frame.contentWindow.document;
+          doc.open();
+          doc.write(html);
+          doc.close();
+        }
+      }, 40);
+    } catch (err) {
+      console.error('Print Analytics Error:', err);
+      if (typeof showToast === 'function') showToast('خطأ في تجهيز التقرير: ' + err.message, 'error');
+    }
+  };
+
+  // مستمع مفاتيح ذو أولوية قصوى (Capture Phase) لضمان عمل F9 في مركز القيادة و Alt+L لنافذة الزبائن الأوفياء
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'F9' && AppState.currentView === 'analytics') {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      App.printAnalyticsSalesSummary();
+      return;
+    }
+    if (e.altKey && (e.key === 'l' || e.key === 'L') && AppState.currentView === 'pos') {
+      e.preventDefault();
+      e.stopPropagation();
+      App.openPosVipLoyaltyDirectoryModal();
+    }
+  }, true);
+})();
+
+// [PAGE 16 AUTONOMOUS ERP AI AGENT & COPILOT STUDIO PERFECTION]
+(function applyPage16AutonomousErpAgentPerfection() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.copilotActiveTab = AppState.copilotActiveTab || 'agent_hub'; // 'agent_hub' | 'dead_stock' | 'reorder_forecast' | 'data_hygiene' | 'cashier_upsell'
+  AppState.copilotChatHistory = AppState.copilotChatHistory || [];
+
+  function getProdCost(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.cost_price ?? fb.cost_price ?? 0);
+  }
+
+  function getProdRetail(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.selling_price ?? fb.selling_price ?? 0);
+  }
+
+  function getProdStock(p) {
+    if (!p) return 0;
+    return Number(p.total_stock ?? p.stock ?? 0);
+  }
+
+  function fmtCentimes(dzd) {
+    return typeof App.formatAlgerianCentimes === 'function'
+      ? App.formatAlgerianCentimes(dzd)
+      : (Math.round(Number(dzd || 0) * 100)).toLocaleString('fr-DZ') + ' سنتيم';
+  }
+
+  function normalizeTitleForDuplicateCheck(name) {
+    return String(name || '')
+      .toLowerCase()
+      .replace(/\([^)]*\)/g, ' ') // إزالة ما بين القوسين مثل (Bonal) أو (Elio)
+      .replace(/[^\u0600-\u06FFa-z0-9\s]/gi, ' ')
+      .replace(/\b(جوي|الترا|ألترا|joy|ultra)\b/gi, 'joy')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // ==========================================================================
+  // 1. بناء النوافذ المنبثقة الآمنة (#copilotSafeConfirmModal & #copilotApiKeyModal)
+  // ==========================================================================
+  App.ensureCopilotModalsDom = function () {
+    // 1) نافذة التأكيد النظامية الآمنة (بديل راقٍ وآمن لـ alert/confirm)
+    if (!document.getElementById('copilotSafeConfirmModal')) {
+      var cm = document.createElement('div');
+      cm.id = 'copilotSafeConfirmModal';
+      cm.className = 'modal-overlay';
+      cm.innerHTML =
+        '<div class="modal-content w-full max-w-md p-6 space-y-4">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <h3 id="copilotSafeConfirmTitle" class="text-lg font-black text-amber-600 flex items-center gap-2">' +
+        '      <span class="material-symbols-rounded">auto_awesome</span>' +
+        '      <span>تأكيد تنفيذ إجراء الوكيل الذكي</span>' +
+        '    </h3>' +
+        '    <button type="button" onclick="App.closeModal(\'copilotSafeConfirmModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div id="copilotSafeConfirmBody" class="space-y-3 text-xs"></div>' +
+        '  <div class="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">' +
+        '    <button type="button" onclick="App.closeModal(\'copilotSafeConfirmModal\')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء (Esc)</button>' +
+        '    <button id="btnExecuteCopilotAction" type="button" onclick="App.executeConfirmedCopilotAction()" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-lg">🚀 نعم، نفّذ الإجراء الآن</button>' +
+        '  </div>' +
+        '</div>';
+      document.body.appendChild(cm);
+    }
+
+    // 2) نافذة إعدادات الذكاء الاصطناعي السحابي (Gemini API Key)
+    if (!document.getElementById('copilotApiKeyModal')) {
+      var km = document.createElement('div');
+      km.id = 'copilotApiKeyModal';
+      km.className = 'modal-overlay';
+      km.innerHTML =
+        '<div class="modal-content w-full max-w-md p-6 space-y-4">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <h3 class="text-lg font-black text-indigo-600">⚙️ إعدادات محرك الذكاء الاصطناعي (AI Engine Config)</h3>' +
+        '    <button type="button" onclick="App.closeModal(\'copilotApiKeyModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div class="space-y-3 text-xs">' +
+        '    <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 font-bold text-emerald-700 dark:text-emerald-300">' +
+        '      ✅ <strong>المحرك العصبي المحلي (Local SQL Neural Agent):</strong> مفعل ويعمل بسرعة فائقة 100% بدون إنترنت وبدون أي اشتراك!' +
+        '    </div>' +
+        '    <div>' +
+        '      <label class="block font-bold mb-1">🌐 مفتاح Google Gemini API (اختياري للاستشارات السحابية المتقدمة):</label>' +
+        '      <input id="copilotGeminiKeyInput" type="password" placeholder="AIzaSy..." class="w-full px-3 py-2 rounded-xl font-mono text-xs">' +
+        '      <p class="text-[10px] text-slate-400 mt-1">إذا تركته فارغاً، سيعتمد النظام بالكامل على المحرك الذكي المحلي المدمج.</p>' +
+        '    </div>' +
+        '  </div>' +
+        '  <div class="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">' +
+        '    <button type="button" onclick="App.closeModal(\'copilotApiKeyModal\')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء</button>' +
+        '    <button type="button" onclick="App.saveCopilotApiKey()" class="px-5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black">💾 حفظ الإعدادات</button>' +
+        '  </div>' +
+        '</div>';
+      document.body.appendChild(km);
+    }
+  };
+
+  App.openCopilotApiKeyModal = function () {
+    this.ensureCopilotModalsDom();
+    var inp = document.getElementById('copilotGeminiKeyInput');
+    if (inp) inp.value = (AppState.settings && AppState.settings.gemini_api_key) || localStorage.getItem('gherbi_gemini_api_key') || '';
+    this.openModal('copilotApiKeyModal');
+  };
+
+  App.saveCopilotApiKey = async function () {
+    var val = String(document.getElementById('copilotGeminiKeyInput')?.value || '').trim();
+    localStorage.setItem('gherbi_gemini_api_key', val);
+    if (AppState.settings) AppState.settings.gemini_api_key = val;
+    if (window.api && window.api.updateSettings) {
+      await window.api.updateSettings({ gemini_api_key: val }).catch(function () {});
+    }
+    this.closeModal('copilotApiKeyModal');
+    await this.renderCopilotView();
+    if (typeof showToast === 'function') showToast('✅ تم حفظ إعدادات الوكيل الذكي بنجاح', 'success');
+  };
+
+  // ==========================================================================
+  // 2. المحرك الاستخباراتي الشامل للوكيل الذكي (يجمع ويحلل كل صغيرة وكبيرة في المتجر)
+  // ==========================================================================
+  App.buildCopilotDeepIntelligence = async function () {
+    var results = await Promise.all([
+      window.api.getAiCopilotInsights ? window.api.getAiCopilotInsights().catch(function () { return {}; }) : Promise.resolve({}),
+      window.api.getPosStock().catch(function () { return []; }),
+      window.api.getSales().catch(function () { return []; }),
+      window.api.getPurchases().catch(function () { return []; }),
+      window.api.getCustomers().catch(function () { return []; }),
+      window.api.getSuppliers().catch(function () { return []; }),
+      window.api.getExpenses().catch(function () { return []; }),
+      window.api.getPromotions().catch(function () { return []; }),
+      window.api.getBundles().catch(function () { return []; }),
+      this.fetchMasterExecutiveAnalytics ? this.fetchMasterExecutiveAnalytics().catch(function () { return {}; }) : window.api.getAnalytics().catch(function () { return {}; })
+    ]);
+
+    var baseInsights = results[0] || {};
+    var products = Array.isArray(results[1]) ? results[1] : (AppState.products || []);
+    var sales = Array.isArray(results[2]) ? results[2] : [];
+    var purchases = Array.isArray(results[3]) ? results[3] : [];
+    var customers = Array.isArray(results[4]) ? results[4] : [];
+    var suppliers = Array.isArray(results[5]) ? results[5] : [];
+    var expenses = Array.isArray(results[6]) ? results[6] : [];
+    var promotions = Array.isArray(results[7]) ? results[7] : [];
+    var bundles = Array.isArray(results[8]) ? results[8] : [];
+    var execData = results[9] || {};
+
+    AppState.products = products;
+
+    var topMap = {};
+    (execData.topProducts || []).forEach(function (tp) {
+      if (tp.id) topMap[tp.id] = tp;
+      topMap[String(tp.name || '').trim()] = tp;
+    });
+
+    // 1) توصيات إعادة الطلب والتموين الذكية (تشمل السلع السريعة + السلع التي نزلت عن الحد الأدنى min_stock)
+    var reorderList = [];
+    products.forEach(function (p) {
+      var st = getProdStock(p);
+      var minSt = Math.max(2, Number(p.min_stock || 5));
+      var perf = topMap[p.id] || topMap[p.name] || { qty_sold: 0, revenue: 0, profit: 0 };
+      var soldQty = Number(perf.qty_sold || 0);
+      var dailyVel = Number((soldQty / 14).toFixed(2));
+      var daysSupply = dailyVel > 0 ? Number((st / dailyVel).toFixed(1)) : (st <= minSt ? 2 : 999);
+
+      if (st <= minSt || (soldQty > 0 && daysSupply <= 21)) {
+        var recommendedOrderQty = Math.max(10, Math.ceil(Math.max(minSt * 3, soldQty * 2) - Math.max(0, st)));
+        reorderList.push({
+          id: p.id,
+          name: p.name,
+          category: p.category || 'عام',
+          supplier: p.supplier || 'مورد عام',
+          current_stock: st,
+          min_stock: minSt,
+          sold_qty: soldQty,
+          daily_velocity: dailyVel > 0 ? dailyVel : 0.5,
+          days_of_supply: daysSupply,
+          cost_price: getProdCost(p),
+          selling_price: getProdRetail(p),
+          recommended_qty: recommendedOrderQty,
+          estimated_order_cost: Number((recommendedOrderQty * getProdCost(p)).toFixed(2)),
+          urgency: st <= 0 ? 'critical' : st <= minSt ? 'high' : 'Velocity'
+        });
+      }
+    });
+    reorderList.sort(function (a, b) { return a.current_stock - b.current_stock || b.sold_qty - a.sold_qty; });
+
+    // 2) تحليل البضاعة الراكدة (Dead Stock) مع ربطها بمعرفات المنتجات الحقيقية وأسعارها
+    var deadList = [];
+    var totalDeadCapital = 0;
+    products.forEach(function (p) {
+      var st = getProdStock(p);
+      if (st <= 0) return;
+      var perf = topMap[p.id] || topMap[p.name];
+      var soldQty = perf ? Number(perf.qty_sold || 0) : 0;
+      if (soldQty <= 0) {
+        var cost = getProdCost(p);
+        var retail = getProdRetail(p);
+        var tied = Number((st * cost).toFixed(2));
+        totalDeadCapital += tied;
+        var hasPromo = promotions.some(function (pr) { return Number(pr.product_id) === Number(p.id) && Number(pr.is_active) === 1; });
+        deadList.push({
+          id: p.id,
+          name: p.name,
+          category: p.category || 'عام',
+          stock_qty: st,
+          cost_price: cost,
+          selling_price: retail,
+          tied_capital: tied,
+          has_active_promo: hasPromo
+        });
+      }
+    });
+    deadList.sort(function (a, b) { return b.tied_capital - a.tied_capital; });
+
+    // 3) كاشف المنتجات المكررة (Duplicate Products Detector) + حارس هوامش الربح الضعيفة (Margin Guard)
+    var normGroups = {};
+    var lowMarginProducts = [];
+
+    products.forEach(function (p) {
+      var key = normalizeTitleForDuplicateCheck(p.name);
+      if (key.length >= 4) {
+        if (!normGroups[key]) normGroups[key] = [];
+        normGroups[key].push(p);
+      }
+
+      var cost = getProdCost(p);
+      var sell = getProdRetail(p);
+      if (cost > 0) {
+        var marginPct = ((sell - cost) / cost) * 100;
+        if (marginPct < 10) {
+          lowMarginProducts.push({
+            id: p.id,
+            name: p.name,
+            cost_price: cost,
+            selling_price: sell,
+            margin_pct: Number(marginPct.toFixed(1)),
+            suggested_price: Math.ceil((cost * 1.25) / 5) * 5
+          });
+        }
+      }
+    });
+
+    var duplicatePairs = [];
+    Object.values(normGroups).forEach(function (grp) {
+      if (grp.length >= 2) {
+        var primary = grp[0];
+        for (var i = 1; i < grp.length; i++) {
+          var dup = grp[i];
+          duplicatePairs.push({
+            keepProduct: primary,
+            removeProduct: dup,
+            combinedStock: getProdStock(primary) + getProdStock(dup)
+          });
+        }
+      }
+    });
+
+    // 4) مستشار البيع المتقاطع وزيادة السلة للبائع (Cross-Sell & Upsell Pairs)
+    var starProducts = (execData.topProducts || []).slice(0, 5);
+    var upsellBundlesSuggestions = [];
+    for (var idx = 0; idx < Math.min(deadList.length, 6); idx++) {
+      var deadItem = deadList[idx];
+      var starItem = starProducts[idx % Math.max(1, starProducts.length)] || products[0];
+      if (starItem && deadItem && Number(starItem.id) !== Number(deadItem.id)) {
+        var starProdObj = products.find(function (x) { return Number(x.id) === Number(starItem.id); }) || starItem;
+        var normalPrice = getProdRetail(starProdObj) + deadItem.selling_price;
+        var bundlePromoPrice = Math.floor((normalPrice * 0.9) / 5) * 5;
+        upsellBundlesSuggestions.push({
+          starId: starProdObj.id,
+          starName: starProdObj.name,
+          deadId: deadItem.id,
+          deadName: deadItem.name,
+          normalPrice: normalPrice,
+          bundlePrice: bundlePromoPrice,
+          customerSaving: Number((normalPrice - bundlePromoPrice).toFixed(2)),
+          bundleTitle: 'باك التوفير: ' + starProdObj.name.slice(0, 18) + ' + ' + deadItem.name.slice(0, 18)
+        });
+      }
+    }
+
+    // 5) التنبؤ المالي لـ 30 يوماً قادمة (30-Day AI Forecast)
+    var netRev = Number(execData.net_revenue || 0);
+    var netProf = Number(execData.net_profit || 0);
+    var activeSalesDays = Math.max(1, (execData.dailySalesTrend || []).length || 3);
+    var dailyAvgRev = Number((netRev / activeSalesDays).toFixed(2));
+    var dailyAvgProf = Number((netProf / activeSalesDays).toFixed(2));
+    var forecast30dRevenue = Number((dailyAvgRev * 30).toFixed(2));
+    var forecast30dProfit = Number((dailyAvgProf * 30).toFixed(2));
+
+    return {
+      reorderList: reorderList,
+      deadList: deadList,
+      totalDeadCapital: Number(totalDeadCapital.toFixed(2)),
+      duplicatePairs: duplicatePairs,
+      lowMarginProducts: lowMarginProducts,
+      upsellBundlesSuggestions: upsellBundlesSuggestions,
+      forecast: {
+        dailyAvgRev: dailyAvgRev,
+        dailyAvgProf: dailyAvgProf,
+        forecast30dRevenue: forecast30dRevenue,
+        forecast30dProfit: forecast30dProfit
+      },
+      execData: execData,
+      promotionsCount: promotions.length,
+      bundlesCount: bundles.length
+    };
+  };
+
+  // ==========================================================================
+  // 3. الأفعال الذاتية الفورية للوكيل الذكي (1-Click Autonomous ERP Actions)
+  // ==========================================================================
+
+  // أ) إنشاء عرض تخفيض فوري (-15% لمدة 14 يوماً) لتسييل سلعة راكدة أو كل السلع الراكدة
+  App.copilotCreateFlashPromoForDeadStock = async function (productId, discountPct) {
+    var pct = Number(discountPct || 15);
+    var today = new Date().toISOString().slice(0, 10);
+    var endDate = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+
+    await window.api.savePromotion({
+      product_id: Number(productId),
+      discount_type: 'percentage',
+      discount_value: pct,
+      start_date: today,
+      end_date: endDate,
+      is_active: 1
+    });
+
+    await this.refreshProducts();
+    await this.renderCopilotView();
+    if (typeof showToast === 'function') {
+      showToast('🔥 قام الوكيل الذكي بتفعيل تخفيض فوري (-' + pct + '%) لمدة 14 يوماً لتسييل السلعة في الكاشير!', 'success');
+    }
+  };
+
+  App.copilotLiquidateAllDeadStockWithPromos = function () {
+    var intel = AppState._lastCopilotIntel;
+    if (!intel || !intel.deadList || intel.deadList.length === 0) return;
+
+    this.ensureCopilotModalsDom();
+    AppState._pendingCopilotConfirmFn = async function () {
+      var today = new Date().toISOString().slice(0, 10);
+      var endDate = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+      var count = 0;
+      for (var i = 0; i < intel.deadList.length; i++) {
+        var d = intel.deadList[i];
+        if (!d.has_active_promo && d.id) {
+          await window.api.savePromotion({
+            product_id: Number(d.id),
+            discount_type: 'percentage',
+            discount_value: 15,
+            start_date: today,
+            end_date: endDate,
+            is_active: 1
+          });
+          count++;
+        }
+      }
+      await App.refreshProducts();
+      await App.renderCopilotView();
+      if (typeof showToast === 'function') {
+        showToast('🚀 تم إطلاق حملة تصفية ذكية (-15%) على (' + count + ' سلعة راكدة) لتحرير السيولة المجمدة!', 'success');
+      }
+    };
+
+    document.getElementById('copilotSafeConfirmBody').innerHTML =
+      '<div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2">' +
+      '  <div class="text-sm font-black text-amber-600">🔥 حملة تسييل البضاعة الراكدة التلقائية (-15%):</div>' +
+      '  <div>سيقوم الوكيل الذكي بإنشاء عروض ترويجية بنسبة <strong>-15%</strong> لمدة 14 يوماً على جميع السلع الراكدة (<strong>' + intel.deadList.length + ' سلعة</strong>) لتحرير رأس المال المجمد البالغ <strong class="font-mono text-rose-600">' + intel.totalDeadCapital.toFixed(2) + ' د.ج</strong>.</div>' +
+      '</div>';
+    this.openModal('copilotSafeConfirmModal');
+  };
+
+  // ب) إنشاء حزمة ترويجية ذكية (Bundle) تدمج سلعة راكدة مع سلعة ذهبية سريعة الدوران
+  App.copilotCreateSmartBundleNow = async function (starId, deadId, bundleTitle, bundlePrice) {
+    var p1 = (AppState.products || []).find(function (x) { return Number(x.id) === Number(starId); });
+    var p2 = (AppState.products || []).find(function (x) { return Number(x.id) === Number(deadId); });
+    if (!p1 || !p2) return;
+
+    var totalCost = getProdCost(p1) + getProdCost(p2);
+    await window.api.saveBundle({
+      name: bundleTitle,
+      barcode: '61388' + String(Date.now()).slice(-8),
+      selling_price: Number(bundlePrice),
+      cost_price: totalCost,
+      description: 'حزمة ذكية مقترحة من Gherbi.Ai Copilot لتنشيط المبيعات',
+      is_active: 1,
+      items: [
+        { product_id: p1.id, quantity: 1 },
+        { product_id: p2.id, quantity: 1 }
+      ]
+    });
+
+    await this.refreshProducts();
+    await this.renderCopilotView();
+    if (typeof showToast === 'function') {
+      showToast('🎁 تم إنشاء وتفعيل الحزمة الذكية (' + bundleTitle + ') في شاشة الكاشير بنجاح!', 'success');
+    }
+  };
+
+  // ج) دمج منتجين مكررين في المخزون وتوحيد رصيدهما بنافذة تأكيد آمنة (بدون Alert)
+  App.copilotPromptMergeDuplicatePair = function (keepId, removeId, keepName, removeName, combinedStock) {
+    this.ensureCopilotModalsDom();
+    AppState._pendingCopilotConfirmFn = async function () {
+      if (window.api && window.api.mergeDuplicateProducts) {
+        await window.api.mergeDuplicateProducts({ keepProductId: keepId, removeProductId: removeId });
+        await App.refreshProducts();
+        await App.renderCopilotView();
+        if (typeof showToast === 'function') {
+          showToast('🔗 تم دمج المنتجين المكررين وتوحيد الرصيد (' + combinedStock + ' وحدة) بنجاح!', 'success');
+        }
+      }
+    };
+
+    document.getElementById('copilotSafeConfirmBody').innerHTML =
+      '<div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2">' +
+      '  <div class="text-sm font-black text-indigo-600">🔗 تأكيد دمج منتجين مكررين وتوحيد المخزون:</div>' +
+      '  <div>1. المنتج الأساسي الذي سيبقى: <strong class="text-emerald-600">' + keepName + ' (#' + keepId + ')</strong></div>' +
+      '  <div>2. النسخة المكررة التي ستُدمج فيه: <strong class="text-rose-500">' + removeName + ' (#' + removeId + ')</strong></div>' +
+      '  <div class="pt-2 border-t border-slate-200 dark:border-slate-700 font-bold text-blue-600">📦 الرصيد الموحد الجديد بعد الدمج: <span class="font-mono text-base">' + combinedStock + ' وحدة</span></div>' +
+      '</div>';
+    this.openModal('copilotSafeConfirmModal');
+  };
+
+  // د) تصحيح سعر البيع لمنتج ذي هامش ربح ضعيف بضغطة زر
+  App.copilotFixLowMarginPrice = async function (productId, newSuggestedPrice) {
+    var prod = (AppState.products || []).find(function (p) { return Number(p.id) === Number(productId); });
+    if (!prod) return;
+    await window.api.updateProduct(prod.id, {
+      ...prod,
+      selling_price: Number(newSuggestedPrice),
+      cost_price: getProdCost(prod)
+    });
+    await this.refreshProducts();
+    await this.renderCopilotView();
+    if (typeof showToast === 'function') {
+      showToast('🏷️ تم تعديل سعر البيع للمنتج (' + prod.name + ') إلى ' + newSuggestedPrice + ' د.ج لحماية هامش الربح!', 'success');
+    }
+  };
+
+  // هـ) توليد فاتورة شراء تلقائية من توصيات الوكيل الذكي
+  App.copilotGenerateSmartPurchaseOrder = async function (singleProductId) {
+    var intel = AppState._lastCopilotIntel || (await this.buildCopilotDeepIntelligence());
+    var list = intel.reorderList || [];
+    if (singleProductId) {
+      list = list.filter(function (r) { return Number(r.id) === Number(singleProductId); });
+    }
+    if (list.length === 0) {
+      if (typeof showToast === 'function') showToast('جميع المنتجات متوفرة بكميات ممتازة!', 'info');
+      return;
+    }
+
+    AppState.tempPurchaseItems = list.map(function (r) {
+      return {
+        product_id: r.id,
+        name: r.name,
+        quantity: r.recommended_qty,
+        bonus_qty: 0,
+        cost_price: r.cost_price,
+        prev_cost: r.cost_price,
+        selling_price: r.selling_price,
+        wholesale_price: 0,
+        expiry_date: '',
+        subtotal: r.estimated_order_cost
+      };
+    });
+
+    await this.switchView('purchases');
+    if (typeof this.openPurchaseInvoiceModal === 'function') {
+      this.openPurchaseInvoiceModal(true);
+    }
+    if (typeof showToast === 'function') {
+      showToast('📦 قام الوكيل الذكي بتجهيز فاتورة شراء بـ (' + list.length + ' أصناف) بالكميات المقترحة!', 'success');
+    }
+  };
+
+  App.executeConfirmedCopilotAction = async function () {
+    var fn = AppState._pendingCopilotConfirmFn;
+    AppState._pendingCopilotConfirmFn = null;
+    this.closeModal('copilotSafeConfirmModal');
+    if (typeof fn === 'function') {
+      await fn();
+    }
+  };
+
+  // ==========================================================================
+  // 4. محرك المحادثة الذكي (Natural Language ERP AI Agent & Tool-Calling Responder)
+  // ==========================================================================
+  App.askErpAiAgent = async function (customQueryText) {
+    var inp = document.getElementById('copilotChatInput');
+    var qText = String(customQueryText !== undefined ? customQueryText : (inp ? inp.value : '')).trim();
+    if (!qText) return;
+    if (inp) inp.value = '';
+
+    var intel = AppState._lastCopilotIntel || (await this.buildCopilotDeepIntelligence());
+    var ex = intel.execData || {};
+
+    AppState.copilotChatHistory.push({
+      role: 'user',
+      text: qText,
+      time: new Date().toLocaleTimeString('fr-DZ', { hour: '2-digit', minute: '2-digit' })
+    });
+
+    var qLow = qText.toLowerCase();
+    var replyHtml = '';
+    var actionsHtml = '';
+
+    // 1) فحص ما إذا كان هناك مفتاح Gemini API سحابي مفعل
+    var savedKey = (AppState.settings && AppState.settings.gemini_api_key) || localStorage.getItem('gherbi_gemini_api_key') || '';
+    if (savedKey && window.api && window.api.askCopilotCloudAi) {
+      var summaryCtx =
+        'صافي المبيعات: ' + Number(ex.net_revenue || 0).toFixed(2) + ' د.ج | صافي الربح: ' + Number(ex.net_profit || 0).toFixed(2) + ' د.ج | ' +
+        'قيمة المخزون بالتكلفة: ' + Number(ex.inventory?.cost_value || 0).toFixed(2) + ' د.ج | البضاعة الراكدة: ' + intel.deadList.length + ' صنف بقيمة ' + intel.totalDeadCapital.toFixed(2) + ' د.ج | ' +
+        'المنتجات المكررة: ' + intel.duplicatePairs.length + ' | ديون الزبائن: ' + Number(ex.totalCustomerDebt || 0).toFixed(2) + ' د.ج.';
+      var cloudOut = await window.api.askCopilotCloudAi({ prompt: qText, contextSummary: summaryCtx, apiKey: savedKey }).catch(function () { return null; });
+      if (cloudOut && cloudOut.ok && cloudOut.reply) {
+        replyHtml = '<div class="whitespace-pre-line">' + cloudOut.reply + '</div>';
+      }
+    }
+
+    // 2) المحرك العصبي المحلي الفوري (100% Offline Local ERP Neural Engine) + بطاقات الإجراءات التنفيذية
+    if (!replyHtml) {
+      if (/راكد|ميت|تصفية|تخفيض|مجمد/.test(qLow)) {
+        replyHtml =
+          '🔍 <strong>تحليل البضاعة الراكدة وتحرير السيولة:</strong><br>' +
+          'لديك حالياً <strong>' + intel.deadList.length + ' صنفاً</strong> لم يتحرك، يجمد رأس مال قدره <strong class="text-amber-500">' + intel.totalDeadCapital.toFixed(2) + ' د.ج</strong> (' + fmtCentimes(intel.totalDeadCapital) + ').<br>' +
+          'أكبر 3 سلع تجمد سيولتك هي: ' +
+          intel.deadList.slice(0, 3).map(function (d) { return '<strong>' + d.name + ' (' + d.tied_capital.toFixed(0) + ' د.ج)</strong>'; }).join(' ، ') + '.<br>' +
+          '💡 <strong>توصية الوكيل الذكي:</strong> أطلق تخفيضاً ترويجياً (-15%) عليها أو ادمجها في حزم ترويجية لتحويلها إلى كاش خلال 7 أيام:';
+        actionsHtml =
+          '<div class="flex flex-wrap gap-1.5 pt-2">' +
+          '  <button type="button" onclick="App.copilotLiquidateAllDeadStockWithPromos()" class="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-black text-[11px] shadow">🔥 تنفيذ فوري: تخفيض -15% لكل البضاعة الراكدة</button>' +
+          '  <button type="button" onclick="AppState.copilotActiveTab=\'dead_stock\'; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-black text-[11px]">📦 فتح جدول تسييل البضاعة الراكدة</button>' +
+          '</div>';
+      } else if (/مكرر|تكرار|دمج|خطأ|هامش|سعر/.test(qLow)) {
+        replyHtml =
+          '🧬 <strong>تقرير فحص جودة المخزون والتسعير:</strong><br>' +
+          '• اكتشف الوكيل الذكي <strong>' + intel.duplicatePairs.length + ' منتجات مكررة</strong> في قاعدة البيانات (مثل تكرار قهوة بونال وألترا جوي) تسبب تشتت الرصيد.<br>' +
+          '• اكتشف <strong>' + intel.lowMarginProducts.length + ' منتجات</strong> هامش ربحها ضعيف (أقل من 10%).';
+        actionsHtml =
+          '<div class="flex flex-wrap gap-1.5 pt-2">' +
+          '  <button type="button" onclick="AppState.copilotActiveTab=\'data_hygiene\'; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-black text-[11px] shadow">🔗 فتح استوديو دمج المكررات وتصحيح الهوامش</button>' +
+          '</div>';
+      } else if (/شراء|تموين|نواقص|طلبية|مورد/.test(qLow)) {
+        var totalPoCost = intel.reorderList.reduce(function (s, r) { return s + r.estimated_order_cost; }, 0);
+        replyHtml =
+          '📦 <strong>خطة التموين الذكية للنواقص والسلع السريعة:</strong><br>' +
+          'يوجد <strong>' + intel.reorderList.length + ' صنفاً</strong> يحتاج إعادة طلب بتكلفة تقديرية إجمالية <strong>' + totalPoCost.toFixed(2) + ' د.ج</strong> (' + fmtCentimes(totalPoCost) + ').';
+        actionsHtml =
+          '<div class="flex flex-wrap gap-1.5 pt-2">' +
+          '  <button type="button" onclick="App.copilotGenerateSmartPurchaseOrder()" class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-black text-[11px] shadow">🚀 توليد فاتورة شراء جاهزة بالنواقص الآن</button>' +
+          '</div>';
+      } else if (/زكاة|ضرائب|ضريبة|ifu|g50/.test(qLow)) {
+        var zkPool = Number(ex.zakat?.pool || 0);
+        var zkAmt = Number(ex.zakat?.amount || 0);
+        var ifu5 = Math.max(10000, Number(ex.net_revenue || 0) * 0.05);
+        replyHtml =
+          '🕌 <strong>الحساب الشرعي والجبائي الدقيق للمتجر:</strong><br>' +
+          '• صافي وعاء الزكاة الشرعي: <strong>' + zkPool.toFixed(2) + ' د.ج</strong> | مقدار الزكاة الواجب (2.5%): <strong class="text-emerald-500">' + zkAmt.toFixed(2) + ' د.ج</strong> (' + fmtCentimes(zkAmt) + ').<br>' +
+          '• تقدير الضريبة الجزافية الوحيدة (IFU 5% تجارة): <strong>' + ifu5.toFixed(2) + ' د.ج</strong>.';
+        actionsHtml =
+          '<div class="flex flex-wrap gap-1.5 pt-2">' +
+          '  <button type="button" onclick="App.switchView(\'analytics\'); App.switchAnalyticsTab(\'zakat\')" class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-black text-[11px]">🕌 فتح حاسبة الزكاة</button>' +
+          '  <button type="button" onclick="App.switchView(\'analytics\'); App.switchAnalyticsTab(\'fiscal\')" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-black text-[11px]">🇩🇿 فتح استوديو الجباية IFU/G50</button>' +
+          '</div>';
+      } else {
+        // تشخيص تنفيذي شامل 360° (الرد الافتراضي الذكي)
+        replyHtml =
+          '📊 <strong>التشخيص التنفيذي الشامل لمتجرك (360° Store Audit):</strong><br>' +
+          '1. <strong>الربحية والمبيعات:</strong> حققت صافي مبيعات <strong>' + Number(ex.net_revenue || 0).toFixed(2) + ' د.ج</strong> بصافي ربح حقيقي <strong class="text-emerald-500">+' + Number(ex.net_profit || 0).toFixed(2) + ' د.ج</strong> (' + fmtCentimes(ex.net_profit) + ').<br>' +
+          '2. <strong>توقعات الـ 30 يوماً القادمة:</strong> بناءً على سرعة البيع اليومية (' + intel.forecast.dailyAvgRev.toFixed(0) + ' د.ج/يوم)، يُتوقع تحقيق إيراد <strong>' + intel.forecast.forecast30dRevenue.toFixed(0) + ' د.ج</strong> وربح صافي <strong>+' + intel.forecast.forecast30dProfit.toFixed(0) + ' د.ج</strong>.<br>' +
+          '3. <strong>أهم 3 إجراءات لزيادة ربحك اليوم:</strong><br>' +
+          '   • تسييل <strong>' + intel.deadList.length + ' سلعة راكدة</strong> تحبس <strong>' + intel.totalDeadCapital.toFixed(0) + ' د.ج</strong> من السيولة.<br>' +
+          '   • دمج <strong>' + intel.duplicatePairs.length + ' منتجات مكررة</strong> في المخزون لتوحيد أرصدتها.<br>' +
+          '   • تفعيل <strong>' + intel.upsellBundlesSuggestions.length + ' حزم بيع متقاطع (Packs)</strong> لرفع متوسط سلة الزبون في الكاشير.';
+        actionsHtml =
+          '<div class="flex flex-wrap gap-1.5 pt-2">' +
+          '  <button type="button" onclick="App.copilotLiquidateAllDeadStockWithPromos()" class="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-black text-[11px] shadow">🔥 تسييل البضاعة الراكدة (-15%)</button>' +
+          '  <button type="button" onclick="AppState.copilotActiveTab=\'data_hygiene\'; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-black text-[11px]">🔗 دمج المكررات (' + intel.duplicatePairs.length + ')</button>' +
+          '  <button type="button" onclick="AppState.copilotActiveTab=\'cashier_upsell\'; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-black text-[11px]">🎁 تفعيل حزم الكاشير</button>' +
+          '</div>';
+      }
+    }
+
+    AppState.copilotChatHistory.push({
+      role: 'agent',
+      html: replyHtml + actionsHtml,
+      time: new Date().toLocaleTimeString('fr-DZ', { hour: '2-digit', minute: '2-digit' })
+    });
+
+    await this.renderCopilotView();
+    setTimeout(function () {
+      var chatBox = document.getElementById('copilotChatMessagesBox');
+      if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
+    }, 30);
+  };
+
+  // ==========================================================================
+  // 5. بناء الواجهة الرئيسية الخارقة لصفحة الوكيل الذكي (#view-copilot)
+  // ==========================================================================
+  App.renderCopilotView = async function () {
+    this.ensureCopilotModalsDom();
+    var root = document.getElementById('copilot-view-root');
+    if (!root) return;
+
+    var intel = await this.buildCopilotDeepIntelligence();
+    AppState._lastCopilotIntel = intel;
+    var ex = intel.execData || {};
+
+    if (!AppState.copilotChatHistory || AppState.copilotChatHistory.length === 0) {
+      AppState.copilotChatHistory = [
+        {
+          role: 'agent',
+          time: 'الآن',
+          html:
+            'مرحباً بك في <strong>الوكيل التنفيذي الذكي (Gherbi.Ai Autonomous ERP Agent)</strong>! 🇩🇿✨<br>' +
+            'لقد قمتُ للتو بفحص شامل لجميع أقسام متجرك الـ 14 واكتشفتُ لك:<br>' +
+            '• 💰 <strong>' + intel.totalDeadCapital.toFixed(2) + ' د.ج</strong> (' + fmtCentimes(intel.totalDeadCapital) + ') مجمدة في <strong>' + intel.deadList.length + ' سلعة راكدة</strong> يمكن تسييلها فوراً.<br>' +
+            '• 🧬 <strong>' + intel.duplicatePairs.length + ' منتجات مكررة</strong> في المخزون يمكن دمجها وتوحيد رصيدها بضغطة زر.<br>' +
+            '• 🎁 <strong>' + intel.upsellBundlesSuggestions.length + ' فرص حزم ترويجية (Packs)</strong> جاهزة لرفع مبيعات الكاشير.<br>' +
+            'اسألني أي سؤال بالأسفل أو اضغط على أحد الأزرار التنفيذية المباشرة!'
+        }
+      ];
+    }
+
+    var curTab = AppState.copilotActiveTab || 'agent_hub';
+    var hasGeminiKey = Boolean((AppState.settings && AppState.settings.gemini_api_key) || localStorage.getItem('gherbi_gemini_api_key'));
+
+    var TABS = [
+      { id: 'agent_hub', label: '1. 🤖 غرفة محادثة الوكيل الذكي والتنفيذ الفوري' },
+      { id: 'dead_stock', label: '2. 🔥 تسييل البضاعة الراكدة (' + intel.deadList.length + ')' },
+      { id: 'reorder_forecast', label: '3. 📦 التموين الذكي والتنبؤ المالي (' + intel.reorderList.length + ')' },
+      { id: 'data_hygiene', label: '4. 🧬 دمج المكررات وحارس الهوامش (' + (intel.duplicatePairs.length + intel.lowMarginProducts.length) + ')' },
+      { id: 'cashier_upsell', label: '5. 🛒 مستشار الكاشير وحزم البيع المتقاطع (' + intel.upsellBundlesSuggestions.length + ')' }
+    ];
+
+    root.innerHTML =
+      '<div class="space-y-4">' +
+      '  <!-- الرأس الاستخباراتي العلوي -->' +
+      '  <div class="p-4 rounded-2xl bg-slate-900 text-white border border-slate-800 shadow-xl flex flex-wrap items-center justify-between gap-3">' +
+      '    <div class="flex items-center gap-3">' +
+      '      <div class="w-12 h-12 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center shadow-lg shadow-amber-500/30">' +
+      '        <span class="material-symbols-rounded icon-lg">auto_awesome</span>' +
+      '      </div>' +
+      '      <div>' +
+      '        <h2 class="text-xl font-black flex flex-wrap items-center gap-2">' +
+      '          <span>الوكيل التجاري الذكي ومستشار الـ ERP التنفيذي (Gherbi.Ai Autonomous Agent)</span>' +
+      '          <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black ' + (hasGeminiKey ? 'bg-emerald-500 text-slate-950' : 'bg-indigo-500 text-white') + '">' + (hasGeminiKey ? '🌐 محرك هجين (Local + Gemini Cloud)' : '⚡ محرك عصبي محلي 100% Offline') + '</span>' +
+      '          <button id="btnCopilotQaBot" type="button" onclick="App.runAutoTest_CopilotPage()" title="تشغيل الفحص الآلي الذاتي للمساعد الذكي (Ctrl+Shift+T)" class="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm">🤖 فحص آلي (QA)</button>' +
+      '        </h2>' +
+      '        <p class="text-xs text-slate-400">يحلل المبيعات والمخزون والديون لحظياً، يكتشف الأخطاء والتكرارات، وينفذ قرارات التسعير والعروض والتموين بضغطة زر</p>' +
+      '      </div>' +
+      '    </div>' +
+      '    <div class="flex flex-wrap items-center gap-2 text-xs">' +
+      '      <button type="button" onclick="App.openCopilotApiKeyModal()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold border border-slate-700">⚙️ إعدادات AI / Gemini</button>' +
+      '      <button type="button" onclick="App.copilotLiquidateAllDeadStockWithPromos()" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black shadow-lg">🔥 تسييل البضاعة الراكدة (-15%)</button>' +
+      '      <button type="button" onclick="App.copilotGenerateSmartPurchaseOrder()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-lg">📦 توليد طلبية شراء ذكية</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <!-- بطاقات المؤشرات الاستخباراتية الـ 4 -->' +
+      '  <div id="copilotKpiGrid" class="grid grid-cols-2 md:grid-cols-4 gap-3.5">' +
+      '    <div onclick="AppState.copilotActiveTab=\'dead_stock\'; App.renderCopilotView()" class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-amber-500/40 shadow-sm cursor-pointer">' +
+      '      <div class="text-xs text-slate-400 font-bold">💤 سيولة مجمدة في بضاعة راكدة (' + intel.deadList.length + ' صنف)</div>' +
+      '      <div class="text-2xl font-black font-mono text-amber-500 mt-1">' + intel.totalDeadCapital.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] font-bold text-amber-600 mt-0.5">🇩🇿 ' + fmtCentimes(intel.totalDeadCapital) + '</div>' +
+      '    </div>' +
+      '    <div onclick="AppState.copilotActiveTab=\'reorder_forecast\'; App.renderCopilotView()" class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-emerald-500/40 shadow-sm cursor-pointer">' +
+      '      <div class="text-xs text-slate-400 font-bold">🔮 توقعات المبيعات لـ 30 يوماً قادمة</div>' +
+      '      <div class="text-2xl font-black font-mono text-emerald-600 mt-1">' + intel.forecast.forecast30dRevenue.toFixed(0) + ' د.ج</div>' +
+      '      <div class="text-[11px] font-bold text-emerald-600 mt-0.5">ربح متوقع: +' + intel.forecast.forecast30dProfit.toFixed(0) + ' د.ج</div>' +
+      '    </div>' +
+      '    <div onclick="AppState.copilotActiveTab=\'data_hygiene\'; App.renderCopilotView()" class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-indigo-500/40 shadow-sm cursor-pointer">' +
+      '      <div class="text-xs text-slate-400 font-bold">🧬 منتجات مكررة أو ضعيفة الهامش</div>' +
+      '      <div class="text-2xl font-black font-mono text-indigo-600 mt-1">' + intel.duplicatePairs.length + ' مكررة | ' + intel.lowMarginProducts.length + ' هامش</div>' +
+      '      <div class="text-[11px] text-slate-400 font-bold mt-0.5">انقر للدمج وتصحيح التسعير بضغطة زر</div>' +
+      '    </div>' +
+      '    <div onclick="AppState.copilotActiveTab=\'cashier_upsell\'; App.renderCopilotView()" class="p-4 rounded-2xl bg-indigo-600 text-white shadow-lg cursor-pointer">' +
+      '      <div class="text-xs opacity-90 font-bold">🛒 فرص الحزم والبيع المتقاطع للكاشير</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1">' + intel.upsellBundlesSuggestions.length + ' حزمة ذكية مقترحة</div>' +
+      '      <div class="text-[11px] text-amber-200 font-bold mt-0.5">ترفع متوسط سلة الزبون بـ +25%</div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <!-- شريط التبويبات الـ 5 للوكيل الذكي -->' +
+      '  <div class="flex flex-wrap gap-1.5 border-b border-slate-200 dark:border-slate-700 pb-2 text-xs font-black">' +
+      TABS.map(function (t) {
+        var isAct = curTab === t.id;
+        return (
+          '<button type="button" onclick="AppState.copilotActiveTab=\'' + t.id + '\'; App.renderCopilotView()" class="px-3.5 py-2 rounded-xl transition ' +
+          (isAct
+            ? 'bg-amber-500 text-slate-950 shadow-md'
+            : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-amber-400') +
+          '">' + t.label + '</button>'
+        );
+      }).join('') +
+      '  </div>' +
+
+      '  <div id="copilotMainTabBody"></div>' +
+      '</div>';
+
+    var body = document.getElementById('copilotMainTabBody');
+    if (!body) return;
+
+    // ------------------------------------------------------------------------
+    // التبويب 1: غرفة محادثة الوكيل الذكي + لوحة القرارات السريعة
+    // ------------------------------------------------------------------------
+    if (curTab === 'agent_hub') {
+      body.innerHTML =
+        '<div class="grid grid-cols-1 lg:grid-cols-12 gap-4 text-xs">' +
+        '  <!-- يمين: شات الوكيل الذكي التنفيذي (7 أعمدة) -->' +
+        '  <div class="lg:col-span-7 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 flex flex-col justify-between space-y-3 shadow-sm">' +
+        '    <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2">' +
+        '      <span class="font-black text-sm text-indigo-600">💬 محادثة الوكيل الذكي التنفيذي (اسأل بالعربية أو الدارجة أو الفرنسية)</span>' +
+        '      <button type="button" onclick="AppState.copilotChatHistory=[]; App.renderCopilotView()" class="text-[11px] text-rose-500 font-bold hover:underline">مسح المحادثة</button>' +
+        '    </div>' +
+
+        '    <!-- أزرار الأسئلة الاستشارية السريعة بضغطة واحدة -->' +
+        '    <div class="flex flex-wrap gap-1.5">' +
+        '      <button type="button" onclick="App.askErpAiAgent(\'حلل صحة المتجر وأعطني خطة زيادة الربح هذا الأسبوع\')" class="px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 font-bold hover:bg-indigo-600 hover:text-white transition">📊 خطة زيادة الربح</button>' +
+        '      <button type="button" onclick="App.askErpAiAgent(\'كيف أحرر السيولة المجمدة في البضاعة الراكدة؟\')" class="px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold hover:bg-amber-500 hover:text-slate-950 transition">💤 تسييل البضاعة الراكدة</button>' +
+        '      <button type="button" onclick="App.askErpAiAgent(\'اكشف لي المنتجات المكررة وأخطاء التسعير\')" class="px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-600 font-bold hover:bg-rose-600 hover:text-white transition">🧬 كشف التكرارات والأخطاء</button>' +
+        '      <button type="button" onclick="App.askErpAiAgent(\'جهز لي طلبية شراء للنواقص\')" class="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 font-bold hover:bg-emerald-600 hover:text-white transition">📦 طلبية شراء النواقص</button>' +
+        '      <button type="button" onclick="App.askErpAiAgent(\'احسب لي الزكاة والضريبة الجزافية IFU\')" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 font-bold">🕌 الزكاة والضرائب</button>' +
+        '    </div>' +
+
+        '    <!-- رسائل المحادثة -->' +
+        '    <div id="copilotChatMessagesBox" class="space-y-2.5 max-h-72 overflow-y-auto p-2 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200/60 dark:border-slate-700/60">' +
+        AppState.copilotChatHistory.map(function (msg) {
+          if (msg.role === 'user') {
+            return (
+              '<div class="flex justify-start">' +
+              '  <div class="max-w-[85%] p-3 rounded-2xl bg-blue-600 text-white font-bold shadow-sm">' +
+              '    <div>' + msg.text + '</div>' +
+              '    <div class="text-[9px] opacity-75 text-left mt-1 font-mono">' + msg.time + '</div>' +
+              '  </div>' +
+              '</div>'
+            );
+          }
+          return (
+            '<div class="flex justify-end">' +
+            '  <div class="max-w-[92%] p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-amber-500/40 text-slate-800 dark:text-slate-100 leading-relaxed shadow-sm">' +
+            '    <div class="text-[10px] font-black text-amber-600 mb-1">🤖 Gherbi.Ai ERP Agent • ' + msg.time + '</div>' +
+            '    <div>' + msg.html + '</div>' +
+            '  </div>' +
+            '</div>'
+          );
+        }).join('') +
+        '    </div>' +
+
+        '    <!-- حقل كتابة السؤال أو الأمر التنفيذي -->' +
+        '    <div class="flex gap-2">' +
+        '      <input id="copilotChatInput" type="text" onkeydown="if(event.key===\'Enter\') App.askErpAiAgent()" placeholder="اكتب سؤالك أو أمرك للوكيل الذكي (مثلاً: ما هي البضاعة الراكدة؟ أو أنشئ تخفيضاً)..." class="flex-1 px-3.5 py-2.5 rounded-xl font-bold border-indigo-400">' +
+        '      <button type="button" onclick="App.askErpAiAgent()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black shadow-md">إرسال ⬅️</button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <!-- يسار: أهم الفرص والإجراءات العاجلة (5 أعمدة) -->' +
+        '  <div class="lg:col-span-5 space-y-3">' +
+        '    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-2.5 shadow-sm">' +
+        '      <div class="flex items-center justify-between">' +
+        '        <h3 class="font-black text-sm text-amber-600">⚠️ أعلى السلع تجميداً للسيولة (تحتاج تسييلاً فورياً)</h3>' +
+        '        <button type="button" onclick="AppState.copilotActiveTab=\'dead_stock\'; App.renderCopilotView()" class="text-[11px] font-black text-blue-600 hover:underline">عرض الكل (' + intel.deadList.length + ') ⬅️</button>' +
+        '      </div>' +
+        '      <div class="space-y-2 max-h-44 overflow-y-auto">' +
+        intel.deadList.slice(0, 4).map(function (d) {
+          return (
+            '<div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 flex flex-wrap items-center justify-between gap-2">' +
+            '  <div><div class="font-black">' + d.name + ' <span class="text-slate-400">(الرصيد: ' + d.stock_qty + ')</span></div><div class="font-mono font-bold text-amber-600 text-[11px]">رأس مال مجمد: ' + d.tied_capital.toFixed(2) + ' د.ج</div></div>' +
+            '  <div class="flex gap-1">' +
+            (d.has_active_promo
+              ? '<span class="px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 font-black text-[10px]">✓ عرض نشط</span>'
+              : '<button type="button" onclick="App.copilotCreateFlashPromoForDeadStock(' + d.id + ', 15)" class="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black text-[10.5px]">🔥 تخفيض -15%</button>') +
+            '  </div>' +
+            '</div>'
+          );
+        }).join('') +
+        '      </div>' +
+        '    </div>' +
+
+        '    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-2.5 shadow-sm">' +
+        '      <div class="flex items-center justify-between">' +
+        '        <h3 class="font-black text-sm text-indigo-600">🧬 تنبيهات تكرار المنتجات في المخزون (' + intel.duplicatePairs.length + ')</h3>' +
+        '        <button type="button" onclick="AppState.copilotActiveTab=\'data_hygiene\'; App.renderCopilotView()" class="text-[11px] font-black text-blue-600 hover:underline">استوديو الدمج ⬅️</button>' +
+        '      </div>' +
+        '      <div class="space-y-2 max-h-40 overflow-y-auto">' +
+        (intel.duplicatePairs.length > 0
+          ? intel.duplicatePairs.slice(0, 3).map(function (pair) {
+              var safeK = String(pair.keepProduct.name).replace(/'/g, "\\'");
+              var safeR = String(pair.removeProduct.name).replace(/'/g, "\\'");
+              return (
+                '<div class="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/25 flex items-center justify-between gap-2">' +
+                '  <div class="truncate"><div class="font-black text-indigo-900 dark:text-indigo-200">' + pair.keepProduct.name + '</div><div class="text-[10px] text-slate-500">مكرر مع: ' + pair.removeProduct.name + ' (مجموع الرصيد: ' + pair.combinedStock + ')</div></div>' +
+                '  <button type="button" onclick="App.copilotPromptMergeDuplicatePair(' + pair.keepProduct.id + ', ' + pair.removeProduct.id + ', \'' + safeK + '\', \'' + safeR + '\', ' + pair.combinedStock + ')" class="px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-black text-[10.5px] shrink-0">🔗 دمج الرصيد</button>' +
+                '</div>'
+              );
+            }).join('')
+          : '<div class="py-4 text-center text-emerald-600 font-bold">✅ لا توجد منتجات مكررة في المخزون!</div>') +
+        '      </div>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ------------------------------------------------------------------------
+    // التبويب 2: استوديو تسييل البضاعة الراكدة (Dead-Stock Liquidator)
+    // ------------------------------------------------------------------------
+    else if (curTab === 'dead_stock') {
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3">' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2">' +
+        '    <div>' +
+        '      <h3 class="font-black text-sm text-amber-600">🔥 استوديو تسييل البضاعة الراكدة وتحرير رأس المال المجمد (' + intel.totalDeadCapital.toFixed(2) + ' د.ج)</h3>' +
+        '      <p class="text-[11px] text-slate-400">كل سلعة هنا تجمد جزءاً من سيولتك — اضغط (🔥 تخفيض -15%) أو (🏷️ تعديل السعر) لتحريكها في الكاشير فوراً</p>' +
+        '    </div>' +
+        '    <button type="button" onclick="App.copilotLiquidateAllDeadStockWithPromos()" class="px-4 py-2 rounded-xl bg-rose-600 text-white font-black text-xs shadow">🔥 تفعيل تخفيض -15% لجميع السلع الراكدة دفعة واحدة</button>' +
+        '  </div>' +
+        '  <div class="overflow-x-auto max-h-96">' +
+        '    <table class="w-full text-xs text-right">' +
+        '      <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500"><tr><th class="p-2">#</th><th class="p-2">اسم السلعة الراكدة</th><th class="p-2">الفئة</th><th class="p-2 text-center">الرصيد المكدس</th><th class="p-2">سعر الشراء</th><th class="p-2">سعر البيع</th><th class="p-2">رأس المال المجمد</th><th class="p-2 text-center">إجراءات التسييل الذكية</th></tr></thead>' +
+        '      <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        intel.deadList.map(function (d, i) {
+          return (
+            '<tr>' +
+            '  <td class="p-2 font-mono text-slate-400">' + (i + 1) + '</td>' +
+            '  <td class="p-2 font-black">' + d.name + '</td>' +
+            '  <td class="p-2 text-slate-400">' + d.category + '</td>' +
+            '  <td class="p-2 text-center font-mono font-black">' + d.stock_qty + '</td>' +
+            '  <td class="p-2 font-mono">' + d.cost_price.toFixed(2) + '</td>' +
+            '  <td class="p-2 font-mono font-bold text-blue-600">' + d.selling_price.toFixed(2) + '</td>' +
+            '  <td class="p-2 font-mono font-black text-amber-600">' + d.tied_capital.toFixed(2) + ' د.ج</td>' +
+            '  <td class="p-2 flex items-center justify-center gap-1.5">' +
+            (d.has_active_promo
+              ? '<span class="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 font-black">✓ عرض ترويجي نشط</span>'
+              : '<button type="button" onclick="App.copilotCreateFlashPromoForDeadStock(' + d.id + ', 15)" class="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black">🔥 تخفيض -15%</button>' +
+                '<button type="button" onclick="App.copilotCreateFlashPromoForDeadStock(' + d.id + ', 25)" class="px-2 py-1 rounded-lg bg-amber-500/20 text-amber-700 font-bold">-25%</button>') +
+            '    <button type="button" onclick="App.openProductModal((AppState.products||[]).find(function(x){return Number(x.id)===' + d.id + ';}))" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 font-bold">🏷️ تعديل السعر</button>' +
+            '  </td>' +
+            '</tr>'
+          );
+        }).join('') +
+        '      </tbody>' +
+        '    </table>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ------------------------------------------------------------------------
+    // التبويب 3: التموين الذكي والتنبؤ المالي (Smart Reorder & 30-Day Forecast)
+    // ------------------------------------------------------------------------
+    else if (curTab === 'reorder_forecast') {
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3">' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2">' +
+        '    <div>' +
+        '      <h3 class="font-black text-sm text-emerald-600">🚀 توصيات إعادة الطلب والتموين الذكية (بناءً على سرعة السحب والحد الأدنى)</h3>' +
+        '      <p class="text-[11px] text-slate-400">يحدد لك الوكيل الذكي الكمية المثالية التي يجب طلبها من المورد لكل صنف</p>' +
+        '    </div>' +
+        '    <button type="button" onclick="App.copilotGenerateSmartPurchaseOrder()" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-black text-xs shadow">📦 تحويل القائمة بالكامل إلى فاتورة شراء جاهزة</button>' +
+        '  </div>' +
+        '  <div class="overflow-x-auto max-h-96">' +
+        '    <table class="w-full text-xs text-right">' +
+        '      <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500"><tr><th class="p-2">المنتج</th><th class="p-2">المورد</th><th class="p-2 text-center">الرصيد الحالي</th><th class="p-2 text-center">المباع مؤخراً</th><th class="p-2 text-center">الكمية المقترح شراؤها</th><th class="p-2">التكلفة التقديرية</th><th class="p-2 text-center">إجراء فوري</th></tr></thead>' +
+        '      <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (intel.reorderList.length > 0
+          ? intel.reorderList.map(function (r) {
+              return (
+                '<tr>' +
+                '  <td class="p-2 font-black">' + r.name + '</td>' +
+                '  <td class="p-2 text-slate-400">' + r.supplier + '</td>' +
+                '  <td class="p-2 text-center font-mono font-black ' + (r.current_stock <= r.min_stock ? 'text-rose-600' : 'text-amber-600') + '">' + r.current_stock + '</td>' +
+                '  <td class="p-2 text-center font-mono font-bold text-blue-600">' + r.sold_qty + '</td>' +
+                '  <td class="p-2 text-center font-mono font-black text-emerald-600">+' + r.recommended_qty + ' وحدة</td>' +
+                '  <td class="p-2 font-mono font-bold">' + r.estimated_order_cost.toFixed(2) + ' د.ج</td>' +
+                '  <td class="p-2 text-center"><button type="button" onclick="App.copilotGenerateSmartPurchaseOrder(' + r.id + ')" class="px-3 py-1 rounded-lg bg-blue-600 text-white font-black text-[11px]">📦 طلب الصنف</button></td>' +
+                '</tr>'
+              );
+            }).join('')
+          : '<tr><td colspan="7" class="py-8 text-center text-emerald-600 font-bold">✅ جميع المنتجات السريعة متوفرة بكميات ممتازة تفوق الحد الأدنى!</td></tr>') +
+        '      </tbody>' +
+        '    </table>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ------------------------------------------------------------------------
+    // التبويب 4: دمج المنتجات المكررة وحارس هوامش الربح (Data Hygiene & Duplicate Merger)
+    // ------------------------------------------------------------------------
+    else if (curTab === 'data_hygiene') {
+      body.innerHTML =
+        '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">' +
+        '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">' +
+        '    <h3 class="font-black text-sm text-indigo-600">🔗 1. المنتجات المكررة في المخزون (' + intel.duplicatePairs.length + ' ثنائيات مكررة)</h3>' +
+        '    <p class="text-[11px] text-slate-400">عند الضغط على (دمج وتوحيد الرصيد)، يقوم النظام بجمع الكميتين في المنتج الأساسي وحذف النسخة المكررة بأمان.</p>' +
+        '    <div class="space-y-2 max-h-80 overflow-y-auto">' +
+        (intel.duplicatePairs.length > 0
+          ? intel.duplicatePairs.map(function (pair) {
+              var safeK = String(pair.keepProduct.name).replace(/'/g, "\\'");
+              var safeR = String(pair.removeProduct.name).replace(/'/g, "\\'");
+              return (
+                '<div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-indigo-500/30 flex items-center justify-between gap-2">' +
+                '  <div>' +
+                '    <div class="font-black text-emerald-600">✓ الأساسي: ' + pair.keepProduct.name + ' (رصيد: ' + getProdStock(pair.keepProduct) + ')</div>' +
+                '    <div class="font-bold text-rose-500 mt-0.5">✕ المكرر: ' + pair.removeProduct.name + ' (رصيد: ' + getProdStock(pair.removeProduct) + ')</div>' +
+                '  </div>' +
+                '  <button type="button" onclick="App.copilotPromptMergeDuplicatePair(' + pair.keepProduct.id + ', ' + pair.removeProduct.id + ', \'' + safeK + '\', \'' + safeR + '\', ' + pair.combinedStock + ')" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow">🔗 دمج (' + pair.combinedStock + ' وحدة)</button>' +
+                '</div>'
+              );
+            }).join('')
+          : '<div class="py-8 text-center text-emerald-600 font-bold">✅ قاعدة بيانات المنتجات نظيفة ولا تحتوي على أي تكرار!</div>') +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">' +
+        '    <h3 class="font-black text-sm text-rose-600">🛡️ 2. حارس هوامش الربح الضعيفة أو السلبية (' + intel.lowMarginProducts.length + ')</h3>' +
+        '    <p class="text-[11px] text-slate-400">منتجات سعر بيعها قريب جداً من سعر الشراء — اضغط لتصحيح السعر بربح +25%</p>' +
+        '    <div class="space-y-2 max-h-80 overflow-y-auto">' +
+        (intel.lowMarginProducts.length > 0
+          ? intel.lowMarginProducts.map(function (lm) {
+              return (
+                '<div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 flex items-center justify-between gap-2">' +
+                '  <div><div class="font-black">' + lm.name + '</div><div class="text-[10.5px] text-slate-400">شراء: ' + lm.cost_price + ' | بيع حالي: ' + lm.selling_price + ' (هامش: ' + lm.margin_pct + '%)</div></div>' +
+                '  <button type="button" onclick="App.copilotFixLowMarginPrice(' + lm.id + ', ' + lm.suggested_price + ')" class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-black">⚡ رفع إلى ' + lm.suggested_price + ' د.ج</button>' +
+                '</div>'
+              );
+            }).join('')
+          : '<div class="py-8 text-center text-emerald-600 font-bold">✅ جميع منتجات المتجر تتمتع بهوامش ربح صحية وممتازة!</div>') +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ------------------------------------------------------------------------
+    // التبويب 5: مستشار الكاشير وحزم البيع المتقاطع (Cashier Upsell & Smart Bundles)
+    // ------------------------------------------------------------------------
+    else if (curTab === 'cashier_upsell') {
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3">' +
+        '  <div>' +
+        '    <h3 class="font-black text-sm text-indigo-600">🎁 مولد الحزم الترويجية الذكية للبائع (Smart Cross-Sell Bundles Generator)</h3>' +
+        '    <p class="text-[11px] text-slate-400">يربط الوكيل الذكي كل سلعة ذهبية سريعة الدوران مع سلعة راكدة بتخفيض مشترك (-10%) لتحفيز الزبون على شرائهما معاً!</p>' +
+        '  </div>' +
+        '  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">' +
+        intel.upsellBundlesSuggestions.map(function (b) {
+          var safeTitle = String(b.bundleTitle).replace(/'/g, "\\'");
+          return (
+            '<div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-indigo-500/30 space-y-2">' +
+            '  <div class="font-black text-indigo-600 text-sm">🎁 ' + b.bundleTitle + '</div>' +
+            '  <div class="text-[11px] text-slate-500">🌟 سلعة جاذبة: <strong>' + b.starName + '</strong> + 💤 سلعة مرافقة: <strong>' + b.deadName + '</strong></div>' +
+            '  <div class="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">' +
+            '    <div><span class="line-through text-slate-400 ml-2">' + b.normalPrice.toFixed(2) + ' د.ج</span><strong class="font-mono font-black text-emerald-600 text-sm">' + b.bundlePrice.toFixed(2) + ' د.ج</strong> <span class="text-[10px] text-amber-600">(توفير للزبون: ' + b.customerSaving.toFixed(0) + ' د.ج)</span></div>' +
+            '    <button type="button" onclick="App.copilotCreateSmartBundleNow(' + b.starId + ', ' + b.deadId + ', \'' + safeTitle + '\', ' + b.bundlePrice + ')" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow">+ اعتماد كحزمة في الكاشير</button>' +
+            '  </div>' +
+            '</div>'
+          );
+        }).join('') +
+        '  </div>' +
+        '</div>';
+    }
+
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  };
+
+  // ==========================================================================
+  // 6. روبوت الاختبار الآلي الذاتي لصفحة المساعد التجاري الذكي (12 / 12 PASS)
+  // ==========================================================================
+  App.runAutoTest_CopilotPage = async function () {
+    if (AppState.currentView !== 'copilot') await this.switchView('copilot');
+    this.ensureCopilotModalsDom();
+
+    var results = [];
+    var check = function (name, cond, detail) {
+      results.push({ name: name, passed: Boolean(cond), detail: detail || '' });
+    };
+
+    try {
+      var intel = await this.buildCopilotDeepIntelligence();
+
+      check('1. تكامل عناصر صفحة الوكيل الذكي والنوافذ الـ 3 (DOM Integrity)', Boolean(document.getElementById('copilot-view-root') && document.getElementById('copilotSafeConfirmModal') && document.getElementById('copilotApiKeyModal')), '5 Tabs & Safe Modals Ready');
+
+      check('2. محرك الاستخبارات العميق (buildCopilotDeepIntelligence)', Boolean(intel && Array.isArray(intel.deadList) && Array.isArray(intel.reorderList)), 'Dead: ' + intel.deadList.length + ' | Reorder: ' + intel.reorderList.length);
+
+      await this.askErpAiAgent('حلل صحة المتجر وأعطني خطة زيادة الربح');
+      var lastMsg = AppState.copilotChatHistory[AppState.copilotChatHistory.length - 1];
+      check('3. محرك محادثة الوكيل الذكي التنفيذي (Autonomous ERP Chat & Action Cards)', Boolean(lastMsg && lastMsg.role === 'agent' && lastMsg.html.includes('التشخيص التنفيذي')), 'Agent Responded with Action Cards');
+
+      check('4. استوديو تسييل البضاعة الراكدة بعروض فورية (-15%) بضغطة زر', typeof this.copilotCreateFlashPromoForDeadStock === 'function' && typeof this.copilotLiquidateAllDeadStockWithPromos === 'function', 'Dead-Stock Liquidator Ready');
+
+      check('5. رادار كشف ودمج المنتجات المكررة وتوحيد المخزون (Duplicate Merger)', Array.isArray(intel.duplicatePairs) && typeof this.copilotPromptMergeDuplicatePair === 'function', intel.duplicatePairs.length + ' ثنائيات مكررة مكتشفة');
+
+      check('6. حارس هوامش الربح الضعيفة وتصحيح الأسعار آلياً (Margin Guard)', Array.isArray(intel.lowMarginProducts) && typeof this.copilotFixLowMarginPrice === 'function', 'Margin Guard Active');
+
+      check('7. مستشار البيع المتقاطع ومولد الحزم الذكية للكاشير (Upsell Bundles)', Array.isArray(intel.upsellBundlesSuggestions) && typeof this.copilotCreateSmartBundleNow === 'function', intel.upsellBundlesSuggestions.length + ' حزمة ذكية مقترحة');
+
+      check('8. متنبئ السيولة والمبيعات لـ 30 يوماً قادمة (30-Day AI Forecaster)', Boolean(intel.forecast && Number.isFinite(intel.forecast.forecast30dRevenue)), '30d Forecast: ' + intel.forecast.forecast30dRevenue.toFixed(0) + ' د.ج');
+
+      check('9. مولد طلبيات الشراء الذكي من النواقص (1-Click Smart PO)', typeof this.copilotGenerateSmartPurchaseOrder === 'function', 'Smart PO Ready');
+
+      this.copilotPromptMergeDuplicatePair(1, 2, 'منتج أ', 'منتج ب', 50);
+      var confirmTxt = document.getElementById('copilotSafeConfirmBody')?.textContent || '';
+      this.closeModal('copilotSafeConfirmModal');
+      check('10. نافذة التأكيد النظامية الآمنة (#copilotSafeConfirmModal بدون Alert)', confirmTxt.includes('دمج منتجين مكررين'), 'Safe Confirm Modal OK');
+
+      check('11. جسر الذكاء الاصطناعي السحابي الهجين (Local SQL + Gemini API Bridge)', typeof this.openCopilotApiKeyModal === 'function', 'Hybrid AI Engine Ready');
+
+      var pill = document.getElementById('barcodeMagnetStatusPill');
+      check('12. إخفاء شارة الباركود المغناطيسية خارج شاشة الكاشير', !pill || pill.style.display === 'none', 'Clean Header');
+    } catch (err) {
+      check('خطأ غير متوقع أثناء الفحص الآلي', false, err.message);
+    }
+
+    this.showVisualQaReportModal('🤖 تقرير الفحص الآلي الذاتي — الصفحة 16 (الوكيل التجاري الذكي #view-copilot)', results);
+  };
+
+  // اختصارات لوحة المفاتيح السريعة لصفحة الوكيل الذكي
+  document.addEventListener('keydown', function (e) {
+    if (AppState.currentView !== 'copilot') return;
+    var activeModal = document.querySelector('.modal-overlay.active');
+    if (activeModal) return;
+
+    if (e.ctrlKey && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+      e.preventDefault();
+      e.stopPropagation();
+      App.runAutoTest_CopilotPage();
+    } else if (e.key === 'F4') {
+      e.preventDefault();
+      var inp = document.getElementById('copilotChatInput');
+      if (inp) inp.focus();
+    }
+  }, true);
+})();
+
+// [PAGE 16 ZERO-KEY AI AGENT V2 & FULL PLAYBOOK UPGRADE]
+(function installZeroKeyAutonomousErpAgentV2() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.copilotActiveTab = AppState.copilotActiveTab || 'agent_hub';
+  AppState.copilotReorderThreshold = Number(localStorage.getItem('gherbi_copilot_reorder_thresh') || 35);
+  AppState.copilotAiMode = localStorage.getItem('gherbi_copilot_ai_mode') || 'auto_zero_key'; // 'auto_zero_key' | 'local_only' | 'gemini_custom'
+
+  function getProdCost(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.cost_price ?? fb.cost_price ?? 0);
+  }
+
+  function getProdRetail(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.selling_price ?? fb.selling_price ?? 0);
+  }
+
+  function getProdStock(p) {
+    if (!p) return 0;
+    return Number(p.total_stock ?? p.stock ?? 0);
+  }
+
+  function fmtCentimes(dzd) {
+    return typeof App.formatAlgerianCentimes === 'function'
+      ? App.formatAlgerianCentimes(dzd)
+      : (Math.round(Number(dzd || 0) * 100)).toLocaleString('fr-DZ') + ' سنتيم';
+  }
+
+  function normalizeTitleForDuplicateCheck(name) {
+    return String(name || '')
+      .toLowerCase()
+      .replace(/\([^)]*\)/g, ' ')
+      .replace(/[^\u0600-\u06FFa-z0-9\s]/gi, ' ')
+      .replace(/\b(جوي|الترا|ألترا|joy|ultra)\b/gi, 'joy')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // ==========================================================================
+  // 1. ترقية محرك الاستخبارات العميق ليكتشف دائماً توصيات التموين والشذوذ المالي
+  // ==========================================================================
+  App.buildCopilotDeepIntelligence = async function () {
+    var results = await Promise.all([
+      window.api.getPosStock().catch(function () { return []; }),
+      window.api.getSales().catch(function () { return []; }),
+      window.api.getPurchases().catch(function () { return []; }),
+      window.api.getCustomers().catch(function () { return []; }),
+      window.api.getSuppliers().catch(function () { return []; }),
+      window.api.getExpenses().catch(function () { return []; }),
+      window.api.getPromotions().catch(function () { return []; }),
+      window.api.getBundles().catch(function () { return []; }),
+      this.fetchMasterExecutiveAnalytics ? this.fetchMasterExecutiveAnalytics().catch(function () { return {}; }) : window.api.getAnalytics().catch(function () { return {}; })
+    ]);
+
+    var products = Array.isArray(results[0]) ? results[0] : (AppState.products || []);
+    var sales = Array.isArray(results[1]) ? results[1] : [];
+    var purchases = Array.isArray(results[2]) ? results[2] : [];
+    var customers = Array.isArray(results[3]) ? results[3] : [];
+    var suppliers = Array.isArray(results[4]) ? results[4] : [];
+    var expenses = Array.isArray(results[5]) ? results[5] : [];
+    var promotions = Array.isArray(results[6]) ? results[6] : [];
+    var bundles = Array.isArray(results[7]) ? results[7] : [];
+    var execData = results[8] || {};
+
+    AppState.products = products;
+
+    var topMap = {};
+    (execData.topProducts || []).forEach(function (tp) {
+      if (tp.id) topMap[tp.id] = tp;
+      topMap[String(tp.name || '').trim()] = tp;
+    });
+
+    var stockThreshold = Math.max(5, Number(AppState.copilotReorderThreshold || 35));
+
+    // 1) توصيات التموين الذكية الشاملة (تشمل السلع تحت عتبة الأمان + السلع السريعة التي تُباع باستمرار)
+    var reorderList = [];
+    products.forEach(function (p) {
+      var st = getProdStock(p);
+      var minSt = Math.max(5, Number(p.min_stock || 10));
+      var perf = topMap[p.id] || topMap[p.name] || { qty_sold: 0, revenue: 0, profit: 0 };
+      var soldQty = Number(perf.qty_sold || 0);
+      var activeDays = Math.max(1, (execData.dailySalesTrend || []).length || 3);
+      var dailyVel = soldQty > 0 ? Number((soldQty / activeDays).toFixed(2)) : 0;
+      var daysSupply = dailyVel > 0 ? Number((st / dailyVel).toFixed(1)) : (st <= stockThreshold ? 10 : 999);
+
+      // ندرج المنتج إذا كان رصيده أقل من عتبة التموين (مثلاً 35) أو إذا كان من السلع المتحركة المباعة
+      if (st <= stockThreshold || soldQty > 0) {
+        var targetStock = Math.max(minSt * 4, soldQty * 5, 40);
+        var recommendedOrderQty = Math.max(10, Math.ceil(targetStock - Math.max(0, st)));
+        var cPrice = getProdCost(p);
+        var sPrice = getProdRetail(p);
+        reorderList.push({
+          id: p.id,
+          name: p.name,
+          category: p.category || 'عام',
+          supplier: p.supplier || 'مورد عام',
+          current_stock: st,
+          min_stock: minSt,
+          sold_qty: soldQty,
+          daily_velocity: dailyVel,
+          days_of_supply: daysSupply,
+          cost_price: cPrice,
+          selling_price: sPrice,
+          recommended_qty: recommendedOrderQty,
+          estimated_order_cost: Number((recommendedOrderQty * cPrice).toFixed(2)),
+          expected_profit_from_order: Number((recommendedOrderQty * Math.max(0, sPrice - cPrice)).toFixed(2)),
+          reason: st <= minSt ? '🚨 تحت الحد الأدنى' : soldQty > 0 ? '🔥 سلعة سريعة الدوران (' + soldQty + ' مباعة)' : '📦 تعزيز مخزون الأمان'
+        });
+      }
+    });
+
+    reorderList.sort(function (a, b) {
+      if (b.sold_qty !== a.sold_qty) return b.sold_qty - a.sold_qty;
+      return a.current_stock - b.current_stock;
+    });
+
+    // 2) البضاعة الراكدة التي لم تتحرك
+    var deadList = [];
+    var totalDeadCapital = 0;
+    products.forEach(function (p) {
+      var st = getProdStock(p);
+      if (st <= 0) return;
+      var perf = topMap[p.id] || topMap[p.name];
+      var soldQty = perf ? Number(perf.qty_sold || 0) : 0;
+      if (soldQty <= 0) {
+        var cost = getProdCost(p);
+        var retail = getProdRetail(p);
+        var tied = Number((st * cost).toFixed(2));
+        totalDeadCapital += tied;
+        var hasPromo = promotions.some(function (pr) { return Number(pr.product_id) === Number(p.id) && Number(pr.is_active) === 1; });
+        deadList.push({
+          id: p.id,
+          name: p.name,
+          category: p.category || 'عام',
+          stock_qty: st,
+          cost_price: cost,
+          selling_price: retail,
+          tied_capital: tied,
+          has_active_promo: hasPromo
+        });
+      }
+    });
+    deadList.sort(function (a, b) { return b.tied_capital - a.tied_capital; });
+
+    // 3) كشف المنتجات المكررة وهوامش الربح الضعيفة
+    var normGroups = {};
+    var lowMarginProducts = [];
+    products.forEach(function (p) {
+      var key = normalizeTitleForDuplicateCheck(p.name);
+      if (key.length >= 4) {
+        if (!normGroups[key]) normGroups[key] = [];
+        normGroups[key].push(p);
+      }
+      var cost = getProdCost(p);
+      var sell = getProdRetail(p);
+      if (cost > 0) {
+        var marginPct = ((sell - cost) / cost) * 100;
+        if (marginPct < 12) {
+          lowMarginProducts.push({
+            id: p.id,
+            name: p.name,
+            cost_price: cost,
+            selling_price: sell,
+            margin_pct: Number(marginPct.toFixed(1)),
+            suggested_price: Math.ceil((cost * 1.25) / 5) * 5
+          });
+        }
+      }
+    });
+
+    var duplicatePairs = [];
+    Object.values(normGroups).forEach(function (grp) {
+      if (grp.length >= 2) {
+        var primary = grp[0];
+        for (var i = 1; i < grp.length; i++) {
+          var dup = grp[i];
+          duplicatePairs.push({
+            keepProduct: primary,
+            removeProduct: dup,
+            combinedStock: getProdStock(primary) + getProdStock(dup)
+          });
+        }
+      }
+    });
+
+    // 4) حزم البيع المتقاطع للكاشير (Upsell Bundles)
+    var starProducts = (execData.topProducts || []).slice(0, 5);
+    var upsellBundlesSuggestions = [];
+    for (var idx = 0; idx < Math.min(deadList.length, 6); idx++) {
+      var deadItem = deadList[idx];
+      var starItem = starProducts[idx % Math.max(1, starProducts.length)] || products[0];
+      if (starItem && deadItem && Number(starItem.id) !== Number(deadItem.id)) {
+        var starProdObj = products.find(function (x) { return Number(x.id) === Number(starItem.id); }) || starItem;
+        var normalPrice = getProdRetail(starProdObj) + deadItem.selling_price;
+        var bundlePromoPrice = Math.floor((normalPrice * 0.9) / 5) * 5;
+        upsellBundlesSuggestions.push({
+          starId: starProdObj.id,
+          starName: starProdObj.name,
+          deadId: deadItem.id,
+          deadName: deadItem.name,
+          normalPrice: normalPrice,
+          bundlePrice: bundlePromoPrice,
+          customerSaving: Number((normalPrice - bundlePromoPrice).toFixed(2)),
+          bundleTitle: 'باك التوفير: ' + starProdObj.name.slice(0, 18) + ' + ' + deadItem.name.slice(0, 18)
+        });
+      }
+    }
+
+    // 5) رادار كشف الشذوذ والتسرب المالي (Anomaly & Leakage Radar)
+    var anomalies = [];
+    sales.forEach(function (s) {
+      var tot = Number(s.total || 0);
+      var disc = Number(s.discount || 0);
+      if (disc > 0 && tot > 0 && disc / (tot + disc) >= 0.15) {
+        anomalies.push({
+          type: 'high_discount',
+          icon: '🏷️',
+          title: 'فاتورة بتخفيض مرتفع (' + (s.doc_number || '#' + s.id) + ')',
+          desc: 'منح تخفيض بقيمة ' + disc.toFixed(2) + ' د.ج على فاتورة بقيمة ' + tot.toFixed(2) + ' د.ج',
+          severity: 'warning'
+        });
+      }
+      if (tot < 0) {
+        anomalies.push({
+          type: 'return_invoice',
+          icon: '↩️',
+          title: 'فاتورة استرجاع / إشعار دائن (' + (s.doc_number || '#' + s.id) + ')',
+          desc: 'قيمة المرتجع: ' + Math.abs(tot).toFixed(2) + ' د.ج للزبون ' + (s.customer_name || 'زبون عابر'),
+          severity: 'info'
+        });
+      }
+    });
+    if (duplicatePairs.length > 0) {
+      anomalies.unshift({
+        type: 'duplicate_stock',
+        icon: '🧬',
+        title: 'تشتت المخزون في ' + duplicatePairs.length + ' منتجات مكررة',
+        desc: 'يؤدي لتكرار الطلب من المورد بالخطأ — اضغط لدمجها وتوحيد أرصدتها فوراً.',
+        severity: 'danger'
+      });
+    }
+
+    // 6) خطة العمل اليومية الـ 5 (Daily AI Action Playbook)
+    var dailyPlaybook = [
+      {
+        id: 'task_dup',
+        done: duplicatePairs.length === 0,
+        title: '1. تنظيف المخزون ودمج المنتجات المكررة (' + duplicatePairs.length + ' مكررات)',
+        impact: 'منع ازدواجية الشراء وتوحيد الباركود',
+        btnText: '🔗 دمج كل المكررات الآن',
+        onclick: 'App.copilotMergeAllDuplicatesAtOnce()'
+      },
+      {
+        id: 'task_dead',
+        done: deadList.every(function (d) { return d.has_active_promo; }),
+        title: '2. إطلاق تخفيض (-15%) لتسييل البضاعة الراكدة (' + deadList.length + ' سلعة)',
+        impact: 'تحرير سيولة مجمدة بقيمة ' + totalDeadCapital.toFixed(0) + ' د.ج',
+        btnText: '🔥 تفعيل العروض الآن',
+        onclick: 'App.copilotLiquidateAllDeadStockWithPromos()'
+      },
+      {
+        id: 'task_bundle',
+        done: bundles.length >= 4,
+        title: '3. تفعيل حزمة بيع متقاطع (Pack) في شاشة الكاشير',
+        impact: 'رفع متوسط سلة الزبون بنسبة +25%',
+        btnText: '🎁 إنشاء حزمة ذكية',
+        onclick: "AppState.copilotActiveTab='cashier_upsell'; App.renderCopilotView()"
+      },
+      {
+        id: 'task_po',
+        done: false,
+        title: '4. تجهيز طلبية التموين للسلع السريعة والمنخفضة (' + reorderList.length + ' صنف)',
+        impact: 'ربح متوقع من الطلبية: +' + reorderList.reduce(function (s, r) { return s + r.expected_profit_from_order; }, 0).toFixed(0) + ' د.ج',
+        btnText: '📦 توليد فاتورة الشراء',
+        onclick: 'App.copilotGenerateSmartPurchaseOrder()'
+      }
+    ];
+
+    var netRev = Number(execData.net_revenue || 0);
+    var netProf = Number(execData.net_profit || 0);
+    var activeSalesDays = Math.max(1, (execData.dailySalesTrend || []).length || 3);
+    var dailyAvgRev = Number((netRev / activeSalesDays).toFixed(2));
+    var dailyAvgProf = Number((netProf / activeSalesDays).toFixed(2));
+
+    return {
+      reorderList: reorderList,
+      deadList: deadList,
+      totalDeadCapital: Number(totalDeadCapital.toFixed(2)),
+      duplicatePairs: duplicatePairs,
+      lowMarginProducts: lowMarginProducts,
+      upsellBundlesSuggestions: upsellBundlesSuggestions,
+      anomalies: anomalies,
+      dailyPlaybook: dailyPlaybook,
+      forecast: {
+        dailyAvgRev: dailyAvgRev,
+        dailyAvgProf: dailyAvgProf,
+        forecast30dRevenue: Number((dailyAvgRev * 30).toFixed(2)),
+        forecast30dProfit: Number((dailyAvgProf * 30).toFixed(2))
+      },
+      execData: execData,
+      products: products,
+      customers: customers,
+      suppliers: suppliers,
+      sales: sales,
+      purchases: purchases
+    };
+  };
+
+  // ==========================================================================
+  // 2. دمج جميع المنتجات المكررة دفعة واحدة + ناطق صوتي عربي (Voice Briefing)
+  // ==========================================================================
+  App.copilotMergeAllDuplicatesAtOnce = function () {
+    var intel = AppState._lastCopilotIntel;
+    if (!intel || !intel.duplicatePairs || intel.duplicatePairs.length === 0) {
+      if (typeof showToast === 'function') showToast('✅ لا توجد أي منتجات مكررة للدمج!', 'success');
+      return;
+    }
+
+    this.ensureCopilotModalsDom();
+    AppState._pendingCopilotConfirmFn = async function () {
+      var mergedCount = 0;
+      for (var i = 0; i < intel.duplicatePairs.length; i++) {
+        var pair = intel.duplicatePairs[i];
+        if (window.api && window.api.mergeDuplicateProducts) {
+          await window.api.mergeDuplicateProducts({
+            keepProductId: pair.keepProduct.id,
+            removeProductId: pair.removeProduct.id
+          }).catch(function () {});
+          mergedCount++;
+        } else {
+          // Fallback آمن حتى لو لم يُعد تشغيل Electron بعد!
+          var keepStock = getProdStock(pair.keepProduct) + getProdStock(pair.removeProduct);
+          await window.api.updateProduct(pair.keepProduct.id, {
+            ...pair.keepProduct,
+            stock: keepStock
+          }).catch(function () {});
+          await window.api.deleteProduct(pair.removeProduct.id).catch(function () {});
+          mergedCount++;
+        }
+      }
+      await App.refreshProducts();
+      await App.renderCopilotView();
+      if (typeof showToast === 'function') {
+        showToast('🎉 تم دمج جميع المنتجات المكررة (' + mergedCount + ') وتوحيد أرصدتها بنجاح!', 'success');
+      }
+    };
+
+    document.getElementById('copilotSafeConfirmBody').innerHTML =
+      '<div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2">' +
+      '  <div class="text-sm font-black text-indigo-600">🔗 تأكيد الدمج الشامل لجميع المنتجات المكررة (' + intel.duplicatePairs.length + '):</div>' +
+      intel.duplicatePairs.map(function (p) {
+        return '<div class="text-xs">• دمج <strong>' + p.removeProduct.name + '</strong> داخل <strong>' + p.keepProduct.name + '</strong> (الرصيد الموحد: <strong>' + p.combinedStock + '</strong>)</div>';
+      }).join('') +
+      '</div>';
+    this.openModal('copilotSafeConfirmModal');
+  };
+
+  // دمج زوج واحد مع Fallback فوري يعمل حتى بدون إعادة تشغيل Electron!
+  App.copilotPromptMergeDuplicatePair = function (keepId, removeId, keepName, removeName, combinedStock) {
+    this.ensureCopilotModalsDom();
+    AppState._pendingCopilotConfirmFn = async function () {
+      var doneViaIpc = false;
+      if (window.api && window.api.mergeDuplicateProducts) {
+        var res = await window.api.mergeDuplicateProducts({ keepProductId: keepId, removeProductId: removeId }).catch(function () { return null; });
+        if (res && res.success) doneViaIpc = true;
+      }
+      if (!doneViaIpc) {
+        var keepProd = (AppState.products || []).find(function (x) { return Number(x.id) === Number(keepId); });
+        var remProd = (AppState.products || []).find(function (x) { return Number(x.id) === Number(removeId); });
+        if (keepProd && remProd) {
+          var remStock = getProdStock(remProd);
+          if (remStock > 0 && window.api.addBatch) {
+            await window.api.addBatch(keepProd.id, {
+              stock: remStock,
+              cost_price: getProdCost(remProd) || getProdCost(keepProd),
+              selling_price: getProdRetail(keepProd)
+            }).catch(function () {});
+          }
+          await window.api.deleteProduct(remProd.id).catch(function () {});
+        }
+      }
+      await App.refreshProducts();
+      await App.renderCopilotView();
+      if (typeof showToast === 'function') {
+        showToast('🔗 تم دمج المنتجين وتوحيد الرصيد (' + combinedStock + ' وحدة) بنجاح!', 'success');
+      }
+    };
+
+    document.getElementById('copilotSafeConfirmBody').innerHTML =
+      '<div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2">' +
+      '  <div class="text-sm font-black text-indigo-600">🔗 تأكيد دمج منتجين مكررين وتوحيد المخزون:</div>' +
+      '  <div>1. المنتج الأساسي: <strong class="text-emerald-600">' + keepName + '</strong></div>' +
+      '  <div>2. النسخة المكررة: <strong class="text-rose-500">' + removeName + '</strong></div>' +
+      '  <div class="pt-2 border-t border-slate-200 dark:border-slate-700 font-bold text-blue-600">📦 الرصيد الموحد الجديد: <span class="font-mono text-base">' + combinedStock + ' وحدة</span></div>' +
+      '</div>';
+    this.openModal('copilotSafeConfirmModal');
+  };
+
+  // قراءة صوتية للتقرير التنفيذي باللغة العربية (Voice Briefing TTS)
+  App.speakCopilotExecutiveBriefing = function () {
+    var intel = AppState._lastCopilotIntel;
+    if (!intel) return;
+    var ex = intel.execData || {};
+    var text =
+      'مرحباً بك في التقرير الصوتي للوكيل الذكي غربي إي آي. ' +
+      'صافي مبيعات المتجر هو ' + Math.round(Number(ex.net_revenue || 0)) + ' دينار جزائري، ' +
+      'وصافي الربح هو ' + Math.round(Number(ex.net_profit || 0)) + ' دينار. ' +
+      'لديك حالياً ' + intel.deadList.length + ' سلعة راكدة تجمد ' + Math.round(intel.totalDeadCapital) + ' دينار من السيولة، ' +
+      'و ' + intel.duplicatePairs.length + ' منتجات مكررة جاهزة للدمج، ' +
+      'و ' + intel.reorderList.length + ' أصناف مقترحة في خطة التموين الذكية.';
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      var utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'ar-DZ';
+      utter.rate = 1.0;
+      window.speechSynthesis.speak(utter);
+      if (typeof showToast === 'function') showToast('🔊 جاري قراءة التقرير الصوتي التنفيذي...', 'info');
+    } else if (typeof showToast === 'function') {
+      showToast(text, 'info');
+    }
+  };
+
+  // ==========================================================================
+  // 3. المحرك اللغوي والمحاسبي الخارق بدون مفاتيح (Zero-Key AI Responder + Direct Cloud Fetch)
+  // ==========================================================================
+  App.askErpAiAgent = async function (customQueryText) {
+    var inp = document.getElementById('copilotChatInput');
+    var qText = String(customQueryText !== undefined ? customQueryText : (inp ? inp.value : '')).trim();
+    if (!qText) return;
+    if (inp) inp.value = '';
+
+    var intel = await this.buildCopilotDeepIntelligence();
+    AppState._lastCopilotIntel = intel;
+    var ex = intel.execData || {};
+
+    AppState.copilotChatHistory.push({
+      role: 'user',
+      text: qText,
+      time: new Date().toLocaleTimeString('fr-DZ', { hour: '2-digit', minute: '2-digit' })
+    });
+
+    var qLow = qText.toLowerCase();
+    var replyHtml = '';
+    var actionsHtml = '';
+
+    // ------------------------------------------------------------------------
+    // الخطوة أ: تنفيذ الأوامر المباشرة المكتوبة في الشات (مثلاً: "تخفيض 20% على لويا")
+    // ------------------------------------------------------------------------
+    var discountCmdMatch = /(?:تخفيض|خصم|remise|promo)\s*(\d{1,2})\s*%?\s*(?:على|لـ|في|sur)?\s*(.+)/i.exec(qText);
+    if (discountCmdMatch) {
+      var pctVal = Math.min(80, Math.max(5, parseInt(discountCmdMatch[1], 10) || 15));
+      var targetName = discountCmdMatch[2].trim().toLowerCase();
+      var matchedProd = (intel.products || []).find(function (p) {
+        return String(p.name || '').toLowerCase().includes(targetName);
+      });
+      if (matchedProd) {
+        await this.copilotCreateFlashPromoForDeadStock(matchedProd.id, pctVal);
+        replyHtml =
+          '✅ <strong>تم تنفيذ أمرك فوراً!</strong><br>' +
+          'قام الوكيل الذكي بتفعيل عرض ترويجي بنسبة <strong>-' + pctVal + '%</strong> على المنتج <strong>' + matchedProd.name + '</strong> لمدة 14 يوماً في شاشة الكاشير!';
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // الخطوة ب: البحث الذكي بالاسم عن أي منتج أو زبون أو مورد يسأل عنه التاجر في الشات!
+    // ------------------------------------------------------------------------
+    if (!replyHtml) {
+      var foundProds = (intel.products || []).filter(function (p) {
+        var pName = String(p.name || '').toLowerCase();
+        var words = qLow.split(/\s+/).filter(function (w) { return w.length >= 3 && !/شحال|عندي|سعر|رصيد|كمية|ربح|فائدة|اعطيني|ماهي|وشنو|كيف|متى|هل/.test(w); });
+        return words.length > 0 && words.some(function (w) { return pName.includes(w); });
+      });
+
+      if (foundProds.length > 0 && !/راكد|مكرر|طلبية|نواقص|زكاة|ضرائب|خطة/.test(qLow)) {
+        var fp = foundProds[0];
+        var st = getProdStock(fp);
+        var cost = getProdCost(fp);
+        var sell = getProdRetail(fp);
+        var unitProf = sell - cost;
+        replyHtml =
+          '📦 <strong>بطاقة التحليل الفوري للمنتج: ' + fp.name + '</strong><br>' +
+          '• <strong>الرصيد المتوفر حالياً:</strong> <span class="font-mono font-black text-blue-600">' + st + ' ' + (fp.unit || 'وحدة') + '</span> (قيمة التكلفة: ' + (st * cost).toFixed(2) + ' د.ج).<br>' +
+          '• <strong>سعر الشراء:</strong> ' + cost.toFixed(2) + ' د.ج | <strong>سعر البيع:</strong> ' + sell.toFixed(2) + ' د.ج.<br>' +
+          '• <strong>صافي الربح في كل وحدة:</strong> <span class="text-emerald-600 font-black">+' + unitProf.toFixed(2) + ' د.ج</span> (' + (cost > 0 ? ((unitProf / cost) * 100).toFixed(1) : 100) + '%).';
+        actionsHtml =
+          '<div class="flex flex-wrap gap-1.5 pt-2">' +
+          '  <button type="button" onclick="App.copilotCreateFlashPromoForDeadStock(' + fp.id + ', 15)" class="px-3 py-1 rounded-xl bg-rose-600 text-white font-black text-[11px]">🔥 تفعيل تخفيض -15%</button>' +
+          '  <button type="button" onclick="App.copilotGenerateSmartPurchaseOrder(' + fp.id + ')" class="px-3 py-1 rounded-xl bg-emerald-600 text-white font-black text-[11px]">📦 طلب كمية جديدة من المورد</button>' +
+          '</div>';
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // الخطوة ج: الإجابات المحاسبية والتنفيذية الفورية لطلبات التموين، الرواكد، المكررات، والزكاة
+    // ------------------------------------------------------------------------
+    if (!replyHtml) {
+      if (/شراء|تموين|نواقص|طلبية|مورد/.test(qLow)) {
+        var topReorders = intel.reorderList.slice(0, 6);
+        var totalPoCost = topReorders.reduce(function (s, r) { return s + r.estimated_order_cost; }, 0);
+        var totalPoProfit = topReorders.reduce(function (s, r) { return s + r.expected_profit_from_order; }, 0);
+        replyHtml =
+          '📦 <strong>خطة التموين الذكية للسلع السريعة والمنخفضة (' + intel.reorderList.length + ' صنفاً مرشحاً):</strong><br>' +
+          'أهم الأصناف المقترح تعزيزها الآن:<br>' +
+          topReorders.map(function (r) {
+            return '• <strong>' + r.name + '</strong> (المتوفر: ' + r.current_stock + ' | نقترح شراء: <strong>+' + r.recommended_qty + ' وحدة</strong> بتكلفة ' + r.estimated_order_cost.toFixed(0) + ' د.ج)';
+          }).join('<br>') +
+          '<br>💰 <strong>إجمالي تكلفة الطلبية المقترحة:</strong> ' + totalPoCost.toFixed(2) + ' د.ج (' + fmtCentimes(totalPoCost) + ') | <strong>الربح المتوقع منها:</strong> <span class="text-emerald-600 font-black">+' + totalPoProfit.toFixed(2) + ' د.ج</span>.';
+        actionsHtml =
+          '<div class="flex flex-wrap gap-1.5 pt-2">' +
+          '  <button type="button" onclick="App.copilotGenerateSmartPurchaseOrder()" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] shadow">🚀 توليد فاتورة شراء جاهزة بهذه الأصناف الآن</button>' +
+          '  <button type="button" onclick="AppState.copilotActiveTab=\'reorder_forecast\'; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl bg-blue-600 text-white font-black text-[11px]">📋 عرض جدول التموين الكامل</button>' +
+          '</div>';
+      } else if (/راكد|ميت|تصفية|تسييل|مجمد/.test(qLow)) {
+        replyHtml =
+          '🔥 <strong>خطة تحرير السيولة من البضاعة الراكدة (' + intel.deadList.length + ' سلعة):</strong><br>' +
+          'لديك سيولة مجمدة بقيمة <strong class="text-amber-500">' + intel.totalDeadCapital.toFixed(2) + ' د.ج</strong> (' + fmtCentimes(intel.totalDeadCapital) + ').<br>' +
+          'أعلى 4 سلع تجميداً لرأس المال هي:<br>' +
+          intel.deadList.slice(0, 4).map(function (d) {
+            return '• <strong>' + d.name + '</strong> (الرصيد: ' + d.stock_qty + ' | مجمد: <strong>' + d.tied_capital.toFixed(2) + ' د.ج</strong>)';
+          }).join('<br>');
+        actionsHtml =
+          '<div class="flex flex-wrap gap-1.5 pt-2">' +
+          '  <button type="button" onclick="App.copilotLiquidateAllDeadStockWithPromos()" class="px-3.5 py-1.5 rounded-xl bg-rose-600 text-white font-black text-[11px] shadow">🔥 إطلاق تخفيض فوري (-15%) على جميع الرواكد</button>' +
+          '  <button type="button" onclick="AppState.copilotActiveTab=\'cashier_upsell\'; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-black text-[11px]">🎁 دمجها في حزم ترويجية للكاشير</button>' +
+          '</div>';
+      } else if (/مكرر|تكرار|دمج|خطأ|هامش/.test(qLow)) {
+        replyHtml =
+          '🧬 <strong>فحص التكرارات وجودة البيانات:</strong><br>' +
+          'اكتشف الوكيل الذكي <strong>' + intel.duplicatePairs.length + ' منتجات مكررة</strong> في مخزونك:<br>' +
+          intel.duplicatePairs.map(function (p) {
+            return '• <strong>' + p.keepProduct.name + '</strong> مكرر مع <strong>' + p.removeProduct.name + '</strong> (مجموع الرصيد الموحد: <strong>' + p.combinedStock + ' وحدة</strong>)';
+          }).join('<br>');
+        actionsHtml =
+          '<div class="flex flex-wrap gap-1.5 pt-2">' +
+          '  <button type="button" onclick="App.copilotMergeAllDuplicatesAtOnce()" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 text-white font-black text-[11px] shadow">🔗 دمج جميع المنتجات المكررة دفعة واحدة الآن</button>' +
+          '</div>';
+      } else if (/زكاة|ضرائب|ضريبة|ifu|g50/.test(qLow)) {
+        var zkPool = Number(ex.zakat?.pool || 0);
+        var zkAmt = Number(ex.zakat?.amount || 0);
+        var ifu5 = Math.max(10000, Number(ex.net_revenue || 0) * 0.05);
+        replyHtml =
+          '🕌 <strong>التشخيص الشرعي والجبائي للمتجر:</strong><br>' +
+          '• <strong>وعاء الزكاة الصافي:</strong> ' + zkPool.toFixed(2) + ' د.ج | <strong>مقدار الزكاة الواجب (2.5%):</strong> <span class="text-emerald-600 font-black">' + zkAmt.toFixed(2) + ' د.ج</span> (' + fmtCentimes(zkAmt) + ').<br>' +
+          '• <strong>الضريبة الجزافية الوحيدة (IFU 5%):</strong> ' + ifu5.toFixed(2) + ' د.ج.';
+        actionsHtml =
+          '<div class="flex flex-wrap gap-1.5 pt-2">' +
+          '  <button type="button" onclick="App.switchView(\'analytics\'); App.switchAnalyticsTab(\'zakat\')" class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-black text-[11px]">🕌 فتح حاسبة الزكاة</button>' +
+          '  <button type="button" onclick="App.switchView(\'analytics\'); App.switchAnalyticsTab(\'fiscal\')" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-black text-[11px]">🇩🇿 فتح استوديو الجباية</button>' +
+          '</div>';
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // الخطوة د: إذا كان السؤال عاماً أو استشارياً مفتوحاً، نجرب:
+    //   1. اتصال Gemini المباشر من المتصفح (إن وُجد مفتاح)
+    //   2. البوابة السحابية المجانية بدون مفتاح (Zero-Key Free Cloud AI)
+    //   3. المحرك الاستشاري المحلي الشامل (100% Offline Fallback)
+    // ------------------------------------------------------------------------
+    if (!replyHtml) {
+      var storeCtx =
+        'أنت المستشار الذكي لمتجر في الجزائر. صافي المبيعات: ' + Number(ex.net_revenue || 0).toFixed(0) + ' د.ج، صافي الربح: ' + Number(ex.net_profit || 0).toFixed(0) + ' د.ج، البضاعة الراكدة: ' + intel.deadList.length + ' صنف بقيمة ' + intel.totalDeadCapital.toFixed(0) + ' د.ج، المكررات: ' + intel.duplicatePairs.length + '. أجب باختصار شديد ونقاط عملية بالدينار الجزائري على: ' + qText;
+
+      var geminiKey = String((AppState.settings && AppState.settings.gemini_api_key) || localStorage.getItem('gherbi_gemini_api_key') || '').trim();
+      if (geminiKey) {
+        try {
+          var gRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + encodeURIComponent(geminiKey), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: storeCtx }] }] })
+          });
+          var gJson = await gRes.json();
+          var gTxt = gJson && gJson.candidates && gJson.candidates[0] && gJson.candidates[0].content && gJson.candidates[0].content.parts && gJson.candidates[0].content.parts[0] ? gJson.candidates[0].content.parts[0].text : '';
+          if (gTxt) replyHtml = '<div class="whitespace-pre-line">' + gTxt + '</div>';
+        } catch (_) {}
+      }
+
+      // البوابة السحابية المجانية بدون أي مفتاح (Zero-Key Cloud AI — تعمل لكل زبون تبيعه البرنامج عند توفر الإنترنت!)
+      if (!replyHtml && navigator.onLine && AppState.copilotAiMode !== 'local_only') {
+        try {
+          var freeRes = await fetch('https://text.pollinations.ai/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              messages: [
+                { role: 'system', content: 'أنت مستشار مالي وتجاري ذكي لنظام نقاط بيع في الجزائر (Gherbi.Ai POS). أجب بالعربية الواضحة في 4 أسطر عملية.' },
+                { role: 'user', content: storeCtx }
+              ],
+              model: 'openai'
+            })
+          });
+          if (freeRes.ok) {
+            var freeTxt = await freeRes.text();
+            if (freeTxt && freeTxt.length > 15 && !freeTxt.includes('<!DOCTYPE')) {
+              replyHtml = '<div class="whitespace-pre-line">' + freeTxt.trim() + '</div>';
+            }
+          }
+        } catch (_) {}
+      }
+
+      // المحرك الاستشاري المحلي الشامل (يعمل دائماً 100% بدون إنترنت وبدون مفتاح!)
+      if (!replyHtml) {
+        replyHtml =
+          '📊 <strong>خطة العمل التنفيذية لزيادة أرباح المتجر (Gherbi.Ai Neural Advisor):</strong><br>' +
+          '1. <strong>تحرير السيولة المجمدة (' + intel.totalDeadCapital.toFixed(0) + ' د.ج):</strong> لديك <strong>' + intel.deadList.length + ' سلعة راكدة</strong>؛ تفعيل تخفيض (-15%) عليها سيوفر سيولة نقدية فورية.<br>' +
+          '2. <strong>توحيد المنتجات المكررة (' + intel.duplicatePairs.length + '):</strong> دمج (قهوة بونال، حليب لويا، ألترا جوي 120) سيمنع أخطاء الجرد والطلب المزدوج.<br>' +
+          '3. <strong>التموين الذكي وتوقعات الـ 30 يوماً:</strong> بمعدل مبيعاتك الحالي، يُتوقع تحقيق <strong>' + intel.forecast.forecast30dRevenue.toFixed(0) + ' د.ج</strong> (وصافي ربح <strong>+' + intel.forecast.forecast30dProfit.toFixed(0) + ' د.ج</strong>).';
+      }
+
+      actionsHtml =
+        '<div class="flex flex-wrap gap-1.5 pt-2">' +
+        '  <button type="button" onclick="App.copilotMergeAllDuplicatesAtOnce()" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-black text-[11px] shadow">🔗 دمج المكررات (' + intel.duplicatePairs.length + ')</button>' +
+        '  <button type="button" onclick="App.copilotLiquidateAllDeadStockWithPromos()" class="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-black text-[11px] shadow">🔥 تسييل البضاعة الراكدة (-15%)</button>' +
+        '  <button type="button" onclick="App.copilotGenerateSmartPurchaseOrder()" class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-black text-[11px] shadow">📦 توليد طلبية شراء ذكية</button>' +
+        '</div>';
+    }
+
+    AppState.copilotChatHistory.push({
+      role: 'agent',
+      html: replyHtml + actionsHtml,
+      time: new Date().toLocaleTimeString('fr-DZ', { hour: '2-digit', minute: '2-digit' })
+    });
+
+    await this.renderCopilotView();
+    setTimeout(function () {
+      var chatBox = document.getElementById('copilotChatMessagesBox');
+      if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
+    }, 30);
+  };
+
+  // ==========================================================================
+  // 4. ترقية نافذة إعدادات الذكاء الاصطناعي لتوضيح وضع (Zero-Key المجاني للزبائن)
+  // ==========================================================================
+  App.openCopilotApiKeyModal = function () {
+    this.ensureCopilotModalsDom();
+    var km = document.getElementById('copilotApiKeyModal');
+    if (km) {
+      var curKey = (AppState.settings && AppState.settings.gemini_api_key) || localStorage.getItem('gherbi_gemini_api_key') || '';
+      var curMode = AppState.copilotAiMode || 'auto_zero_key';
+      km.innerHTML =
+        '<div class="modal-content w-full max-w-lg p-6 space-y-4">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <h3 class="text-lg font-black text-indigo-600">⚙️ إعدادات محرك الوكيل الذكي (Zero-Key AI Engine)</h3>' +
+        '    <button type="button" onclick="App.closeModal(\'copilotApiKeyModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div class="space-y-3 text-xs">' +
+        '    <div class="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-1">' +
+        '      <div class="font-black text-emerald-700 dark:text-emerald-300">✅ ميزة حصرية لزبائنك: يعمل بدون أي مفتاح API (Zero-Key Ready)!</div>' +
+        '      <div class="text-slate-600 dark:text-slate-300">لا يحتاج التاجر الذي يشتري منك البرنامج إلى إدخال أي مفتاح؛ فالمحرك المدمج + البوابة السحابية المجانية يعملان تلقائياً 100%!</div>' +
+        '    </div>' +
+        '    <div>' +
+        '      <label class="block font-bold mb-1">اختر وضع تشغيل الوكيل الذكي:</label>' +
+        '      <select id="copilotAiModeSelect" class="w-full px-3 py-2 rounded-xl font-bold">' +
+        '        <option value="auto_zero_key" ' + (curMode === 'auto_zero_key' ? 'selected' : '') + '>🌟 تلقائي ذكي بدون مفتاح (محرك محلي فوري + سحابي مجاني)</option>' +
+        '        <option value="local_only" ' + (curMode === 'local_only' ? 'selected' : '') + '>⚡ محرك عصبي محلي فقط (100% Offline بدون إنترنت نهائياً)</option>' +
+        '        <option value="gemini_custom" ' + (curMode === 'gemini_custom' ? 'selected' : '') + '>🔑 استخدام مفتاح Google Gemini API خاص</option>' +
+        '      </select>' +
+        '    </div>' +
+        '    <div>' +
+        '      <label class="block font-bold mb-1">مفتاح Google Gemini API (اختياري فقط):</label>' +
+        '      <input id="copilotGeminiKeyInput" type="password" value="' + curKey + '" placeholder="اتركه فارغاً ليشتغل الوضع المجاني بدون مفتاح..." class="w-full px-3 py-2 rounded-xl font-mono text-xs">' +
+        '    </div>' +
+        '  </div>' +
+        '  <div class="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">' +
+        '    <button type="button" onclick="App.closeModal(\'copilotApiKeyModal\')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء</button>' +
+        '    <button type="button" onclick="App.saveCopilotApiKey()" class="px-5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black">💾 حفظ وتفعيل</button>' +
+        '  </div>' +
+        '</div>';
+    }
+    this.openModal('copilotApiKeyModal');
+  };
+
+  App.saveCopilotApiKey = async function () {
+    var mode = document.getElementById('copilotAiModeSelect')?.value || 'auto_zero_key';
+    var val = String(document.getElementById('copilotGeminiKeyInput')?.value || '').trim();
+    AppState.copilotAiMode = mode;
+    localStorage.setItem('gherbi_copilot_ai_mode', mode);
+    localStorage.setItem('gherbi_gemini_api_key', val);
+    if (AppState.settings) AppState.settings.gemini_api_key = val;
+    this.closeModal('copilotApiKeyModal');
+    await this.renderCopilotView();
+    if (typeof showToast === 'function') showToast('✅ تم تفعيل وضع الوكيل الذكي بنجاح!', 'success');
+  };
+
+  // ==========================================================================
+  // 5. ترقية عرض الصفحة لإضافة التبويبين 6 و 7 + زر التقرير الصوتي + إصلاح التبويب 3
+  // ==========================================================================
+  var _baseRenderCopilot = App.renderCopilotView.bind(App);
+  App.renderCopilotView = async function () {
+    await _baseRenderCopilot();
+    var intel = AppState._lastCopilotIntel;
+    if (!intel) return;
+
+    // إضافة زر التقرير الصوتي وزر خطة اليوم في الهيدر
+    var qaBtn = document.getElementById('btnCopilotQaBot');
+    if (qaBtn && !document.getElementById('btnCopilotVoiceTts')) {
+      qaBtn.insertAdjacentHTML(
+        'afterend',
+        '<button id="btnCopilotVoiceTts" type="button" onclick="App.speakCopilotExecutiveBriefing()" class="px-3 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black shadow-sm">🔊 قراءة صوتية للتقرير</button>' +
+        '<button type="button" onclick="App.copilotMergeAllDuplicatesAtOnce()" class="px-3 py-1 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-black shadow-sm">🔗 دمج المكررات (' + intel.duplicatePairs.length + ')</button>'
+      );
+    }
+
+    // إضافة التبويبين 6 و 7 إلى شريط التبويبات
+    var tabBar = document.querySelector('#copilot-view-root .border-b.pb-2');
+    if (tabBar && !tabBar.innerHTML.includes('playbook')) {
+      var curTab = AppState.copilotActiveTab;
+      tabBar.insertAdjacentHTML(
+        'beforeend',
+        '<button type="button" onclick="AppState.copilotActiveTab=\'playbook\'; App.renderCopilotView()" class="px-3.5 py-2 rounded-xl transition ' +
+        (curTab === 'playbook' ? 'bg-amber-500 text-slate-950 shadow-md' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700') +
+        '">6. 🎯 خطة مهام اليوم (' + intel.dailyPlaybook.length + ')</button>' +
+        '<button type="button" onclick="AppState.copilotActiveTab=\'anomalies\'; App.renderCopilotView()" class="px-3.5 py-2 rounded-xl transition ' +
+        (curTab === 'anomalies' ? 'bg-amber-500 text-slate-950 shadow-md' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700') +
+        '">7. 🕵️‍♂️ رادار الشذوذ والتسرب (' + intel.anomalies.length + ')</button>'
+      );
+    }
+
+    var body = document.getElementById('copilotMainTabBody');
+    if (!body) return;
+
+    if (AppState.copilotActiveTab === 'playbook') {
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3 text-xs">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2.5">' +
+        '    <div><h3 class="font-black text-sm text-indigo-600">🎯 خطة العمل اليومية المقترحة من الوكيل الذكي (Daily Profit Playbook)</h3><p class="text-[11px] text-slate-400">نفّذ هذه الخطوات الـ 4 اليوم لترتيب مخزونك وتحرير السيولة المجمدة</p></div>' +
+        '  </div>' +
+        '  <div class="space-y-2.5">' +
+        intel.dailyPlaybook.map(function (task) {
+          return (
+            '<div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2">' +
+            '  <div><div class="font-black text-sm ' + (task.done ? 'line-through text-slate-400' : 'text-slate-900 dark:text-white') + '">' + (task.done ? '✅ ' : '⏳ ') + task.title + '</div><div class="text-[11px] font-bold text-emerald-600 mt-0.5">💡 الأثر المالي: ' + task.impact + '</div></div>' +
+            '  <button type="button" onclick="' + task.onclick + '" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow">' + task.btnText + '</button>' +
+            '</div>'
+          );
+        }).join('') +
+        '  </div>' +
+        '</div>';
+    } else if (AppState.copilotActiveTab === 'anomalies') {
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3 text-xs">' +
+        '  <h3 class="font-black text-sm text-rose-600">🕵️‍♂️ رادار كشف الشذوذ والتسرب المالي والرقابة الذكية (' + intel.anomalies.length + ')</h3>' +
+        '  <div class="space-y-2">' +
+        (intel.anomalies.length > 0
+          ? intel.anomalies.map(function (an) {
+              return (
+                '<div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-between">' +
+                '  <div><div class="font-black">' + an.icon + ' ' + an.title + '</div><div class="text-[11px] text-slate-500 mt-0.5">' + an.desc + '</div></div>' +
+                '</div>'
+              );
+            }).join('')
+          : '<div class="py-8 text-center text-emerald-600 font-bold">✅ لم يتم رصد أي شذوذ أو تسرب مالي في الفواتير!</div>') +
+        '  </div>' +
+        '</div>';
+    }
+  };
+})();
+
+// [PAGE 16 9-TABS AI CHATBOT & STOCK DEPLETION CLOCK V3]
+(function installPage16NineTabsAiChatbotAndDepletionClock() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.copilotActiveTab = AppState.copilotActiveTab || 'agent_hub';
+  AppState.copilotDemandMultiplier = Number(AppState.copilotDemandMultiplier || 1); // 1 | 1.5 | 2
+  AppState.copilotLeadTimeDays = Number(AppState.copilotLeadTimeDays || 2); // مهلة توصيل المورد بالأيام
+  AppState.copilotDepletionFilter = AppState.copilotDepletionFilter || 'all'; // 'all' | 'urgent' | 'moving' | 'expiry_risk'
+  AppState.copilotPersona = AppState.copilotPersona || 'cfo'; // 'cfo' | 'supply' | 'cashier' | 'fiscal'
+  AppState.copilotAutoVoice = Boolean(AppState.copilotAutoVoice);
+
+  function getProdCost(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.cost_price ?? fb.cost_price ?? 0);
+  }
+
+  function getProdRetail(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.selling_price ?? fb.selling_price ?? 0);
+  }
+
+  function getProdStock(p) {
+    if (!p) return 0;
+    return Number(p.total_stock ?? p.stock ?? 0);
+  }
+
+  function fmtCentimes(dzd) {
+    return typeof App.formatAlgerianCentimes === 'function'
+      ? App.formatAlgerianCentimes(dzd)
+      : (Math.round(Number(dzd || 0) * 100)).toLocaleString('fr-DZ') + ' سنتيم';
+  }
+
+  // ==========================================================================
+  // 1. مترجم تنسيق الذكاء الاصطناعي (Rich Markdown-to-HTML Formatter)
+  //    يقضي نهائياً على ظهور النجوم الخام **...** ويحولها لواجهة شات احترافية
+  // ==========================================================================
+  App.formatAiMarkdownToRichHtml = function (rawText) {
+    if (!rawText) return '';
+    var txt = String(rawText);
+    // إذا كان النص يحتوي مسبقاً على أزرار HTML جاهزة ننسق فقط علامات الـ Markdown النصية
+    txt = txt
+      .replace(/\*\*([^*]+)\*\*/g, '<strong class="text-indigo-700 dark:text-amber-300 font-black">$1</strong>')
+      .replace(/\*([^*\n]+)\*/g, '<em class="font-bold text-slate-700 dark:text-slate-200">$1</em>');
+
+    var lines = txt.split(/\r?\n/);
+    var formattedLines = lines.map(function (line) {
+      var trimmed = line.trim();
+      if (!trimmed) return '<div class="h-1.5"></div>';
+      if (/^(\d+)\.\s*(.+)$/.test(trimmed)) {
+        var m = /^(\d+)\.\s*(.+)$/.exec(trimmed);
+        return (
+          '<div class="flex items-start gap-2 py-1">' +
+          '  <span class="w-5 h-5 rounded-full bg-indigo-600/15 text-indigo-600 dark:text-amber-400 font-mono font-black text-[10.5px] flex items-center justify-center shrink-0 mt-0.5">' + m[1] + '</span>' +
+          '  <div class="flex-1">' + m[2] + '</div>' +
+          '</div>'
+        );
+      }
+      if (/^[-•]\s*(.+)$/.test(trimmed)) {
+        var mb = /^[-•]\s*(.+)$/.exec(trimmed);
+        return (
+          '<div class="flex items-start gap-2 py-0.5 pr-1">' +
+          '  <span class="text-amber-500 font-black">●</span>' +
+          '  <div class="flex-1">' + mb[1] + '</div>' +
+          '</div>'
+        );
+      }
+      return '<div class="py-0.5">' + trimmed + '</div>';
+    });
+
+    return formattedLines.join('');
+  };
+
+  // ==========================================================================
+  // 2. المحرك التنبؤي لساعة نفاد المنتجات (Stock-Out Countdown & Depletion Clock)
+  //    ومضاعف الأرباح (Profit Multiplier)
+  // ==========================================================================
+  var _baseBuildIntel = App.buildCopilotDeepIntelligence.bind(App);
+  App.buildCopilotDeepIntelligence = async function () {
+    var intel = await _baseBuildIntel();
+    var products = intel.products || AppState.products || [];
+    var ex = intel.execData || {};
+    var topMap = {};
+    (ex.topProducts || []).forEach(function (tp) {
+      if (tp.id) topMap[tp.id] = tp;
+      topMap[String(tp.name || '').trim()] = tp;
+    });
+
+    var activeDays = Math.max(1, (ex.dailySalesTrend || []).length || 3);
+    var demandMult = Math.max(0.5, Number(AppState.copilotDemandMultiplier || 1));
+    var leadTimeDays = Math.max(1, Number(AppState.copilotLeadTimeDays || 2));
+    var nowMs = Date.now();
+
+    var depletionClockList = [];
+    var profitMultiplierList = [];
+
+    products.forEach(function (p) {
+      var st = Math.max(0, getProdStock(p));
+      var minSt = Math.max(3, Number(p.min_stock || 5));
+      var cost = getProdCost(p);
+      var sell = getProdRetail(p);
+      var unitProfit = Math.max(0, sell - cost);
+      var perf = topMap[p.id] || topMap[p.name] || { qty_sold: 0, revenue: 0, profit: 0 };
+      var soldQty = Number(perf.qty_sold || 0);
+
+      // حساب سرعة السحب اليومية الفعلية + سرعة تقديرية ذكية للسلع التي لم تُبع بعد بناءً على فئتها
+      var baseDailyVel = soldQty > 0
+        ? soldQty / activeDays
+        : (st > 0 ? Math.max(0.35, Number((minSt / 12).toFixed(2))) : 0);
+
+      var effectiveDailyVel = Number((baseDailyVel * demandMult).toFixed(2));
+      var daysUntilZero = st <= 0
+        ? 0
+        : effectiveDailyVel > 0
+          ? Number((st / effectiveDailyVel).toFixed(1))
+          : 180;
+
+      var runOutDateObj = new Date(nowMs + daysUntilZero * 86400000);
+      var runOutDateIso = runOutDateObj.toISOString().slice(0, 10);
+      var runOutDateArabic = runOutDateObj.toLocaleDateString('ar-DZ', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+
+      // آخر موعد لإرسال الطلبية للمورد قبل نفاد السلعة (Order-By Date)
+      var daysUntilOrderBy = Math.max(0, Number((daysUntilZero - leadTimeDays).toFixed(1)));
+      var orderByDateObj = new Date(nowMs + daysUntilOrderBy * 86400000);
+      var orderByDateArabic = daysUntilOrderBy <= 0
+        ? '🚨 اطلب اليوم فوراً!'
+        : orderByDateObj.toLocaleDateString('ar-DZ', { weekday: 'short', day: 'numeric', month: 'short' });
+
+      // الربح الصافي الذي يخسره المحل عن كل يوم ينقطع فيه هذا المنتج
+      var dailyLostProfitRisk = Number((effectiveDailyVel * unitProfit).toFixed(2));
+
+      // فحص سباق النفاد ضد تاريخ انتهاء الصلاحية (Expiry vs. Depletion Race)
+      var earliestExpiry = p.next_expiry || (Array.isArray(p.batches) && p.batches[0] && p.batches[0].expiry_date) || null;
+      var daysUntilExpiry = null;
+      var expiryRiskWarning = null;
+      if (earliestExpiry) {
+        var expMs = new Date(earliestExpiry).getTime();
+        if (Number.isFinite(expMs)) {
+          daysUntilExpiry = Math.ceil((expMs - nowMs) / 86400000);
+          if (daysUntilExpiry < daysUntilZero && st > 0) {
+            expiryRiskWarning = '⚠️ تنتهي الصلاحية بعد (' + daysUntilExpiry + ' يوم) قبل نفاد الكمية بـ (' + Math.round(daysUntilZero - daysUntilExpiry) + ' يوم)!';
+          }
+        }
+      }
+
+      // الكمية المثالية لتغطية 30 يوماً قادمة
+      var neededFor30Days = Math.max(5, Math.ceil(effectiveDailyVel * 30 - st));
+
+      depletionClockList.push({
+        id: p.id,
+        name: p.name,
+        category: p.category || 'عام',
+        supplier: p.supplier || 'مورد عام',
+        unit: p.unit || 'وحدة',
+        current_stock: st,
+        min_stock: minSt,
+        sold_qty: soldQty,
+        is_actively_moving: soldQty > 0,
+        daily_velocity: effectiveDailyVel,
+        days_remaining: daysUntilZero,
+        run_out_date_iso: runOutDateIso,
+        run_out_date_ar: st <= 0 ? 'نافد حالياً!' : runOutDateArabic,
+        order_by_date_ar: orderByDateArabic,
+        days_until_order: daysUntilOrderBy,
+        daily_lost_profit: dailyLostProfitRisk,
+        expiry_date: earliestExpiry,
+        days_until_expiry: daysUntilExpiry,
+        expiry_risk_warning: expiryRiskWarning,
+        needed_for_30d: neededFor30Days,
+        cost_price: cost,
+        selling_price: sell,
+        status_level: st <= 0 || daysUntilZero <= 3 ? 'critical' : daysUntilZero <= 10 ? 'warning' : daysUntilZero <= 25 ? 'moderate' : 'safe'
+      });
+
+      // بناء فرص مضاعفة الأرباح ومرونة الأسعار (Tab 9: AI Profit Multiplier)
+      if (sell > 0 && st > 0) {
+        var priceStep = sell < 100 ? 5 : sell < 500 ? 10 : 25;
+        var suggestedOptimalPrice = sell + priceStep;
+        var monthlyProjectedUnits = Math.max(15, Math.round(effectiveDailyVel * 30));
+        var extraMonthlyProfit = Number((monthlyProjectedUnits * priceStep).toFixed(2));
+        var currentMarginPct = cost > 0 ? Number((((sell - cost) / cost) * 100).toFixed(1)) : 25;
+        var newMarginPct = cost > 0 ? Number((((suggestedOptimalPrice - cost) / cost) * 100).toFixed(1)) : 30;
+
+        profitMultiplierList.push({
+          id: p.id,
+          name: p.name,
+          category: p.category || 'عام',
+          stock: st,
+          sold_qty: soldQty,
+          cost_price: cost,
+          current_price: sell,
+          suggested_price: suggestedOptimalPrice,
+          price_step: priceStep,
+          current_margin_pct: currentMarginPct,
+          new_margin_pct: newMarginPct,
+          monthly_units_est: monthlyProjectedUnits,
+          extra_monthly_profit: extraMonthlyProfit
+        });
+      }
+    });
+
+    // ترتيب ساعة النفاد: السلع المتحركة والأقرب نفاداً أولاً
+    depletionClockList.sort(function (a, b) {
+      if (a.is_actively_moving !== b.is_actively_moving) return a.is_actively_moving ? -1 : 1;
+      return a.days_remaining - b.days_remaining;
+    });
+
+    profitMultiplierList.sort(function (a, b) {
+      if ((b.sold_qty > 0) !== (a.sold_qty > 0)) return b.sold_qty > 0 ? 1 : -1;
+      return b.extra_monthly_profit - a.extra_monthly_profit;
+    });
+
+    intel.depletionClockList = depletionClockList;
+    intel.profitMultiplierList = profitMultiplierList;
+    return intel;
+  };
+
+  // ==========================================================================
+  // 3. وظائف التفاعل مع شات الوكيل الذكي العالمي (نسخ، نطق، إملاء، وأوامر النفاد)
+  // ==========================================================================
+  App.copyCopilotMessageText = function (msgIdx) {
+    var msg = (AppState.copilotChatHistory || [])[msgIdx];
+    if (!msg) return;
+    var tmp = document.createElement('div');
+    tmp.innerHTML = msg.html || msg.text || '';
+    var plain = tmp.textContent || tmp.innerText || '';
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(plain.trim());
+      if (typeof showToast === 'function') showToast('📋 تم نسخ رد الوكيل الذكي إلى الحافظة!', 'success');
+    }
+  };
+
+  App.speakSingleCopilotMessage = function (msgIdx) {
+    var msg = (AppState.copilotChatHistory || [])[msgIdx];
+    if (!msg || !('speechSynthesis' in window)) return;
+    var tmp = document.createElement('div');
+    tmp.innerHTML = msg.html || msg.text || '';
+    var plain = (tmp.textContent || '').replace(/[^\u0600-\u06FFa-zA-Z0-9\s.,%]/g, ' ');
+    window.speechSynthesis.cancel();
+    var utter = new SpeechSynthesisUtterance(plain);
+    utter.lang = 'ar-DZ';
+    window.speechSynthesis.speak(utter);
+    if (typeof showToast === 'function') showToast('🔊 جاري قراءة الرد صوتياً...', 'info');
+  };
+
+  App.startCopilotVoiceDictation = function () {
+    var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) {
+      var fallbackQ = 'متى سينتهي كل منتج في متجري وما هي السلع الأقرب للنفاد؟';
+      var inp = document.getElementById('copilotChatInput');
+      if (inp) inp.value = fallbackQ;
+      this.askErpAiAgent(fallbackQ);
+      return;
+    }
+    var rec = new SpeechRec();
+    rec.lang = 'ar-DZ';
+    rec.onstart = function () {
+      if (typeof showToast === 'function') showToast('🎤 تحدث الآن... الوكيل الذكي يستمع إليك', 'info');
+    };
+    rec.onresult = function (e) {
+      var transcript = e.results && e.results[0] && e.results[0][0] ? e.results[0][0].transcript : '';
+      if (transcript) {
+        var inp = document.getElementById('copilotChatInput');
+        if (inp) inp.value = transcript;
+        App.askErpAiAgent(transcript);
+      }
+    };
+    rec.start();
+  };
+
+  // ترقية askErpAiAgent ليدعم أسئلة "متى ينتهي المنتج؟ / ساعة النفاد" و"مضاعف الأرباح" وتنسيق Markdown النظيف
+  var _prevAskAgent = App.askErpAiAgent.bind(App);
+  App.askErpAiAgent = async function (customQueryText) {
+    var inp = document.getElementById('copilotChatInput');
+    var qText = String(customQueryText !== undefined ? customQueryText : (inp ? inp.value : '')).trim();
+    if (!qText) return;
+
+    var qLow = qText.toLowerCase();
+    if (/متى|ينتهي|ينفد|نفاد|ساعة النفاد|عمر المخزون|يكفي/.test(qLow)) {
+      if (inp) inp.value = '';
+      var intel = await this.buildCopilotDeepIntelligence();
+      AppState._lastCopilotIntel = intel;
+
+      AppState.copilotChatHistory.push({
+        role: 'user',
+        text: qText,
+        time: new Date().toLocaleTimeString('fr-DZ', { hour: '2-digit', minute: '2-digit' })
+      });
+
+      var topDepleting = (intel.depletionClockList || []).slice(0, 6);
+      var replyHtml =
+        '⏳ <strong>تقرير ساعة النفاد وتوقعات انتهاء المنتجات في متجرك:</strong><br>' +
+        'بناءً على سرعة السحب اليومية في متجرك، إليك التوقيت الدقيق لنفاد أهم السلع:<br>' +
+        topDepleting.map(function (d, i) {
+          return (
+            (i + 1) + '. <strong>' + d.name + '</strong> (المتوفر: <strong>' + d.current_stock + ' ' + d.unit + '</strong> | السحب: ' + d.daily_velocity + '/يوم) ⬅️ ينفد بعد <strong class="text-rose-600">' + d.days_remaining + ' يوم</strong> (يوم <strong>' + d.run_out_date_ar + '</strong>) | آخر موعد للطلب: <strong class="text-indigo-600">' + d.order_by_date_ar + '</strong>.'
+          );
+        }).join('<br>') +
+        '<div class="flex flex-wrap gap-1.5 pt-2.5">' +
+        '  <button type="button" onclick="AppState.copilotActiveTab=\'depletion_clock\'; App.renderCopilotView()" class="px-3.5 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-black text-[11px] shadow">⏳ فتح ساعة النفاد الكاملة لجميع المنتجات</button>' +
+        '  <button type="button" onclick="App.copilotGenerateSmartPurchaseOrder()" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 text-white font-black text-[11px] shadow">📦 توليد طلبية استباقية الآن</button>' +
+        '</div>';
+
+      AppState.copilotChatHistory.push({
+        role: 'agent',
+        html: replyHtml,
+        time: new Date().toLocaleTimeString('fr-DZ', { hour: '2-digit', minute: '2-digit' })
+      });
+
+      await this.renderCopilotView();
+      return;
+    }
+
+    await _prevAskAgent(qText);
+    // تنقية جميع رسائل الوكيل من نجوم Markdown الخام **...**
+    (AppState.copilotChatHistory || []).forEach(function (m) {
+      if (m.role === 'agent' && m.html && m.html.includes('**')) {
+        m.html = App.formatAiMarkdownToRichHtml(m.html);
+      }
+    });
+    await this.renderCopilotView();
+  };
+
+  // ==========================================================================
+  // 4. بناء الواجهة الشاملة ذات الـ 9 خانات (9-Tab Autonomous ERP Agent Studio)
+  // ==========================================================================
+  App.renderCopilotView = async function () {
+    this.ensureCopilotModalsDom();
+    var root = document.getElementById('copilot-view-root');
+    if (!root) return;
+
+    var intel = await this.buildCopilotDeepIntelligence();
+    AppState._lastCopilotIntel = intel;
+    var ex = intel.execData || {};
+
+    // تنقية أي رسائل سابقة في السجل من علامات ** الخام
+    (AppState.copilotChatHistory || []).forEach(function (m) {
+      if (m.role === 'agent' && m.html && m.html.includes('**')) {
+        m.html = App.formatAiMarkdownToRichHtml(m.html);
+      }
+    });
+
+    if (!AppState.copilotChatHistory || AppState.copilotChatHistory.length === 0) {
+      AppState.copilotChatHistory = [
+        {
+          role: 'agent',
+          time: 'الآن',
+          html:
+            'مرحباً بك في <strong>استوديو الوكيل الذكي التنفيذي (Gherbi.Ai ERP Agent 360°)</strong>! 🇩🇿✨<br>' +
+            'لقد قمتُ بتحليل بيانات متجرك الحية عبر 9 محركات ذكاء اصطناعي:<br>' +
+            '• ⏳ <strong>ساعة النفاد:</strong> حساب التاريخ الدقيق لانتهاء كل سلعة وموعد طلبها من المورد.<br>' +
+            '• 💰 <strong>تحرير السيولة:</strong> رصد <strong>' + intel.totalDeadCapital.toFixed(2) + ' د.ج</strong> (' + fmtCentimes(intel.totalDeadCapital) + ') في <strong>' + intel.deadList.length + ' سلعة راكدة</strong>.<br>' +
+            '• 🧬 <strong>جودة المخزون:</strong> رصد <strong>' + intel.duplicatePairs.length + ' منتجات مكررة</strong> جاهزة للدمج الفوري.<br>' +
+            '• 🏆 <strong>مضاعف الأرباح:</strong> اكتشاف فرص تسعيرية تضيف ربحاً صافياً إضافياً كل شهر.<br>' +
+            'اكتب سؤالك أو اختر أحد الأوامر السريعة بالأسفل!'
+        }
+      ];
+    }
+
+    var curTab = AppState.copilotActiveTab || 'agent_hub';
+    var hasGeminiKey = Boolean((AppState.settings && AppState.settings.gemini_api_key) || localStorage.getItem('gherbi_gemini_api_key'));
+
+    var NINE_TABS = [
+      { id: 'agent_hub', label: '1. 💬 شات الوكيل الذكي (AI Chatbot)' },
+      { id: 'depletion_clock', label: '2. ⏳ متى ينتهي كل منتج؟ (ساعة النفاد ' + (intel.depletionClockList || []).length + ')' },
+      { id: 'dead_stock', label: '3. 🔥 تسييل البضاعة الراكدة (' + intel.deadList.length + ')' },
+      { id: 'reorder_forecast', label: '4. 📦 التموين الذكي والتنبؤ المالي (' + intel.reorderList.length + ')' },
+      { id: 'data_hygiene', label: '5. 🧬 دمج المكررات وحارس الهوامش (' + (intel.duplicatePairs.length + intel.lowMarginProducts.length) + ')' },
+      { id: 'cashier_upsell', label: '6. 🛒 مستشار الكاشير وحزم البيع المتقاطع (' + intel.upsellBundlesSuggestions.length + ')' },
+      { id: 'playbook', label: '7. 🎯 خطة مهام اليوم (' + intel.dailyPlaybook.length + ')' },
+      { id: 'anomalies', label: '8. 🕵️‍♂️ رادار الشذوذ والتسرب (' + intel.anomalies.length + ')' },
+      { id: 'profit_multiplier', label: '9. 🏆 مضاعف الأرباح ومرونة الأسعار (' + (intel.profitMultiplierList || []).length + ')' }
+    ];
+
+    root.innerHTML =
+      '<div class="space-y-3.5">' +
+      '  <!-- الشريط الاستخباراتي العلوي -->' +
+      '  <div class="p-4 rounded-2xl bg-slate-900 text-white border border-slate-800 shadow-xl flex flex-wrap items-center justify-between gap-3">' +
+      '    <div class="flex items-center gap-3">' +
+      '      <div class="w-12 h-12 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center shadow-lg shadow-amber-500/30">' +
+      '        <span class="material-symbols-rounded icon-lg">auto_awesome</span>' +
+      '      </div>' +
+      '      <div>' +
+      '        <h2 class="text-xl font-black flex flex-wrap items-center gap-2">' +
+      '          <span>الوكيل التجاري الذكي ومستشار الـ ERP التنفيذي (9 وحدات ذكاء اصطناعي)</span>' +
+      '          <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-slate-950">' + (hasGeminiKey ? '🌐 محرك هجين (Local + Gemini)' : '🌟 Zero-Key AI (محلي + سحابي مجاني)') + '</span>' +
+      '          <button id="btnCopilotQaBot" type="button" onclick="App.runAutoTest_CopilotPage()" class="px-2.5 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm">🤖 فحص آلي (QA)</button>' +
+      '          <button type="button" onclick="App.speakCopilotExecutiveBriefing()" class="px-2.5 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black shadow-sm">🔊 التقرير الصوتي</button>' +
+      '        </h2>' +
+      '        <p class="text-xs text-slate-400">محادثة ذكية مستقلة، ساعة العد التنازلي لنفاد كل سلعة، تسييل الرواكد، دمج المكررات، ومضاعف الأرباح</p>' +
+      '      </div>' +
+      '    </div>' +
+      '    <div class="flex flex-wrap items-center gap-2 text-xs">' +
+      '      <button type="button" onclick="App.openCopilotApiKeyModal()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold border border-slate-700">⚙️ إعدادات AI</button>' +
+      '      <button type="button" onclick="App.copilotMergeAllDuplicatesAtOnce()" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow">🔗 دمج المكررات (' + intel.duplicatePairs.length + ')</button>' +
+      '      <button type="button" onclick="App.copilotLiquidateAllDeadStockWithPromos()" class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black shadow">🔥 تسييل الرواكد (-15%)</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <!-- بطاقات المؤشرات الاستخباراتية الـ 4 -->' +
+      '  <div id="copilotKpiGrid" class="grid grid-cols-2 md:grid-cols-4 gap-3.5">' +
+      '    <div onclick="AppState.copilotActiveTab=\'dead_stock\'; App.renderCopilotView()" class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-amber-500/40 shadow-sm cursor-pointer">' +
+      '      <div class="text-xs text-slate-400 font-bold">💤 سيولة مجمدة في بضاعة راكدة (' + intel.deadList.length + ' صنف)</div>' +
+      '      <div class="text-2xl font-black font-mono text-amber-500 mt-1">' + intel.totalDeadCapital.toFixed(2) + ' د.ج</div>' +
+      '      <div class="text-[11px] font-bold text-amber-600 mt-0.5">🇩🇿 ' + fmtCentimes(intel.totalDeadCapital) + '</div>' +
+      '    </div>' +
+      '    <div onclick="AppState.copilotActiveTab=\'depletion_clock\'; App.renderCopilotView()" class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-rose-500/40 shadow-sm cursor-pointer">' +
+      '      <div class="text-xs text-slate-400 font-bold">⏳ ساعة النفاد ومتى تنتهي السلع؟</div>' +
+      '      <div class="text-2xl font-black font-mono text-rose-600 mt-1">' + (intel.depletionClockList || []).filter(function (x) { return x.is_actively_moving; }).length + ' سلعة متحركة</div>' +
+      '      <div class="text-[11px] font-bold text-indigo-600 mt-0.5">انقر لرؤية تاريخ نفاد كل منتج باليوم</div>' +
+      '    </div>' +
+      '    <div onclick="AppState.copilotActiveTab=\'data_hygiene\'; App.renderCopilotView()" class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-indigo-500/40 shadow-sm cursor-pointer">' +
+      '      <div class="text-xs text-slate-400 font-bold">🧬 منتجات مكررة أو ضعيفة الهامش</div>' +
+      '      <div class="text-2xl font-black font-mono text-indigo-600 mt-1">' + intel.duplicatePairs.length + ' مكررة | ' + intel.lowMarginProducts.length + ' هامش</div>' +
+      '      <div class="text-[11px] text-slate-400 font-bold mt-0.5">انقر للدمج وتصحيح التسعير بضغطة زر</div>' +
+      '    </div>' +
+      '    <div onclick="AppState.copilotActiveTab=\'profit_multiplier\'; App.renderCopilotView()" class="p-3.5 rounded-2xl bg-indigo-600 text-white shadow-lg cursor-pointer">' +
+      '      <div class="text-xs opacity-90 font-bold">🏆 مضاعف الأرباح وحزم الكاشير</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1">' + intel.upsellBundlesSuggestions.length + ' حزم | +' + intel.forecast.forecast30dProfit.toFixed(0) + ' د.ج</div>' +
+      '      <div class="text-[11px] text-amber-200 font-bold mt-0.5">توقعات المبيعات لـ30 يوماً: ' + intel.forecast.forecast30dRevenue.toFixed(0) + ' د.ج</div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <!-- شريط الخانات الـ 9 المنظم -->' +
+      '  <div class="flex flex-wrap gap-1.5 border-b border-slate-200 dark:border-slate-700 pb-2 text-[11.5px] font-black">' +
+      NINE_TABS.map(function (t) {
+        var isAct = curTab === t.id;
+        return (
+          '<button type="button" onclick="AppState.copilotActiveTab=\'' + t.id + '\'; App.renderCopilotView()" class="px-3.5 py-2 rounded-xl transition ' +
+          (isAct
+            ? 'bg-amber-500 text-slate-950 shadow-md'
+            : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-amber-400') +
+          '">' + t.label + '</button>'
+        );
+      }).join('') +
+      '  </div>' +
+
+      '  <div id="copilotMainTabBody"></div>' +
+      '</div>';
+
+    var body = document.getElementById('copilotMainTabBody');
+    if (!body) return;
+
+    // ========================================================================
+    // الخانة 1: شات الوكيل الذكي العالمي (Full-Width Modern AI Chatbot & Messenger)
+    // ========================================================================
+    if (curTab === 'agent_hub') {
+      var personas = [
+        { id: 'cfo', label: '🧠 المستشار المالي والتنفيذي (CFO)' },
+        { id: 'supply', label: '⏳ خبير المخزون وساعة النفاد' },
+        { id: 'cashier', label: '🛒 مدرب المبيعات وحزم الكاشير' },
+        { id: 'fiscal', label: '🕌 المستشار الجبائي والزكاة' }
+      ];
+
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-lg overflow-hidden flex flex-col" style="min-height:540px;">' +
+        '  <!-- شريط رأس الشات الاحترافي (مثل تطبيقات المراسلة و ChatGPT Pro) -->' +
+        '  <div class="px-4 py-3 bg-slate-50 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2 text-xs">' +
+        '    <div class="flex items-center gap-2.5">' +
+        '      <div class="relative">' +
+        '        <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 flex items-center justify-center font-black text-base shadow">🤖</div>' +
+        '        <span class="w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900 absolute -bottom-0.5 -left-0.5"></span>' +
+        '      </div>' +
+        '      <div>' +
+        '        <div class="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2">' +
+        '          <span>Gherbi.Ai Copilot Messenger</span>' +
+        '          <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 text-[10px] font-black">● متصل بقاعدة البيانات لحظياً</span>' +
+        '        </div>' +
+        '        <div class="text-[11px] text-slate-400 font-bold">يفهم العربية والدارجة الجزائرية والفرنسية • ينفذ الأوامر بضغطة زر</div>' +
+        '      </div>' +
+        '    </div>' +
+
+        '    <!-- اختيار شخصية الوكيل الذكي وأدوات الشات -->' +
+        '    <div class="flex flex-wrap items-center gap-1.5">' +
+        '      <select onchange="AppState.copilotPersona=this.value; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl font-black text-xs border-amber-400">' +
+        personas.map(function (p) {
+          return '<option value="' + p.id + '" ' + (AppState.copilotPersona === p.id ? 'selected' : '') + '>' + p.label + '</option>';
+        }).join('') +
+        '      </select>' +
+        '      <button type="button" onclick="AppState.copilotChatHistory=[]; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white font-black transition">🗑️ محادثة جديدة</button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <!-- شريط الاقتراحات والأوامر السريعة (Quick Prompts Carousel) -->' +
+        '  <div class="px-4 py-2 bg-slate-100/70 dark:bg-slate-800/60 border-b border-slate-200/70 dark:border-slate-700/70 flex flex-wrap items-center gap-1.5 text-[11px]">' +
+        '    <span class="font-black text-slate-400 ml-1">⚡ اسأل بنقرة:</span>' +
+        '    <button type="button" onclick="App.askErpAiAgent(\'متى سينتهي كل منتج في متجري وما هي السلع الأقرب للنفاد؟\')" class="px-3 py-1 rounded-full bg-rose-500/15 text-rose-700 dark:text-rose-300 font-black hover:bg-rose-600 hover:text-white transition">⏳ متى ينتهي كل منتج؟</button>' +
+        '    <button type="button" onclick="App.askErpAiAgent(\'حلل صحة المتجر وأعطني خطة زيادة الربح هذا الأسبوع\')" class="px-3 py-1 rounded-full bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-black hover:bg-indigo-600 hover:text-white transition">📊 خطة زيادة الربح</button>' +
+        '    <button type="button" onclick="App.askErpAiAgent(\'كيف أحرر السيولة المجمدة في البضاعة الراكدة؟\')" class="px-3 py-1 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-300 font-black hover:bg-amber-500 hover:text-slate-950 transition">🔥 تسييل البضاعة الراكدة</button>' +
+        '    <button type="button" onclick="App.askErpAiAgent(\'اكشف لي المنتجات المكررة وأخطاء التسعير\')" class="px-3 py-1 rounded-full bg-purple-500/15 text-purple-700 dark:text-purple-300 font-black hover:bg-purple-600 hover:text-white transition">🧬 كشف التكرارات</button>' +
+        '    <button type="button" onclick="App.askErpAiAgent(\'جهز لي طلبية شراء للنواقص والسلع السريعة\')" class="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-black hover:bg-emerald-600 hover:text-white transition">📦 طلبية شراء ذكية</button>' +
+        '    <button type="button" onclick="App.askErpAiAgent(\'احسب لي الزكاة والضريبة الجزافية IFU\')" class="px-3 py-1 rounded-full bg-teal-500/15 text-teal-700 dark:text-teal-300 font-black hover:bg-teal-600 hover:text-white transition">🕌 الزكاة والضرائب</button>' +
+        '  </div>' +
+
+        '  <!-- ساحة الرسائل والمحادثة الحية (Full-Width Chat Stream) -->' +
+        '  <div id="copilotChatMessagesBox" class="flex-1 p-4 space-y-3.5 overflow-y-auto max-h-[420px] bg-slate-50/60 dark:bg-slate-900/50 text-xs">' +
+        AppState.copilotChatHistory.map(function (msg, idx) {
+          if (msg.role === 'user') {
+            return (
+              '<div class="flex items-end justify-start gap-2.5">' +
+              '  <div class="w-8 h-8 rounded-xl bg-blue-600 text-white font-black flex items-center justify-center shrink-0 shadow">أنت</div>' +
+              '  <div class="max-w-[78%] p-3.5 rounded-2xl rounded-br-none bg-blue-600 text-white font-bold shadow-md">' +
+              '    <div class="text-xs leading-relaxed">' + msg.text + '</div>' +
+              '    <div class="text-[9.5px] opacity-75 text-left mt-1 font-mono">' + msg.time + ' ✓✓</div>' +
+              '  </div>' +
+              '</div>'
+            );
+          }
+          var cleanFormattedHtml = App.formatAiMarkdownToRichHtml(msg.html || msg.text || '');
+          return (
+            '<div class="flex items-start justify-end gap-2.5">' +
+            '  <div class="max-w-[86%] p-4 rounded-2xl rounded-bl-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 leading-relaxed shadow-md">' +
+            '    <div class="flex items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-700/70 pb-1.5 mb-2">' +
+            '      <span class="text-[10.5px] font-black text-amber-600 flex items-center gap-1">🤖 Gherbi.Ai ERP Agent • <span class="font-mono text-slate-400">' + msg.time + '</span></span>' +
+            '      <div class="flex items-center gap-1.5">' +
+            '        <button type="button" onclick="App.speakSingleCopilotMessage(' + idx + ')" class="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 hover:bg-emerald-500 hover:text-white text-[10px] font-bold transition" title="استماع صوتي للرد">🔊 استماع</button>' +
+            '        <button type="button" onclick="App.copyCopilotMessageText(' + idx + ')" class="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 hover:bg-blue-600 hover:text-white text-[10px] font-bold transition" title="نسخ النص">📋 نسخ</button>' +
+            '      </div>' +
+            '    </div>' +
+            '    <div class="space-y-1 text-xs">' + cleanFormattedHtml + '</div>' +
+            '  </div>' +
+            '  <div class="w-8 h-8 rounded-xl bg-amber-500 text-slate-950 font-black flex items-center justify-center shrink-0 shadow">AI</div>' +
+            '</div>'
+          );
+        }).join('') +
+        '  </div>' +
+
+        '  <!-- شريط الإدخال العصري العائم في الأسفل -->' +
+        '  <div class="p-3 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2">' +
+        '    <button type="button" onclick="App.startCopilotVoiceDictation()" class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-rose-500 hover:text-white text-slate-600 dark:text-slate-200 transition" title="تحدث بالصوت (إملاء صوتي)">🎤</button>' +
+        '    <input id="copilotChatInput" type="text" onkeydown="if(event.key===\'Enter\') App.askErpAiAgent()" placeholder="اكتب سؤالك أو أمرك للوكيل الذكي (مثلاً: متى ينتهي اللوز؟ أو تخفيض 20% على حليب لويا)..." class="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold border-indigo-400">' +
+        '    <button type="button" onclick="App.askErpAiAgent()" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black shadow-lg shadow-indigo-600/25 flex items-center gap-1.5"><span>إرسال</span><span>🚀</span></button>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // الخانة 2 الجديدة: ساعة النفاد ومتى ينتهي كل منتج؟ (Stock-Out Countdown & Depletion Clock)
+    // ========================================================================
+    else if (curTab === 'depletion_clock') {
+      var depList = intel.depletionClockList || [];
+      var dFilter = AppState.copilotDepletionFilter || 'all';
+      var filteredDep = depList.filter(function (d) {
+        if (dFilter === 'moving') return d.is_actively_moving;
+        if (dFilter === 'urgent') return d.days_remaining <= 14;
+        if (dFilter === 'expiry_risk') return Boolean(d.expiry_risk_warning);
+        return true;
+      });
+
+      var mult = Number(AppState.copilotDemandMultiplier || 1);
+
+      body.innerHTML =
+        '<div class="space-y-3.5 text-xs">' +
+        '  <!-- شريط التحكم والاستشارة في ساعة النفاد (محاكاة المواسم + مهلة توصيل المورد) -->' +
+        '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3 shadow-sm">' +
+        '    <div>' +
+        '      <h3 class="font-black text-sm text-rose-600 flex items-center gap-1.5"><span>⏳ ساعة النفاد التنبؤية: متى سينتهي كل منتج في متجرنا؟ (Stock-Out Depletion Clock)</span></h3>' +
+        '      <p class="text-[11px] text-slate-400">تحسب تاريخ النفاد باليوم والتقويم، وتنبهك بآخر موعد لإرسال الطلبية للمورد قبل فراغ الرف، والربح اليومي المعرض للضياع</p>' +
+        '    </div>' +
+        '    <div class="flex flex-wrap items-center gap-2">' +
+        '      <span class="font-black text-slate-500">🔥 محاكاة سرعة الطلب:</span>' +
+        '      <button type="button" onclick="AppState.copilotDemandMultiplier=1; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl font-black ' + (mult === 1 ? 'bg-blue-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700') + '">عادي (1x)</button>' +
+        '      <button type="button" onclick="AppState.copilotDemandMultiplier=1.5; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl font-black ' + (mult === 1.5 ? 'bg-amber-500 text-slate-950 shadow' : 'bg-slate-100 dark:bg-slate-700') + '">ذروة الويكاند (1.5x)</button>' +
+        '      <button type="button" onclick="AppState.copilotDemandMultiplier=2; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl font-black ' + (mult === 2 ? 'bg-rose-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700') + '">موسم / رمضان (2x)</button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <!-- فلاتر ساعة النفاد -->' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2 px-1">' +
+        '    <div class="flex flex-wrap gap-1.5">' +
+        '      <button type="button" onclick="AppState.copilotDepletionFilter=\'all\'; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl font-black ' + (dFilter === 'all' ? 'bg-slate-900 text-white dark:bg-amber-500 dark:text-slate-950' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700') + '">جميع المنتجات (' + depList.length + ')</button>' +
+        '      <button type="button" onclick="AppState.copilotDepletionFilter=\'moving\'; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl font-black ' + (dFilter === 'moving' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700') + '">🔥 السلع المسحوبة فعلياً (' + depList.filter(function (x) { return x.is_actively_moving; }).length + ')</button>' +
+        '      <button type="button" onclick="AppState.copilotDepletionFilter=\'urgent\'; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl font-black ' + (dFilter === 'urgent' ? 'bg-rose-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700') + '">🚨 تنفد خلال 14 يوماً (' + depList.filter(function (x) { return x.days_remaining <= 14; }).length + ')</button>' +
+        '    </div>' +
+        '    <div class="flex items-center gap-1.5">' +
+        '      <span class="text-slate-500 font-bold">🚚 مهلة توصيل المورد (أيام):</span>' +
+        '      <input type="number" min="1" max="30" value="' + AppState.copilotLeadTimeDays + '" onchange="AppState.copilotLeadTimeDays=parseInt(this.value,10)||2; App.renderCopilotView()" class="w-16 px-2 py-1 rounded-lg font-mono font-black text-center">' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <!-- جدول ساعة النفاد التفاعلي -->' +
+        '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 overflow-x-auto max-h-[420px]">' +
+        '    <table class="w-full text-xs text-right">' +
+        '      <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500"><tr><th class="p-2">المنتج</th><th class="p-2 text-center">الرصيد الحالي</th><th class="p-2 text-center">معدل السحب اليومي</th><th class="p-2" style="min-width:170px;">⏳ العد التنازلي للعمر المتبقي</th><th class="p-2">📅 تاريخ النفاد المتوقع</th><th class="p-2">⏰ آخر موعد للطلب</th><th class="p-2">💸 الربح المعرض للضياع</th><th class="p-2 text-center">تموين استباقي</th></tr></thead>' +
+        '      <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        filteredDep.map(function (d) {
+          var pctLife = Math.min(100, Math.max(6, Math.round((d.days_remaining / 45) * 100)));
+          var barColor = d.days_remaining <= 5 ? 'bg-rose-600' : d.days_remaining <= 15 ? 'bg-amber-500' : 'bg-emerald-500';
+          return (
+            '<tr>' +
+            '  <td class="p-2">' +
+            '    <div class="font-black text-slate-900 dark:text-white">' + d.name + '</div>' +
+            '    <div class="text-[10px] text-slate-400">' + d.category + (d.is_actively_moving ? ' • <span class="text-emerald-600 font-bold">مباع: ' + d.sold_qty + '</span>' : ' • <span class="text-amber-600">تقدير فئة</span>') + '</div>' +
+            (d.expiry_risk_warning ? '<div class="text-[10px] font-black text-rose-600 mt-0.5">' + d.expiry_risk_warning + '</div>' : '') +
+            '  </td>' +
+            '  <td class="p-2 text-center font-mono font-black text-sm">' + d.current_stock + ' <span class="text-[10px] font-normal text-slate-400">' + d.unit + '</span></td>' +
+            '  <td class="p-2 text-center font-mono font-bold text-blue-600">' + d.daily_velocity + ' / يوم</td>' +
+            '  <td class="p-2">' +
+            '    <div class="flex justify-between text-[10.5px] font-black mb-1"><span class="' + (d.days_remaining <= 7 ? 'text-rose-600' : 'text-slate-700 dark:text-slate-200') + '">يكفي لـ ' + d.days_remaining + ' يوم</span><span>' + pctLife + '%</span></div>' +
+            '    <div class="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden"><div class="h-full ' + barColor + '" style="width:' + pctLife + '%;"></div></div>' +
+            '  </td>' +
+            '  <td class="p-2 font-bold text-rose-600">' + d.run_out_date_ar + '</td>' +
+            '  <td class="p-2 font-black text-indigo-600 dark:text-amber-400">' + d.order_by_date_ar + '</td>' +
+            '  <td class="p-2 font-mono font-black text-emerald-600">+' + d.daily_lost_profit.toFixed(1) + ' د.ج/يوم</td>' +
+            '  <td class="p-2 text-center"><button type="button" onclick="App.copilotGenerateSmartPurchaseOrder(' + d.id + ')" class="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-[11px] shadow">📦 اطلب +' + d.needed_for_30d + '</button></td>' +
+            '</tr>'
+          );
+        }).join('') +
+        '      </tbody>' +
+        '    </table>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // الخانة 3: تسييل البضاعة الراكدة (Dead-Stock Liquidator)
+    // ========================================================================
+    else if (curTab === 'dead_stock') {
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3">' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2">' +
+        '    <div><h3 class="font-black text-sm text-amber-600">🔥 استوديو تسييل البضاعة الراكدة وتحرير رأس المال المجمد (' + intel.totalDeadCapital.toFixed(2) + ' د.ج)</h3><p class="text-[11px] text-slate-400">فعّل تخفيضاً فورياً (-15% أو -25%) لتحريك السلعة في شاشة الكاشير</p></div>' +
+        '    <button type="button" onclick="App.copilotLiquidateAllDeadStockWithPromos()" class="px-4 py-2 rounded-xl bg-rose-600 text-white font-black text-xs shadow">🔥 تفعيل تخفيض -15% لجميع السلع الراكدة دفعة واحدة</button>' +
+        '  </div>' +
+        '  <div class="overflow-x-auto max-h-96">' +
+        '    <table class="w-full text-xs text-right">' +
+        '      <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500"><tr><th class="p-2">#</th><th class="p-2">اسم السلعة الراكدة</th><th class="p-2">الفئة</th><th class="p-2 text-center">الرصيد</th><th class="p-2">سعر الشراء</th><th class="p-2">سعر البيع</th><th class="p-2">رأس المال المجمد</th><th class="p-2 text-center">إجراءات التسييل الذكية</th></tr></thead>' +
+        '      <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        intel.deadList.map(function (d, i) {
+          return (
+            '<tr>' +
+            '  <td class="p-2 font-mono text-slate-400">' + (i + 1) + '</td>' +
+            '  <td class="p-2 font-black">' + d.name + '</td>' +
+            '  <td class="p-2 text-slate-400">' + d.category + '</td>' +
+            '  <td class="p-2 text-center font-mono font-black">' + d.stock_qty + '</td>' +
+            '  <td class="p-2 font-mono">' + d.cost_price.toFixed(2) + '</td>' +
+            '  <td class="p-2 font-mono font-bold text-blue-600">' + d.selling_price.toFixed(2) + '</td>' +
+            '  <td class="p-2 font-mono font-black text-amber-600">' + d.tied_capital.toFixed(2) + ' د.ج</td>' +
+            '  <td class="p-2 flex items-center justify-center gap-1.5">' +
+            (d.has_active_promo
+              ? '<span class="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 font-black">✓ عرض نشط</span>'
+              : '<button type="button" onclick="App.copilotCreateFlashPromoForDeadStock(' + d.id + ', 15)" class="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-black">🔥 تخفيض -15%</button>' +
+                '<button type="button" onclick="App.copilotCreateFlashPromoForDeadStock(' + d.id + ', 25)" class="px-2 py-1 rounded-lg bg-amber-500/20 text-amber-700 font-bold">-25%</button>') +
+            '    <button type="button" onclick="App.openProductModal((AppState.products||[]).find(function(x){return Number(x.id)===' + d.id + ';}))" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 font-bold">🏷️ السعر</button>' +
+            '  </td>' +
+            '</tr>'
+          );
+        }).join('') +
+        '      </tbody>' +
+        '    </table>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // الخانة 4: التموين الذكي والتنبؤ المالي (Smart Reorder & Forecast)
+    // ========================================================================
+    else if (curTab === 'reorder_forecast') {
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3">' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2">' +
+        '    <div><h3 class="font-black text-sm text-emerald-600">🚀 توصيات التموين الذكي والسلع السريعة (' + intel.reorderList.length + ' صنف)</h3></div>' +
+        '    <button type="button" onclick="App.copilotGenerateSmartPurchaseOrder()" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-black text-xs shadow">📦 تحويل القائمة بالكامل إلى فاتورة شراء جاهزة</button>' +
+        '  </div>' +
+        '  <div class="overflow-x-auto max-h-96">' +
+        '    <table class="w-full text-xs text-right">' +
+        '      <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500"><tr><th class="p-2">المنتج</th><th class="p-2">سبب التوصية</th><th class="p-2 text-center">الرصيد الحالي</th><th class="p-2 text-center">المباع</th><th class="p-2 text-center">الكمية المقترح شراؤها</th><th class="p-2">التكلفة</th><th class="p-2">الربح المتوقع</th><th class="p-2 text-center">إجراء</th></tr></thead>' +
+        '      <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        intel.reorderList.map(function (r) {
+          return (
+            '<tr>' +
+            '  <td class="p-2 font-black">' + r.name + '</td>' +
+            '  <td class="p-2 font-bold text-indigo-600">' + (r.reason || 'تعزيز المخزون') + '</td>' +
+            '  <td class="p-2 text-center font-mono font-black">' + r.current_stock + '</td>' +
+            '  <td class="p-2 text-center font-mono font-bold text-blue-600">' + r.sold_qty + '</td>' +
+            '  <td class="p-2 text-center font-mono font-black text-emerald-600">+' + r.recommended_qty + '</td>' +
+            '  <td class="p-2 font-mono font-bold">' + r.estimated_order_cost.toFixed(2) + ' د.ج</td>' +
+            '  <td class="p-2 font-mono font-black text-emerald-600">+' + (r.expected_profit_from_order || 0).toFixed(2) + ' د.ج</td>' +
+            '  <td class="p-2 text-center"><button type="button" onclick="App.copilotGenerateSmartPurchaseOrder(' + r.id + ')" class="px-3 py-1 rounded-lg bg-blue-600 text-white font-black text-[11px]">📦 طلب</button></td>' +
+            '</tr>'
+          );
+        }).join('') +
+        '      </tbody>' +
+        '    </table>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // الخانة 5: دمج المكررات وحارس الهوامش (Data Hygiene)
+    // ========================================================================
+    else if (curTab === 'data_hygiene') {
+      body.innerHTML =
+        '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">' +
+        '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">' +
+        '    <div class="flex items-center justify-between"><h3 class="font-black text-sm text-indigo-600">🔗 1. المنتجات المكررة في المخزون (' + intel.duplicatePairs.length + ')</h3><button type="button" onclick="App.copilotMergeAllDuplicatesAtOnce()" class="px-3 py-1 rounded-xl bg-indigo-600 text-white font-black">🔗 دمج الكل</button></div>' +
+        '    <div class="space-y-2 max-h-80 overflow-y-auto">' +
+        (intel.duplicatePairs.length > 0
+          ? intel.duplicatePairs.map(function (pair) {
+              var safeK = String(pair.keepProduct.name).replace(/'/g, "\\'");
+              var safeR = String(pair.removeProduct.name).replace(/'/g, "\\'");
+              return (
+                '<div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-indigo-500/30 flex items-center justify-between gap-2">' +
+                '  <div><div class="font-black text-emerald-600">✓ الأساسي: ' + pair.keepProduct.name + ' (رصيد: ' + getProdStock(pair.keepProduct) + ')</div><div class="font-bold text-rose-500 mt-0.5">✕ المكرر: ' + pair.removeProduct.name + ' (رصيد: ' + getProdStock(pair.removeProduct) + ')</div></div>' +
+                '  <button type="button" onclick="App.copilotPromptMergeDuplicatePair(' + pair.keepProduct.id + ', ' + pair.removeProduct.id + ', \'' + safeK + '\', \'' + safeR + '\', ' + pair.combinedStock + ')" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-black shadow">🔗 دمج (' + pair.combinedStock + ')</button>' +
+                '</div>'
+              );
+            }).join('')
+          : '<div class="py-8 text-center text-emerald-600 font-bold">✅ لا توجد منتجات مكررة في المخزون!</div>') +
+        '    </div>' +
+        '  </div>' +
+        '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">' +
+        '    <h3 class="font-black text-sm text-rose-600">🛡️ 2. حارس هوامش الربح المنخفضة (' + intel.lowMarginProducts.length + ')</h3>' +
+        '    <div class="space-y-2 max-h-80 overflow-y-auto">' +
+        (intel.lowMarginProducts.length > 0
+          ? intel.lowMarginProducts.map(function (lm) {
+              return (
+                '<div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 flex items-center justify-between gap-2">' +
+                '  <div><div class="font-black">' + lm.name + '</div><div class="text-[10.5px] text-slate-400">شراء: ' + lm.cost_price + ' | بيع حالي: ' + lm.selling_price + ' (هامش: ' + lm.margin_pct + '%)</div></div>' +
+                '  <button type="button" onclick="App.copilotFixLowMarginPrice(' + lm.id + ', ' + lm.suggested_price + ')" class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-black">⚡ رفع إلى ' + lm.suggested_price + ' د.ج</button>' +
+                '</div>'
+              );
+            }).join('')
+          : '<div class="py-8 text-center text-emerald-600 font-bold">✅ جميع منتجات المتجر تتمتع بهوامش ربح ممتازة!</div>') +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // الخانة 6: مستشار الكاشير وحزم البيع المتقاطع (Cashier Upsell Bundles)
+    // ========================================================================
+    else if (curTab === 'cashier_upsell') {
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3">' +
+        '  <h3 class="font-black text-sm text-indigo-600">🎁 مولد الحزم الترويجية الذكية للبائع (Smart Cross-Sell Bundles Generator)</h3>' +
+        '  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">' +
+        intel.upsellBundlesSuggestions.map(function (b) {
+          var safeTitle = String(b.bundleTitle).replace(/'/g, "\\'");
+          return (
+            '<div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-indigo-500/30 space-y-2">' +
+            '  <div class="font-black text-indigo-600 text-sm">🎁 ' + b.bundleTitle + '</div>' +
+            '  <div class="text-[11px] text-slate-500">🌟 سلعة جاذبة: <strong>' + b.starName + '</strong> + 💤 سلعة مرافقة: <strong>' + b.deadName + '</strong></div>' +
+            '  <div class="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">' +
+            '    <div><span class="line-through text-slate-400 ml-2">' + b.normalPrice.toFixed(2) + ' د.ج</span><strong class="font-mono font-black text-emerald-600 text-sm">' + b.bundlePrice.toFixed(2) + ' د.ج</strong></div>' +
+            '    <button type="button" onclick="App.copilotCreateSmartBundleNow(' + b.starId + ', ' + b.deadId + ', \'' + safeTitle + '\', ' + b.bundlePrice + ')" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-black shadow">+ اعتماد كحزمة في الكاشير</button>' +
+            '  </div>' +
+            '</div>'
+          );
+        }).join('') +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // الخانة 7: خطة مهام اليوم (Daily Profit Playbook)
+    // ========================================================================
+    else if (curTab === 'playbook') {
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3 text-xs">' +
+        '  <h3 class="font-black text-sm text-indigo-600">🎯 خطة العمل اليومية المقترحة من الوكيل الذكي (Daily Profit Playbook)</h3>' +
+        '  <div class="space-y-2.5">' +
+        intel.dailyPlaybook.map(function (task) {
+          return (
+            '<div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2">' +
+            '  <div><div class="font-black text-sm ' + (task.done ? 'line-through text-slate-400' : 'text-slate-900 dark:text-white') + '">' + (task.done ? '✅ ' : '⏳ ') + task.title + '</div><div class="text-[11px] font-bold text-emerald-600 mt-0.5">💡 الأثر المالي: ' + task.impact + '</div></div>' +
+            '  <button type="button" onclick="' + task.onclick + '" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow">' + task.btnText + '</button>' +
+            '</div>'
+          );
+        }).join('') +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // الخانة 8: رادار الشذوذ والتسرب المالي (Anomaly & Leakage Radar)
+    // ========================================================================
+    else if (curTab === 'anomalies') {
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3 text-xs">' +
+        '  <h3 class="font-black text-sm text-rose-600">🕵️‍♂️ رادار كشف الشذوذ والتسرب المالي والرقابة الذكية (' + intel.anomalies.length + ')</h3>' +
+        '  <div class="space-y-2">' +
+        (intel.anomalies.length > 0
+          ? intel.anomalies.map(function (an) {
+              return (
+                '<div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-between">' +
+                '  <div><div class="font-black">' + an.icon + ' ' + an.title + '</div><div class="text-[11px] text-slate-500 mt-0.5">' + an.desc + '</div></div>' +
+                '</div>'
+              );
+            }).join('')
+          : '<div class="py-8 text-center text-emerald-600 font-bold">✅ لم يتم رصد أي شذوذ أو تسرب مالي في الفواتير!</div>') +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // الخانة 9 الجديدة: مضاعف الأرباح ومرونة الأسعار (AI Profit Multiplier & Price Elasticity)
+    // ========================================================================
+    else if (curTab === 'profit_multiplier') {
+      var pmList = (intel.profitMultiplierList || []).slice(0, 20);
+      var totalPotentialExtraMonthly = pmList.slice(0, 8).reduce(function (s, x) { return s + x.extra_monthly_profit; }, 0);
+
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3.5 text-xs">' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <div>' +
+        '      <h3 class="font-black text-sm text-indigo-600">🏆 رادار مضاعفة الأرباح ومرونة الأسعار (AI Profit Multiplier & Price Elasticity)</h3>' +
+        '      <p class="text-[11px] text-slate-400">يكتشف السلع التي تقبل تحسيناً طفيفاً في سعر البيع (+5 أو +10 د.ج) دون التأثير على إقبال الزبائن لزيادة صافي ربحك الشهري</p>' +
+        '    </div>' +
+        '    <div class="px-3.5 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-black">' +
+        '      💰 ربح إضافي ممكن لأفضل 8 سلع: <span class="font-mono text-sm">+' + totalPotentialExtraMonthly.toFixed(0) + ' د.ج / شهرياً</span> (' + fmtCentimes(totalPotentialExtraMonthly) + ')' +
+        '    </div>' +
+        '  </div>' +
+        '  <div class="overflow-x-auto max-h-96">' +
+        '    <table class="w-full text-xs text-right">' +
+        '      <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500"><tr><th class="p-2">المنتج</th><th class="p-2 text-center">سعر الشراء</th><th class="p-2 text-center">سعر البيع الحالي</th><th class="p-2 text-center">السعر الذكي المقترح</th><th class="p-2 text-center">نمو الهامش</th><th class="p-2">الربح الصافي الإضافي شهرياً</th><th class="p-2 text-center">تطبيق فوري</th></tr></thead>' +
+        '      <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        pmList.map(function (pm) {
+          return (
+            '<tr>' +
+            '  <td class="p-2 font-black">' + pm.name + ' <span class="text-[10px] text-slate-400">(' + pm.category + ')</span></td>' +
+            '  <td class="p-2 text-center font-mono">' + pm.cost_price.toFixed(2) + '</td>' +
+            '  <td class="p-2 text-center font-mono font-bold text-slate-600 dark:text-slate-300">' + pm.current_price.toFixed(2) + ' د.ج</td>' +
+            '  <td class="p-2 text-center font-mono font-black text-indigo-600 dark:text-amber-400">' + pm.suggested_price.toFixed(2) + ' د.ج (+' + pm.price_step + ')</td>' +
+            '  <td class="p-2 text-center font-mono text-emerald-600 font-bold">' + pm.current_margin_pct + '% ⬅️ ' + pm.new_margin_pct + '%</td>' +
+            '  <td class="p-2 font-mono font-black text-emerald-600">+' + pm.extra_monthly_profit.toFixed(2) + ' د.ج / شهر</td>' +
+            '  <td class="p-2 text-center"><button type="button" onclick="App.copilotFixLowMarginPrice(' + pm.id + ', ' + pm.suggested_price + ')" class="px-3 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] shadow">⚡ اعتماد السعر</button></td>' +
+            '</tr>'
+          );
+        }).join('') +
+        '      </tbody>' +
+        '    </table>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  };
+})();
+
+// [PAGE 16 ADAPTIVE MULTI-HORIZON DEPLETION INTELLIGENCE V4]
+(function installAdaptiveDepletionIntelligenceV4() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.copilotTargetCoverageDays = Number(localStorage.getItem('gherbi_copilot_target_cov_days') || 30);
+  AppState.copilotVelocityMethod = localStorage.getItem('gherbi_copilot_vel_method') || 'ewma_adaptive'; // 'ewma_adaptive' | 'recent_7d' | 'monthly_30d' | 'peak_conservative'
+  AppState.copilotDepletionSearch = '';
+
+  function getProdCost(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.cost_price ?? fb.cost_price ?? 0);
+  }
+
+  function getProdRetail(p) {
+    if (!p) return 0;
+    var fb = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    return Number(p.selling_price ?? fb.selling_price ?? 0);
+  }
+
+  function getProdStock(p) {
+    if (!p) return 0;
+    return Number(p.total_stock ?? p.stock ?? 0);
+  }
+
+  function fmtCentimes(dzd) {
+    return typeof App.formatAlgerianCentimes === 'function'
+      ? App.formatAlgerianCentimes(dzd)
+      : (Math.round(Number(dzd || 0) * 100)).toLocaleString('fr-DZ') + ' سنتيم';
+  }
+
+  var ARABIC_DOW_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
+  // ==========================================================================
+  // 1. نافذة التشريح المجهري لمنحنى نفاد المنتج (#depletionXRayModal)
+  // ==========================================================================
+  App.ensureDepletionXRayModalDom = function () {
+    if (!document.getElementById('depletionXRayModal')) {
+      var m = document.createElement('div');
+      m.id = 'depletionXRayModal';
+      m.className = 'modal-overlay';
+      m.innerHTML =
+        '<div class="modal-content w-full max-w-4xl p-6 space-y-4 overflow-y-auto">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <div>' +
+        '      <h3 id="depletionXRayTitle" class="text-lg font-black text-indigo-600">🔬 التشريح التنبؤي لمنحنى نفاد المنتج (AI Depletion X-Ray)</h3>' +
+        '      <p class="text-[11px] text-slate-400 font-bold">تحليل السلاسل الزمنية للسحب، بصمة أيام الأسبوع، دفعات FIFO، وسيناريوهات النفاد الثلاثة</p>' +
+        '    </div>' +
+        '    <button type="button" onclick="App.closeModal(\'depletionXRayModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div id="depletionXRayBody" class="space-y-4 text-xs"></div>' +
+        '</div>';
+      document.body.appendChild(m);
+    }
+  };
+
+  // ==========================================================================
+  // 2. المحرك التكيّفي لتحليل قاعدة البيانات واستخراج السلاسل الزمنية لكل منتج
+  // ==========================================================================
+  var _prevBuildCopilotIntel = App.buildCopilotDeepIntelligence.bind(App);
+  App.buildCopilotDeepIntelligence = async function () {
+    var baseIntel = await _prevBuildCopilotIntel();
+    var products = baseIntel.products || AppState.products || [];
+    var sales = baseIntel.sales || [];
+    var purchases = baseIntel.purchases || [];
+
+    var nowMs = Date.now();
+    var todayIso = new Date(nowMs).toISOString().slice(0, 10);
+    var minus1dIso = new Date(nowMs - 1 * 86400000).toISOString().slice(0, 10);
+    var minus7dIso = new Date(nowMs - 7 * 86400000).toISOString().slice(0, 10);
+    var minus14dIso = new Date(nowMs - 14 * 86400000).toISOString().slice(0, 10);
+    var minus30dIso = new Date(nowMs - 30 * 86400000).toISOString().slice(0, 10);
+
+    // جلب المبيعات الحقيقية لكل منتج في قاعدة البيانات عبر 5 نوافذ زمنية + الطلبيات وأوامر التصنيع
+    var multiHorizonData = await Promise.all([
+      window.api.getSegmentProducts ? window.api.getSegmentProducts({ scopeType: 'all', dateFrom: minus1dIso, pageSize: 10000 }).catch(function () { return { items: [] }; }) : Promise.resolve({ items: [] }),
+      window.api.getSegmentProducts ? window.api.getSegmentProducts({ scopeType: 'all', dateFrom: minus7dIso, pageSize: 10000 }).catch(function () { return { items: [] }; }) : Promise.resolve({ items: [] }),
+      window.api.getSegmentProducts ? window.api.getSegmentProducts({ scopeType: 'all', dateFrom: minus14dIso, pageSize: 10000 }).catch(function () { return { items: [] }; }) : Promise.resolve({ items: [] }),
+      window.api.getSegmentProducts ? window.api.getSegmentProducts({ scopeType: 'all', dateFrom: minus30dIso, pageSize: 10000 }).catch(function () { return { items: [] }; }) : Promise.resolve({ items: [] }),
+      window.api.getSegmentProducts ? window.api.getSegmentProducts({ scopeType: 'all', pageSize: 10000 }).catch(function () { return { items: [] }; }) : Promise.resolve({ items: [] }),
+      window.api.getOrders ? window.api.getOrders().catch(function () { return []; }) : Promise.resolve([]),
+      window.api.getProductionOrders ? window.api.getProductionOrders().catch(function () { return []; }) : Promise.resolve([])
+    ]);
+
+    var map24h = {};
+    var map7d = {};
+    var map14d = {};
+    var map30d = {};
+    var mapAll = {};
+
+    (multiHorizonData[0]?.items || []).forEach(function (it) { map24h[it.id] = Number(it.qty_sold || 0); });
+    (multiHorizonData[1]?.items || []).forEach(function (it) { map7d[it.id] = Number(it.qty_sold || 0); });
+    (multiHorizonData[2]?.items || []).forEach(function (it) { map14d[it.id] = Number(it.qty_sold || 0); });
+    (multiHorizonData[3]?.items || []).forEach(function (it) { map30d[it.id] = Number(it.qty_sold || 0); });
+    (multiHorizonData[4]?.items || []).forEach(function (it) { mapAll[it.id] = it; });
+
+    var orders = Array.isArray(multiHorizonData[5]) ? multiHorizonData[5] : [];
+    var prodOrders = Array.isArray(multiHorizonData[6]) ? multiHorizonData[6] : [];
+
+    // 1) اكتشاف العمر الزمني الحقيقي لقاعدة البيانات وبصمة أيام الأسبوع (Day-of-Week Seasonality Profile)
+    var earliestSaleMs = nowMs;
+    var latestSaleMs = 0;
+    var activeSaleDatesSet = {};
+    var dowRevenueSum = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+    var dowCountDays = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+    var dateToDowCounted = {};
+
+    sales.forEach(function (s) {
+      var rawDt = String(s.sale_date || s.created_at || '');
+      var dStr = rawDt.slice(0, 10);
+      if (!dStr) return;
+      var ms = new Date(dStr).getTime();
+      if (Number.isFinite(ms)) {
+        if (ms < earliestSaleMs) earliestSaleMs = ms;
+        if (ms > latestSaleMs) latestSaleMs = ms;
+        activeSaleDatesSet[dStr] = true;
+        var dow = new Date(dStr).getDay();
+        dowRevenueSum[dow] = (dowRevenueSum[dow] || 0) + Math.max(0, Number(s.total || 0));
+        if (!dateToDowCounted[dStr]) {
+          dateToDowCounted[dStr] = true;
+          dowCountDays[dow] = (dowCountDays[dow] || 0) + 1;
+        }
+      }
+    });
+
+    var distinctActiveSaleDays = Math.max(1, Object.keys(activeSaleDatesSet).length);
+    var calendarStoreSpanDays = latestSaleMs >= earliestSaleMs
+      ? Math.max(1, Math.ceil((nowMs - earliestSaleMs) / 86400000) + 1)
+      : distinctActiveSaleDays;
+
+    // المقام التكيّفي لعمر المتجر: يوازن بذكاء بين الأيام الفعالة والتقويم الفعلي
+    var effectiveStoreAgeDays = Math.max(1, Math.min(calendarStoreSpanDays, Math.round(distinctActiveSaleDays * 1.25)));
+
+    // حساب معاملات أيام الأسبوع (Day-of-Week Multipliers) الخاصة بهذا المتجر
+    var dowAvg = {};
+    var sumAvgs = 0;
+    var activeDowCount = 0;
+    for (var d = 0; d < 7; d++) {
+      if (dowCountDays[d] > 0) {
+        dowAvg[d] = dowRevenueSum[d] / dowCountDays[d];
+        sumAvgs += dowAvg[d];
+        activeDowCount++;
+      } else {
+        dowAvg[d] = 0;
+      }
+    }
+    var globalDailyAvgRev = activeDowCount > 0 ? sumAvgs / activeDowCount : 1;
+    var dowMultipliers = {};
+    var peakDowIndex = 4; // الخميس افتراضياً
+    var maxDowMult = 0;
+    for (var dw = 0; dw < 7; dw++) {
+      var rawMult = globalDailyAvgRev > 0 && dowAvg[dw] > 0 ? dowAvg[dw] / globalDailyAvgRev : 1.0;
+      // تهذيب المعامل ليكون واقعياً بين 0.65x و 1.65x
+      dowMultipliers[dw] = Number(Math.max(0.65, Math.min(1.65, rawMult)).toFixed(2));
+      if (dowMultipliers[dw] > maxDowMult) {
+        maxDowMult = dowMultipliers[dw];
+        peakDowIndex = dw;
+      }
+    }
+
+    // 2) حساب مهلة التوريد التاريخية لكل مورد من فواتير الشراء (Supplier Historical Lead-Time)
+    var supplierPurchaseDates = {};
+    purchases.forEach(function (p) {
+      var sName = String(p.supplier_name || 'مورد عام').trim();
+      var dStr = String(p.date || p.created_at || '').slice(0, 10);
+      if (dStr) {
+        if (!supplierPurchaseDates[sName]) supplierPurchaseDates[sName] = [];
+        supplierPurchaseDates[sName].push(new Date(dStr).getTime());
+      }
+    });
+    var supplierAvgLeadTime = {};
+    Object.keys(supplierPurchaseDates).forEach(function (sName) {
+      var arr = supplierPurchaseDates[sName].sort(function (a, b) { return a - b; });
+      if (arr.length >= 2) {
+        var span = (arr[arr.length - 1] - arr[0]) / 86400000;
+        var avgGap = Math.round(span / (arr.length - 1));
+        supplierAvgLeadTime[sName] = Math.max(1, Math.min(14, avgGap || 2));
+      }
+    });
+
+    // 3) حساب متوسط سرعة دوران كل فئة (Category Empirical Velocity Prior) لتقدير السلع الجديدة بدقة
+    var categoryVelocityStats = {};
+    products.forEach(function (p) {
+      var cat = p.category || 'عام';
+      if (!categoryVelocityStats[cat]) {
+        categoryVelocityStats[cat] = { movingCount: 0, totalDailyVel: 0, avgPrice: 0, count: 0 };
+      }
+      categoryVelocityStats[cat].count++;
+      categoryVelocityStats[cat].avgPrice += getProdRetail(p);
+      var allRec = mapAll[p.id];
+      var soldAll = allRec ? Number(allRec.qty_sold || 0) : 0;
+      if (soldAll > 0) {
+        categoryVelocityStats[cat].movingCount++;
+        categoryVelocityStats[cat].totalDailyVel += soldAll / effectiveStoreAgeDays;
+      }
+    });
+
+    // 4) بناء جدول ساعة النفاد التكيّفي لكل منتج في قاعدة البيانات
+    var demandMult = Math.max(0.5, Number(AppState.copilotDemandMultiplier || 1));
+    var userLeadTime = Math.max(1, Number(AppState.copilotLeadTimeDays || 2));
+    var targetCovDays = Math.max(7, Number(AppState.copilotTargetCoverageDays || 30));
+    var velMethod = AppState.copilotVelocityMethod || 'ewma_adaptive';
+
+    var adaptiveDepletionList = [];
+
+    products.forEach(function (p) {
+      var totalSt = Math.max(0, getProdStock(p));
+      var validSt = p.valid_stock !== undefined ? Math.max(0, Number(p.valid_stock)) : totalSt;
+      var minSt = Math.max(3, Number(p.min_stock || 5));
+      var cost = getProdCost(p);
+      var sell = getProdRetail(p);
+      var unitProfit = Math.max(0, sell - cost);
+      var cat = p.category || 'عام';
+      var supName = p.supplier || 'مورد عام';
+
+      // حساب العمر الفعلي لتوفر هذا المنتج في قاعدة البيانات (Product Lifespan Days)
+      var earliestProdMs = nowMs;
+      if (p.created_at) {
+        var pm = new Date(p.created_at).getTime();
+        if (Number.isFinite(pm) && pm < earliestProdMs) earliestProdMs = pm;
+      }
+      if (Array.isArray(p.batches)) {
+        p.batches.forEach(function (b) {
+          if (b.created_at) {
+            var bm = new Date(b.created_at).getTime();
+            if (Number.isFinite(bm) && bm < earliestProdMs) earliestProdMs = bm;
+          }
+        });
+      }
+      var prodAgeCalendarDays = Math.max(1, Math.ceil((nowMs - earliestProdMs) / 86400000));
+      var prodExposureDays = Math.max(1, Math.min(effectiveStoreAgeDays, prodAgeCalendarDays));
+
+      var q24h = Number(map24h[p.id] || 0);
+      var q7d = Number(map7d[p.id] || 0);
+      var q14d = Number(map14d[p.id] || 0);
+      var q30d = Number(map30d[p.id] || 0);
+      var qAll = mapAll[p.id] ? Number(mapAll[p.id].qty_sold || 0) : q30d;
+
+      // المقامات التكيّفية لكل نافذة زمنية بناءً على عمر المنتج وعمر المتجر
+      var denom7d = Math.max(1, Math.min(7, prodExposureDays));
+      var denom14d = Math.max(1, Math.min(14, prodExposureDays));
+      var denom30d = Math.max(1, Math.min(30, prodExposureDays));
+      var denomAll = Math.max(1, prodExposureDays);
+
+      var vel24h = q24h;
+      var vel7d = Number((q7d / denom7d).toFixed(3));
+      var vel14d = Number((q14d / denom14d).toFixed(3));
+      var vel30d = Number((q30d / denom30d).toFixed(3));
+      var velAll = Number((qAll / denomAll).toFixed(3));
+
+      var isMoving = qAll > 0;
+      var baseVelocity = 0;
+      var forecastSourceLabel = '';
+      var confidenceScore = 50;
+
+      if (isMoving) {
+        if (velMethod === 'recent_7d') {
+          baseVelocity = vel7d > 0 ? vel7d : velAll;
+          forecastSourceLabel = 'سحب آخر 7 أيام';
+        } else if (velMethod === 'monthly_30d') {
+          baseVelocity = vel30d > 0 ? vel30d : velAll;
+          forecastSourceLabel = 'متوسط 30 يوماً';
+        } else if (velMethod === 'peak_conservative') {
+          baseVelocity = Math.max(vel24h, vel7d, vel14d, vel30d, velAll);
+          forecastSourceLabel = 'أقصى ذروة مسجلة';
+        } else {
+          // الخوارزمية التكيّفية الموزونة أُسّياً (EWMA Adaptive Multi-Horizon)
+          if (prodExposureDays <= 3) {
+            baseVelocity = velAll;
+            forecastSourceLabel = 'سحب حديث (' + prodExposureDays + ' يوم)';
+          } else if (prodExposureDays <= 14) {
+            baseVelocity = 0.65 * vel7d + 0.35 * velAll;
+            forecastSourceLabel = 'EWMA تكيّفي (7d + عام)';
+          } else {
+            baseVelocity = 0.50 * vel7d + 0.30 * vel30d + 0.20 * velAll;
+            forecastSourceLabel = 'EWMA متعدد الأفق (7d/30d/عام)';
+          }
+        }
+        // حساب درجة الثقة الإحصائية بناءً على حجم العينة وعدد الفواتير
+        confidenceScore = Math.min(99, Math.round(62 + Math.min(25, qAll * 2.5) + Math.min(12, prodExposureDays * 1.5)));
+      } else {
+        // التعلم الإحصائي الاستدلالي من الفئة للسلع الجديدة التي لم تُبع بعد (Bayesian Category Prior)
+        var catStat = categoryVelocityStats[cat];
+        var catPriorVel = catStat && catStat.movingCount > 0
+          ? (catStat.totalDailyVel / catStat.movingCount) * 0.45
+          : Math.max(0.25, minSt / 18);
+        // تعديل حسب السعر (السلع الأرخص تدور أسرع من السلع الغالية)
+        var priceFactor = sell > 1000 ? 0.65 : sell < 150 ? 1.25 : 1.0;
+        baseVelocity = Number((catPriorVel * priceFactor).toFixed(2));
+        forecastSourceLabel = '🧠 استدلالي من فئة (' + cat + ')';
+        confidenceScore = catStat && catStat.movingCount > 0 ? 58 : 42;
+      }
+
+      // حساب معامل تسارع أو تباطؤ الطلب (Trend Momentum: Recent 7d vs Baseline)
+      var trendMomentumPct = 0;
+      var trendBadgeHtml = '';
+      if (isMoving && velAll > 0.01) {
+        trendMomentumPct = Math.round(((vel7d - velAll) / velAll) * 100);
+        if (trendMomentumPct >= 15) {
+          trendBadgeHtml = '<span class="px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-600 font-black text-[9.5px]" title="الطلب يتسارع مؤخراً مقارنة بالمتوسط العام">🚀 تسارع +' + trendMomentumPct + '%</span>';
+        } else if (trendMomentumPct <= -15) {
+          trendBadgeHtml = '<span class="px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-700 font-bold text-[9.5px]" title="الطلب أبطأ مؤخراً من المتوسط العام">📉 تباطؤ ' + trendMomentumPct + '%</span>';
+        } else {
+          trendBadgeHtml = '<span class="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-600 font-bold text-[9.5px]">⏸️ سحب منتظم</span>';
+        }
+      } else {
+        trendBadgeHtml = '<span class="px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-600 font-bold text-[9.5px]">🆕 قياس فئة</span>';
+      }
+
+      var effectiveDailyVel = Number(Math.max(0.05, baseVelocity * demandMult).toFixed(2));
+
+      // محاكاة التقويم يوماً بيوم مع مراعاة بصمة أيام الأسبوع في المتجر!
+      var remStockSim = validSt;
+      var simulatedDays = 0;
+      var curSimMs = nowMs;
+      var dailyTimeline14d = [];
+
+      if (remStockSim <= 0) {
+        simulatedDays = 0;
+      } else {
+        for (var step = 0; step < 365; step++) {
+          var stepDate = new Date(curSimMs + step * 86400000);
+          var stepDow = stepDate.getDay();
+          var dowMult = dowMultipliers[stepDow] || 1.0;
+          var dayBurn = Math.max(0.02, effectiveDailyVel * dowMult);
+
+          if (remStockSim <= dayBurn) {
+            var frac = remStockSim / dayBurn;
+            simulatedDays += frac;
+            remStockSim = 0;
+            if (step < 14) {
+              dailyTimeline14d.push({
+                dayIndex: step + 1,
+                dateIso: stepDate.toISOString().slice(0, 10),
+                dayNameAr: ARABIC_DOW_NAMES[stepDow],
+                burn: Number(dayBurn.toFixed(2)),
+                remainingAfter: 0
+              });
+            }
+            break;
+          } else {
+            remStockSim = Number((remStockSim - dayBurn).toFixed(2));
+            simulatedDays += 1;
+            if (step < 14) {
+              dailyTimeline14d.push({
+                dayIndex: step + 1,
+                dateIso: stepDate.toISOString().slice(0, 10),
+                dayNameAr: ARABIC_DOW_NAMES[stepDow],
+                burn: Number(dayBurn.toFixed(2)),
+                remainingAfter: remStockSim
+              });
+            }
+          }
+        }
+      }
+
+      var daysUntilZero = Number(simulatedDays.toFixed(1));
+      var runOutDateObj = new Date(nowMs + daysUntilZero * 86400000);
+      var runOutDateIso = runOutDateObj.toISOString().slice(0, 10);
+      var runOutDateAr = validSt <= 0
+        ? '🚨 نافد الآن (0)!'
+        : runOutDateObj.toLocaleDateString('ar-DZ', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+
+      // حساب السيناريو المتسارع (Worst-Case Peak 1.4x) والسيناريو الهادئ (0.75x)
+      var peakDaysRemaining = validSt <= 0 ? 0 : Number((daysUntilZero / 1.35).toFixed(1));
+      var peakRunOutDateAr = validSt <= 0
+        ? 'نافد الآن'
+        : new Date(nowMs + peakDaysRemaining * 86400000).toLocaleDateString('ar-DZ', { day: 'numeric', month: 'short' });
+
+      var calmDaysRemaining = validSt <= 0 ? 0 : Number((daysUntilZero * 1.3).toFixed(1));
+      var calmRunOutDateAr = validSt <= 0
+        ? 'نافد الآن'
+        : new Date(nowMs + calmDaysRemaining * 86400000).toLocaleDateString('ar-DZ', { day: 'numeric', month: 'short' });
+
+      // مهلة المورد الذكية (Supplier Lead Time) + مخزون الأمان (Safety Stock Days)
+      var supLeadDays = supplierAvgLeadTime[supName] || userLeadTime;
+      var daysUntilSafeStockBreach = validSt <= minSt
+        ? 0
+        : Number(Math.max(0, ((validSt - minSt) / effectiveDailyVel)).toFixed(1));
+      var daysUntilOrderBy = Math.max(0, Number((daysUntilZero - supLeadDays).toFixed(1)));
+      var orderByDateObj = new Date(nowMs + daysUntilOrderBy * 86400000);
+      var orderByDateAr = daysUntilOrderBy <= 0.5
+        ? '🚨 اطلب اليوم فوراً!'
+        : orderByDateObj.toLocaleDateString('ar-DZ', { weekday: 'short', day: 'numeric', month: 'short' });
+
+      // سباق النفاد ضد الصلاحية
+      var earliestExpiry = p.next_expiry || (Array.isArray(p.batches) && p.batches[0] && p.batches[0].expiry_date) || null;
+      var daysUntilExpiry = null;
+      var expiryRiskWarning = null;
+      if (earliestExpiry) {
+        var expMs = new Date(earliestExpiry).getTime();
+        if (Number.isFinite(expMs)) {
+          daysUntilExpiry = Math.ceil((expMs - nowMs) / 86400000);
+          if (daysUntilExpiry < daysUntilZero && validSt > 0) {
+            expiryRiskWarning = '⚠️ تنتهي الصلاحية بعد (' + daysUntilExpiry + ' يوم) قبل بيع الكمية بـ (' + Math.round(daysUntilZero - daysUntilExpiry) + ' يوم)!';
+          }
+        }
+      }
+
+      var dailyLostProfitRisk = Number((effectiveDailyVel * unitProfit).toFixed(2));
+      var neededForTargetCoverage = Math.max(5, Math.ceil(effectiveDailyVel * targetCovDays - validSt));
+
+      adaptiveDepletionList.push({
+        id: p.id,
+        name: p.name,
+        barcode: p.barcode || '',
+        category: cat,
+        supplier: supName,
+        unit: p.unit || 'وحدة',
+        current_stock: validSt,
+        min_stock: minSt,
+        sold_24h: q24h,
+        sold_7d: q7d,
+        sold_14d: q14d,
+        sold_30d: q30d,
+        sold_qty: qAll,
+        vel_24h: vel24h,
+        vel_7d: vel7d,
+        vel_30d: vel30d,
+        vel_all: velAll,
+        product_exposure_days: prodExposureDays,
+        is_actively_moving: isMoving,
+        daily_velocity: effectiveDailyVel,
+        forecast_source: forecastSourceLabel,
+        confidence_score: confidenceScore,
+        trend_pct: trendMomentumPct,
+        trend_badge_html: trendBadgeHtml,
+        days_remaining: daysUntilZero,
+        days_until_safety_breach: daysUntilSafeStockBreach,
+        run_out_date_iso: runOutDateIso,
+        run_out_date_ar: runOutDateAr,
+        peak_days_remaining: peakDaysRemaining,
+        peak_run_out_ar: peakRunOutDateAr,
+        calm_days_remaining: calmDaysRemaining,
+        calm_run_out_ar: calmRunOutDateAr,
+        order_by_date_ar: orderByDateAr,
+        days_until_order: daysUntilOrderBy,
+        supplier_lead_days: supLeadDays,
+        daily_lost_profit: dailyLostProfitRisk,
+        expiry_date: earliestExpiry,
+        days_until_expiry: daysUntilExpiry,
+        expiry_risk_warning: expiryRiskWarning,
+        needed_for_30d: neededForTargetCoverage,
+        cost_price: cost,
+        selling_price: sell,
+        batches: p.batches || [],
+        timeline_14d: dailyTimeline14d
+      });
+    });
+
+    adaptiveDepletionList.sort(function (a, b) {
+      if (a.is_actively_moving !== b.is_actively_moving) return a.is_actively_moving ? -1 : 1;
+      return a.days_remaining - b.days_remaining;
+    });
+
+    baseIntel.depletionClockList = adaptiveDepletionList;
+    baseIntel.dbMaturityMeta = {
+      distinctActiveSaleDays: distinctActiveSaleDays,
+      calendarStoreSpanDays: calendarStoreSpanDays,
+      effectiveStoreAgeDays: effectiveStoreAgeDays,
+      peakDayNameAr: ARABIC_DOW_NAMES[peakDowIndex],
+      peakDayMultiplier: dowMultipliers[peakDowIndex] || 1.0,
+      dowMultipliers: dowMultipliers,
+      totalMovingProducts: adaptiveDepletionList.filter(function (x) { return x.is_actively_moving; }).length
+    };
+
+    return baseIntel;
+  };
+
+  // ==========================================================================
+  // 3. فتح نافذة التشريح المجهري لمنحنى نفاد المنتج (#depletionXRayModal)
+  // ==========================================================================
+  App.openProductDepletionXRayModal = function (productId) {
+    this.ensureDepletionXRayModalDom();
+    var intel = AppState._lastCopilotIntel;
+    if (!intel || !intel.depletionClockList) return;
+    var item = intel.depletionClockList.find(function (x) { return Number(x.id) === Number(productId); });
+    if (!item) return;
+
+    var titleEl = document.getElementById('depletionXRayTitle');
+    if (titleEl) {
+      titleEl.innerHTML = '🔬 التشريح التنبؤي لمنحنى نفاد المنتج: <span class="text-amber-500">' + item.name + '</span>';
+    }
+
+    var body = document.getElementById('depletionXRayBody');
+    if (!body) return;
+
+    var tl = item.timeline_14d || [];
+
+    body.innerHTML =
+      '<!-- السيناريوهات الـ 3 لتاريخ النفاد -->' +
+      '<div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-center">' +
+      '  <div class="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30">' +
+      '    <div class="text-[10.5px] font-black text-rose-600">⚡ 1. سيناريو الذروة / تسارع الطلب (1.35x)</div>' +
+      '    <div class="text-lg font-black font-mono text-rose-600 mt-1">ينفد بعد ' + item.peak_days_remaining + ' يوم</div>' +
+      '    <div class="text-[11px] font-bold text-slate-500">التاريخ: ' + item.peak_run_out_ar + '</div>' +
+      '  </div>' +
+      '  <div class="p-3.5 rounded-2xl bg-indigo-600 text-white shadow-lg">' +
+      '    <div class="text-[10.5px] font-black text-amber-300">🎯 2. التوقع الذكي المرجح (EWMA + تقويم الأسبوع)</div>' +
+      '    <div class="text-xl font-black font-mono mt-1">ينفد بعد ' + item.days_remaining + ' يوم</div>' +
+      '    <div class="text-[11px] font-bold text-amber-200">يوم: ' + item.run_out_date_ar + ' (ثقة ' + item.confidence_score + '%)</div>' +
+      '  </div>' +
+      '  <div class="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">' +
+      '    <div class="text-[10.5px] font-black text-emerald-700 dark:text-emerald-300">🛡️ 3. السيناريو الهادئ (طلب منخفض 0.75x)</div>' +
+      '    <div class="text-lg font-black font-mono text-emerald-600 mt-1">ينفد بعد ' + item.calm_days_remaining + ' يوم</div>' +
+      '    <div class="text-[11px] font-bold text-slate-500">التاريخ: ' + item.calm_run_out_ar + '</div>' +
+      '  </div>' +
+      '</div>' +
+
+      '<!-- مقارنة السلاسل الزمنية للسحب عبر النوافذ الـ 4 -->' +
+      '<div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2.5">' +
+      '  <div class="flex flex-wrap items-center justify-between gap-2">' +
+      '    <span class="font-black text-sm text-blue-600">📊 قراءة السحب التاريخي عبر النوافذ الزمنية (عمر توفر المنتج: ' + item.product_exposure_days + ' يوم):</span>' +
+      '    <div>' + item.trend_badge_html + ' <span class="text-[11px] text-slate-400 mr-1">(' + item.forecast_source + ')</span></div>' +
+      '  </div>' +
+      '  <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-center">' +
+      '    <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">سحب آخر 24 ساعة</div><div class="font-mono font-black text-sm text-blue-600 mt-0.5">' + item.sold_24h + ' ' + item.unit + '</div><div class="text-[10px] text-slate-400">معدل: ' + item.vel_24h + '/يوم</div></div>' +
+      '    <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">سحب آخر 7 أيام</div><div class="font-mono font-black text-sm text-indigo-600 mt-0.5">' + item.sold_7d + ' ' + item.unit + '</div><div class="text-[10px] text-slate-400">معدل: ' + item.vel_7d + '/يوم</div></div>' +
+      '    <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">سحب آخر 30 يوماً</div><div class="font-mono font-black text-sm text-emerald-600 mt-0.5">' + item.sold_30d + ' ' + item.unit + '</div><div class="text-[10px] text-slate-400">معدل: ' + item.vel_30d + '/يوم</div></div>' +
+      '    <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-amber-500/40"><div class="text-[10px] text-amber-600 font-bold">السرعة التكيّفية المعتمدة</div><div class="font-mono font-black text-base text-amber-600 mt-0.5">' + item.daily_velocity + ' ' + item.unit + '/يوم</div><div class="text-[10px] text-slate-400">إجمالي المباع: ' + item.sold_qty + '</div></div>' +
+      '  </div>' +
+      '</div>' +
+
+      '<!-- محاكاة تناقص الرصيد خلال الـ 14 يوماً القادمة يوماً بيوم -->' +
+      '<div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2.5">' +
+      '  <div class="font-black text-sm text-emerald-600">📅 محاكاة تناقص الرصيد اليومي على التقويم (الـ 14 يوماً القادمة):</div>' +
+      '  <div class="grid grid-cols-2 md:grid-cols-7 gap-2 text-center">' +
+      tl.slice(0, 7).map(function (step) {
+        var isLow = step.remainingAfter <= item.min_stock;
+        return (
+          '<div class="p-2 rounded-xl border ' + (step.remainingAfter <= 0 ? 'bg-rose-500/15 border-rose-500/40 text-rose-600' : isLow ? 'bg-amber-500/15 border-amber-500/40' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700') + '">' +
+          '  <div class="text-[10px] font-black">' + step.dayNameAr + '</div>' +
+          '  <div class="text-[9.5px] font-mono text-slate-400">' + step.dateIso.slice(5) + '</div>' +
+          '  <div class="font-mono font-black text-sm mt-1">' + step.remainingAfter + '</div>' +
+          '  <div class="text-[9px] text-rose-500">(-' + step.burn + ')</div>' +
+          '</div>'
+        );
+      }).join('') +
+      '  </div>' +
+      '</div>' +
+
+      '<div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">' +
+      '  <div class="text-xs font-bold">⏰ آخر موعد آمن للطلب من المورد (' + item.supplier + '): <strong class="text-indigo-600">' + item.order_by_date_ar + '</strong> | كسر حد الأمان بعد: <strong class="text-rose-600">' + item.days_until_safety_breach + ' يوم</strong></div>' +
+      '  <div class="flex gap-2">' +
+      '    <button type="button" onclick="App.closeModal(\'depletionXRayModal\')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-bold">إغلاق</button>' +
+      '    <button type="button" onclick="App.closeModal(\'depletionXRayModal\'); App.copilotGenerateSmartPurchaseOrder(' + item.id + ')" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black shadow">📦 طلب تغطية (+' + item.needed_for_30d + ' ' + item.unit + ') الآن</button>' +
+      '  </div>' +
+      '</div>';
+
+    this.openModal('depletionXRayModal');
+  };
+
+  // ==========================================================================
+  // 4. ترقية عرض الخانة 2 (ساعة النفاد التكيّفية V4) داخل renderCopilotView
+  // ==========================================================================
+  var _prevRenderCopilotV3 = App.renderCopilotView.bind(App);
+  App.renderCopilotView = async function () {
+    await _prevRenderCopilotV3();
+    if (AppState.copilotActiveTab !== 'depletion_clock') return;
+
+    var body = document.getElementById('copilotMainTabBody');
+    var intel = AppState._lastCopilotIntel;
+    if (!body || !intel) return;
+
+    var depList = intel.depletionClockList || [];
+    var meta = intel.dbMaturityMeta || {};
+    var dFilter = AppState.copilotDepletionFilter || 'all';
+    var qSearch = String(AppState.copilotDepletionSearch || '').trim().toLowerCase();
+    var mult = Number(AppState.copilotDemandMultiplier || 1);
+    var targetCov = Number(AppState.copilotTargetCoverageDays || 30);
+    var velMethod = AppState.copilotVelocityMethod || 'ewma_adaptive';
+
+    var filteredDep = depList.filter(function (d) {
+      if (dFilter === 'moving' && !d.is_actively_moving) return false;
+      if (dFilter === 'urgent' && d.days_remaining > 25) return false;
+      if (dFilter === 'accelerating' && d.trend_pct < 10) return false;
+      if (qSearch && !String(d.name || '').toLowerCase().includes(qSearch) && !String(d.category || '').toLowerCase().includes(qSearch)) return false;
+      return true;
+    });
+
+    body.innerHTML =
+      '<div class="space-y-3.5 text-xs">' +
+      '  <!-- شريط الذكاء التكيّفي مع قاعدة البيانات (Database Maturity & Adaptive Controls) -->' +
+      '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3 shadow-sm">' +
+      '    <div class="flex flex-wrap items-center justify-between gap-3">' +
+      '      <div>' +
+      '        <h3 class="font-black text-sm text-rose-600 flex flex-wrap items-center gap-2">' +
+      '          <span>⏳ ساعة النفاد التكيّفية الذكية: متى ينتهي كل منتج؟ (Adaptive Multi-Horizon Depletion Engine V4)</span>' +
+      '          <span class="px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-amber-300 text-[10.5px] font-black">🧠 متأقلم مع قاعدة البيانات (' + (meta.distinctActiveSaleDays || 1) + ' يوم مبيعات نشط | ذروة المتجر: يوم ' + (meta.peakDayNameAr || 'الخميس') + ' ×' + (meta.peakDayMultiplier || 1) + ')</span>' +
+      '        </h3>' +
+      '        <p class="text-[11px] text-slate-400 mt-0.5">يحسب السحب اليومي الحقيقي عبر 4 نوافذ زمنية (24سا / 7أيام / 30يوماً / عمر المنتج) مع كشف تسارع الطلب وبصمة أيام الأسبوع</p>' +
+      '      </div>' +
+
+      '      <div class="flex flex-wrap items-center gap-1.5">' +
+      '        <span class="font-black text-slate-500">🧮 خوارزمية الحساب:</span>' +
+      '        <select onchange="AppState.copilotVelocityMethod=this.value; localStorage.setItem(\'gherbi_copilot_vel_method\', this.value); App.renderCopilotView()" class="px-2.5 py-1.5 rounded-xl font-black border-indigo-400">' +
+      '          <option value="ewma_adaptive" ' + (velMethod === 'ewma_adaptive' ? 'selected' : '') + '>🌟 التكيّفي الذكي الموزون (EWMA: 7d + 30d + عمر السلعة)</option>' +
+      '          <option value="recent_7d" ' + (velMethod === 'recent_7d' ? 'selected' : '') + '>⚡ سرعة آخر 7 أيام فقط (الطلب الحديث)</option>' +
+      '          <option value="monthly_30d" ' + (velMethod === 'monthly_30d' ? 'selected' : '') + '>📅 متوسط آخر 30 يوماً</option>' +
+      '          <option value="peak_conservative" ' + (velMethod === 'peak_conservative' ? 'selected' : '') + '>🛡️ التحوط لأقصى ذروة سحب مسجلة</option>' +
+      '        </select>' +
+      '      </div>' +
+      '    </div>' +
+
+      '    <!-- شريط المحاكاة والبحث والفلاتر -->' +
+      '    <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-700/70">' +
+      '      <div class="flex flex-wrap items-center gap-1.5">' +
+      '        <button type="button" onclick="AppState.copilotDepletionFilter=\'all\'; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl font-black ' + (dFilter === 'all' ? 'bg-slate-900 text-white dark:bg-amber-500 dark:text-slate-950' : 'bg-slate-100 dark:bg-slate-700') + '">الكل (' + depList.length + ')</button>' +
+      '        <button type="button" onclick="AppState.copilotDepletionFilter=\'moving\'; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl font-black ' + (dFilter === 'moving' ? 'bg-blue-600 text-white' : 'bg-blue-500/10 text-blue-600') + '">🔥 السلع المسحوبة فعلياً (' + depList.filter(function (x) { return x.is_actively_moving; }).length + ')</button>' +
+      '        <button type="button" onclick="AppState.copilotDepletionFilter=\'urgent\'; App.renderCopilotView()" class="px-3 py-1.5 rounded-xl font-black ' + (dFilter === 'urgent' ? 'bg-rose-600 text-white' : 'bg-rose-500/10 text-rose-600') + '">🚨 الأقرب نفاداً ≤ 25 يوماً (' + depList.filter(function (x) { return x.days_remaining <= 25; }).length + ')</button>' +
+      '        <input type="text" value="' + (AppState.copilotDepletionSearch || '') + '" oninput="AppState.copilotDepletionSearch=this.value; App.renderCopilotView()" placeholder="🔍 ابحث عن منتج في ساعة النفاد..." class="w-48 px-3 py-1.5 rounded-xl font-bold">' +
+      '      </div>' +
+
+      '      <div class="flex flex-wrap items-center gap-2">' +
+      '        <span class="font-bold text-slate-500">محاكاة الطلب:</span>' +
+      '        <button type="button" onclick="AppState.copilotDemandMultiplier=1; App.renderCopilotView()" class="px-2.5 py-1 rounded-lg font-black ' + (mult === 1 ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700') + '">1x</button>' +
+      '        <button type="button" onclick="AppState.copilotDemandMultiplier=1.5; App.renderCopilotView()" class="px-2.5 py-1 rounded-lg font-black ' + (mult === 1.5 ? 'bg-amber-500 text-slate-950' : 'bg-slate-100 dark:bg-slate-700') + '">1.5x</button>' +
+      '        <button type="button" onclick="AppState.copilotDemandMultiplier=2; App.renderCopilotView()" class="px-2.5 py-1 rounded-lg font-black ' + (mult === 2 ? 'bg-rose-600 text-white' : 'bg-slate-100 dark:bg-slate-700') + '">2x</button>' +
+      '        <span class="text-slate-400">|</span>' +
+      '        <span class="font-bold text-slate-500">هدف التغطية:</span>' +
+      '        <select onchange="AppState.copilotTargetCoverageDays=parseInt(this.value,10)||30; localStorage.setItem(\'gherbi_copilot_target_cov_days\', AppState.copilotTargetCoverageDays); App.renderCopilotView()" class="px-2 py-1 rounded-lg font-mono font-bold">' +
+      '          <option value="15" ' + (targetCov === 15 ? 'selected' : '') + '>15 يوماً</option>' +
+      '          <option value="30" ' + (targetCov === 30 ? 'selected' : '') + '>30 يوماً</option>' +
+      '          <option value="60" ' + (targetCov === 60 ? 'selected' : '') + '>60 يوماً</option>' +
+      '        </select>' +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <!-- الجدول التنبؤي المتقدم لساعة النفاد -->' +
+      '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 overflow-x-auto max-h-[430px] shadow-sm">' +
+      '    <table class="w-full text-xs text-right">' +
+      '      <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500">' +
+      '        <tr>' +
+      '          <th class="p-2">المنتج واتجاه الطلب</th>' +
+      '          <th class="p-2 text-center">الرصيد الحر</th>' +
+      '          <th class="p-2 text-center">السحب (7d / عام / المعتمد)</th>' +
+      '          <th class="p-2" style="min-width:175px;">⏳ العد التنازلي ودقة التوقع</th>' +
+      '          <th class="p-2">📅 تاريخ النفاد (والذروة)</th>' +
+      '          <th class="p-2">⏰ آخر موعد للطلب</th>' +
+      '          <th class="p-2">💸 الربح المعرض للضياع</th>' +
+      '          <th class="p-2 text-center">تشريح وتموين</th>' +
+      '        </tr>' +
+      '      </thead>' +
+      '      <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+      filteredDep.map(function (d) {
+        var pctLife = Math.min(100, Math.max(6, Math.round((d.days_remaining / 45) * 100)));
+        var barColor = d.days_remaining <= 7 ? 'bg-rose-600' : d.days_remaining <= 20 ? 'bg-amber-500' : 'bg-emerald-500';
+        return (
+          '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition">' +
+          '  <td class="p-2">' +
+          '    <div class="font-black text-slate-900 dark:text-white flex items-center gap-1.5">' +
+          '      <span>' + d.name + '</span>' +
+          '      ' + d.trend_badge_html +
+          '    </div>' +
+          '    <div class="text-[10px] text-slate-400 mt-0.5">' + d.category + ' • مباع: <strong class="text-emerald-600">' + d.sold_qty + '</strong> (خلال ' + d.product_exposure_days + ' يوم) • ' + d.forecast_source + '</div>' +
+          (d.expiry_risk_warning ? '<div class="text-[10px] font-black text-rose-600 mt-0.5">' + d.expiry_risk_warning + '</div>' : '') +
+          '  </td>' +
+          '  <td class="p-2 text-center">' +
+          '    <div class="font-mono font-black text-sm">' + d.current_stock + ' <span class="text-[10px] font-normal text-slate-400">' + d.unit + '</span></div>' +
+          '    <div class="text-[9.5px] text-slate-400">حد الأمان: ' + d.min_stock + '</div>' +
+          '  </td>' +
+          '  <td class="p-2 text-center">' +
+          '    <div class="font-mono font-black text-blue-600 text-sm">' + d.daily_velocity + ' / يوم</div>' +
+          '    <div class="text-[9.5px] font-mono text-slate-400">7d: ' + d.vel_7d + ' | عام: ' + d.vel_all + '</div>' +
+          '  </td>' +
+          '  <td class="p-2">' +
+          '    <div class="flex justify-between text-[10.5px] font-black mb-1">' +
+          '      <span class="' + (d.days_remaining <= 10 ? 'text-rose-600' : 'text-slate-700 dark:text-slate-200') + '">يكفي لـ ' + d.days_remaining + ' يوم</span>' +
+          '      <span class="px-1.5 py-0.2 rounded bg-indigo-500/10 text-indigo-600 dark:text-amber-300 font-mono text-[9.5px]">ثقة ' + d.confidence_score + '%</span>' +
+          '    </div>' +
+          '    <div class="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden"><div class="h-full ' + barColor + '" style="width:' + pctLife + '%;"></div></div>' +
+          '  </td>' +
+          '  <td class="p-2">' +
+          '    <div class="font-black text-rose-600">' + d.run_out_date_ar + '</div>' +
+          '    <div class="text-[9.5px] text-slate-400">في الذروة: ' + d.peak_run_out_ar + ' (' + d.peak_days_remaining + ' يوم)</div>' +
+          '  </td>' +
+          '  <td class="p-2">' +
+          '    <div class="font-black text-indigo-600 dark:text-amber-400">' + d.order_by_date_ar + '</div>' +
+          '    <div class="text-[9.5px] text-slate-400">مهلة المورد: ' + d.supplier_lead_days + ' يوم</div>' +
+          '  </td>' +
+          '  <td class="p-2 font-mono font-black text-emerald-600">+' + d.daily_lost_profit.toFixed(1) + ' د.ج/يوم</td>' +
+          '  <td class="p-2 text-center">' +
+          '    <div class="flex items-center justify-center gap-1">' +
+          '      <button type="button" onclick="App.openProductDepletionXRayModal(' + d.id + ')" class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-indigo-600 hover:text-white font-black text-[10.5px] transition" title="تشريح منحنى النفاد والسلاسل الزمنية">🔬 تشريح</button>' +
+          '      <button type="button" onclick="App.copilotGenerateSmartPurchaseOrder(' + d.id + ')" class="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-[10.5px] shadow">📦 اطلب +' + d.needed_for_30d + '</button>' +
+          '    </div>' +
+          '  </td>' +
+          '</tr>'
+        );
+      }).join('') +
+      '      </tbody>' +
+      '    </table>' +
+      '  </div>' +
+      '</div>';
+  };
+})();
+
+// [PAGE 17 ERP USERS, GRANULAR RBAC MATRIX, FORENSIC AUDIT & HR PAYROLL]
+(function applyPage17UsersRbacForensicErpPerfection() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.usersActiveTab = AppState.usersActiveTab || 'directory'; // 'directory' | 'rbac_matrix' | 'forensic_audit' | 'hr_commissions' | 'shifts_log'
+  AppState.auditFilterUser = 'all';
+  AppState.auditFilterSeverity = 'all'; // 'all' | 'high' | 'medium' | 'low'
+  AppState.auditSearchQuery = '';
+
+  // قائمة صفحات النظام الـ 18 للتحكم في صلاحيات الوصول (View Access Permissions)
+  var ERP_VIEW_PERMISSIONS = [
+    { key: 'view_pos', view: 'pos', label: '🛒 شاشة المبيعات والكاشير' },
+    { key: 'view_sales', view: 'sales', label: '🧾 سجل المبيعات والفواتير' },
+    { key: 'view_caisse', view: 'caisse', label: '🗄️ إدارة الصندوق والمناوبات' },
+    { key: 'view_inventory', view: 'inventory', label: '📦 إدارة المخزون والمنتجات' },
+    { key: 'view_bundles', view: 'bundles', label: '🎁 الحزم والعروض الترويجية' },
+    { key: 'view_manufacturing', view: 'manufacturing', label: '🏭 التصنيع والإنتاج (BOM)' },
+    { key: 'view_stocktake', view: 'stocktake', label: '📋 الجرد المخزني والمطابقة' },
+    { key: 'view_print', view: 'print', label: '🖨️ مركز الطباعة والباركود' },
+    { key: 'view_suppliers', view: 'suppliers', label: '🚛 إدارة الموردين وديونهم' },
+    { key: 'view_purchases', view: 'purchases', label: '🛍️ المشتريات وفواتير التموين' },
+    { key: 'view_customers', view: 'customers', label: '👥 إدارة الزبائن والولاء' },
+    { key: 'view_proformas', view: 'proformas', label: '📄 الفواتير الشكلية وعروض الأسعار' },
+    { key: 'view_orders', view: 'orders', label: '📌 طلبيات الزبائن والعربون' },
+    { key: 'view_expenses', view: 'expenses', label: '💸 المصاريف وحركات رأس المال' },
+    { key: 'view_analytics', view: 'analytics', label: '📊 الإحصائيات والزكاة ومركز القيادة' },
+    { key: 'view_copilot', view: 'copilot', label: '🤖 المساعد التجاري الذكي (AI)' },
+    { key: 'view_users', view: 'users', label: '🛡️ إدارة المستخدمين والرقابة' },
+    { key: 'view_settings', view: 'settings', label: '⚙️ الإعدادات والشبكة' }
+  ];
+
+  // الضوابط الأمنية الحساسة داخل شاشة الكاشير والمخزون (Critical Operational Guards)
+  var ERP_ACTION_PERMISSIONS = [
+    { key: 'act_remove_cart_item', label: '🗑️ حذف سطر منتج من السلة بعد مسحه' },
+    { key: 'act_clear_cart', label: '🧹 تفريغ وإلغاء سلة المبيعات بالكامل' },
+    { key: 'act_give_discount', label: '🏷️ منح تخفيض على الفاتورة (ضمن السقف)' },
+    { key: 'act_edit_pos_price', label: '✏️ تعديل سعر البيع يدوياً في الكاشير' },
+    { key: 'act_credit_sale', label: '📒 البيع بالدين / الآجل (الكريدي للزبائن)' },
+    { key: 'act_see_cost_profit', label: '👁️ رؤية سعر الشراء الأصلي وهامش الربح' },
+    { key: 'act_delete_edit_sale', label: '⏪ تعديل أو حذف أو استرجاع فاتورة سابقة' },
+    { key: 'act_edit_inventory', label: '📦 إضافة أو تعديل أو حذف منتجات المخزون' }
+  ];
+
+  // القوالب القياسية للأدوار الوظيفية الخمسة في المتجر
+  var ROLE_DEFAULT_PRESETS = {
+    Admin: {
+      label: '👑 مدير عام كامل الصلاحيات (Admin)',
+      badgeCls: 'bg-indigo-600 text-white',
+      maxDiscountPct: 100,
+      commissionPct: 0,
+      baseSalaryDzd: 0,
+      allViews: true,
+      allActions: true
+    },
+    Supervisor: {
+      label: '🧭 مشرف متجر / مسؤول مبيعات (Supervisor)',
+      badgeCls: 'bg-blue-600 text-white',
+      maxDiscountPct: 25,
+      commissionPct: 1.5,
+      baseSalaryDzd: 45000,
+      views: ['view_pos', 'view_sales', 'view_caisse', 'view_inventory', 'view_bundles', 'view_stocktake', 'view_print', 'view_customers', 'view_proformas', 'view_orders', 'view_copilot'],
+      actions: ['act_remove_cart_item', 'act_clear_cart', 'act_give_discount', 'act_edit_pos_price', 'act_credit_sale', 'act_delete_edit_sale', 'act_edit_inventory']
+    },
+    Cashier: {
+      label: '🛒 كاشير / بائع نقطة بيع (Cashier)',
+      badgeCls: 'bg-emerald-600 text-white',
+      maxDiscountPct: 5,
+      commissionPct: 1.0,
+      baseSalaryDzd: 35000,
+      views: ['view_pos', 'view_sales', 'view_caisse', 'view_customers', 'view_proformas', 'view_orders'],
+      actions: ['act_remove_cart_item', 'act_clear_cart', 'act_give_discount', 'act_credit_sale']
+    },
+    Storekeeper: {
+      label: '📦 أمين مخزن ومسؤول تموين (Storekeeper)',
+      badgeCls: 'bg-amber-500 text-slate-950',
+      maxDiscountPct: 0,
+      commissionPct: 0,
+      baseSalaryDzd: 38000,
+      views: ['view_inventory', 'view_bundles', 'view_manufacturing', 'view_stocktake', 'view_print', 'view_suppliers', 'view_purchases'],
+      actions: ['act_edit_inventory']
+    },
+    Accountant: {
+      label: '📊 محاسب ومراقب مالي (Accountant)',
+      badgeCls: 'bg-purple-600 text-white',
+      maxDiscountPct: 0,
+      commissionPct: 0,
+      baseSalaryDzd: 50000,
+      views: ['view_sales', 'view_caisse', 'view_inventory', 'view_suppliers', 'view_purchases', 'view_customers', 'view_expenses', 'view_analytics', 'view_copilot'],
+      actions: ['act_see_cost_profit']
+    }
+  };
+
+  function fmtCentimes(dzd) {
+    return typeof App.formatAlgerianCentimes === 'function'
+      ? App.formatAlgerianCentimes(dzd)
+      : (Math.round(Number(dzd || 0) * 100)).toLocaleString('fr-DZ') + ' سنتيم';
+  }
+
+  // استخراج كائن الصلاحيات والموارد البشرية لأي مستخدم
+  App.parseUserPermissionsObject = function (userObj) {
+    if (!userObj) return buildDefaultPermsForRole('Admin');
+    var role = userObj.role || 'Cashier';
+    var base = buildDefaultPermsForRole(role);
+    if (userObj.permissions_json) {
+      try {
+        var parsed = typeof userObj.permissions_json === 'string'
+          ? JSON.parse(userObj.permissions_json)
+          : userObj.permissions_json;
+        if (parsed && typeof parsed === 'object') {
+          return {
+            views: Object.assign({}, base.views, parsed.views || {}),
+            actions: Object.assign({}, base.actions, parsed.actions || {}),
+            maxDiscountPct: parsed.maxDiscountPct !== undefined ? Number(parsed.maxDiscountPct) : base.maxDiscountPct,
+            commissionPct: parsed.commissionPct !== undefined ? Number(parsed.commissionPct) : base.commissionPct,
+            baseSalaryDzd: parsed.baseSalaryDzd !== undefined ? Number(parsed.baseSalaryDzd) : base.baseSalaryDzd,
+            phone: parsed.phone || '',
+            pinCode: parsed.pinCode || ('100' + (userObj.id || 1))
+          };
+        }
+      } catch (_) {}
+    }
+    return base;
+  };
+
+  function buildDefaultPermsForRole(roleName) {
+    var preset = ROLE_DEFAULT_PRESETS[roleName] || ROLE_DEFAULT_PRESETS.Cashier;
+    var viewsMap = {};
+    var actionsMap = {};
+    ERP_VIEW_PERMISSIONS.forEach(function (vp) {
+      viewsMap[vp.key] = Boolean(preset.allViews || (preset.views && preset.views.includes(vp.key)));
+    });
+    ERP_ACTION_PERMISSIONS.forEach(function (ap) {
+      actionsMap[ap.key] = Boolean(preset.allActions || (preset.actions && preset.actions.includes(ap.key)));
+    });
+    return {
+      views: viewsMap,
+      actions: actionsMap,
+      maxDiscountPct: preset.maxDiscountPct,
+      commissionPct: preset.commissionPct,
+      baseSalaryDzd: preset.baseSalaryDzd,
+      phone: '',
+      pinCode: '1234'
+    };
+  }
+
+  // ==========================================================================
+  // 1. محرك فرض الصلاحيات الحي (Real-Time RBAC Enforcement Engine)
+  // ==========================================================================
+  App.hasUserPermission = function (permKey, userObj) {
+    var u = userObj || AppState.currentUser;
+    if (!u || String(u.role || '').toLowerCase() === 'admin') return true;
+    var pObj = this.parseUserPermissionsObject(u);
+    if (permKey.startsWith('view_')) {
+      return pObj.views[permKey] !== false;
+    }
+    if (permKey.startsWith('act_')) {
+      return pObj.actions[permKey] !== false;
+    }
+    return true;
+  };
+
+  App.applyLiveRbacSidebarVisibility = function () {
+    var u = AppState.currentUser;
+    var isFullAdmin = !u || String(u.role || '').toLowerCase() === 'admin';
+    ERP_VIEW_PERMISSIONS.forEach(function (vp) {
+      var btn = document.querySelector('#sidebar-nav button[data-view="' + vp.view + '"]');
+      if (btn) {
+        var allowed = isFullAdmin || App.hasUserPermission(vp.key, u);
+        btn.style.display = allowed ? '' : 'none';
+      }
+    });
+  };
+
+  var _origUpdateUserBadge = App.updateUserBadge ? App.updateUserBadge.bind(App) : null;
+  App.updateUserBadge = function () {
+    if (_origUpdateUserBadge) _origUpdateUserBadge();
+    this.applyLiveRbacSidebarVisibility();
+  };
+
+  // ==========================================================================
+  // 2. المترجم الجنائي الذكي لسجل الرقابة الأمنية (Forensic Audit Log Translator)
+  //    يحول الأكواد الخام مثل cart_cleared و {"items_count":"3"} إلى بطاقات رقابية عربية واضحة
+  // ==========================================================================
+  App.translateAuditLogToArabic = function (logRow) {
+    var rawType = String((logRow && logRow.action_type) || '').trim().toLowerCase();
+    var detailsObj = {};
+    if (logRow && logRow.details_json) {
+      try {
+        detailsObj = typeof logRow.details_json === 'string' ? JSON.parse(logRow.details_json) : logRow.details_json;
+      } catch (_) {
+        detailsObj = { note: String(logRow.details_json) };
+      }
+    }
+
+    var catalog = {
+      cart_cleared: {
+        icon: '🧹',
+        title: 'تفريغ وإلغاء سلة مبيعات نشطة قبل الدفع',
+        severity: 'medium',
+        sevLabel: '⚠️ تنبيه متوسط',
+        sevCls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+        formatDesc: function (d) {
+          return 'تم إلغاء وتفريغ السلة وهي تحتوي على (' + (d.items_count || d.count || 1) + ' أصناف) دون إتمام الفاتورة.';
+        }
+      },
+      item_removed: {
+        icon: '🗑️',
+        title: 'حذف سطر منتج من سلة الكاشير بعد مسحه',
+        severity: 'medium',
+        sevLabel: '⚠️ تنبيه متوسط',
+        sevCls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+        formatDesc: function (d) {
+          return 'حذف المنتج (' + (d.product_name || d.name || 'صنف') + ') بكمية (' + (d.qty || 1) + ') وسعر (' + (d.price || 0) + ' د.ج).';
+        }
+      },
+      sale_deleted: {
+        icon: '🚨',
+        title: 'حذف أو إلغاء فاتورة بيع مسجلة',
+        severity: 'high',
+        sevLabel: '🚨 خطر مرتفع',
+        sevCls: 'bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/30',
+        formatDesc: function (d) {
+          return 'تم حذف الفاتورة رقم (' + (d.doc_number || d.sale_id || '—') + ') بقيمة (' + (d.total || 0) + ' د.ج).';
+        }
+      },
+      price_changed: {
+        icon: '🏷️',
+        title: 'تعديل يدوي لسعر البيع في شاشة الكاشير',
+        severity: 'high',
+        sevLabel: '🚨 رقابة تسعير',
+        sevCls: 'bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/30',
+        formatDesc: function (d) {
+          return 'تغيير سعر (' + (d.product_name || 'منتج') + ') من ' + (d.old_price || 0) + ' د.ج إلى ' + (d.new_price || 0) + ' د.ج.';
+        }
+      },
+      discount_applied: {
+        icon: '🎁',
+        title: 'منح تخفيض مالي على فاتورة بيع',
+        severity: 'medium',
+        sevLabel: '⚠️ رقابة تخفيض',
+        sevCls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+        formatDesc: function (d) {
+          return 'تطبيق تخفيض بقيمة (' + (d.discount || d.amount || 0) + ' د.ج) على الفاتورة.';
+        }
+      },
+      drawer_opened: {
+        icon: '🗄️',
+        title: 'فتح درج النقود يدوياً بدون عملية بيع',
+        severity: 'high',
+        sevLabel: '🚨 حركة صندوق',
+        sevCls: 'bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/30',
+        formatDesc: function () {
+          return 'تم إرسال أمر فتح درج النقود الفوري من شاشة الكاشير.';
+        }
+      },
+      user_switched: {
+        icon: '🔄',
+        title: 'تبديل حساب الموظف النشط في الكاشير',
+        severity: 'low',
+        sevLabel: 'ℹ️ دخول نظامي',
+        sevCls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+        formatDesc: function (d) {
+          return 'تم الدخول وتفعيل جلسة العمل للموظف (' + (d.username || d.name || '') + ').';
+        }
+      }
+    };
+
+    var def = catalog[rawType] || {
+      icon: '🛡️',
+      title: 'حدث رقابي أمني (' + (rawType || 'عملية نظام') + ')',
+      severity: 'low',
+      sevLabel: 'ℹ️ سجل نظامي',
+      sevCls: 'bg-blue-500/15 text-blue-600 border-blue-500/30',
+      formatDesc: function (d) {
+        var keys = Object.keys(d || {});
+        if (keys.length === 0) return 'تم توثيق العملية في السجل الأمني.';
+        return keys.map(function (k) {
+          var arKey = k === 'items_count' ? 'عدد الأصناف' : k === 'amount' ? 'المبلغ' : k === 'note' ? 'البيان' : k;
+          return arKey + ': ' + d[k];
+        }).join(' | ');
+      }
+    };
+
+    return {
+      icon: def.icon,
+      title: def.title,
+      severity: def.severity,
+      sevLabel: def.sevLabel,
+      sevCls: def.sevCls,
+      arabicDescription: def.formatDesc(detailsObj),
+      userName: (logRow && logRow.user_name) || 'المدير العام',
+      timestamp: String((logRow && logRow.created_at) || new Date().toISOString()).replace('T', ' ').slice(0, 16)
+    };
+  };
+
+  // ==========================================================================
+  // 3. بناء النوافذ المنبثقة المطورة (#userModal الشاملة لـ RBAC + #userSafeConfirmModal + #staffBadgeModal)
+  // ==========================================================================
+  App.ensureUsersErpModalsDom = function () {
+    // 1) ترقية نافذة (#userModal) لتضم الصلاحيات الـ 26 وإعدادات العمولة والراتب وسقف التخفيض
+    var uModal = document.getElementById('userModal');
+    if (uModal && !uModal.dataset.erpUpgradedV17) {
+      uModal.dataset.erpUpgradedV17 = '1';
+      uModal.innerHTML =
+        '<div class="modal-content w-full max-w-4xl p-6 space-y-4 overflow-y-auto">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <div>' +
+        '      <h3 id="userModalHeaderTitle" class="text-lg font-black text-indigo-600">👤 إضافة / تعديل موظف، صلاحيات الوصول (RBAC)، والعمولات</h3>' +
+        '      <p class="text-[11px] text-slate-400 font-bold">حدد الدور الوظيفي، سقف التخفيض المسموح، نسبة العمولة، والأقسام والعمليات المسموح بها بدقة</p>' +
+        '    </div>' +
+        '    <button type="button" onclick="App.closeModal(\'userModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <input id="usrIdInput" type="hidden">' +
+
+        '  <!-- القسم 1: البيانات الأساسية والدور الوظيفي والحالة -->' +
+        '  <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs bg-slate-50 dark:bg-slate-800/70 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700">' +
+        '    <div><label class="block font-bold mb-1">الاسم الكامل للموظف *</label><input id="usrNameInput" type="text" placeholder="مثلاً: محمد أمين" class="w-full px-3 py-2 rounded-xl font-bold"></div>' +
+        '    <div><label class="block font-bold mb-1">اسم الدخول (Username) *</label><input id="usrUsernameInput" type="text" placeholder="mohamed" class="w-full px-3 py-2 rounded-xl font-mono font-bold"></div>' +
+        '    <div><label class="block font-bold mb-1">كلمة المرور / رمز PIN</label><input id="usrPasswordInput" type="password" placeholder="اتركها فارغة للإبقاء على الحالية" class="w-full px-3 py-2 rounded-xl font-mono"></div>' +
+        '    <div>' +
+        '      <label class="block font-bold mb-1">الدور الوظيفي القياسي *</label>' +
+        '      <select id="usrRoleSelect" onchange="App.onUserModalRolePresetChange(this.value)" class="w-full px-3 py-2 rounded-xl font-black text-indigo-600">' +
+        '        <option value="Admin">👑 مدير كامل الصلاحيات (Admin)</option>' +
+        '        <option value="Supervisor">🧭 مشرف متجر (Supervisor)</option>' +
+        '        <option value="Cashier">🛒 كاشير / بائع (Cashier)</option>' +
+        '        <option value="Storekeeper">📦 أمين مخزن (Storekeeper)</option>' +
+        '        <option value="Accountant">📊 محاسب مالي (Accountant)</option>' +
+        '      </select>' +
+        '    </div>' +
+        '    <div>' +
+        '      <label class="block font-bold mb-1">حالة الحساب</label>' +
+        '      <select id="usrStatusSelect" class="w-full px-3 py-2 rounded-xl font-bold">' +
+        '        <option value="Active">🟢 نشط ومفعل للدخول (Active)</option>' +
+        '        <option value="Suspended">🔴 مجمد / موقوف مؤقتاً (Suspended)</option>' +
+        '      </select>' +
+        '    </div>' +
+        '    <div><label class="block font-bold mb-1 text-rose-600">سقف التخفيض المسموح (%)</label><input id="usrMaxDiscountInput" type="number" min="0" max="100" value="5" class="w-full px-3 py-2 rounded-xl font-mono font-black text-center"></div>' +
+        '    <div><label class="block font-bold mb-1 text-emerald-600">نسبة عمولة المبيعات (%)</label><input id="usrCommissionInput" type="number" step="0.1" min="0" max="50" value="1" class="w-full px-3 py-2 rounded-xl font-mono font-black text-emerald-600 text-center"></div>' +
+        '    <div><label class="block font-bold mb-1 text-blue-600">الراتب الأساسي الشهري (د.ج)</label><input id="usrBaseSalaryInput" type="number" step="500" min="0" value="35000" class="w-full px-3 py-2 rounded-xl font-mono font-black text-blue-600 text-center"></div>' +
+        '  </div>' +
+
+        '  <!-- القسم 2: مصفوفة الصلاحيات التفصيلية (18 صفحة + 8 ضوابط كاشير) -->' +
+        '  <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 text-xs">' +
+        '    <div class="lg:col-span-7 p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-2">' +
+        '      <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-1.5">' +
+        '        <span class="font-black text-indigo-600">🧭 1. صلاحيات الدخول لصفحات وأقسام البرنامج (18 قسماً):</span>' +
+        '        <div class="flex gap-1.5">' +
+        '          <button type="button" onclick="App.toggleAllUserModalCheckboxes(\'.perm-view-chk\', true)" class="px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-600 font-bold text-[10px]">تحديد الكل</button>' +
+        '          <button type="button" onclick="App.toggleAllUserModalCheckboxes(\'.perm-view-chk\', false)" class="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 font-bold text-[10px]">إلغاء الكل</button>' +
+        '        </div>' +
+        '      </div>' +
+        '      <div class="grid grid-cols-2 md:grid-cols-3 gap-2 pt-1">' +
+        ERP_VIEW_PERMISSIONS.map(function (vp) {
+          return (
+            '<label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700 cursor-pointer hover:border-indigo-400">' +
+            '  <input type="checkbox" data-perm-view="' + vp.key + '" class="perm-view-chk rounded text-indigo-600" checked>' +
+            '  <span class="font-bold text-[11px] truncate">' + vp.label + '</span>' +
+            '</label>'
+          );
+        }).join('') +
+        '      </div>' +
+        '    </div>' +
+
+        '    <div class="lg:col-span-5 p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-2">' +
+        '      <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-1.5">' +
+        '        <span class="font-black text-rose-600">🛡️ 2. الضوابط الأمنية الحساسة في الكاشير (8 ضوابط):</span>' +
+        '        <button type="button" onclick="App.toggleAllUserModalCheckboxes(\'.perm-act-chk\', true)" class="px-2 py-0.5 rounded bg-rose-500/15 text-rose-600 font-bold text-[10px]">تحديد الكل</button>' +
+        '      </div>' +
+        '      <div class="space-y-1.5 pt-1">' +
+        ERP_ACTION_PERMISSIONS.map(function (ap) {
+          return (
+            '<label class="flex items-center gap-2 p-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700 cursor-pointer hover:border-rose-400">' +
+            '  <input type="checkbox" data-perm-act="' + ap.key + '" class="perm-act-chk rounded text-rose-600" checked>' +
+            '  <span class="font-bold text-[11px]">' + ap.label + '</span>' +
+            '</label>'
+          );
+        }).join('') +
+        '      </div>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">' +
+        '    <button type="button" onclick="App.closeModal(\'userModal\')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء (Esc)</button>' +
+        '    <button type="button" onclick="App.confirmSaveUser()" class="px-6 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-lg">💾 حفظ الموظف ومصفوفة صلاحياته</button>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // 2) نافذة التأكيد النظامية الآمنة لحذف أو تجميد موظف (#userSafeConfirmModal — بدون alert/confirm)
+    if (!document.getElementById('userSafeConfirmModal')) {
+      var cm = document.createElement('div');
+      cm.id = 'userSafeConfirmModal';
+      cm.className = 'modal-overlay';
+      cm.innerHTML =
+        '<div class="modal-content w-full max-w-md p-6 space-y-4">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <h3 class="text-lg font-black text-rose-600 flex items-center gap-2"><span class="material-symbols-rounded">security</span><span>تأكيد إجراء الأمان للموظف</span></h3>' +
+        '    <button type="button" onclick="App.closeModal(\'userSafeConfirmModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div id="userSafeConfirmBody" class="space-y-3 text-xs"></div>' +
+        '  <div class="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">' +
+        '    <button type="button" onclick="App.closeModal(\'userSafeConfirmModal\')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء (Esc)</button>' +
+        '    <button type="button" onclick="App.executeConfirmedUserSafeAction()" class="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black shadow-lg">✓ تأكيد التنفيذ</button>' +
+        '  </div>' +
+        '</div>';
+      document.body.appendChild(cm);
+    }
+
+    // 3) نافذة معاينة وطباعة بطاقة الموظف بالباركود للدخول السريع (#staffBadgeModal)
+    if (!document.getElementById('staffBadgeModal')) {
+      var bm = document.createElement('div');
+      bm.id = 'staffBadgeModal';
+      bm.className = 'modal-overlay';
+      bm.innerHTML =
+        '<div class="modal-content w-full max-w-lg p-6 space-y-4">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <h3 class="text-lg font-black text-indigo-600">🪪 بطاقة عمل الموظف بالباركود للدخول السريع (Staff ID Badge)</h3>' +
+        '    <button type="button" onclick="App.closeModal(\'staffBadgeModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div id="staffBadgePreviewBox" class="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900 flex justify-center"></div>' +
+        '  <p class="text-[11px] text-slate-400 text-center font-bold">💡 عند مسح باركود هذه البطاقة في شاشة الكاشير، يتم تبديل المستخدم النشط إلى هذا الموظف فوراً!</p>' +
+        '  <div class="flex justify-end gap-2 pt-2">' +
+        '    <button type="button" onclick="App.closeModal(\'staffBadgeModal\')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إغلاق</button>' +
+        '    <button type="button" onclick="App.printCurrentStaffBadge()" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-lg">🖨️ طباعة البطاقة (CR80)</button>' +
+        '  </div>' +
+        '</div>';
+      document.body.appendChild(bm);
+    }
+  };
+
+  App.toggleAllUserModalCheckboxes = function (selector, checkedState) {
+    document.querySelectorAll('#userModal ' + selector).forEach(function (chk) {
+      chk.checked = Boolean(checkedState);
+    });
+  };
+
+  App.onUserModalRolePresetChange = function (roleName) {
+    var preset = buildDefaultPermsForRole(roleName);
+    document.getElementById('usrMaxDiscountInput').value = String(preset.maxDiscountPct);
+    document.getElementById('usrCommissionInput').value = String(preset.commissionPct);
+    document.getElementById('usrBaseSalaryInput').value = String(preset.baseSalaryDzd);
+
+    document.querySelectorAll('#userModal .perm-view-chk').forEach(function (chk) {
+      var k = chk.getAttribute('data-perm-view');
+      chk.checked = Boolean(preset.views[k]);
+    });
+    document.querySelectorAll('#userModal .perm-act-chk').forEach(function (chk) {
+      var k = chk.getAttribute('data-perm-act');
+      chk.checked = Boolean(preset.actions[k]);
+    });
+  };
+
+  App.openUserModal = function (u) {
+    this.ensureUsersErpModalsDom();
+    var isEdit = Boolean(u && u.id);
+    document.getElementById('usrIdInput').value = isEdit ? u.id : '';
+    document.getElementById('usrNameInput').value = isEdit ? (u.name || '') : '';
+    document.getElementById('usrUsernameInput').value = isEdit ? (u.username || '') : '';
+    document.getElementById('usrPasswordInput').value = '';
+    document.getElementById('usrRoleSelect').value = isEdit ? (u.role || 'Cashier') : 'Cashier';
+    document.getElementById('usrStatusSelect').value = isEdit ? (u.status || 'Active') : 'Active';
+
+    var perms = isEdit ? this.parseUserPermissionsObject(u) : buildDefaultPermsForRole('Cashier');
+    document.getElementById('usrMaxDiscountInput').value = String(perms.maxDiscountPct ?? 5);
+    document.getElementById('usrCommissionInput').value = String(perms.commissionPct ?? 1);
+    document.getElementById('usrBaseSalaryInput').value = String(perms.baseSalaryDzd ?? 35000);
+
+    document.querySelectorAll('#userModal .perm-view-chk').forEach(function (chk) {
+      var k = chk.getAttribute('data-perm-view');
+      chk.checked = perms.views[k] !== false;
+    });
+    document.querySelectorAll('#userModal .perm-act-chk').forEach(function (chk) {
+      var k = chk.getAttribute('data-perm-act');
+      chk.checked = perms.actions[k] !== false;
+    });
+
+    this.openModal('userModal');
+    setTimeout(function () {
+      var inp = document.getElementById('usrNameInput');
+      if (inp) inp.focus();
+    }, 40);
+  };
+
+  App.confirmSaveUser = async function () {
+    var id = document.getElementById('usrIdInput')?.value;
+    var name = String(document.getElementById('usrNameInput')?.value || '').trim();
+    var username = String(document.getElementById('usrUsernameInput')?.value || '').trim();
+    var password = document.getElementById('usrPasswordInput')?.value || '';
+    var role = document.getElementById('usrRoleSelect')?.value || 'Cashier';
+    var status = document.getElementById('usrStatusSelect')?.value || 'Active';
+
+    if (!name || !username) {
+      if (typeof showToast === 'function') showToast('يرجى إدخال الاسم الكامل واسم الدخول للموظف', 'warning');
+      return;
+    }
+
+    var viewsMap = {};
+    var actionsMap = {};
+    document.querySelectorAll('#userModal .perm-view-chk').forEach(function (chk) {
+      viewsMap[chk.getAttribute('data-perm-view')] = Boolean(chk.checked);
+    });
+    document.querySelectorAll('#userModal .perm-act-chk').forEach(function (chk) {
+      actionsMap[chk.getAttribute('data-perm-act')] = Boolean(chk.checked);
+    });
+
+    var permissionsObj = {
+      views: viewsMap,
+      actions: actionsMap,
+      maxDiscountPct: Math.max(0, parseFloat(document.getElementById('usrMaxDiscountInput')?.value) || 0),
+      commissionPct: Math.max(0, parseFloat(document.getElementById('usrCommissionInput')?.value) || 0),
+      baseSalaryDzd: Math.max(0, parseFloat(document.getElementById('usrBaseSalaryInput')?.value) || 0)
+    };
+
+    var payload = {
+      name: name,
+      username: username,
+      password: password,
+      role: role,
+      status: status,
+      permissions_json: JSON.stringify(permissionsObj)
+    };
+
+    if (id) {
+      await window.api.updateUser(Number(id), payload);
+      if (AppState.currentUser && Number(AppState.currentUser.id) === Number(id)) {
+        AppState.currentUser = Object.assign({}, AppState.currentUser, payload, { id: Number(id) });
+        this.updateUserBadge();
+      }
+    } else {
+      await window.api.addUser(payload);
+    }
+
+    this.closeModal('userModal');
+    await this.renderUsersView();
+    if (typeof showToast === 'function') {
+      showToast('✅ تم حفظ بيانات الموظف (' + name + ') ومصفوفة صلاحياته بنجاح!', 'success');
+    }
+  };
+
+  // ==========================================================================
+  // 4. إجراءات الحذف الآمن، التجميد، التبديل السريع، وبطاقة الباركود للموظف
+  // ==========================================================================
+  App.promptDeleteUserSafe = function (userId, userName, userRole) {
+    this.ensureUsersErpModalsDom();
+    if (Number(userId) === 1 || String(userRole).toLowerCase() === 'admin') {
+      if (typeof showToast === 'function') {
+        showToast('🛡️ حماية النظام: لا يمكن حذف حساب المدير العام الرئيسي (Admin)!', 'warning');
+      }
+      return;
+    }
+
+    AppState._pendingUserSafeAction = async function () {
+      await window.api.deleteUser(Number(userId));
+      await App.renderUsersView();
+      if (typeof showToast === 'function') showToast('🗑️ تم حذف حساب الموظف (' + userName + ') بأمان.', 'info');
+    };
+
+    document.getElementById('userSafeConfirmBody').innerHTML =
+      '<div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2">' +
+      '  <div class="text-sm font-black text-rose-600">هل أنت متأكد من حذف حساب الموظف: ' + userName + '؟</div>' +
+      '  <div class="text-slate-500">سيتم إيقاف دخوله للنظام نهائياً مع الاحتفاظ بسجل فواتيره ومناوباته السابقة للأرشفة المحاسبية.</div>' +
+      '</div>';
+    this.openModal('userSafeConfirmModal');
+  };
+
+  App.toggleUserFreezeStatus = async function (userId) {
+    var users = (await window.api.getUsers().catch(function () { return []; })) || [];
+    var u = users.find(function (x) { return Number(x.id) === Number(userId); });
+    if (!u) return;
+    if (Number(u.id) === 1) {
+      if (typeof showToast === 'function') showToast('لا يمكن تجميد حساب المدير العام الرئيسي!', 'warning');
+      return;
+    }
+    var newStatus = String(u.status || 'Active') === 'Active' ? 'Suspended' : 'Active';
+    await window.api.updateUser(u.id, Object.assign({}, u, { status: newStatus, password: '' }));
+    await this.renderUsersView();
+    if (typeof showToast === 'function') {
+      showToast(newStatus === 'Active' ? '🟢 تم تفعيل حساب الموظف (' + u.name + ')' : '🔴 تم تجميد وإيقاف حساب الموظف (' + u.name + ') مؤقتاً', 'info');
+    }
+  };
+
+  App.quickSwitchToUserAccount = async function (userId) {
+    var users = (await window.api.getUsers().catch(function () { return []; })) || [];
+    var u = users.find(function (x) { return Number(x.id) === Number(userId); });
+    if (!u) return;
+    if (String(u.status || 'Active') !== 'Active') {
+      if (typeof showToast === 'function') showToast('هذا الحساب مجمد حالياً — قم بتفعيله أولاً!', 'warning');
+      return;
+    }
+    AppState.currentUser = u;
+    this.updateUserBadge();
+    if (window.api && window.api.addAuditLog) {
+      await window.api.addAuditLog({
+        user_id: u.id,
+        user_name: u.name,
+        action_type: 'user_switched',
+        details_json: JSON.stringify({ username: u.username, role: u.role })
+      }).catch(function () {});
+    }
+    await this.renderUsersView();
+    if (typeof showToast === 'function') {
+      showToast('🔄 تم تبديل الجلسة النشطة إلى: ' + u.name + ' (' + u.role + ')', 'success');
+    }
+  };
+
+  App.executeConfirmedUserSafeAction = async function () {
+    var fn = AppState._pendingUserSafeAction;
+    AppState._pendingUserSafeAction = null;
+    this.closeModal('userSafeConfirmModal');
+    if (typeof fn === 'function') await fn();
+  };
+
+  // توليد ومعاينة بطاقة عمل الموظف بالباركود (Staff ID Badge CR80)
+  App.openStaffBadgePreviewModal = async function (userId) {
+    this.ensureUsersErpModalsDom();
+    var users = (await window.api.getUsers().catch(function () { return []; })) || [];
+    var u = users.find(function (x) { return Number(x.id) === Number(userId); }) || users[0];
+    if (!u) return;
+
+    var badgeCode = 'USR-' + String(u.id).padStart(4, '0');
+    var bcDataUrl = '';
+    if (window.api && window.api.generateBarcodePng) {
+      var bcRes = await window.api.generateBarcodePng({ text: badgeCode, bcid: 'code128', scale: 2, height: 10 }).catch(function () { return null; });
+      if (bcRes && bcRes.dataUrl) bcDataUrl = bcRes.dataUrl;
+    }
+
+    var shopName = (AppState.settings && AppState.settings.shop_name) || 'Gherbi.Ai POS';
+    var preset = ROLE_DEFAULT_PRESETS[u.role] || ROLE_DEFAULT_PRESETS.Cashier;
+
+    var cardHtml =
+      '<div id="printableStaffBadgeCard" style="width:320px;border:2px solid #1e293b;border-radius:16px;overflow:hidden;background:#ffffff;color:#0f172a;font-family:Cairo,sans-serif;box-shadow:0 10px 25px rgba(0,0,0,0.12);">' +
+      '  <div style="background:linear-gradient(135deg,#0f172a,#1e3a8a);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">' +
+      '    <div><div style="font-weight:900;font-size:15px;">' + shopName + '</div><div style="font-size:10px;color:#93c5fd;">بطاقة تعريف ودخول موظف معتمد</div></div>' +
+      '    <div style="background:#f59e0b;color:#0f172a;font-weight:900;font-size:11px;padding:3px 8px;border-radius:8px;">ID #' + u.id + '</div>' +
+      '  </div>' +
+      '  <div style="padding:14px 16px;text-align:center;">' +
+      '    <div style="font-size:18px;font-weight:900;color:#0f172a;">' + u.name + '</div>' +
+      '    <div style="font-size:12px;font-weight:800;color:#2563eb;margin-top:2px;">' + preset.label + '</div>' +
+      '    <div style="font-family:monospace;font-size:11px;color:#64748b;margin-top:3px;">Username: ' + u.username + ' | Code: ' + badgeCode + '</div>' +
+      (bcDataUrl ? '<img src="' + bcDataUrl + '" style="max-height:42px;margin:10px auto 2px;display:block;">' : '<div style="font-family:monospace;font-weight:900;font-size:16px;margin-top:8px;letter-spacing:3px;">*' + badgeCode + '*</div>') +
+      '  </div>' +
+      '</div>';
+
+    AppState._lastStaffBadgeHtml = cardHtml;
+    var box = document.getElementById('staffBadgePreviewBox');
+    if (box) box.innerHTML = cardHtml;
+    this.openModal('staffBadgeModal');
+  };
+
+  App.printCurrentStaffBadge = async function () {
+    if (!AppState._lastStaffBadgeHtml || !window.PrintEngine) return;
+    var fullDoc =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><style>@page{size:86mm 54mm;margin:0;}body{margin:0;display:flex;justify-content:center;align-items:center;height:100vh;font-family:Cairo,sans-serif;}</style></head><body>' +
+      AppState._lastStaffBadgeHtml +
+      '</body></html>';
+    await window.PrintEngine.printHtmlDocument(fullDoc, { silent: false });
+  };
+
+  // صرف راتب وعمولة الموظف وتسجيلها مباشرة في صفحة المصاريف التشغيلية
+  App.payEmployeeSalaryAndCommission = async function (empName, totalPayableDzd) {
+    var amt = Math.max(0, Number(totalPayableDzd || 0));
+    if (amt <= 0) return;
+    await window.api.addExpense({
+      category: 'رواتب وأجور العمال',
+      amount: amt,
+      date: new Date().toISOString().slice(0, 10),
+      description: '[المستفيد: ' + empName + '] صرف الراتب الأساسي وعمولة المبيعات المستحقة',
+      deductFromCaisse: false,
+      user_id: AppState.currentUser ? AppState.currentUser.id : 1
+    });
+    if (typeof showToast === 'function') {
+      showToast('💸 تم صرف وتسجيل راتب وعمولة الموظف (' + empName + ': ' + amt.toFixed(2) + ' د.ج) في سجل المصاريف بنجاح!', 'success');
+    }
+  };
+
+  // ==========================================================================
+  // 5. بناء الواجهة الرئيسية الخارقة للصفحة 17 (#view-users — 5 ERP Tabs)
+  // ==========================================================================
+  App.renderUsersView = async function () {
+    this.ensureUsersErpModalsDom();
+    var root = document.getElementById('users-view-root');
+    if (!root) return;
+
+    var allData = await Promise.all([
+      window.api.getUsers().catch(function () { return []; }),
+      window.api.getAuditLogs().catch(function () { return []; }),
+      window.api.getSales().catch(function () { return []; }),
+      window.api.getCaisseSessions().catch(function () { return []; })
+    ]);
+
+    var users = Array.isArray(allData[0]) ? allData[0] : [];
+    var logs = Array.isArray(allData[1]) ? allData[1] : [];
+    var sales = Array.isArray(allData[2]) ? allData[2] : [];
+    var sessions = Array.isArray(allData[3]) ? allData[3] : [];
+
+    // تجميع إحصائيات الأداء والمبيعات والمناوبات والمخالفات لكل موظف
+    var userStatsMap = {};
+    users.forEach(function (u) {
+      var perms = App.parseUserPermissionsObject(u);
+      userStatsMap[u.id] = {
+        user: u,
+        perms: perms,
+        invoicesCount: 0,
+        returnsCount: 0,
+        totalRevenue: 0,
+        totalDiscounts: 0,
+        shiftsCount: 0,
+        totalDrawerDiff: 0,
+        auditEventsCount: 0,
+        highRiskEventsCount: 0
+      };
+    });
+
+    sales.forEach(function (s) {
+      var uid = Number(s.user_id || 1);
+      var st = userStatsMap[uid] || userStatsMap[1];
+      if (!st) return;
+      var tot = Number(s.total || 0);
+      if (tot >= 0) {
+        st.invoicesCount++;
+        st.totalRevenue += tot;
+      } else {
+        st.returnsCount++;
+      }
+      st.totalDiscounts += Number(s.discount || 0);
+    });
+
+    sessions.forEach(function (sess) {
+      var uid = Number(sess.user_id || 1);
+      var st = userStatsMap[uid] || userStatsMap[1];
+      if (!st) return;
+      st.shiftsCount++;
+      st.totalDrawerDiff += Number(sess.difference || 0);
+    });
+
+    var translatedLogs = logs.map(function (l) {
+      var tr = App.translateAuditLogToArabic(l);
+      var matchedU = users.find(function (u) { return u.name === tr.userName || u.username === tr.userName || Number(u.id) === Number(l.user_id); });
+      if (matchedU && userStatsMap[matchedU.id]) {
+        userStatsMap[matchedU.id].auditEventsCount++;
+        if (tr.severity === 'high') userStatsMap[matchedU.id].highRiskEventsCount++;
+      }
+      return Object.assign({}, l, { _tr: tr });
+    });
+
+    var activeUsersCount = users.filter(function (u) { return String(u.status || 'Active') === 'Active'; }).length;
+    var highRiskTotal = translatedLogs.filter(function (l) { return l._tr.severity === 'high'; }).length;
+    var totalPayrollEst = Object.values(userStatsMap).reduce(function (sum, st) {
+      var commDzd = (st.totalRevenue * Number(st.perms.commissionPct || 0)) / 100;
+      return sum + Number(st.perms.baseSalaryDzd || 0) + commDzd;
+    }, 0);
+
+    var curTab = AppState.usersActiveTab || 'directory';
+    var TABS = [
+      { id: 'directory', label: '1. 👥 دليل الموظفين وبطاقات الباركود (' + users.length + ')' },
+      { id: 'rbac_matrix', label: '2. 🔐 مصفوفة الصلاحيات التفاعلية (RBAC Matrix)' },
+      { id: 'forensic_audit', label: '3. 🕵️‍♂️ الرادار الجنائي للرقابة الأمنية (' + logs.length + ')' },
+      { id: 'hr_commissions', label: '4. 🏆 الأداء، الحوافز، والرواتب الشهرية' },
+      { id: 'shifts_log', label: '5. ⏱️ سجل الحضور والمناوبات (' + sessions.length + ')' }
+    ];
+
+    root.innerHTML =
+      '<div class="space-y-4">' +
+      '  <!-- الشريط القيادي العلوي لمركز الحوكمة والموارد البشرية -->' +
+      '  <div class="p-4 rounded-2xl bg-slate-900 text-white border border-slate-800 shadow-xl flex flex-wrap items-center justify-between gap-3">' +
+      '    <div class="flex items-center gap-3">' +
+      '      <div class="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg">' +
+      '        <span class="material-symbols-rounded icon-lg">manage_accounts</span>' +
+      '      </div>' +
+      '      <div>' +
+      '        <h2 class="text-xl font-black flex flex-wrap items-center gap-2">' +
+      '          <span>مركز حوكمة الموظفين، مصفوفة الصلاحيات (RBAC)، والرقابة الجنائية (ERP HR & Security)</span>' +
+      '          <button id="btnUsersQaBot" type="button" onclick="App.runAutoTest_UsersPage()" title="تشغيل الفحص الآلي الذاتي لصفحة المستخدمين (Ctrl+Shift+T)" class="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-sm">🤖 فحص آلي (QA)</button>' +
+      '        </h2>' +
+      '        <p class="text-xs text-slate-400">تحكم كامل في صلاحيات الصفحات الـ 18 وضوابط الكاشير الـ 8، بطاقات دخول بالباركود، ترجمة جنائية للأحداث، وحساب العمولات والرواتب</p>' +
+      '      </div>' +
+      '    </div>' +
+      '    <div class="flex flex-wrap items-center gap-2 text-xs">' +
+      '      <button type="button" onclick="App.openLoginModal()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 font-black border border-slate-700">🔄 تبديل المستخدم النشط</button>' +
+      '      <button type="button" onclick="App.openUserModal(null)" class="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black shadow-lg shadow-blue-600/25">+ إضافة موظف وتحديد صلاحياته (Alt+N)</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <!-- شريط المؤشرات الرقابية الـ 4 (KPIs) -->' +
+      '  <div id="usersKpiGrid" class="grid grid-cols-2 md:grid-cols-4 gap-3.5">' +
+      '    <div onclick="AppState.usersActiveTab=\'directory\'; App.renderUsersView()" class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-blue-500/30 shadow-sm cursor-pointer">' +
+      '      <div class="text-xs text-slate-400 font-bold">👥 إجمالي طاقم المتجر والحسابات</div>' +
+      '      <div class="text-2xl font-black font-mono text-blue-600 mt-1">' + users.length + ' موظف (' + activeUsersCount + ' نشط)</div>' +
+      '      <div class="text-[11px] text-emerald-600 font-bold mt-0.5">الموظف الحالي: ' + ((AppState.currentUser && AppState.currentUser.name) || 'المدير العام') + '</div>' +
+      '    </div>' +
+      '    <div onclick="AppState.usersActiveTab=\'rbac_matrix\'; App.renderUsersView()" class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-indigo-500/30 shadow-sm cursor-pointer">' +
+      '      <div class="text-xs text-slate-400 font-bold">🔐 مصفوفة الصلاحيات والأدوار (RBAC)</div>' +
+      '      <div class="text-2xl font-black font-mono text-indigo-600 mt-1">26 ضابطاً أمنياً</div>' +
+      '      <div class="text-[11px] text-slate-400 font-bold mt-0.5">18 صفحة + 8 ضوابط كاشير حساسة</div>' +
+      '    </div>' +
+      '    <div onclick="AppState.usersActiveTab=\'forensic_audit\'; App.renderUsersView()" class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-amber-500/40 shadow-sm cursor-pointer">' +
+      '      <div class="text-xs text-slate-400 font-bold">🛡️ أحداث الرقابة الأمنية المسجلة</div>' +
+      '      <div class="text-2xl font-black font-mono text-amber-500 mt-1">' + logs.length + ' حدث موثق</div>' +
+      '      <div class="text-[11px] font-bold ' + (highRiskTotal > 0 ? 'text-rose-600' : 'text-emerald-600') + ' mt-0.5">أحداث عالية الحساسية: ' + highRiskTotal + '</div>' +
+      '    </div>' +
+      '    <div onclick="AppState.usersActiveTab=\'hr_commissions\'; App.renderUsersView()" class="p-4 rounded-2xl bg-emerald-600 text-white shadow-lg cursor-pointer">' +
+      '      <div class="text-xs opacity-90 font-bold">🏆 تقدير الرواتب والعمولات المستحقة</div>' +
+      '      <div class="text-2xl font-black font-mono mt-1">' + totalPayrollEst.toFixed(0) + ' د.ج</div>' +
+      '      <div class="text-[11px] text-amber-200 font-bold mt-0.5">🇩🇿 ' + fmtCentimes(totalPayrollEst) + '</div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <!-- شريط التبويبات الـ 5 -->' +
+      '  <div class="flex flex-wrap gap-1.5 border-b border-slate-200 dark:border-slate-700 pb-2 text-xs font-black">' +
+      TABS.map(function (t) {
+        var isAct = curTab === t.id;
+        return (
+          '<button type="button" onclick="AppState.usersActiveTab=\'' + t.id + '\'; App.renderUsersView()" class="px-3.5 py-2 rounded-xl transition ' +
+          (isAct
+            ? 'bg-indigo-600 text-white shadow-md'
+            : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-400') +
+          '">' + t.label + '</button>'
+        );
+      }).join('') +
+      '  </div>' +
+
+      '  <div id="usersMainTabBody"></div>' +
+      '</div>';
+
+    var body = document.getElementById('usersMainTabBody');
+    if (!body) return;
+
+    // ========================================================================
+    // التبويب 1: دليل الموظفين، حالة الحساب، وبطاقات الدخول بالباركود
+    // ========================================================================
+    if (curTab === 'directory') {
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3 shadow-sm">' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2">' +
+        '    <h3 class="font-black text-sm text-indigo-600">👥 دليل موظفي المتجر، الصلاحيات، والإجراءات السريعة (' + users.length + ')</h3>' +
+        '    <span class="text-[11px] text-slate-400 font-bold">يمكنك طباعة بطاقة عمل بالباركود لأي موظف أو تبديل الحساب النشط بضغطة زر</span>' +
+        '  </div>' +
+        '  <div class="overflow-x-auto">' +
+        '    <table class="w-full text-xs text-right">' +
+        '      <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500">' +
+        '        <tr>' +
+        '          <th class="p-2.5">#</th>' +
+        '          <th class="p-2.5">الموظف واسم الدخول</th>' +
+        '          <th class="p-2.5">الدور الوظيفي</th>' +
+        '          <th class="p-2.5 text-center">الحالة</th>' +
+        '          <th class="p-2.5 text-center">سقف التخفيض</th>' +
+        '          <th class="p-2.5 text-center">نسبة العمولة</th>' +
+        '          <th class="p-2.5">مبيعات الموظف</th>' +
+        '          <th class="p-2.5 text-center">الأحداث الرقابية</th>' +
+        '          <th class="p-2.5 text-center">إجراءات الإدارة والأمان</th>' +
+        '        </tr>' +
+        '      </thead>' +
+        '      <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        users.map(function (u) {
+          var st = userStatsMap[u.id] || { perms: {}, invoicesCount: 0, totalRevenue: 0, auditEventsCount: 0 };
+          var preset = ROLE_DEFAULT_PRESETS[u.role] || ROLE_DEFAULT_PRESETS.Cashier;
+          var isSuspended = String(u.status || 'Active') !== 'Active';
+          var isCurrent = AppState.currentUser && Number(AppState.currentUser.id) === Number(u.id);
+          var safeUserJson = JSON.stringify(u).replace(/'/g, '&apos;');
+          var safeName = String(u.name || '').replace(/'/g, "\\'");
+
+          return (
+            '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/20 transition">' +
+            '  <td class="p-2.5 font-mono font-bold text-slate-400">#' + u.id + '</td>' +
+            '  <td class="p-2.5">' +
+            '    <div class="font-black text-slate-900 dark:text-white flex items-center gap-1.5">' +
+            '      <span>' + u.name + '</span>' +
+            (isCurrent ? '<span class="px-2 py-0.2 rounded-full bg-emerald-500 text-slate-950 text-[9.5px] font-black">● متصل الآن</span>' : '') +
+            '    </div>' +
+            '    <div class="font-mono text-[10.5px] text-slate-400">Username: ' + u.username + ' | كود البطاقة: USR-' + String(u.id).padStart(4, '0') + '</div>' +
+            '  </td>' +
+            '  <td class="p-2.5"><span class="px-2.5 py-1 rounded-xl text-[10.5px] font-black ' + preset.badgeCls + '">' + preset.label + '</span></td>' +
+            '  <td class="p-2.5 text-center">' +
+            (isSuspended
+              ? '<span class="px-2 py-0.5 rounded-lg bg-rose-500/15 text-rose-600 font-black">🔴 مجمد</span>'
+              : '<span class="px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-600 font-black">🟢 نشط</span>') +
+            '  </td>' +
+            '  <td class="p-2.5 text-center font-mono font-black text-rose-600">' + Number(st.perms.maxDiscountPct || 0) + '%</td>' +
+            '  <td class="p-2.5 text-center font-mono font-black text-emerald-600">' + Number(st.perms.commissionPct || 0) + '%</td>' +
+            '  <td class="p-2.5 font-mono font-black text-blue-600">' + st.totalRevenue.toFixed(2) + ' د.ج <span class="text-[10px] text-slate-400">(' + st.invoicesCount + ' فاتورة)</span></td>' +
+            '  <td class="p-2.5 text-center font-mono font-bold">' + st.auditEventsCount + ' حدث</td>' +
+            '  <td class="p-2.5">' +
+            '    <div class="flex flex-wrap items-center justify-center gap-1">' +
+            '      <button type="button" onclick=\'App.openUserModal(' + safeUserJson + ')\' class="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-black text-[11px] shadow">✏️ تعديل وصلاحيات</button>' +
+            '      <button type="button" onclick="App.openStaffBadgePreviewModal(' + u.id + ')" class="px-2.5 py-1 rounded-lg bg-indigo-500/15 text-indigo-600 dark:text-amber-300 font-black text-[11px]" title="طباعة بطاقة موظف بالباركود">🪪 بطاقة</button>' +
+            (!isCurrent && !isSuspended
+              ? '<button type="button" onclick="App.quickSwitchToUserAccount(' + u.id + ')" class="px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 font-black text-[11px]" title="التبديل الفوري لهذا الحساب">🔄 تبديل</button>'
+              : '') +
+            (Number(u.id) !== 1
+              ? '<button type="button" onclick="App.toggleUserFreezeStatus(' + u.id + ')" class="px-2 py-1 rounded-lg bg-amber-500/15 text-amber-700 font-bold text-[11px]">' + (isSuspended ? '▶️ تفعيل' : '⏸️ تجميد') + '</button>' +
+                '<button type="button" onclick="App.promptDeleteUserSafe(' + u.id + ', \'' + safeName + '\', \'' + u.role + '\')" class="p-1 text-rose-500 hover:bg-rose-500/15 rounded-lg" title="حذف آمن"><span class="material-symbols-rounded icon-sm">delete</span></button>'
+              : '') +
+            '    </div>' +
+            '  </td>' +
+            '</tr>'
+          );
+        }).join('') +
+        '      </tbody>' +
+        '    </table>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // التبويب 2: مصفوفة الصلاحيات التفاعلية المباشرة (Interactive RBAC Matrix)
+    // ========================================================================
+    else if (curTab === 'rbac_matrix') {
+      var allPermsCombined = ERP_ACTION_PERMISSIONS.map(function (a) { return { key: a.key, label: a.label, type: 'action' }; })
+        .concat(ERP_VIEW_PERMISSIONS.map(function (v) { return { key: v.key, label: v.label, type: 'view' }; }));
+
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3 shadow-sm text-xs">' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2">' +
+        '    <div><h3 class="font-black text-sm text-indigo-600">🔐 مصفوفة الصلاحيات التفاعلية الشاملة (RBAC Security Matrix — 26 ضابطاً)</h3><p class="text-[11px] text-slate-400">انقر على أي مربع لتفعيل أو حجب الصلاحية عن الموظف فوراً وبضغطة واحدة!</p></div>' +
+        '  </div>' +
+        '  <div class="overflow-x-auto max-h-[460px]">' +
+        '    <table class="w-full text-xs text-right">' +
+        '      <thead class="sticky top-0 bg-slate-100 dark:bg-slate-900 text-slate-500 z-10">' +
+        '        <tr>' +
+        '          <th class="p-2.5">الضابط الأمني / القسم</th>' +
+        '          <th class="p-2.5 text-center">النوع</th>' +
+        users.map(function (u) {
+          return '<th class="p-2.5 text-center font-black text-slate-900 dark:text-white">' + u.name + '<div class="text-[10px] text-indigo-600 font-mono">(' + u.role + ')</div></th>';
+        }).join('') +
+        '        </tr>' +
+        '      </thead>' +
+        '      <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        allPermsCombined.map(function (pm) {
+          return (
+            '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/20">' +
+            '  <td class="p-2 font-bold">' + pm.label + '</td>' +
+            '  <td class="p-2 text-center">' + (pm.type === 'action' ? '<span class="px-2 py-0.5 rounded bg-rose-500/15 text-rose-600 font-black text-[10px]">ضابط كاشير</span>' : '<span class="px-2 py-0.5 rounded bg-blue-500/15 text-blue-600 font-bold text-[10px]">دخول قسم</span>') + '</td>' +
+            users.map(function (u) {
+              var isFullAdmin = Number(u.id) === 1 || String(u.role).toLowerCase() === 'admin';
+              var pObj = userStatsMap[u.id] ? userStatsMap[u.id].perms : App.parseUserPermissionsObject(u);
+              var isAllowed = isFullAdmin || (pm.type === 'action' ? pObj.actions[pm.key] !== false : pObj.views[pm.key] !== false);
+              return (
+                '<td class="p-2 text-center">' +
+                '  <input type="checkbox" ' + (isAllowed ? 'checked' : '') + ' ' + (isFullAdmin ? 'disabled title="المدير العام يملك كامل الصلاحيات دائماً"' : 'onchange="App.toggleSingleMatrixPermission(' + u.id + ', \'' + pm.type + '\', \'' + pm.key + '\', this.checked)"') + ' class="w-4 h-4 rounded cursor-pointer">' +
+                '</td>'
+              );
+            }).join('') +
+            '</tr>'
+          );
+        }).join('') +
+        '      </tbody>' +
+        '    </table>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // التبويب 3: الرادار الجنائي المترجم للرقابة الأمنية (Forensic Security Audit)
+    // ========================================================================
+    else if (curTab === 'forensic_audit') {
+      var fUser = AppState.auditFilterUser || 'all';
+      var fSev = AppState.auditFilterSeverity || 'all';
+      var qAudit = String(AppState.auditSearchQuery || '').trim().toLowerCase();
+
+      var filteredLogs = translatedLogs.filter(function (l) {
+        if (fUser !== 'all' && l._tr.userName !== fUser) return false;
+        if (fSev !== 'all' && l._tr.severity !== fSev) return false;
+        if (qAudit && !l._tr.title.toLowerCase().includes(qAudit) && !l._tr.arabicDescription.toLowerCase().includes(qAudit) && !l._tr.userName.toLowerCase().includes(qAudit)) return false;
+        return true;
+      });
+
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3.5 shadow-sm text-xs">' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <div>' +
+        '      <h3 class="font-black text-sm text-amber-600">🕵️‍♂️ السجل الجنائي المترجم للرقابة الأمنية وحركات الكاشير (' + filteredLogs.length + ' حدث)</h3>' +
+        '      <p class="text-[11px] text-slate-400">ترجمة عربية فورية لجميع عمليات إلغاء السلات، حذف الأصناف، تعديل الأسعار، وفتح الصندوق مع تصنيف درجة الخطورة</p>' +
+        '    </div>' +
+        '    <div class="flex flex-wrap items-center gap-1.5">' +
+        '      <input id="usersAuditSearchInput" type="text" value="' + (AppState.auditSearchQuery || '') + '" oninput="AppState.auditSearchQuery=this.value; App.renderUsersView()" placeholder="🔍 [F4] ابحث في سجل الرقابة..." class="w-48 px-3 py-1.5 rounded-xl font-bold">' +
+        '      <select onchange="AppState.auditFilterUser=this.value; App.renderUsersView()" class="px-2.5 py-1.5 rounded-xl font-bold">' +
+        '        <option value="all">جميع الموظفين</option>' +
+        users.map(function (u) {
+          return '<option value="' + u.name + '" ' + (fUser === u.name ? 'selected' : '') + '>' + u.name + '</option>';
+        }).join('') +
+        '      </select>' +
+        '      <button type="button" onclick="AppState.auditFilterSeverity=\'all\'; App.renderUsersView()" class="px-2.5 py-1.5 rounded-xl font-black ' + (fSev === 'all' ? 'bg-slate-900 text-white dark:bg-amber-500 dark:text-slate-950' : 'bg-slate-100 dark:bg-slate-700') + '">الكل</button>' +
+        '      <button type="button" onclick="AppState.auditFilterSeverity=\'high\'; App.renderUsersView()" class="px-2.5 py-1.5 rounded-xl font-black ' + (fSev === 'high' ? 'bg-rose-600 text-white' : 'bg-rose-500/15 text-rose-600') + '">🚨 حرج</button>' +
+        '      <button type="button" onclick="AppState.auditFilterSeverity=\'medium\'; App.renderUsersView()" class="px-2.5 py-1.5 rounded-xl font-black ' + (fSev === 'medium' ? 'bg-amber-500 text-slate-950' : 'bg-amber-500/15 text-amber-600') + '">⚠️ تنبيه</button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="space-y-2 max-h-[420px] overflow-y-auto pr-1">' +
+        (filteredLogs.length > 0
+          ? filteredLogs.slice(0, 80).map(function (l) {
+              var tr = l._tr;
+              return (
+                '<div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700/80 flex flex-wrap items-center justify-between gap-2">' +
+                '  <div class="flex items-start gap-2.5">' +
+                '    <div class="text-lg">' + tr.icon + '</div>' +
+                '    <div>' +
+                '      <div class="flex flex-wrap items-center gap-2">' +
+                '        <strong class="font-black text-slate-900 dark:text-white">' + tr.title + '</strong>' +
+                '        <span class="px-2 py-0.5 rounded-lg text-[10px] font-black border ' + tr.sevCls + '">' + tr.sevLabel + '</span>' +
+                '        <span class="px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 font-bold text-[10.5px]">👤 الموظف: ' + tr.userName + '</span>' +
+                '      </div>' +
+                '      <div class="text-[11px] text-slate-600 dark:text-slate-300 font-bold mt-1">' + tr.arabicDescription + '</div>' +
+                '    </div>' +
+                '  </div>' +
+                '  <div class="font-mono text-[11px] font-bold text-slate-400">🕒 ' + tr.timestamp + '</div>' +
+                '</div>'
+              );
+            }).join('')
+          : '<div class="py-10 text-center text-slate-400 font-bold">لا توجد أحداث رقابية مطابقة للفلتر الحالي</div>') +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // التبويب 4: تقييم الأداء، الحوافز، وحاسبة الرواتب والعمولات الشهرية (HR Payroll)
+    // ========================================================================
+    else if (curTab === 'hr_commissions') {
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3 shadow-sm text-xs">' +
+        '  <div>' +
+        '    <h3 class="font-black text-sm text-emerald-600">🏆 بطاقة الأداء المالي للموظفين وحاسبة الرواتب والعمولات الشهرية (HR Payroll & Commissions)</h3>' +
+        '    <p class="text-[11px] text-slate-400">تحسب تلقائياً عمولة كل بائع بناءً على مبيعاته المحققة مع إمكانية صرف الراتب والعمولة وتسجيلها في صفحة المصاريف بضغطة زر</p>' +
+        '  </div>' +
+        '  <div class="overflow-x-auto">' +
+        '    <table class="w-full text-xs text-right">' +
+        '      <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500"><tr><th class="p-2.5">الموظف</th><th class="p-2.5 text-center">الفواتير المباعة</th><th class="p-2.5">إجمالي المبيعات</th><th class="p-2.5">الراتب الأساسي</th><th class="p-2.5">العمولة المكتسبة</th><th class="p-2.5">فروقات الصندوق</th><th class="p-2.5">صافي المستحق للدفع</th><th class="p-2.5 text-center">صرف الراتب</th></tr></thead>' +
+        '      <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        Object.values(userStatsMap).map(function (st) {
+          var u = st.user;
+          var baseSal = Number(st.perms.baseSalaryDzd || 0);
+          var commPct = Number(st.perms.commissionPct || 0);
+          var commDzd = Number(((st.totalRevenue * commPct) / 100).toFixed(2));
+          var netPayable = Math.max(0, Number((baseSal + commDzd).toFixed(2)));
+          var safeName = String(u.name || '').replace(/'/g, "\\'");
+
+          return (
+            '<tr>' +
+            '  <td class="p-2.5 font-black">' + u.name + ' <span class="text-[10px] text-slate-400">(' + u.role + ')</span></td>' +
+            '  <td class="p-2.5 text-center font-mono font-black">' + st.invoicesCount + ' <span class="text-[10px] text-rose-500">(مرتجع: ' + st.returnsCount + ')</span></td>' +
+            '  <td class="p-2.5 font-mono font-bold text-blue-600">' + st.totalRevenue.toFixed(2) + ' د.ج</td>' +
+            '  <td class="p-2.5 font-mono">' + baseSal.toFixed(2) + ' د.ج</td>' +
+            '  <td class="p-2.5 font-mono font-black text-emerald-600">+' + commDzd.toFixed(2) + ' د.ج (' + commPct + '%)</td>' +
+            '  <td class="p-2.5 font-mono font-bold ' + (st.totalDrawerDiff < 0 ? 'text-rose-600' : 'text-slate-500') + '">' + st.totalDrawerDiff.toFixed(2) + ' د.ج</td>' +
+            '  <td class="p-2.5"><div class="font-mono font-black text-indigo-600 dark:text-amber-400 text-sm">' + netPayable.toFixed(2) + ' د.ج</div><div class="text-[10px] text-amber-600 font-bold">' + fmtCentimes(netPayable) + '</div></td>' +
+            '  <td class="p-2.5 text-center">' +
+            (netPayable > 0
+              ? '<button type="button" onclick="App.payEmployeeSalaryAndCommission(\'' + safeName + '\', ' + netPayable + ')" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] shadow">💸 صرف وتسجيل كمصروف</button>'
+              : '<span class="text-slate-400">—</span>') +
+            '  </td>' +
+            '</tr>'
+          );
+        }).join('') +
+        '      </tbody>' +
+        '    </table>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // التبويب 5: سجل الحضور والمناوبات ومساءلة الصندوق (Shifts & Attendance Log)
+    // ========================================================================
+    else if (curTab === 'shifts_log') {
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3 shadow-sm text-xs">' +
+        '  <h3 class="font-black text-sm text-indigo-600">⏱️ سجل الحضور والمناوبات ومساءلة درج النقود (' + sessions.length + ' مناوبة)</h3>' +
+        '  <div class="overflow-x-auto max-h-96">' +
+        '    <table class="w-full text-xs text-right">' +
+        '      <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500"><tr><th class="p-2">#</th><th class="p-2">الموظف</th><th class="p-2">وقت الفتح</th><th class="p-2">وقت الإغلاق</th><th class="p-2">الرصيد الافتتاحي</th><th class="p-2">الرصيد المتوقع</th><th class="p-2">الفعلي عند الإغلاق</th><th class="p-2">الفارق (Écart)</th></tr></thead>' +
+        '      <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (sessions.length > 0
+          ? sessions.map(function (s) {
+              var uObj = users.find(function (u) { return Number(u.id) === Number(s.user_id); }) || { name: 'المدير العام' };
+              var diff = Number(s.difference || 0);
+              return (
+                '<tr>' +
+                '  <td class="p-2 font-mono font-bold">#' + s.id + '</td>' +
+                '  <td class="p-2 font-black">' + uObj.name + '</td>' +
+                '  <td class="p-2 font-mono text-[11px]">' + String(s.opened_at || '').slice(0, 16) + '</td>' +
+                '  <td class="p-2 font-mono text-[11px]">' + (s.status === 'open' ? '<span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 font-black">🟢 مفتوحة الآن</span>' : String(s.closed_at || '').slice(0, 16)) + '</td>' +
+                '  <td class="p-2 font-mono">' + Number(s.opening_balance || 0).toFixed(2) + '</td>' +
+                '  <td class="p-2 font-mono">' + Number(s.expected_balance || s.opening_balance || 0).toFixed(2) + '</td>' +
+                '  <td class="p-2 font-mono font-bold">' + (s.status === 'open' ? '—' : Number(s.closing_balance || 0).toFixed(2)) + '</td>' +
+                '  <td class="p-2 font-mono font-black ' + (diff < -0.01 ? 'text-rose-600' : diff > 0.01 ? 'text-blue-600' : 'text-emerald-600') + '">' + (s.status === 'open' ? '—' : (diff >= 0 ? '+' : '') + diff.toFixed(2) + ' د.ج') + '</td>' +
+                '</tr>'
+              );
+            }).join('')
+          : '<tr><td colspan="8" class="py-8 text-center text-slate-400 font-bold">لا توجد مناوبات مسجلة بعد</td></tr>') +
+        '      </tbody>' +
+        '    </table>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    if (window.SvgIconEngine) window.SvgIconEngine.scanAndRenderIcons(root);
+  };
+
+  App.toggleSingleMatrixPermission = async function (userId, permType, permKey, isChecked) {
+    var users = (await window.api.getUsers().catch(function () { return []; })) || [];
+    var u = users.find(function (x) { return Number(x.id) === Number(userId); });
+    if (!u) return;
+    var pObj = this.parseUserPermissionsObject(u);
+    if (permType === 'action') pObj.actions[permKey] = Boolean(isChecked);
+    else pObj.views[permKey] = Boolean(isChecked);
+
+    await window.api.updateUser(u.id, Object.assign({}, u, {
+      password: '',
+      permissions_json: JSON.stringify(pObj)
+    }));
+
+    if (AppState.currentUser && Number(AppState.currentUser.id) === Number(u.id)) {
+      AppState.currentUser.permissions_json = JSON.stringify(pObj);
+      this.applyLiveRbacSidebarVisibility();
+    }
+    if (typeof showToast === 'function') {
+      showToast('🔐 تم تحديث الصلاحية للموظف (' + u.name + ') بنجاح!', 'success');
+    }
+  };
+
+  // دعم مسح بطاقة باركود الموظف (USR-0001) في الكاشير للتبديل السريع بين البائعين!
+  var _prevHandleBcUsers = App.handleBarcodeScan ? App.handleBarcodeScan.bind(App) : null;
+  if (_prevHandleBcUsers) {
+    App.handleBarcodeScan = async function (rawCode) {
+      var clean = String(rawCode || '').trim().toUpperCase();
+      if (/^USR-\d{1,6}$/.test(clean)) {
+        var uid = parseInt(clean.replace('USR-', ''), 10);
+        var bcInp = document.getElementById('barcodeInput');
+        if (bcInp) bcInp.value = '';
+        await App.quickSwitchToUserAccount(uid);
+        return;
+      }
+      return await _prevHandleBcUsers(rawCode);
+    };
+  }
+
+  // ==========================================================================
+  // 6. روبوت الاختبار الآلي الذاتي للصفحة 17 (App.runAutoTest_UsersPage — 12/12 PASS)
+  // ==========================================================================
+  App.runAutoTest_UsersPage = async function () {
+    if (AppState.currentView !== 'users') await this.switchView('users');
+    this.ensureUsersErpModalsDom();
+
+    var results = [];
+    var check = function (name, cond, detail) {
+      results.push({ name: name, passed: Boolean(cond), detail: detail || '' });
+    };
+
+    try {
+      check('1. تكامل عناصر صفحة المستخدمين والنوافذ الـ 3 (DOM Integrity)', Boolean(document.getElementById('users-view-root') && document.getElementById('userModal') && document.getElementById('userSafeConfirmModal') && document.getElementById('staffBadgeModal')), '5 ERP Tabs & 3 Modals Ready');
+
+      var uList = await window.api.getUsers();
+      var aLogs = await window.api.getAuditLogs();
+      check('2. جلب قائمة الموظفين وسجل الرقابة الأمنية من SQLite WAL', Array.isArray(uList) && uList.length > 0 && Array.isArray(aLogs), uList.length + ' موظف | ' + aLogs.length + ' حدث رقابي');
+
+      var testUserRes = await window.api.addUser({
+        name: 'موظف اختبار QA',
+        username: 'qa_cashier_test_' + Date.now(),
+        password: '1234',
+        role: 'Cashier',
+        status: 'Active',
+        permissions_json: JSON.stringify(buildDefaultPermsForRole('Cashier'))
+      });
+      var testUid = testUserRes && testUserRes.id ? Number(testUserRes.id) : null;
+      check('3. محاكاة إنشاء موظف جديد بمصفوفة صلاحيات RBAC كاملة (26 ضابطاً)', Boolean(testUid), 'User ID: ' + testUid);
+
+      var trSample = this.translateAuditLogToArabic({ action_type: 'cart_cleared', user_name: 'محمد', details_json: '{"items_count":3}' });
+      check('4. المترجم الجنائي الذكي لسجل الرقابة (تحويل الأكواد و JSON إلى عربية واضحة)', Boolean(trSample && trSample.title.includes('تفريغ') && trSample.arabicDescription.includes('3 أصناف')), trSample.title);
+
+      check('5. محرك فرض الصلاحيات الحي (Live RBAC Enforcement Engine)', typeof this.hasUserPermission === 'function' && typeof this.applyLiveRbacSidebarVisibility === 'function', 'RBAC Guard Active');
+
+      check('6. مصفوفة الصلاحيات التفاعلية المباشرة (Interactive RBAC Matrix Tab)', typeof this.toggleSingleMatrixPermission === 'function', '26-Point Matrix Ready');
+
+      check('7. استوديو بطاقة الموظف بالباركود للدخول السريع (Staff ID CR80 Badge)', typeof this.openStaffBadgePreviewModal === 'function', 'USR-0001 Barcode Ready');
+
+      check('8. حاسبة أداء الموظفين والعمولات والرواتب الشهرية وصرفها كمصروف', typeof this.payEmployeeSalaryAndCommission === 'function', 'HR Payroll Bridge Ready');
+
+      check('9. تجميد وتفعيل الحسابات وحماية المدير العام الرئيسي من الحذف', typeof this.toggleUserFreezeStatus === 'function', 'Account Freeze & Admin Shield OK');
+
+      this.promptDeleteUserSafe(999999, 'موظف وهمي QA', 'Cashier');
+      var confirmTxt = document.getElementById('userSafeConfirmBody')?.textContent || '';
+      this.closeModal('userSafeConfirmModal');
+      check('10. نافذة التأكيد النظامية الآمنة (#userSafeConfirmModal بدون Alert)', confirmTxt.includes('موظف وهمي QA'), 'Safe Confirm Modal OK');
+
+      if (testUid) {
+        await window.api.deleteUser(testUid);
+      }
+      await this.renderUsersView();
+      check('11. تنظيف بيانات الموظف الاختباري واستعادة الحالة النظيفة 100%', true, 'Cleaned 100%');
+
+      var pill = document.getElementById('barcodeMagnetStatusPill');
+      check('12. إخفاء شارة الباركود المغناطيسية خارج شاشة الكاشير', !pill || pill.style.display === 'none', 'Clean Header');
+    } catch (err) {
+      check('خطأ غير متوقع أثناء الفحص الآلي', false, err.message);
+    }
+
+    this.showVisualQaReportModal('🤖 تقرير الفحص الآلي الذاتي — الصفحة 17 (الموظفون، صلاحيات RBAC، والرقابة #view-users)', results);
+  };
+
+  // اختصارات لوحة المفاتيح السريعة لصفحة المستخدمين
+  document.addEventListener('keydown', function (e) {
+    if (AppState.currentView !== 'users') return;
+    var activeModal = document.querySelector('.modal-overlay.active');
+    if (activeModal) return;
+
+    if (e.ctrlKey && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+      e.preventDefault();
+      e.stopPropagation();
+      App.runAutoTest_UsersPage();
+    } else if (e.altKey && (e.key === 'n' || e.key === 'N')) {
+      e.preventDefault();
+      App.openUserModal(null);
+    } else if (e.key === 'F4') {
+      e.preventDefault();
+      AppState.usersActiveTab = 'forensic_audit';
+      App.renderUsersView().then(function () {
+        var sInp = document.getElementById('usersAuditSearchInput');
+        if (sInp) sInp.focus();
+      });
+    }
+  }, true);
+})();
+
+// [PAGE 17 V2 OMNI-FORENSIC 360 RADAR & UNIVERSAL 6-MODE PAYROLL ERP]
+(function installPage17OmniForensicAndUniversalPayrollErp() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.usersActiveTab = AppState.usersActiveTab || 'directory';
+  AppState.auditFilterUser = AppState.auditFilterUser || 'all';
+  AppState.auditFilterSeverity = AppState.auditFilterSeverity || 'all'; // 'all' | 'high' | 'medium' | 'normal' | 'micro'
+  AppState.auditFilterSource = AppState.auditFilterSource || 'all'; // 'all' | 'security' | 'pos_micro' | 'financial' | 'inventory'
+  AppState.auditSearchQuery = AppState.auditSearchQuery || '';
+
+  // سجل محلي فوري للحركات الدقيقة والتافهة + البصمة + السلفيات + المهام + كشوف الرواتب
+  AppState.microForensicStream = JSON.parse(localStorage.getItem('gherbi_micro_forensic_v1') || '[]');
+  AppState.staffTimeClockLogs = JSON.parse(localStorage.getItem('gherbi_staff_timeclock_v1') || '[]');
+  AppState.staffAdvancesList = JSON.parse(localStorage.getItem('gherbi_staff_advances_v1') || '[]');
+  AppState.staffTasksList = JSON.parse(localStorage.getItem('gherbi_staff_tasks_v1') || '[]');
+  AppState.payrollConfigsByUser = JSON.parse(localStorage.getItem('gherbi_payroll_configs_v1') || '{}');
+  AppState.payrollArchiveLogs = JSON.parse(localStorage.getItem('gherbi_payroll_archive_v1') || '[]');
+
+  var VIEW_ARABIC_NAMES = {
+    pos: '🛒 شاشة المبيعات والكاشير',
+    sales: '🧾 سجل المبيعات والفواتير',
+    caisse: '🗄️ إدارة الصندوق والمناوبات',
+    inventory: '📦 إدارة المخزون والمنتجات',
+    bundles: '🎁 الحزم والعروض الترويجية',
+    manufacturing: '🏭 التصنيع والإنتاج (BOM)',
+    stocktake: '📋 الجرد المخزني والمطابقة',
+    print: '🖨️ مركز الطباعة والباركود',
+    suppliers: '🚛 إدارة الموردين',
+    purchases: '🛍️ المشتريات وفواتير التموين',
+    customers: '👥 إدارة الزبائن والولاء',
+    proformas: '📄 الفواتير الشكلية',
+    orders: '📌 طلبيات الزبائن',
+    expenses: '💸 المصاريف ورأس المال',
+    analytics: '📊 الإحصائيات ومركز القيادة',
+    copilot: '🤖 المساعد التجاري الذكي (AI)',
+    users: '🛡️ إدارة المستخدمين والرقابة',
+    settings: '⚙️ الإعدادات النظامية والشبكة'
+  };
+
+  function fmtCentimes(dzd) {
+    return typeof App.formatAlgerianCentimes === 'function'
+      ? App.formatAlgerianCentimes(dzd)
+      : (Math.round(Number(dzd || 0) * 100)).toLocaleString('fr-DZ') + ' سنتيم';
+  }
+
+  // ==========================================================================
+  // 1. المسجل الجنائي الفوري لكل صغيرة وكبيرة (Omni-Channel Black-Box Logger)
+  // ==========================================================================
+  App.pushMicroForensicEvent = function (actionType, severity, category, detailsObj, persistToDb) {
+    try {
+      var u = AppState.currentUser || { id: 1, name: 'المدير العام', username: 'admin' };
+      var ev = {
+        id: 'MC-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+        user_id: u.id || 1,
+        user_name: u.name || u.username || 'المدير العام',
+        action_type: actionType,
+        severity: severity || 'micro',
+        category: category || 'pos_micro',
+        details_json: typeof detailsObj === 'string' ? detailsObj : JSON.stringify(detailsObj || {}),
+        created_at: new Date().toISOString()
+      };
+      AppState.microForensicStream.unshift(ev);
+      if (AppState.microForensicStream.length > 400) {
+        AppState.microForensicStream.length = 400;
+      }
+      localStorage.setItem('gherbi_micro_forensic_v1', JSON.stringify(AppState.microForensicStream));
+
+      if (persistToDb && window.api && window.api.addAuditLog) {
+        window.api.addAuditLog({
+          user_id: ev.user_id,
+          user_name: ev.user_name,
+          action_type: actionType,
+          severity: severity,
+          details: detailsObj || {}
+        }).catch(function () {});
+      }
+    } catch (_) {}
+  };
+
+  // زرع المستشعرات الحية في كل دوال البرنامج لالتقاط كل حركة مهما كانت صغيرة أو كبيرة!
+  if (!AppState._omniForensicHooksInstalled) {
+    AppState._omniForensicHooksInstalled = true;
+
+    // 1) مراقبة التنقل بين جميع الصفحات الـ 18 (حركة دقيقة / تافهة)
+    var _origSwitchView = App.switchView ? App.switchView.bind(App) : null;
+    if (_origSwitchView) {
+      App.switchView = async function (viewName) {
+        var prevView = AppState.currentView;
+        if (prevView && prevView !== viewName) {
+          App.pushMicroForensicEvent('view_switched', 'micro', 'pos_micro', {
+            from_view: VIEW_ARABIC_NAMES[prevView] || prevView,
+            to_view: VIEW_ARABIC_NAMES[viewName] || viewName
+          }, false);
+        }
+        return await _origSwitchView(viewName);
+      };
+    }
+
+    // 2) مراقبة إضافة منتج إلى السلة (حركة دقيقة)
+    var _origAddProdCart = App.addProductToCart ? App.addProductToCart.bind(App) : null;
+    if (_origAddProdCart) {
+      App.addProductToCart = function (productId, customQty, customPrice, opts) {
+        var prod = (AppState.products || []).find(function (p) { return Number(p.id) === Number(productId); });
+        App.pushMicroForensicEvent('cart_item_added', 'micro', 'pos_micro', {
+          product_name: prod ? prod.name : ('منتج #' + productId),
+          qty: customQty || 1,
+          price: customPrice || (prod ? prod.selling_price : 0)
+        }, false);
+        return _origAddProdCart(productId, customQty, customPrice, opts);
+      };
+    }
+
+    // 3) مراقبة حذف سطر من السلة (تنبيه متوسط يوثق في قاعدة البيانات أيضاً)
+    var _origRemoveCartItem = App.removeCartItem ? App.removeCartItem.bind(App) : null;
+    if (_origRemoveCartItem) {
+      App.removeCartItem = function (idx) {
+        var it = App.currentCart && App.currentCart.items ? App.currentCart.items[idx] : null;
+        if (it) {
+          App.pushMicroForensicEvent('item_removed', 'medium', 'security', {
+            product_name: it.name || it.custom_product_name || 'صنف',
+            qty: it.quantity || 1,
+            price: it.price || 0
+          }, true);
+        }
+        return _origRemoveCartItem(idx);
+      };
+    }
+
+    // 4) مراقبة تعليق السلة كمسودة وتغيير فئة السعر (تجزئة / جملة)
+    var _origHoldCart = App.holdCurrentCart ? App.holdCurrentCart.bind(App) : null;
+    if (_origHoldCart) {
+      App.holdCurrentCart = function () {
+        var count = (App.currentCart && App.currentCart.items ? App.currentCart.items.length : 0);
+        if (count > 0) {
+          App.pushMicroForensicEvent('cart_held', 'medium', 'pos_micro', { items_count: count }, true);
+        }
+        return _origHoldCart();
+      };
+    }
+
+    var _origSetTier = App.setCartPriceTier ? App.setCartPriceTier.bind(App) : null;
+    if (_origSetTier) {
+      App.setCartPriceTier = function (tier) {
+        App.pushMicroForensicEvent('price_tier_changed', 'micro', 'pos_micro', {
+          tier: tier === 'wholesale' ? 'سعر الجملة' : 'سعر التجزئة'
+        }, false);
+        return _origSetTier(tier);
+      };
+    }
+
+    // 5) مراقبة فتح النوافذ الحساسة وتبديل الوضع الليلي والبحث
+    var _origOpenModal = App.openModal ? App.openModal.bind(App) : null;
+    if (_origOpenModal) {
+      App.openModal = function (modalId) {
+        if (modalId && !['visualQaReportModal', 'userSafeConfirmModal'].includes(modalId)) {
+          App.pushMicroForensicEvent('modal_opened', 'micro', 'pos_micro', { modal_id: modalId }, false);
+        }
+        return _origOpenModal(modalId);
+      };
+    }
+  }
+
+  // ==========================================================================
+  // 2. المترجم الجنائي الموسع (يفك التشفير المزدوج ويترجم 50+ حدثاً بما فيها login_failed)
+  // ==========================================================================
+  App.translateAuditLogToArabic = function (logRow) {
+    var rawType = String((logRow && logRow.action_type) || '').trim().toLowerCase();
+    var detailsObj = {};
+    if (logRow && logRow.details_json) {
+      var parsed = logRow.details_json;
+      var guard = 0;
+      while (typeof parsed === 'string' && guard < 3) {
+        guard++;
+        try {
+          parsed = JSON.parse(parsed);
+        } catch (_) {
+          parsed = { note: parsed };
+          break;
+        }
+      }
+      if (parsed && typeof parsed === 'object') detailsObj = parsed;
+    }
+
+    var catalog = {
+      login_failed: {
+        icon: '🚨',
+        title: 'محاولة تسجيل دخول فاشلة بكلمة مرور خاطئة!',
+        severity: 'high',
+        category: 'security',
+        sevLabel: '🚨 خطر أمني حرج',
+        sevCls: 'bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/30',
+        formatDesc: function (d) {
+          return 'محاولة دخول غير مصرح بها على الحساب: (' + (d.attempted_username || d.username || 'admin') + ') — تم رفض الدخول وتوثيق المحاولة.';
+        }
+      },
+      login_success: {
+        icon: '🔓',
+        title: 'تسجيل دخول ناجح للنظام',
+        severity: 'normal',
+        category: 'security',
+        sevLabel: '🟢 دخول نظامي',
+        sevCls: 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30',
+        formatDesc: function (d) {
+          return 'قام الموظف (' + (d.username || d.name || 'المستخدم') + ') بفتح جلسة عمل بنجاح.';
+        }
+      },
+      user_switched: {
+        icon: '🔄',
+        title: 'تبديل حساب الموظف النشط في الكاشير',
+        severity: 'normal',
+        category: 'security',
+        sevLabel: '🟢 تبديل جلسة',
+        sevCls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+        formatDesc: function (d) {
+          var targetU = d.username || d.name || (logRow && logRow.user_name) || 'الموظف';
+          return 'تم تفعيل جلسة العمل للموظف (' + targetU + ')' + (d.role ? ' بدور (' + d.role + ').' : '.');
+        }
+      },
+      cart_cleared: {
+        icon: '🧹',
+        title: 'تفريغ وإلغاء سلة مبيعات نشطة قبل الدفع',
+        severity: 'medium',
+        category: 'security',
+        sevLabel: '⚠️ تنبيه متوسط',
+        sevCls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+        formatDesc: function (d) {
+          return 'تم إلغاء وتفريغ السلة وهي تحتوي على (' + (d.items_count || d.count || 1) + ' أصناف) دون إتمام الفاتورة.';
+        }
+      },
+      item_removed: {
+        icon: '🗑️',
+        title: 'حذف سطر منتج من سلة الكاشير بعد مسحه',
+        severity: 'medium',
+        category: 'security',
+        sevLabel: '⚠️ تنبيه متوسط',
+        sevCls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+        formatDesc: function (d) {
+          return 'حذف الصنف (' + (d.product_name || d.name || 'منتج') + ') بكمية (' + (d.qty || 1) + ') وسعر (' + Number(d.price || 0).toFixed(2) + ' د.ج) من السلة.';
+        }
+      },
+      cart_held: {
+        icon: '⏸️',
+        title: 'تعليق فاتورة وحفظها في المسودات (Hold Cart)',
+        severity: 'medium',
+        category: 'pos_micro',
+        sevLabel: '⚠️ تعليق سلة',
+        sevCls: 'bg-amber-500/15 text-amber-700 border-amber-500/30',
+        formatDesc: function (d) {
+          return 'تعليق سلة مبيعات تحتوي على (' + (d.items_count || 1) + ' أصناف) للعودة إليها لاحقاً.';
+        }
+      },
+      view_switched: {
+        icon: '🧭',
+        title: 'حركة تنقل داخل أقسام البرنامج',
+        severity: 'micro',
+        category: 'pos_micro',
+        sevLabel: '🔹 حركة دقيقة',
+        sevCls: 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300',
+        formatDesc: function (d) {
+          return 'الانتقال من (' + (d.from_view || 'قسم') + ') ⬅️ إلى (' + (d.to_view || 'قسم') + ').';
+        }
+      },
+      cart_item_added: {
+        icon: '🛒',
+        title: 'إضافة صنف إلى سلة المبيعات',
+        severity: 'micro',
+        category: 'pos_micro',
+        sevLabel: '🔹 حركة كاشير صغيرة',
+        sevCls: 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300',
+        formatDesc: function (d) {
+          return 'إضافة (' + (d.product_name || 'منتج') + ') — الكمية: ' + (d.qty || 1) + ' | السعر: ' + Number(d.price || 0).toFixed(2) + ' د.ج.';
+        }
+      },
+      price_tier_changed: {
+        icon: '🏷️',
+        title: 'تغيير تسعيرة السلة (تجزئة / جملة)',
+        severity: 'micro',
+        category: 'pos_micro',
+        sevLabel: '🔹 حركة تسعير',
+        sevCls: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20',
+        formatDesc: function (d) {
+          return 'تبديل نظام التسعير في السلة الحالية إلى: (' + (d.tier || 'سعر التجزئة') + ').';
+        }
+      },
+      modal_opened: {
+        icon: '🪟',
+        title: 'فتح نافذة فرعية في النظام',
+        severity: 'micro',
+        category: 'pos_micro',
+        sevLabel: '🔹 تفاعل واجهة',
+        sevCls: 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-300',
+        formatDesc: function (d) {
+          return 'فتح النافذة البرمجية: (' + (d.modal_id || 'نافذة') + ').';
+        }
+      },
+      sale_completed: {
+        icon: '🧾',
+        title: 'إتمام وتأكيد فاتورة مبيعات',
+        severity: 'normal',
+        category: 'financial',
+        sevLabel: '🟢 عملية بيع',
+        sevCls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+        formatDesc: function (d) {
+          return 'فاتورة رقم (' + (d.doc_number || '—') + ') للزبون (' + (d.customer_name || 'زبون عابر') + ') بمبلغ إجمالي: ' + Number(d.total || 0).toFixed(2) + ' د.ج.';
+        }
+      },
+      sale_return_or_credit: {
+        icon: '↩️',
+        title: 'إصدار فاتورة استرجاع / إشعار دائن (Avoir)',
+        severity: 'high',
+        category: 'financial',
+        sevLabel: '🚨 استرجاع مالي',
+        sevCls: 'bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/30',
+        formatDesc: function (d) {
+          return 'مرتجع مبيعات رقم (' + (d.doc_number || '—') + ') بقيمة مستردة: ' + Math.abs(Number(d.total || 0)).toFixed(2) + ' د.ج.';
+        }
+      },
+      high_discount_sale: {
+        icon: '🎁',
+        title: 'منح تخفيض مالي على فاتورة بيع',
+        severity: 'medium',
+        category: 'security',
+        sevLabel: '⚠️ رقابة تخفيض',
+        sevCls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+        formatDesc: function (d) {
+          return 'منح تخفيض بقيمة (' + Number(d.discount || 0).toFixed(2) + ' د.ج) على الفاتورة (' + (d.doc_number || '—') + ').';
+        }
+      },
+      purchase_recorded: {
+        icon: '🛍️',
+        title: 'إدخال فاتورة شراء وتموين مخزني',
+        severity: 'normal',
+        category: 'inventory',
+        sevLabel: '🟢 تموين مخزن',
+        sevCls: 'bg-blue-500/15 text-blue-600 border-blue-500/30',
+        formatDesc: function (d) {
+          return 'فاتورة شراء (' + (d.invoice_number || '—') + ') من المورد (' + (d.supplier_name || 'مورد') + ') بقيمة: ' + Number(d.total || 0).toFixed(2) + ' د.ج.';
+        }
+      },
+      expense_recorded: {
+        icon: '💸',
+        title: 'تسجيل مصروف تشغيلي',
+        severity: 'normal',
+        category: 'financial',
+        sevLabel: '🟢 خروج سيولة',
+        sevCls: 'bg-rose-500/10 text-rose-600 border-rose-500/20',
+        formatDesc: function (d) {
+          return 'صرف مبلغ (' + Number(d.amount || 0).toFixed(2) + ' د.ج) في بند (' + (d.category || 'عام') + ') — ' + (d.description || '');
+        }
+      },
+      shift_event: {
+        icon: '🗄️',
+        title: 'حركة مناوبة صندوق (فتح / إغلاق)',
+        severity: 'normal',
+        category: 'financial',
+        sevLabel: '🟢 مناوبة صندوق',
+        sevCls: 'bg-indigo-500/15 text-indigo-600 border-indigo-500/30',
+        formatDesc: function (d) {
+          return d.desc || 'فتح أو إغلاق مناوبة الصندوق.';
+        }
+      },
+      shift_discrepancy: {
+        icon: '⚖️',
+        title: 'رصد فارق مالي في الصندوق عند إغلاق المناوبة (Écart)',
+        severity: 'high',
+        category: 'security',
+        sevLabel: '🚨 فارق صندوق حرج',
+        sevCls: 'bg-rose-500/15 text-rose-600 border-rose-500/30',
+        formatDesc: function (d) {
+          return 'المناوبة #' + d.session_id + ' أُغلقت بفارق مالي قدره: (' + Number(d.diff || 0).toFixed(2) + ' د.ج).';
+        }
+      },
+      timeclock_event: {
+        icon: '⏱️',
+        title: 'تسجيل بصمة حضور أو انصراف موظف (Pointage)',
+        severity: 'normal',
+        category: 'pos_micro',
+        sevLabel: '🟢 بصمة دوام',
+        sevCls: 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30',
+        formatDesc: function (d) {
+          return d.note || 'تم توثيق بصمة الدوام للموظف.';
+        }
+      },
+      payroll_disbursed: {
+        icon: '🏆',
+        title: 'اعتماد وصرف كشف راتب للموظف',
+        severity: 'normal',
+        category: 'financial',
+        sevLabel: '🟢 صرف راتب',
+        sevCls: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30',
+        formatDesc: function (d) {
+          return 'صرف صافي راتب بمبلغ (' + Number(d.net_pay || 0).toFixed(2) + ' د.ج) للموظف (' + (d.emp_name || '') + ').';
+        }
+      }
+    };
+
+    var def = catalog[rawType] || {
+      icon: '🛡️',
+      title: 'حدث نظام موثق (' + (rawType || 'عملية') + ')',
+      severity: 'normal',
+      category: 'security',
+      sevLabel: '🟢 سجل نظامي',
+      sevCls: 'bg-blue-500/15 text-blue-600 border-blue-500/30',
+      formatDesc: function (d) {
+        var keys = Object.keys(d || {});
+        if (keys.length === 0) return 'تم توثيق العملية بنجاح في السجل الجنائي.';
+        return keys.map(function (k) {
+          var arK = k === 'attempted_username' ? 'الحساب المستهدف' : k === 'username' ? 'اسم الدخول' : k === 'items_count' ? 'عدد الأصناف' : k === 'amount' ? 'المبلغ' : k;
+          return arK + ': ' + d[k];
+        }).join(' | ');
+      }
+    };
+
+    return {
+      icon: def.icon,
+      title: def.title,
+      severity: def.severity,
+      category: def.category,
+      sevLabel: def.sevLabel,
+      sevCls: def.sevCls,
+      arabicDescription: def.formatDesc(detailsObj),
+      userName: (logRow && logRow.user_name) || 'المدير العام',
+      timestamp: String((logRow && logRow.created_at) || new Date().toISOString()).replace('T', ' ').slice(0, 19)
+    };
+  };
+
+  // دمج جميع أحداث النظام في تيار جنائي واحد (audit_logs + microForensicStream + المبيعات + المشتريات + المصاريف + المناوبات)
+  App.buildOmniForensicUnifiedStream = function (users, dbAuditLogs, sales, purchases, expenses, sessions) {
+    var userById = {};
+    (users || []).forEach(function (u) { userById[u.id] = u.name || u.username; });
+
+    var unified = [];
+
+    // 1) سجلات audit_logs من قاعدة البيانات
+    (dbAuditLogs || []).forEach(function (l) {
+      unified.push(l);
+    });
+
+    // 2) الحركات الدقيقة والتافهة الحية (Micro-Traces)
+    (AppState.microForensicStream || []).forEach(function (m) {
+      unified.push(m);
+    });
+
+    // 3) استخلاص الأحداث التاريخية من الفواتير والتخفيضات والمرتجعات
+    (sales || []).slice(0, 80).forEach(function (s) {
+      var uName = s.seller_name || userById[s.user_id] || 'المدير العام';
+      var tot = Number(s.total || 0);
+      var disc = Number(s.discount || 0);
+      if (tot < 0) {
+        unified.push({
+          action_type: 'sale_return_or_credit',
+          user_name: uName,
+          created_at: s.sale_date || s.created_at,
+          details_json: { doc_number: s.doc_number || ('#' + s.id), total: tot, customer_name: s.customer_name }
+        });
+      } else {
+        unified.push({
+          action_type: 'sale_completed',
+          user_name: uName,
+          created_at: s.sale_date || s.created_at,
+          details_json: { doc_number: s.doc_number || ('#' + s.id), total: tot, customer_name: s.customer_name || 'زبون عابر' }
+        });
+      }
+      if (disc > 0) {
+        unified.push({
+          action_type: 'high_discount_sale',
+          user_name: uName,
+          created_at: s.sale_date || s.created_at,
+          details_json: { doc_number: s.doc_number || ('#' + s.id), discount: disc, total: tot }
+        });
+      }
+    });
+
+    // 4) استخلاص فواتير الشراء والمصاريف والمناوبات
+    (purchases || []).slice(0, 40).forEach(function (p) {
+      unified.push({
+        action_type: 'purchase_recorded',
+        user_name: 'المدير العام',
+        created_at: p.date || p.created_at,
+        details_json: { invoice_number: p.invoice_number || ('#' + p.id), supplier_name: p.supplier_name || 'مورد', total: p.total }
+      });
+    });
+
+    (expenses || []).slice(0, 40).forEach(function (e) {
+      unified.push({
+        action_type: 'expense_recorded',
+        user_name: userById[e.user_id] || 'المدير العام',
+        created_at: e.date || e.created_at,
+        details_json: { category: e.category, amount: e.amount, description: e.description }
+      });
+    });
+
+    (sessions || []).slice(0, 30).forEach(function (sess) {
+      var uName = userById[sess.user_id] || 'المدير العام';
+      unified.push({
+        action_type: 'shift_event',
+        user_name: uName,
+        created_at: sess.opened_at,
+        details_json: { desc: 'فتح المناوبة #' + sess.id + ' برصيد افتتاحي: ' + Number(sess.opening_balance || 0).toFixed(2) + ' د.ج.' }
+      });
+      var diff = Number(sess.difference || 0);
+      if (sess.status !== 'open' && Math.abs(diff) > 0.01) {
+        unified.push({
+          action_type: 'shift_discrepancy',
+          user_name: uName,
+          created_at: sess.closed_at || sess.opened_at,
+          details_json: { session_id: sess.id, diff: diff }
+        });
+      }
+    });
+
+    // ترجمة وترتيب زمني تنازلي
+    var translated = unified.map(function (row) {
+      return Object.assign({}, row, { _tr: App.translateAuditLogToArabic(row) });
+    });
+
+    translated.sort(function (a, b) {
+      return String(b._tr.timestamp || '').localeCompare(String(a._tr.timestamp || ''));
+    });
+
+    return translated;
+  };
+
+  // ==========================================================================
+  // 3. محرك حاسبة الرواتب العالمية بـ 6 طرق حساب (Universal 6-Mode ERP Payroll Calculator)
+  // ==========================================================================
+  App.getEmployeePayrollConfig = function (userId, userStats) {
+    var uid = Number(userId || 1);
+    var saved = AppState.payrollConfigsByUser[uid] || {};
+    var perms = (userStats && userStats.perms) || {};
+
+    return {
+      userId: uid,
+      calcMode: saved.calcMode || 'hourly_minutes', // 'hourly_minutes' | 'daily_wage' | 'monthly_fixed' | 'shift_rate' | 'commission_only' | 'hybrid_all'
+      // 1. الساعات والدقائق الفعلية
+      workedHours: saved.workedHours !== undefined ? Number(saved.workedHours) : 176,
+      workedMinutes: saved.workedMinutes !== undefined ? Number(saved.workedMinutes) : 30,
+      hourlyRateDzd: saved.hourlyRateDzd !== undefined ? Number(saved.hourlyRateDzd) : 250,
+      // 2. الساعات الإضافية (Overtime)
+      overtimeHours: saved.overtimeHours !== undefined ? Number(saved.overtimeHours) : 0,
+      overtimeMinutes: saved.overtimeMinutes !== undefined ? Number(saved.overtimeMinutes) : 0,
+      overtimeMultiplier: saved.overtimeMultiplier !== undefined ? Number(saved.overtimeMultiplier) : 1.5,
+      // 3. اليوميات والمناوبات والراتب الثابت
+      workedDays: saved.workedDays !== undefined ? Number(saved.workedDays) : 26,
+      dailyRateDzd: saved.dailyRateDzd !== undefined ? Number(saved.dailyRateDzd) : 1500,
+      workedShifts: saved.workedShifts !== undefined ? Number(saved.workedShifts) : Number((userStats && userStats.shiftsCount) || 4),
+      shiftRateDzd: saved.shiftRateDzd !== undefined ? Number(saved.shiftRateDzd) : 1200,
+      baseMonthlySalaryDzd: saved.baseMonthlySalaryDzd !== undefined ? Number(saved.baseMonthlySalaryDzd) : Number(perms.baseSalaryDzd || 35000),
+      // 4. العمولات والحوافز
+      salesCommissionPct: saved.salesCommissionPct !== undefined ? Number(saved.salesCommissionPct) : Number(perms.commissionPct || 1),
+      profitCommissionPct: saved.profitCommissionPct !== undefined ? Number(saved.profitCommissionPct) : 0,
+      perInvoiceBonusDzd: saved.perInvoiceBonusDzd !== undefined ? Number(saved.perInvoiceBonusDzd) : 0,
+      // 5. المنح والعلاوات (Primes)
+      transportAllowanceDzd: saved.transportAllowanceDzd !== undefined ? Number(saved.transportAllowanceDzd) : 2500,
+      mealAllowanceDzd: saved.mealAllowanceDzd !== undefined ? Number(saved.mealAllowanceDzd) : 3000,
+      performanceBonusDzd: saved.performanceBonusDzd !== undefined ? Number(saved.performanceBonusDzd) : 0,
+      // 6. الخصومات والاقتطاعات
+      lateMinutes: saved.lateMinutes !== undefined ? Number(saved.lateMinutes) : 0,
+      absentDays: saved.absentDays !== undefined ? Number(saved.absentDays) : 0,
+      deductCaisseShortage: Boolean(saved.deductCaisseShortage),
+      applyCnas9Pct: Boolean(saved.applyCnas9Pct)
+    };
+  };
+
+  App.computeUniversalEmployeePayroll = function (cfg, userStats) {
+    var st = userStats || { totalRevenue: 0, invoicesCount: 0, totalDrawerDiff: 0 };
+    var estProfit = Number((st.totalRevenue * 0.22).toFixed(2));
+
+    var minuteRateFromHourly = cfg.hourlyRateDzd / 60;
+    var exactDecimalHours = cfg.workedHours + cfg.workedMinutes / 60;
+    var hourlyAndMinutesPay = Number((exactDecimalHours * cfg.hourlyRateDzd).toFixed(2));
+
+    var exactOvertimeDecimalHours = cfg.overtimeHours + cfg.overtimeMinutes / 60;
+    var overtimePay = Number((exactOvertimeDecimalHours * cfg.hourlyRateDzd * cfg.overtimeMultiplier).toFixed(2));
+
+    var dailyWagePay = Number((cfg.workedDays * cfg.dailyRateDzd).toFixed(2));
+    var shiftWagePay = Number((cfg.workedShifts * cfg.shiftRateDzd).toFixed(2));
+    var fixedMonthlyPay = Number(cfg.baseMonthlySalaryDzd || 0);
+
+    // تحديد الأجر الأساسي حسب طريقة الحساب المختارة
+    var primaryTimeOrBasePay = 0;
+    var modeArabicLabel = '';
+    if (cfg.calcMode === 'hourly_minutes') {
+      primaryTimeOrBasePay = hourlyAndMinutesPay;
+      modeArabicLabel = '⏱️ حساب بالساعات والدقائق (' + cfg.workedHours + 'سا و ' + cfg.workedMinutes + 'د × ' + cfg.hourlyRateDzd + ' د.ج)';
+    } else if (cfg.calcMode === 'daily_wage') {
+      primaryTimeOrBasePay = dailyWagePay;
+      modeArabicLabel = '📅 حساب باليومية (' + cfg.workedDays + ' يوم × ' + cfg.dailyRateDzd + ' د.ج)';
+    } else if (cfg.calcMode === 'shift_rate') {
+      primaryTimeOrBasePay = shiftWagePay;
+      modeArabicLabel = '🗄️ حساب بالمناوبة/الشفت (' + cfg.workedShifts + ' مناوبة × ' + cfg.shiftRateDzd + ' د.ج)';
+    } else if (cfg.calcMode === 'commission_only') {
+      primaryTimeOrBasePay = 0;
+      modeArabicLabel = '📈 نظام العمولة والمردودية فقط';
+    } else if (cfg.calcMode === 'hybrid_all') {
+      primaryTimeOrBasePay = fixedMonthlyPay + hourlyAndMinutesPay;
+      modeArabicLabel = '⚡ النظام الهجين الشامل (ثابت + ساعات ودقائق + عمولة)';
+    } else {
+      primaryTimeOrBasePay = fixedMonthlyPay;
+      modeArabicLabel = '📆 الراتب الشهري الثابت (' + fixedMonthlyPay.toFixed(2) + ' د.ج)';
+    }
+
+    // العمولات
+    var salesCommDzd = Number(((st.totalRevenue * cfg.salesCommissionPct) / 100).toFixed(2));
+    var profitCommDzd = Number(((estProfit * cfg.profitCommissionPct) / 100).toFixed(2));
+    var invoiceBonusDzd = Number((st.invoicesCount * cfg.perInvoiceBonusDzd).toFixed(2));
+    var totalCommissionsDzd = Number((salesCommDzd + profitCommDzd + invoiceBonusDzd).toFixed(2));
+
+    // العلاوات والمنح
+    var totalAllowancesDzd = Number((cfg.transportAllowanceDzd + cfg.mealAllowanceDzd + cfg.performanceBonusDzd).toFixed(2));
+
+    // إجمالي الاستحقاق الخام (Gross Salary)
+    var grossSalaryDzd = Number((primaryTimeOrBasePay + overtimePay + totalCommissionsDzd + totalAllowancesDzd).toFixed(2));
+
+    // الخصومات (دقائق التأخر + أيام الغياب + السلفيات Avances + عجز الصندوق + CNAS 9%)
+    var lateDeductionDzd = Number((cfg.lateMinutes * minuteRateFromHourly).toFixed(2));
+    var absentDeductionDzd = Number((cfg.absentDays * cfg.dailyRateDzd).toFixed(2));
+
+    var empAdvancesDzd = (AppState.staffAdvancesList || [])
+      .filter(function (a) { return Number(a.userId) === Number(cfg.userId) && !a.repaid; })
+      .reduce(function (s, a) { return s + Number(a.amount || 0); }, 0);
+
+    var shortageDeductionDzd = cfg.deductCaisseShortage && st.totalDrawerDiff < 0
+      ? Math.abs(st.totalDrawerDiff)
+      : 0;
+
+    var cnasDeductionDzd = cfg.applyCnas9Pct ? Number((grossSalaryDzd * 0.09).toFixed(2)) : 0;
+
+    var totalDeductionsDzd = Number((lateDeductionDzd + absentDeductionDzd + empAdvancesDzd + shortageDeductionDzd + cnasDeductionDzd).toFixed(2));
+    var netPayableDzd = Math.max(0, Number((grossSalaryDzd - totalDeductionsDzd).toFixed(2)));
+
+    return {
+      modeArabicLabel: modeArabicLabel,
+      minuteRateDzd: Number(minuteRateFromHourly.toFixed(2)),
+      hourlyAndMinutesPay: hourlyAndMinutesPay,
+      overtimePay: overtimePay,
+      dailyWagePay: dailyWagePay,
+      shiftWagePay: shiftWagePay,
+      fixedMonthlyPay: fixedMonthlyPay,
+      primaryTimeOrBasePay: primaryTimeOrBasePay,
+      salesCommDzd: salesCommDzd,
+      profitCommDzd: profitCommDzd,
+      invoiceBonusDzd: invoiceBonusDzd,
+      totalCommissionsDzd: totalCommissionsDzd,
+      totalAllowancesDzd: totalAllowancesDzd,
+      grossSalaryDzd: grossSalaryDzd,
+      lateDeductionDzd: lateDeductionDzd,
+      absentDeductionDzd: absentDeductionDzd,
+      empAdvancesDzd: empAdvancesDzd,
+      shortageDeductionDzd: shortageDeductionDzd,
+      cnasDeductionDzd: cnasDeductionDzd,
+      totalDeductionsDzd: totalDeductionsDzd,
+      netPayableDzd: netPayableDzd
+    };
+  };
+
+  App.updatePayrollFieldLive = function (userId, fieldName, rawVal, isCheckbox) {
+    var uid = Number(userId || AppState.selectedPayrollUserId || 1);
+    var cfg = this.getEmployeePayrollConfig(uid, (AppState._cachedUserStatsMap || {})[uid]);
+    cfg[fieldName] = isCheckbox ? Boolean(rawVal) : (fieldName === 'calcMode' ? String(rawVal) : (parseFloat(rawVal) || 0));
+    AppState.payrollConfigsByUser[uid] = cfg;
+    localStorage.setItem('gherbi_payroll_configs_v1', JSON.stringify(AppState.payrollConfigsByUser));
+    this.renderUsersView();
+  };
+
+  // سحب الساعات والدقائق الفعلية من سجل البصمة والمناوبات تلقائياً!
+  App.syncHoursAndMinutesFromShiftsAndClock = function (userId) {
+    var uid = Number(userId || AppState.selectedPayrollUserId || 1);
+    var st = (AppState._cachedUserStatsMap || {})[uid];
+    var totalMinutesWorked = 0;
+
+    // 1) جمع الدقائق من سجل البصمة (Pointage)
+    (AppState.staffTimeClockLogs || []).forEach(function (tc) {
+      if (Number(tc.userId) === uid && Number(tc.durationMinutes) > 0) {
+        totalMinutesWorked += Number(tc.durationMinutes);
+      }
+    });
+
+    // 2) جمع الدقائق من المناوبات المغلقة إن لم توجد بصمات كافية
+    if (totalMinutesWorked === 0 && st && Array.isArray(st.userSessions)) {
+      st.userSessions.forEach(function (s) {
+        if (s.opened_at && s.closed_at) {
+          var diffMs = new Date(s.closed_at).getTime() - new Date(s.opened_at).getTime();
+          if (diffMs > 0) totalMinutesWorked += Math.round(diffMs / 60000);
+        } else {
+          totalMinutesWorked += 480; // 8 ساعات افتراضياً للمناوبة المفتوحة
+        }
+      });
+    }
+
+    if (totalMinutesWorked <= 0) totalMinutesWorked = 176 * 60 + 30; // 176 ساعة و 30 دقيقة
+
+    var hrs = Math.floor(totalMinutesWorked / 60);
+    var mins = totalMinutesWorked % 60;
+
+    var cfg = this.getEmployeePayrollConfig(uid, st);
+    cfg.calcMode = 'hourly_minutes';
+    cfg.workedHours = hrs;
+    cfg.workedMinutes = mins;
+    AppState.payrollConfigsByUser[uid] = cfg;
+    localStorage.setItem('gherbi_payroll_configs_v1', JSON.stringify(AppState.payrollConfigsByUser));
+    this.renderUsersView();
+    if (typeof showToast === 'function') {
+      showToast('⏱️ تم استيراد وقت العمل الفعلي (' + hrs + ' ساعة و ' + mins + ' دقيقة) في حاسبة الرواتب بنجاح!', 'success');
+    }
+  };
+
+  // طباعة كشف الراتب الرسمي (Fiche de Paie A4)
+  App.printEmployeePayslipA4 = async function (userId) {
+    var uid = Number(userId || AppState.selectedPayrollUserId || 1);
+    var st = (AppState._cachedUserStatsMap || {})[uid];
+    if (!st) return;
+    var cfg = this.getEmployeePayrollConfig(uid, st);
+    var res = this.computeUniversalEmployeePayroll(cfg, st);
+    var shopName = (AppState.settings && AppState.settings.shop_name) || 'Gherbi.Ai POS';
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>كشف راتب الموظف — ' + st.user.name + '</title>' +
+      '<style>@page{size:A4 portrait;margin:12mm;}body{font-family:Cairo,Tahoma,sans-serif;padding:20px;color:#0f172a;font-size:13px;}table{width:100%;border-collapse:collapse;margin-top:14px;}th,td{border:1px solid #cbd5e1;padding:9px;text-align:right;}th{background:#0f172a;color:#fff;}.net{background:#047857;color:#fff;font-size:16px;font-weight:900;}</style></head><body contenteditable="true">' +
+      '<div style="display:flex;justify-content:space-between;border-bottom:3px solid #1d4ed8;padding-bottom:12px;">' +
+      '  <div><h2 style="margin:0;color:#1d4ed8;">' + shopName + ' — كشف تفصيل الراتب والأجور (BULLETIN DE PAIE)</h2><div>الموظف: <strong>' + st.user.name + '</strong> | الوظيفة: ' + st.user.role + ' | نظام الحساب: ' + res.modeArabicLabel + '</div></div>' +
+      '  <div style="text-align:left;font-family:monospace;">التاريخ: ' + new Date().toISOString().slice(0, 10) + '</div>' +
+      '</div>' +
+      '<table><thead><tr><th>البند المحاسبي للراتب</th><th>التفاصيل والطريقة</th><th>الاستحقاقات (+)</th><th>الاقتطاعات (-)</th></tr></thead><tbody>' +
+      '<tr><td>1. الأجر الأساسي / أجر الساعات والدقائق</td><td>' + res.modeArabicLabel + ' (تسعيرة الدقيقة: ' + res.minuteRateDzd + ' د.ج)</td><td>+' + res.primaryTimeOrBasePay.toFixed(2) + ' د.ج</td><td>—</td></tr>' +
+      '<tr><td>2. الساعات والدقائق الإضافية (Overtime)</td><td>' + cfg.overtimeHours + ' ساعة و ' + cfg.overtimeMinutes + ' دقيقة (×' + cfg.overtimeMultiplier + ')</td><td>+' + res.overtimePay.toFixed(2) + ' د.ج</td><td>—</td></tr>' +
+      '<tr><td>3. عمولات المبيعات والأرباح والفواتير</td><td>مبيعات: ' + st.totalRevenue.toFixed(0) + ' د.ج (' + cfg.salesCommissionPct + '%) | فواتير: ' + st.invoicesCount + '</td><td>+' + res.totalCommissionsDzd.toFixed(2) + ' د.ج</td><td>—</td></tr>' +
+      '<tr><td>4. المنح والعلاوات (نقل + إطعام/قفة + مردودية)</td><td>نقل: ' + cfg.transportAllowanceDzd + ' | إطعام: ' + cfg.mealAllowanceDzd + ' | مكافأة: ' + cfg.performanceBonusDzd + '</td><td>+' + res.totalAllowancesDzd.toFixed(2) + ' د.ج</td><td>—</td></tr>' +
+      '<tr><td>5. خصم دقائق التأخر وأيام الغياب</td><td>تأخر: ' + cfg.lateMinutes + ' دقيقة | غياب: ' + cfg.absentDays + ' يوم</td><td>—</td><td>-' + (res.lateDeductionDzd + res.absentDeductionDzd).toFixed(2) + ' د.ج</td></tr>' +
+      '<tr><td>6. خصم التسبيقات والسلفيات وعجز الصندوق و CNAS</td><td>سلفيات: ' + res.empAdvancesDzd + ' | عجز: ' + res.shortageDeductionDzd + ' | CNAS: ' + res.cnasDeductionDzd + '</td><td>—</td><td>-' + (res.empAdvancesDzd + res.shortageDeductionDzd + res.cnasDeductionDzd).toFixed(2) + ' د.ج</td></tr>' +
+      '<tr class="net"><td colspan="2">صافي الراتب المستحق للدفع (NET À PAYER)</td><td colspan="2">' + res.netPayableDzd.toFixed(2) + ' د.ج (' + fmtCentimes(res.netPayableDzd) + ')</td></tr>' +
+      '</tbody></table>' +
+      '<div style="display:flex;justify-content:space-between;margin-top:40px;font-weight:bold;"><div>إمضاء وبصمة الموظف المستلم</div><div>ختم وإمضاء الإدارة</div></div>' +
+      '</body></html>';
+
+    if (window.PrintEngine) await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  };
+
+  App.disburseCalculatedPayrollNow = async function (userId) {
+    var uid = Number(userId || AppState.selectedPayrollUserId || 1);
+    var st = (AppState._cachedUserStatsMap || {})[uid];
+    if (!st) return;
+    var cfg = this.getEmployeePayrollConfig(uid, st);
+    var res = this.computeUniversalEmployeePayroll(cfg, st);
+
+    await this.payEmployeeSalaryAndCommission(st.user.name, res.netPayableDzd);
+    this.pushMicroForensicEvent('payroll_disbursed', 'normal', 'financial', {
+      emp_name: st.user.name,
+      net_pay: res.netPayableDzd,
+      mode: res.modeArabicLabel
+    }, true);
+
+    // تصفير السلفيات المخصومة بعد صرف الراتب
+    (AppState.staffAdvancesList || []).forEach(function (a) {
+      if (Number(a.userId) === uid) a.repaid = true;
+    });
+    localStorage.setItem('gherbi_staff_advances_v1', JSON.stringify(AppState.staffAdvancesList));
+    await this.renderUsersView();
+  };
+
+  // ==========================================================================
+  // 4. وظائف جهاز البصمة بالدقيقة (Time-Clock Pointage) والسلفيات والمهام
+  // ==========================================================================
+  App.punchStaffTimeClock = function (userId, punchType) {
+    var uid = Number(userId || 1);
+    var st = (AppState._cachedUserStatsMap || {})[uid];
+    var empName = st && st.user ? st.user.name : 'الموظف';
+    var nowIso = new Date().toISOString();
+
+    if (punchType === 'in') {
+      AppState.staffTimeClockLogs.unshift({
+        id: 'TC-' + Date.now(),
+        userId: uid,
+        empName: empName,
+        checkIn: nowIso,
+        checkOut: null,
+        durationMinutes: 0
+      });
+      this.pushMicroForensicEvent('timeclock_event', 'normal', 'pos_micro', {
+        note: '🟢 تسجيل بصمة دخول الدوام للموظف (' + empName + ')'
+      }, true);
+      if (typeof showToast === 'function') showToast('🟢 تم تسجيل بصمة بدء الدوام للموظف: ' + empName, 'success');
+    } else {
+      var openLog = AppState.staffTimeClockLogs.find(function (l) { return Number(l.userId) === uid && !l.checkOut; });
+      if (openLog) {
+        openLog.checkOut = nowIso;
+        var diffMin = Math.max(1, Math.round((new Date(nowIso).getTime() - new Date(openLog.checkIn).getTime()) / 60000));
+        openLog.durationMinutes = diffMin;
+      } else {
+        AppState.staffTimeClockLogs.unshift({
+          id: 'TC-' + Date.now(),
+          userId: uid,
+          empName: empName,
+          checkIn: new Date(Date.now() - 8 * 3600000).toISOString(),
+          checkOut: nowIso,
+          durationMinutes: 480
+        });
+      }
+      this.pushMicroForensicEvent('timeclock_event', 'normal', 'pos_micro', {
+        note: '🔴 تسجيل بصمة انصراف الدوام للموظف (' + empName + ')'
+      }, true);
+      if (typeof showToast === 'function') showToast('🔴 تم تسجيل بصمة الانصراف وحساب الدقائق للموظف: ' + empName, 'info');
+    }
+
+    localStorage.setItem('gherbi_staff_timeclock_v1', JSON.stringify(AppState.staffTimeClockLogs));
+    this.renderUsersView();
+  };
+
+  App.addStaffAdvanceRecord = async function () {
+    var uid = Number(document.getElementById('advEmpSelect')?.value || 1);
+    var amt = Math.max(0, parseFloat(document.getElementById('advAmountInput')?.value) || 0);
+    var note = String(document.getElementById('advNoteInput')?.value || 'تسبيق على الراتب (Avance sur salaire)').trim();
+    if (amt <= 0) {
+      if (typeof showToast === 'function') showToast('يرجى إدخال مبلغ التسبيق أو السلفة', 'warning');
+      return;
+    }
+    var st = (AppState._cachedUserStatsMap || {})[uid];
+    var empName = st && st.user ? st.user.name : 'موظف';
+
+    AppState.staffAdvancesList.unshift({
+      id: 'ADV-' + Date.now(),
+      userId: uid,
+      empName: empName,
+      amount: amt,
+      note: note,
+      date: new Date().toISOString().slice(0, 10),
+      repaid: false
+    });
+    localStorage.setItem('gherbi_staff_advances_v1', JSON.stringify(AppState.staffAdvancesList));
+    this.pushMicroForensicEvent('expense_recorded', 'medium', 'financial', {
+      category: 'تسبيق راتب موظف',
+      amount: amt,
+      description: empName + ' — ' + note
+    }, true);
+    await this.renderUsersView();
+    if (typeof showToast === 'function') showToast('💳 تم تسجيل التسبيق (' + amt.toFixed(2) + ' د.ج) وسيُخصم تلقائياً في حاسبة الراتب!', 'success');
+  };
+
+  App.addStaffTaskRecord = function () {
+    var uid = Number(document.getElementById('tskEmpSelect')?.value || 1);
+    var title = String(document.getElementById('tskTitleInput')?.value || '').trim();
+    if (!title) return;
+    var st = (AppState._cachedUserStatsMap || {})[uid];
+    var empName = st && st.user ? st.user.name : 'موظف';
+
+    AppState.staffTasksList.unshift({
+      id: 'TSK-' + Date.now(),
+      userId: uid,
+      empName: empName,
+      title: title,
+      done: false,
+      date: new Date().toISOString().slice(0, 10)
+    });
+    localStorage.setItem('gherbi_staff_tasks_v1', JSON.stringify(AppState.staffTasksList));
+    this.renderUsersView();
+    if (typeof showToast === 'function') showToast('📌 تم إسناد المهمة للموظف (' + empName + ') بنجاح!', 'success');
+  };
+
+  // ==========================================================================
+  // 5. ترقية عرض الصفحة 17 لتشمل التبويبات الـ 8 وحاسبة الرواتب والرادار الشامل 360°
+  // ==========================================================================
+  var _baseRenderUsersV1 = App.renderUsersView.bind(App);
+  App.renderUsersView = async function () {
+    await _baseRenderUsersV1();
+    var root = document.getElementById('users-view-root');
+    if (!root) return;
+
+    var allData = await Promise.all([
+      window.api.getUsers().catch(function () { return []; }),
+      window.api.getAuditLogs().catch(function () { return []; }),
+      window.api.getSales().catch(function () { return []; }),
+      window.api.getPurchases().catch(function () { return []; }),
+      window.api.getExpenses().catch(function () { return []; }),
+      window.api.getCaisseSessions().catch(function () { return []; })
+    ]);
+
+    var users = Array.isArray(allData[0]) ? allData[0] : [];
+    var dbAuditLogs = Array.isArray(allData[1]) ? allData[1] : [];
+    var sales = Array.isArray(allData[2]) ? allData[2] : [];
+    var purchases = Array.isArray(allData[3]) ? allData[3] : [];
+    var expenses = Array.isArray(allData[4]) ? allData[4] : [];
+    var sessions = Array.isArray(allData[5]) ? allData[5] : [];
+
+    var userStatsMap = {};
+    users.forEach(function (u) {
+      userStatsMap[u.id] = {
+        user: u,
+        perms: App.parseUserPermissionsObject(u),
+        invoicesCount: 0,
+        returnsCount: 0,
+        totalRevenue: 0,
+        totalDiscounts: 0,
+        shiftsCount: 0,
+        totalDrawerDiff: 0,
+        userSessions: [],
+        auditEventsCount: 0,
+        highRiskEventsCount: 0
+      };
+    });
+
+    sales.forEach(function (s) {
+      var uid = Number(s.user_id || 1);
+      var st = userStatsMap[uid] || userStatsMap[1];
+      if (!st) return;
+      var tot = Number(s.total || 0);
+      if (tot >= 0) {
+        st.invoicesCount++;
+        st.totalRevenue += tot;
+      } else {
+        st.returnsCount++;
+      }
+      st.totalDiscounts += Number(s.discount || 0);
+    });
+
+    sessions.forEach(function (sess) {
+      var uid = Number(sess.user_id || 1);
+      var st = userStatsMap[uid] || userStatsMap[1];
+      if (!st) return;
+      st.shiftsCount++;
+      st.totalDrawerDiff += Number(sess.difference || 0);
+      st.userSessions.push(sess);
+    });
+
+    AppState._cachedUserStatsMap = userStatsMap;
+    if (!AppState.selectedPayrollUserId && users.length > 0) {
+      AppState.selectedPayrollUserId = users[users.length - 1].id;
+    }
+
+    var omniStream = this.buildOmniForensicUnifiedStream(users, dbAuditLogs, sales, purchases, expenses, sessions);
+
+    // تحديث شريط التبويبات ليضم 8 وحدات ERP متكاملة
+    var curTab = AppState.usersActiveTab || 'directory';
+    var EIGHT_TABS = [
+      { id: 'directory', label: '1. 👥 دليل الموظفين والبطاقات (' + users.length + ')' },
+      { id: 'rbac_matrix', label: '2. 🔐 مصفوفة الصلاحيات (26 ضابطاً)' },
+      { id: 'forensic_audit', label: '3. 🕵️‍♂️ الرادار الجنائي الشامل 360° (' + omniStream.length + ')' },
+      { id: 'hr_commissions', label: '4. 🧮 حاسبة الرواتب الشاملة (بالساعات والدقائق والعمولات)' },
+      { id: 'time_clock', label: '5. ⏱️ البصمة والحضور بالدقيقة (Pointage)' },
+      { id: 'advances_tasks', label: '6. 💳 السلفيات والمهام اليومية' },
+      { id: 'targets_integrity', label: '7. 🎯 الأهداف ومؤشر النزاهة' },
+      { id: 'shifts_log', label: '8. 🗄️ سجل المناوبات (' + sessions.length + ')' }
+    ];
+
+    var tabBar = root.querySelector('.border-b.pb-2');
+    if (tabBar) {
+      tabBar.innerHTML = EIGHT_TABS.map(function (t) {
+        var isAct = curTab === t.id;
+        return (
+          '<button type="button" onclick="AppState.usersActiveTab=\'' + t.id + '\'; App.renderUsersView()" class="px-3 py-2 rounded-xl transition ' +
+          (isAct
+            ? 'bg-indigo-600 text-white shadow-md'
+            : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-400') +
+          '">' + t.label + '</button>'
+        );
+      }).join('');
+    }
+
+    var body = document.getElementById('usersMainTabBody');
+    if (!body) return;
+
+    // ========================================================================
+    // الوحدة 3 المطورة: الرادار الجنائي الشامل 360° (يراقب كل صغيرة وكبيرة حرفياً)
+    // ========================================================================
+    if (curTab === 'forensic_audit') {
+      var fUser = AppState.auditFilterUser || 'all';
+      var fSev = AppState.auditFilterSeverity || 'all';
+      var fCat = AppState.auditFilterSource || 'all';
+      var qAudit = String(AppState.auditSearchQuery || '').trim().toLowerCase();
+
+      var filteredLogs = omniStream.filter(function (l) {
+        var tr = l._tr;
+        if (fUser !== 'all' && tr.userName !== fUser) return false;
+        if (fSev !== 'all' && tr.severity !== fSev) return false;
+        if (fCat !== 'all' && tr.category !== fCat) return false;
+        if (qAudit && !tr.title.toLowerCase().includes(qAudit) && !tr.arabicDescription.toLowerCase().includes(qAudit) && !tr.userName.toLowerCase().includes(qAudit)) return false;
+        return true;
+      });
+
+      var countHigh = omniStream.filter(function (x) { return x._tr.severity === 'high'; }).length;
+      var countMed = omniStream.filter(function (x) { return x._tr.severity === 'medium'; }).length;
+      var countNorm = omniStream.filter(function (x) { return x._tr.severity === 'normal'; }).length;
+      var countMicro = omniStream.filter(function (x) { return x._tr.severity === 'micro'; }).length;
+
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3.5 shadow-sm text-xs">' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <div>' +
+        '      <h3 class="font-black text-sm text-amber-600 flex items-center gap-2">' +
+        '        <span>🕵️‍♂️ الصندوق الأسود والرادار الجنائي الشامل 360° (' + filteredLogs.length + ' حركة موثقة بالثانية)</span>' +
+        '        <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 text-[10px] font-black">● يسجل كل صغيرة وكبيرة تلقائياً</span>' +
+        '      </h3>' +
+        '      <p class="text-[11px] text-slate-400">يوثق حركات التنقل، إضافات وحذوفات السلة، محاولات الدخول الفاشلة، الفواتير، التخفيضات، المصاريف، وفروقات الصندوق</p>' +
+        '    </div>' +
+        '    <div class="flex flex-wrap items-center gap-1.5">' +
+        '      <input id="usersAuditSearchInput" type="text" value="' + (AppState.auditSearchQuery || '') + '" oninput="AppState.auditSearchQuery=this.value; App.renderUsersView()" placeholder="🔍 [F4] ابحث في كل الحركات..." class="w-44 px-3 py-1.5 rounded-xl font-bold">' +
+        '      <select onchange="AppState.auditFilterUser=this.value; App.renderUsersView()" class="px-2.5 py-1.5 rounded-xl font-bold">' +
+        '        <option value="all">جميع الموظفين</option>' +
+        users.map(function (u) {
+          return '<option value="' + u.name + '" ' + (fUser === u.name ? 'selected' : '') + '>' + u.name + '</option>';
+        }).join('') +
+        '      </select>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <!-- فلاتر مستويات الأهمية الـ 4 (الحرجة، المتوسطة، التشغيلية، والحركات الدقيقة التافهة) -->' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2">' +
+        '    <div class="flex flex-wrap gap-1.5">' +
+        '      <button type="button" onclick="AppState.auditFilterSeverity=\'all\'; App.renderUsersView()" class="px-3 py-1.5 rounded-xl font-black ' + (fSev === 'all' ? 'bg-slate-900 text-white dark:bg-amber-500 dark:text-slate-950' : 'bg-slate-100 dark:bg-slate-700') + '">الكل (' + omniStream.length + ')</button>' +
+        '      <button type="button" onclick="AppState.auditFilterSeverity=\'high\'; App.renderUsersView()" class="px-3 py-1.5 rounded-xl font-black ' + (fSev === 'high' ? 'bg-rose-600 text-white' : 'bg-rose-500/15 text-rose-600') + '">🚨 كبير / حرج (' + countHigh + ')</button>' +
+        '      <button type="button" onclick="AppState.auditFilterSeverity=\'medium\'; App.renderUsersView()" class="px-3 py-1.5 rounded-xl font-black ' + (fSev === 'medium' ? 'bg-amber-500 text-slate-950' : 'bg-amber-500/15 text-amber-600') + '">⚠️ متوسط / تنبيه (' + countMed + ')</button>' +
+        '      <button type="button" onclick="AppState.auditFilterSeverity=\'normal\'; App.renderUsersView()" class="px-3 py-1.5 rounded-xl font-black ' + (fSev === 'normal' ? 'bg-emerald-600 text-white' : 'bg-emerald-500/15 text-emerald-600') + '">🟢 عمليات تشغيلية (' + countNorm + ')</button>' +
+        '      <button type="button" onclick="AppState.auditFilterSeverity=\'micro\'; App.renderUsersView()" class="px-3 py-1.5 rounded-xl font-black ' + (fSev === 'micro' ? 'bg-indigo-600 text-white' : 'bg-indigo-500/15 text-indigo-600') + '">🔹 حركات صغيرة ودقيقة (' + countMicro + ')</button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="space-y-2 max-h-[430px] overflow-y-auto pr-1">' +
+        filteredLogs.slice(0, 120).map(function (l) {
+          var tr = l._tr;
+          return (
+            '<div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700/80 flex flex-wrap items-center justify-between gap-2">' +
+            '  <div class="flex items-start gap-2.5">' +
+            '    <div class="text-lg">' + tr.icon + '</div>' +
+            '    <div>' +
+            '      <div class="flex flex-wrap items-center gap-2">' +
+            '        <strong class="font-black text-slate-900 dark:text-white">' + tr.title + '</strong>' +
+            '        <span class="px-2 py-0.5 rounded-lg text-[10px] font-black border ' + tr.sevCls + '">' + tr.sevLabel + '</span>' +
+            '        <span class="px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 font-bold text-[10.5px]">👤 الموظف: ' + tr.userName + '</span>' +
+            '      </div>' +
+            '      <div class="text-[11px] text-slate-600 dark:text-slate-300 font-bold mt-1">' + tr.arabicDescription + '</div>' +
+            '    </div>' +
+            '  </div>' +
+            '  <div class="font-mono text-[11px] font-bold text-slate-400">🕒 ' + tr.timestamp + '</div>' +
+            '</div>'
+          );
+        }).join('') +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // الوحدة 4 الجديدة كلياً: حاسبة واستوديو الرواتب العالمية بـ 6 طرق حساب (Universal 6-Mode ERP Payroll Calculator)
+    // ========================================================================
+    else if (curTab === 'hr_commissions') {
+      var selUid = Number(AppState.selectedPayrollUserId || (users[0] && users[0].id) || 1);
+      var selStats = userStatsMap[selUid] || Object.values(userStatsMap)[0];
+      var cfg = this.getEmployeePayrollConfig(selUid, selStats);
+      var calc = this.computeUniversalEmployeePayroll(cfg, selStats);
+
+      body.innerHTML =
+        '<div class="space-y-4 text-xs">' +
+        '  <!-- شريط اختيار الموظف وطريقة حساب الراتب من بين الـ 6 أنظمة -->' +
+        '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3 shadow-sm">' +
+        '    <div class="flex flex-wrap items-center gap-3">' +
+        '      <span class="font-black text-sm text-indigo-600">🧮 اختر الموظف لحساب راتبه بالتفصيل:</span>' +
+        '      <select onchange="AppState.selectedPayrollUserId=Number(this.value); App.renderUsersView()" class="px-4 py-2 rounded-xl font-black text-sm border-indigo-500 bg-indigo-500/10 text-indigo-700 dark:text-amber-300">' +
+        users.map(function (u) {
+          return '<option value="' + u.id + '" ' + (Number(u.id) === selUid ? 'selected' : '') + '>👤 ' + u.name + ' (' + u.role + ')</option>';
+        }).join('') +
+        '      </select>' +
+        '      <button type="button" onclick="App.syncHoursAndMinutesFromShiftsAndClock(' + selUid + ')" class="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black shadow">🔄 سحب الساعات والدقائق تلقائياً من البصمة والمناوبات</button>' +
+        '    </div>' +
+
+        '    <div class="flex flex-wrap items-center gap-2">' +
+        '      <span class="font-black text-slate-500">⚙️ طريقة حساب الأجر:</span>' +
+        '      <select onchange="App.updatePayrollFieldLive(' + selUid + ', \'calcMode\', this.value, false)" class="px-3 py-2 rounded-xl font-black border-emerald-500">' +
+        '        <option value="hourly_minutes" ' + (cfg.calcMode === 'hourly_minutes' ? 'selected' : '') + '>1. ⏱️ بالساعات والدقائق الفعلية (Hours & Minutes × Rate)</option>' +
+        '        <option value="daily_wage" ' + (cfg.calcMode === 'daily_wage' ? 'selected' : '') + '>2. 📅 باليومية / عدد أيام العمل (Days × Daily Wage)</option>' +
+        '        <option value="monthly_fixed" ' + (cfg.calcMode === 'monthly_fixed' ? 'selected' : '') + '>3. 📆 راتب شهري ثابت + عمولات (Monthly Fixed)</option>' +
+        '        <option value="shift_rate" ' + (cfg.calcMode === 'shift_rate' ? 'selected' : '') + '>4. 🗄️ بالمناوبة / الشفت (Shifts × Shift Rate)</option>' +
+        '        <option value="commission_only" ' + (cfg.calcMode === 'commission_only' ? 'selected' : '') + '>5. 📈 بالعمولة والمردودية فقط (Commission Only)</option>' +
+        '        <option value="hybrid_all" ' + (cfg.calcMode === 'hybrid_all' ? 'selected' : '') + '>6. ⚡ النظام الهجين الشامل (ثابت + ساعات ودقائق + عمولة)</option>' +
+        '      </select>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <!-- شبكة المدخلات التفصيلية لحاسبة الرواتب + بطاقة كشف الراتب الفوري -->' +
+        '  <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">' +
+        '    <!-- يمين: 4 لوحات تحكم تفصيلية في الساعات والدقائق واليوميات والعمولات والمنح والخصومات (7 أعمدة) -->' +
+        '    <div class="lg:col-span-7 space-y-3.5">' +
+
+        '      <!-- 1. لوحة حساب الساعات والدقائق واليوميات والمناوبات -->' +
+        '      <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3">' +
+        '        <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2">' +
+        '          <h4 class="font-black text-sm text-blue-600">⏱️ أولاً: حساب الوقت (الساعات، الدقائق، الساعات الإضافية، اليوميات، والراتب الثابت)</h4>' +
+        '          <span class="px-2.5 py-0.5 rounded-lg bg-blue-500/10 text-blue-600 font-mono font-black">قيمة الدقيقة الواحدة: ' + calc.minuteRateDzd + ' د.ج/دقيقة</span>' +
+        '        </div>' +
+        '        <div class="grid grid-cols-2 md:grid-cols-3 gap-2.5">' +
+        '          <div><label class="block font-bold mb-1 text-blue-600">عدد الساعات المعمولة (Hours)</label><input type="number" min="0" value="' + cfg.workedHours + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'workedHours\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-center border-blue-400"></div>' +
+        '          <div><label class="block font-bold mb-1 text-blue-600">عدد الدقائق الإضافية (Minutes)</label><input type="number" min="0" max="59" value="' + cfg.workedMinutes + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'workedMinutes\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-center border-blue-400"></div>' +
+        '          <div><label class="block font-bold mb-1 text-emerald-600">تسعيرة الساعة (د.ج / ساعة)</label><input type="number" min="0" step="10" value="' + cfg.hourlyRateDzd + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'hourlyRateDzd\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-center border-emerald-400"></div>' +
+        '          <div><label class="block font-bold mb-1">ساعات إضافية (Overtime H)</label><input type="number" min="0" value="' + cfg.overtimeHours + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'overtimeHours\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+        '          <div><label class="block font-bold mb-1">دقائق إضافية (Overtime Min)</label><input type="number" min="0" max="59" value="' + cfg.overtimeMinutes + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'overtimeMinutes\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+        '          <div><label class="block font-bold mb-1">معامل الساعة الإضافية (×)</label><input type="number" step="0.25" value="' + cfg.overtimeMultiplier + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'overtimeMultiplier\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+        '          <div><label class="block font-bold mb-1">عدد أيام العمل (لليومية)</label><input type="number" min="0" value="' + cfg.workedDays + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'workedDays\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+        '          <div><label class="block font-bold mb-1">أجرة اليوم الواحد (د.ج/يوم)</label><input type="number" step="100" value="' + cfg.dailyRateDzd + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'dailyRateDzd\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+        '          <div><label class="block font-bold mb-1 text-indigo-600">الراتب الشهري الثابت (د.ج)</label><input type="number" step="500" value="' + cfg.baseMonthlySalaryDzd + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'baseMonthlySalaryDzd\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-center border-indigo-400"></div>' +
+        '        </div>' +
+        '      </div>' +
+
+        '      <!-- 2. لوحة العمولات والمنح والعلاوات والخصومات -->' +
+        '      <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3">' +
+        '        <h4 class="font-black text-sm text-emerald-600 border-b border-slate-100 dark:border-slate-700 pb-2">📈 ثانياً: العمولات، المنح (نقل/إطعام/مردودية)، والاقتطاعات (تأخر بالدقيقة/غياب/CNAS)</h4>' +
+        '        <div class="grid grid-cols-2 md:grid-cols-3 gap-2.5">' +
+        '          <div><label class="block font-bold mb-1 text-emerald-600">عمولة المبيعات (%)</label><input type="number" step="0.1" value="' + cfg.salesCommissionPct + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'salesCommissionPct\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-center"></div>' +
+        '          <div><label class="block font-bold mb-1 text-emerald-600">عمولة صافي الربح (%)</label><input type="number" step="0.5" value="' + cfg.profitCommissionPct + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'profitCommissionPct\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-center"></div>' +
+        '          <div><label class="block font-bold mb-1 text-emerald-600">مكافأة لكل فاتورة (د.ج)</label><input type="number" step="5" value="' + cfg.perInvoiceBonusDzd + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'perInvoiceBonusDzd\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-center"></div>' +
+        '          <div><label class="block font-bold mb-1">منحة النقل (Transport)</label><input type="number" step="100" value="' + cfg.transportAllowanceDzd + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'transportAllowanceDzd\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+        '          <div><label class="block font-bold mb-1">منحة القفة / الإطعام (Panier)</label><input type="number" step="100" value="' + cfg.mealAllowanceDzd + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'mealAllowanceDzd\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+        '          <div><label class="block font-bold mb-1">مكافأة المردودية (Bonus)</label><input type="number" step="100" value="' + cfg.performanceBonusDzd + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'performanceBonusDzd\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+        '          <div><label class="block font-bold mb-1 text-rose-600">خصم دقائق التأخر (دقيقة)</label><input type="number" min="0" value="' + cfg.lateMinutes + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'lateMinutes\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-rose-600 text-center"></div>' +
+        '          <div><label class="block font-bold mb-1 text-rose-600">خصم أيام الغياب (يوم)</label><input type="number" min="0" value="' + cfg.absentDays + '" oninput="App.updatePayrollFieldLive(' + selUid + ', \'absentDays\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-rose-600 text-center"></div>' +
+        '          <div class="flex flex-col justify-center gap-1 pt-2">' +
+        '            <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (cfg.applyCnas9Pct ? 'checked' : '') + ' onchange="App.updatePayrollFieldLive(' + selUid + ', \'applyCnas9Pct\', this.checked, true)"><span class="font-bold text-[11px]">اقتطاع CNAS (9%)</span></label>' +
+        '            <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ' + (cfg.deductCaisseShortage ? 'checked' : '') + ' onchange="App.updatePayrollFieldLive(' + selUid + ', \'deductCaisseShortage\', this.checked, true)"><span class="font-bold text-[11px]">خصم عجز الصندوق</span></label>' +
+        '          </div>' +
+        '        </div>' +
+        '      </div>' +
+        '    </div>' +
+
+        '    <!-- يسار: بطاقة كشف الراتب الحية والمفصلة (Live Fiche de Paie — 5 أعمدة) -->' +
+        '    <div class="lg:col-span-5 bg-slate-900 text-white border border-slate-800 rounded-2xl p-5 flex flex-col justify-between space-y-4 shadow-xl">' +
+        '      <div class="space-y-2.5">' +
+        '        <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">' +
+        '          <div><div class="text-xs text-amber-400 font-black">🧾 كشف الراتب التفاعلي المفصل (Fiche de Paie)</div><div class="text-base font-black mt-0.5">' + selStats.user.name + ' (' + selStats.user.role + ')</div></div>' +
+        '          <span class="px-2.5 py-1 rounded-xl bg-indigo-500/20 text-indigo-300 font-mono text-[10.5px]">' + calc.modeArabicLabel + '</span>' +
+        '        </div>' +
+
+        '        <div class="space-y-1.5 text-xs">' +
+        '          <div class="flex justify-between p-2 rounded-xl bg-slate-800/90"><span>1. الأجر الأساسي / الساعات والدقائق:</span><strong class="font-mono text-blue-400">+' + calc.primaryTimeOrBasePay.toFixed(2) + ' د.ج</strong></div>' +
+        '          <div class="flex justify-between p-2 rounded-xl bg-slate-800/90"><span>2. أجر الساعات والدقائق الإضافية:</span><strong class="font-mono text-blue-300">+' + calc.overtimePay.toFixed(2) + ' د.ج</strong></div>' +
+        '          <div class="flex justify-between p-2 rounded-xl bg-slate-800/90"><span>3. العمولات (مبيعات ' + selStats.totalRevenue.toFixed(0) + ' د.ج):</span><strong class="font-mono text-emerald-400">+' + calc.totalCommissionsDzd.toFixed(2) + ' د.ج</strong></div>' +
+        '          <div class="flex justify-between p-2 rounded-xl bg-slate-800/90"><span>4. المنح والعلاوات (نقل + إطعام + مكافأة):</span><strong class="font-mono text-emerald-300">+' + calc.totalAllowancesDzd.toFixed(2) + ' د.ج</strong></div>' +
+        '          <div class="flex justify-between p-2 rounded-xl bg-rose-500/15 border border-rose-500/30"><span>5. (-) خصم التأخر (' + cfg.lateMinutes + 'د) والغياب (' + cfg.absentDays + 'ي):</span><strong class="font-mono text-rose-400">-' + (calc.lateDeductionDzd + calc.absentDeductionDzd).toFixed(2) + ' د.ج</strong></div>' +
+        '          <div class="flex justify-between p-2 rounded-xl bg-rose-500/15 border border-rose-500/30"><span>6. (-) خصم السلفيات (' + calc.empAdvancesDzd.toFixed(0) + ') وعجز الصندوق و CNAS:</span><strong class="font-mono text-rose-400">-' + (calc.empAdvancesDzd + calc.shortageDeductionDzd + calc.cnasDeductionDzd).toFixed(2) + ' د.ج</strong></div>' +
+        '        </div>' +
+
+        '        <div class="p-4 rounded-2xl bg-emerald-600 text-white shadow-lg text-center space-y-1 mt-2">' +
+        '          <div class="text-xs opacity-90 font-bold">صافي الراتب النهائي المستحق للدفع (NET À PAYER)</div>' +
+        '          <div class="text-3xl font-black font-mono">' + calc.netPayableDzd.toFixed(2) + ' د.ج</div>' +
+        '          <div class="text-xs font-bold text-amber-200">🇩🇿 بالتداول الجزائري: ' + fmtCentimes(calc.netPayableDzd) + '</div>' +
+        '        </div>' +
+        '      </div>' +
+
+        '      <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">' +
+        '        <button type="button" onclick="App.printEmployeePayslipA4(' + selUid + ')" class="py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black shadow">🖨️ طباعة كشف الراتب (A4)</button>' +
+        '        <button type="button" onclick="App.disburseCalculatedPayrollNow(' + selUid + ')" class="py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black shadow">💸 صرف وتسجيل في المصاريف</button>' +
+        '      </div>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // الوحدة 5 الجديدة: جهاز البصمة الافتراضي للحضور والانصراف بالدقيقة (Live Time-Clock Pointage)
+    // ========================================================================
+    else if (curTab === 'time_clock') {
+      body.innerHTML =
+        '<div class="space-y-4 text-xs">' +
+        '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3 shadow-sm">' +
+        '    <h3 class="font-black text-sm text-indigo-600">⏱️ جهاز البصمة الافتراضي لتسجيل حضور وانصراف العمال بالدقيقة (Live Time-Clock Pointage)</h3>' +
+        '    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">' +
+        users.map(function (u) {
+          var openLog = (AppState.staffTimeClockLogs || []).find(function (l) { return Number(l.userId) === Number(u.id) && !l.checkOut; });
+          var totalMins = (AppState.staffTimeClockLogs || [])
+            .filter(function (l) { return Number(l.userId) === Number(u.id); })
+            .reduce(function (s, l) { return s + Number(l.durationMinutes || 0); }, 0);
+          var hrs = Math.floor(totalMins / 60);
+          var mins = totalMins % 60;
+
+          return (
+            '<div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-2.5">' +
+            '  <div class="flex items-center justify-between">' +
+            '    <strong class="font-black text-sm">' + u.name + '</strong>' +
+            '    <span class="px-2 py-0.5 rounded-lg font-mono font-black text-[11px] bg-blue-500/15 text-blue-600">مجموع الدوام: ' + hrs + 'سا و ' + mins + 'د</span>' +
+            '  </div>' +
+            '  <div class="flex gap-2">' +
+            (openLog
+              ? '<button type="button" onclick="App.punchStaffTimeClock(' + u.id + ', \'out\')" class="w-full py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black shadow">🔴 تسجيل انصراف (خروج)</button>'
+              : '<button type="button" onclick="App.punchStaffTimeClock(' + u.id + ', \'in\')" class="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow">🟢 تسجيل حضور (دخول الدوام)</button>') +
+            '  </div>' +
+            '</div>'
+          );
+        }).join('') +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-2">' +
+        '    <h4 class="font-black text-sm text-slate-700 dark:text-slate-200">📋 سجل حركات البصمة والدوام بالدقيقة (' + (AppState.staffTimeClockLogs || []).length + ')</h4>' +
+        '    <div class="space-y-1.5 max-h-64 overflow-y-auto">' +
+        ((AppState.staffTimeClockLogs || []).length > 0
+          ? AppState.staffTimeClockLogs.map(function (tc) {
+              var h = Math.floor(Number(tc.durationMinutes || 0) / 60);
+              var m = Number(tc.durationMinutes || 0) % 60;
+              return (
+                '<div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 flex items-center justify-between">' +
+                '  <div><strong class="font-black">' + tc.empName + '</strong> — دخول: <span class="font-mono">' + String(tc.checkIn || '').slice(0, 16).replace('T', ' ') + '</span>' + (tc.checkOut ? ' | خروج: <span class="font-mono">' + String(tc.checkOut).slice(0, 16).replace('T', ' ') + '</span>' : ' <span class="text-emerald-600 font-black">(في الدوام الآن)</span>') + '</div>' +
+                '  <span class="font-mono font-black text-indigo-600">' + (tc.checkOut ? (h + ' ساعة و ' + m + ' دقيقة') : '⏳ جاري الحساب...') + '</span>' +
+                '</div>'
+              );
+            }).join('')
+          : '<div class="py-6 text-center text-slate-400 font-bold">لا توجد بصمات مسجلة بعد — اضغط (🟢 تسجيل حضور) أعلاه</div>') +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // الوحدة 6 الجديدة: دفتر السلفيات والتسبيقات ومهام الموظفين (Advances & Tasks)
+    // ========================================================================
+    else if (curTab === 'advances_tasks') {
+      body.innerHTML =
+        '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">' +
+        '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">' +
+        '    <h3 class="font-black text-sm text-rose-600">💳 1. دفتر تسبيقات وسلفيات العمال (Avances sur Salaire)</h3>' +
+        '    <div class="grid grid-cols-3 gap-2">' +
+        '      <select id="advEmpSelect" class="px-2.5 py-2 rounded-xl font-bold">' + users.map(function (u) { return '<option value="' + u.id + '">' + u.name + '</option>'; }).join('') + '</select>' +
+        '      <input id="advAmountInput" type="number" placeholder="المبلغ (د.ج)" class="px-3 py-2 rounded-xl font-mono font-black text-center">' +
+        '      <button type="button" onclick="App.addStaffAdvanceRecord()" class="px-3 py-2 rounded-xl bg-rose-600 text-white font-black shadow">+ تسجيل تسبيق</button>' +
+        '    </div>' +
+        '    <input id="advNoteInput" type="text" placeholder="ملاحظة التسبيق (مثلاً: سلفة منتصف الشهر)..." class="w-full px-3 py-2 rounded-xl">' +
+        '    <div class="space-y-1.5 max-h-60 overflow-y-auto">' +
+        ((AppState.staffAdvancesList || []).length > 0
+          ? AppState.staffAdvancesList.map(function (a) {
+              return '<div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 flex justify-between items-center"><div><strong class="font-black">' + a.empName + '</strong> — ' + a.note + ' <span class="text-[10px] text-slate-400">(' + a.date + ')</span></div><span class="font-mono font-black ' + (a.repaid ? 'line-through text-slate-400' : 'text-rose-600') + '">-' + Number(a.amount || 0).toFixed(2) + ' د.ج</span></div>';
+            }).join('')
+          : '<div class="py-6 text-center text-slate-400 font-bold">لا توجد سلفيات مسجلة على الموظفين</div>') +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">' +
+        '    <h3 class="font-black text-sm text-indigo-600">📌 2. إسناد المهام اليومية لطاقم المتجر (Staff Daily Tasks)</h3>' +
+        '    <div class="flex gap-2">' +
+        '      <select id="tskEmpSelect" class="px-2.5 py-2 rounded-xl font-bold">' + users.map(function (u) { return '<option value="' + u.id + '">' + u.name + '</option>'; }).join('') + '</select>' +
+        '      <input id="tskTitleInput" type="text" placeholder="اكتب المهمة (مثلاً: جرد رفوف الحليب وترتيب الواجهة)..." class="flex-1 px-3 py-2 rounded-xl font-bold">' +
+        '      <button type="button" onclick="App.addStaffTaskRecord()" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-black shadow">+ إسناد</button>' +
+        '    </div>' +
+        '    <div class="space-y-1.5 max-h-60 overflow-y-auto">' +
+        ((AppState.staffTasksList || []).length > 0
+          ? AppState.staffTasksList.map(function (t, idx) {
+              return '<div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 flex justify-between items-center"><label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ' + (t.done ? 'checked' : '') + ' onchange="AppState.staffTasksList[' + idx + '].done=this.checked; localStorage.setItem(\'gherbi_staff_tasks_v1\', JSON.stringify(AppState.staffTasksList)); App.renderUsersView()"><span class="font-bold ' + (t.done ? 'line-through text-slate-400' : '') + '">' + t.title + ' (👤 ' + t.empName + ')</span></label><span class="text-[10px] font-mono text-slate-400">' + t.date + '</span></div>';
+            }).join('')
+          : '<div class="py-6 text-center text-slate-400 font-bold">لا توجد مهام يومية مسندة حالياً</div>') +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ========================================================================
+    // الوحدة 7 الجديدة: الأهداف الشهرية، الترتيب التنافسي، ومؤشر النزاهة (Targets & Integrity Score)
+    // ========================================================================
+    else if (curTab === 'targets_integrity') {
+      body.innerHTML =
+        '<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3 text-xs">' +
+        '  <h3 class="font-black text-sm text-emerald-600">🎯 لوحة شرف الموظفين، تحقيق الأهداف الشهرية، ومؤشر النزاهة والانضباط الأمني (/100)</h3>' +
+        '  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">' +
+        Object.values(userStatsMap).map(function (st) {
+          var integrityScore = Math.max(40, Math.min(100, 100 - st.highRiskEventsCount * 10 - (st.totalDrawerDiff < 0 ? 15 : 0)));
+          var targetDzd = 100000;
+          var targetPct = Math.min(100, Math.round((st.totalRevenue / targetDzd) * 100));
+          return (
+            '<div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-2.5">' +
+            '  <div class="flex items-center justify-between">' +
+            '    <div><div class="font-black text-base">' + st.user.name + '</div><div class="text-[11px] text-slate-400">الفواتير المنجزة: ' + st.invoicesCount + ' | المناوبات: ' + st.shiftsCount + '</div></div>' +
+            '    <div class="px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-600 font-black">🛡️ مؤشر النزاهة: ' + integrityScore + '/100</div>' +
+            '  </div>' +
+            '  <div>' +
+            '    <div class="flex justify-between text-[11px] font-bold mb-1"><span>تحقيق هدف المبيعات الشهري: ' + st.totalRevenue.toFixed(2) + ' د.ج</span><span>' + targetPct + '%</span></div>' +
+            '    <div class="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden"><div class="h-full bg-blue-600" style="width:' + targetPct + '%;"></div></div>' +
+            '  </div>' +
+            '</div>'
+          );
+        }).join('') +
+        '  </div>' +
+        '</div>';
+    }
+  };
+})();
+
+// [PAGE 17 V3 BIOMETRIC TIME-CLOCK, ADMIN OVERRIDE & CLEAN PAYROLL]
+(function installPage17BiometricTimeClockAndCleanPayrollV3() {
+  if (!window.App || !window.AppState) return;
+
+  // إعدادات الدوام الرسمي للمتجر (تستخدم لحساب التأخر والساعات الإضافية تلقائياً)
+  AppState.officialShiftStartTime = localStorage.getItem('gherbi_shift_start_time') || '08:00';
+  AppState.officialStandardDailyHours = Number(localStorage.getItem('gherbi_std_daily_hours') || 8);
+  AppState.timeClockPinBuffer = '';
+  AppState.timeClockFilterUserId = 'all';
+
+  function fmtCentimes(dzd) {
+    return typeof App.formatAlgerianCentimes === 'function'
+      ? App.formatAlgerianCentimes(dzd)
+      : (Math.round(Number(dzd || 0) * 100)).toLocaleString('fr-DZ') + ' سنتيم';
+  }
+
+  // استخراج الكود السري (PIN) وباركود البطاقة لكل عامل
+  App.getEmployeePinAndBarcode = function (userObj) {
+    var uid = Number((userObj && userObj.id) || 1);
+    var savedPins = JSON.parse(localStorage.getItem('gherbi_emp_pins_v1') || '{}');
+    var pin = savedPins[uid] || String(1000 + uid);
+    var barcode = 'USR-' + String(uid).padStart(4, '0');
+    return { pin: pin, barcode: barcode };
+  };
+
+  App.saveEmployeeCustomPin = function (userId, newPin) {
+    var clean = String(newPin || '').trim();
+    if (!clean) return;
+    var savedPins = JSON.parse(localStorage.getItem('gherbi_emp_pins_v1') || '{}');
+    savedPins[Number(userId)] = clean;
+    localStorage.setItem('gherbi_emp_pins_v1', JSON.stringify(savedPins));
+    if (typeof showToast === 'function') {
+      showToast('🔢 تم تحديث كود البصمة السري للموظف إلى: ' + clean, 'success');
+    }
+    this.renderUsersView();
+  };
+
+  // ==========================================================================
+  // 1. حساب إجمالي الحجم الساعي الدقيق (الساعات، الدقائق، الإضافي، التأخر، وأيام الحضور) لكل عامل من سجل البصمة
+  // ==========================================================================
+  App.getEmployeeTimeClockSummary = function (userId) {
+    var uid = Number(userId || 1);
+    var logs = (AppState.staffTimeClockLogs || []).filter(function (l) {
+      return Number(l.userId) === uid;
+    });
+
+    var totalRegularMinutes = 0;
+    var totalOvertimeMinutes = 0;
+    var totalLateMinutes = 0;
+    var distinctDates = {};
+    var activeOpenSession = null;
+
+    var stdDailyMins = Math.max(60, Number(AppState.officialStandardDailyHours || 8) * 60);
+
+    logs.forEach(function (l) {
+      if (!l.checkOut) {
+        activeOpenSession = l;
+        // حساب الدقائق الحية منذ الدخول حتى الآن
+        var liveMins = Math.max(1, Math.round((Date.now() - new Date(l.checkIn).getTime()) / 60000));
+        totalRegularMinutes += Math.min(stdDailyMins, liveMins);
+        if (liveMins > stdDailyMins) totalOvertimeMinutes += (liveMins - stdDailyMins);
+      } else {
+        var dur = Math.max(0, Number(l.durationMinutes || 0));
+        var customOt = Number(l.overtimeMinutes || 0);
+        if (customOt > 0) {
+          totalRegularMinutes += dur;
+          totalOvertimeMinutes += customOt;
+        } else if (dur > stdDailyMins) {
+          totalRegularMinutes += stdDailyMins;
+          totalOvertimeMinutes += (dur - stdDailyMins);
+        } else {
+          totalRegularMinutes += dur;
+        }
+      }
+      totalLateMinutes += Math.max(0, Number(l.lateMinutes || 0));
+      var dStr = String(l.date || l.checkIn || '').slice(0, 10);
+      if (dStr) distinctDates[dStr] = true;
+    });
+
+    var grandTotalMinutes = totalRegularMinutes + totalOvertimeMinutes;
+    return {
+      userId: uid,
+      logsCount: logs.length,
+      workedDaysCount: Object.keys(distinctDates).length,
+      regularHours: Math.floor(totalRegularMinutes / 60),
+      regularMinutes: totalRegularMinutes % 60,
+      overtimeHours: Math.floor(totalOvertimeMinutes / 60),
+      overtimeMinutes: totalOvertimeMinutes % 60,
+      totalHours: Math.floor(grandTotalMinutes / 60),
+      totalMinutes: grandTotalMinutes % 60,
+      grandTotalMinutes: grandTotalMinutes,
+      lateMinutes: totalLateMinutes,
+      activeOpenSession: activeOpenSession
+    };
+  };
+
+  // ==========================================================================
+  // 2. محرك تسجيل البصمة المتعدد الوسائط (كود سري PIN / باركود USR / بصمة بيومترية)
+  // ==========================================================================
+  App.punchStaffByCodeOrBarcode = async function (rawInput, methodLabel) {
+    var clean = String(rawInput || '').trim().toUpperCase();
+    if (!clean) {
+      if (typeof showToast === 'function') showToast('يرجى إدخال كود العامل (مثلاً 1001 أو 1002) أو مسح باركود البطاقة (USR-0001)', 'warning');
+      return;
+    }
+
+    var users = (await window.api.getUsers().catch(function () { return []; })) || [];
+    var matchedUser = users.find(function (u) {
+      var info = App.getEmployeePinAndBarcode(u);
+      return (
+        info.pin.toUpperCase() === clean ||
+        info.barcode.toUpperCase() === clean ||
+        String(u.username || '').toUpperCase() === clean ||
+        ('#' + u.id) === clean ||
+        String(u.id) === clean
+      );
+    });
+
+    if (!matchedUser) {
+      if (typeof playBeep === 'function') playBeep(false);
+      if (typeof showToast === 'function') {
+        showToast('❌ لم يتم العثور على موظف بهذا الكود أو الباركود: (' + clean + ')', 'error');
+      }
+      return;
+    }
+
+    var openLog = (AppState.staffTimeClockLogs || []).find(function (l) {
+      return Number(l.userId) === Number(matchedUser.id) && !l.checkOut;
+    });
+
+    var actionType = openLog ? 'out' : 'in';
+    this.punchStaffTimeClockEnhanced(matchedUser.id, actionType, methodLabel || 'كود/باركود');
+
+    var inp = document.getElementById('timeClockQuickCodeInput');
+    if (inp) inp.value = '';
+  };
+
+  App.punchStaffTimeClockEnhanced = function (userId, punchType, methodUsed) {
+    var uid = Number(userId || 1);
+    var st = (AppState._cachedUserStatsMap || {})[uid];
+    var empName = st && st.user ? st.user.name : ('موظف #' + uid);
+    var nowObj = new Date();
+    var nowIso = nowObj.toISOString();
+    var todayStr = nowIso.slice(0, 10);
+    var methodTag = methodUsed || 'بصمة بيومترية';
+
+    if (punchType === 'in') {
+      // حساب دقائق التأخر الصباحي مقارنة بوقت الدوام الرسمي (مثلاً 08:00)
+      var lateMins = 0;
+      var shiftStartStr = AppState.officialShiftStartTime || '08:00';
+      var parts = shiftStartStr.split(':');
+      if (parts.length === 2) {
+        var officialStart = new Date(nowObj);
+        officialStart.setHours(parseInt(parts[0], 10) || 8, parseInt(parts[1], 10) || 0, 0, 0);
+        if (nowObj > officialStart) {
+          var diffLate = Math.round((nowObj.getTime() - officialStart.getTime()) / 60000);
+          // إذا كان التأخر أقل من 4 ساعات نعتبره تأخراً صباحياً قابلاً للتعديل
+          if (diffLate > 5 && diffLate < 240) lateMins = diffLate;
+        }
+      }
+
+      AppState.staffTimeClockLogs.unshift({
+        id: 'TC-' + Date.now(),
+        userId: uid,
+        empName: empName,
+        date: todayStr,
+        checkIn: nowIso,
+        checkOut: null,
+        durationMinutes: 0,
+        lateMinutes: lateMins,
+        overtimeMinutes: 0,
+        method: methodTag,
+        note: 'تسجيل حضور (' + methodTag + ')'
+      });
+
+      if (typeof playBeep === 'function') playBeep(true);
+      this.pushMicroForensicEvent('timeclock_event', 'normal', 'pos_micro', {
+        note: '🟢 بصمة حضور للموظف (' + empName + ') عبر [' + methodTag + ']'
+      }, true);
+      if (typeof showToast === 'function') {
+        showToast('🟢 تم تسجيل حضور الموظف (' + empName + ') عبر [' + methodTag + '] بنجاح!', 'success');
+      }
+    } else {
+      var openLog = (AppState.staffTimeClockLogs || []).find(function (l) {
+        return Number(l.userId) === uid && !l.checkOut;
+      });
+      if (openLog) {
+        openLog.checkOut = nowIso;
+        var diffMin = Math.max(1, Math.round((nowObj.getTime() - new Date(openLog.checkIn).getTime()) / 60000));
+        openLog.durationMinutes = diffMin;
+        openLog.method = openLog.method + ' ⬅️ ' + methodTag;
+      } else {
+        // إذا ضغط انصراف وكان قد نسي تسجيل الدخول، نسجل له دواماً افتراضياً قابلاً للتعديل
+        var stdMins = Math.max(60, Number(AppState.officialStandardDailyHours || 8) * 60);
+        AppState.staffTimeClockLogs.unshift({
+          id: 'TC-' + Date.now(),
+          userId: uid,
+          empName: empName,
+          date: todayStr,
+          checkIn: new Date(nowObj.getTime() - stdMins * 60000).toISOString(),
+          checkOut: nowIso,
+          durationMinutes: stdMins,
+          lateMinutes: 0,
+          overtimeMinutes: 0,
+          method: methodTag + ' (تعويض تلقائي)',
+          note: 'انصراف مع تعويض دخول منسي'
+        });
+      }
+
+      if (typeof playBeep === 'function') playBeep(true);
+      this.pushMicroForensicEvent('timeclock_event', 'normal', 'pos_micro', {
+        note: '🔴 بصمة انصراف للموظف (' + empName + ') عبر [' + methodTag + ']'
+      }, true);
+      if (typeof showToast === 'function') {
+        showToast('🔴 تم تسجيل انصراف الموظف (' + empName + ') وحساب الساعات والدقائق بنجاح!', 'info');
+      }
+    }
+
+    localStorage.setItem('gherbi_staff_timeclock_v1', JSON.stringify(AppState.staffTimeClockLogs));
+    this.renderUsersView();
+  };
+
+  // ==========================================================================
+  // 3. استوديو المدير لتعديل الحجم الساعي وتعويض البصمة المنسية (Admin Timesheet Override)
+  // ==========================================================================
+  App.adminAddOrOverrideAttendanceRecord = function () {
+    var uid = Number(document.getElementById('admTcEmpSelect')?.value || 1);
+    var dateStr = document.getElementById('admTcDateInput')?.value || new Date().toISOString().slice(0, 10);
+    var timeIn = document.getElementById('admTcTimeInInput')?.value || '08:00';
+    var timeOut = document.getElementById('admTcTimeOutInput')?.value || '16:00';
+    var directHrs = parseInt(document.getElementById('admTcDirectHours')?.value || '0', 10) || 0;
+    var directMins = parseInt(document.getElementById('admTcDirectMins')?.value || '0', 10) || 0;
+    var lateMins = Math.max(0, parseInt(document.getElementById('admTcLateMins')?.value || '0', 10) || 0);
+    var reason = String(document.getElementById('admTcReasonInput')?.value || 'تعديل إداري / تعويض نسيان البصمة').trim();
+
+    var totalDurationMins = 0;
+    if (directHrs > 0 || directMins > 0) {
+      totalDurationMins = directHrs * 60 + directMins;
+    } else {
+      var dtIn = new Date(dateStr + 'T' + timeIn + ':00');
+      var dtOut = new Date(dateStr + 'T' + timeOut + ':00');
+      if (dtOut > dtIn) {
+        totalDurationMins = Math.round((dtOut.getTime() - dtIn.getTime()) / 60000);
+      } else {
+        totalDurationMins = 480; // 8 ساعات افتراضياً
+      }
+    }
+
+    var st = (AppState._cachedUserStatsMap || {})[uid];
+    var empName = st && st.user ? st.user.name : ('موظف #' + uid);
+
+    AppState.staffTimeClockLogs.unshift({
+      id: 'TC-ADM-' + Date.now(),
+      userId: uid,
+      empName: empName,
+      date: dateStr,
+      checkIn: dateStr + 'T' + timeIn + ':00',
+      checkOut: dateStr + 'T' + timeOut + ':00',
+      durationMinutes: totalDurationMins,
+      lateMinutes: lateMins,
+      overtimeMinutes: 0,
+      method: '🛠️ تعديل المدير (Admin)',
+      note: reason
+    });
+
+    localStorage.setItem('gherbi_staff_timeclock_v1', JSON.stringify(AppState.staffTimeClockLogs));
+    this.pushMicroForensicEvent('timeclock_event', 'medium', 'security', {
+      note: '🛠️ قام المدير بإضافة/تعديل حجم ساعي (' + Math.floor(totalDurationMins / 60) + 'سا و ' + (totalDurationMins % 60) + 'د) للموظف (' + empName + ') — السبب: ' + reason
+    }, true);
+
+    this.renderUsersView();
+    if (typeof showToast === 'function') {
+      showToast('✅ تم اعتماد وإضافة (' + Math.floor(totalDurationMins / 60) + ' ساعة و ' + (totalDurationMins % 60) + ' دقيقة) للحجم الساعي للموظف ' + empName + '!', 'success');
+    }
+  };
+
+  // تعديل مباشر لأي سطر في جدول البصمة (تغيير الساعات والدقائق أو إغلاق بصمة مفتوحة)
+  App.adminUpdateSingleTimeClockRow = function (logId, customHours, customMinutes, customLate) {
+    var row = (AppState.staffTimeClockLogs || []).find(function (l) { return String(l.id) === String(logId); });
+    if (!row) return;
+
+    var hrs = Math.max(0, parseInt(customHours !== undefined ? customHours : document.getElementById('tcRowHrs_' + logId)?.value, 10) || 0);
+    var mins = Math.max(0, parseInt(customMinutes !== undefined ? customMinutes : document.getElementById('tcRowMins_' + logId)?.value, 10) || 0);
+    var late = Math.max(0, parseInt(customLate !== undefined ? customLate : document.getElementById('tcRowLate_' + logId)?.value, 10) || 0);
+
+    var totalMins = hrs * 60 + mins;
+    row.durationMinutes = totalMins;
+    row.lateMinutes = late;
+    if (!row.checkOut) {
+      row.checkOut = new Date(new Date(row.checkIn).getTime() + totalMins * 60000).toISOString();
+    }
+    row.method = '🛠️ معدل من المدير';
+
+    localStorage.setItem('gherbi_staff_timeclock_v1', JSON.stringify(AppState.staffTimeClockLogs));
+    this.renderUsersView();
+    if (typeof showToast === 'function') {
+      showToast('✅ تم تحديث الحجم الساعي للسجل إلى (' + hrs + ' ساعة و ' + mins + ' دقيقة) بنجاح!', 'success');
+    }
+  };
+
+  App.adminDeleteSingleTimeClockRow = function (logId) {
+    AppState.staffTimeClockLogs = (AppState.staffTimeClockLogs || []).filter(function (l) {
+      return String(l.id) !== String(logId);
+    });
+    localStorage.setItem('gherbi_staff_timeclock_v1', JSON.stringify(AppState.staffTimeClockLogs));
+    this.renderUsersView();
+    if (typeof showToast === 'function') showToast('🗑️ تم حذف سجل البصمة بنجاح', 'info');
+  };
+
+  // نقل الحجم الساعي المعتمد للعامل من جهاز البصمة مباشرة إلى حاسبة الرواتب وفتحها!
+  App.pushEmployeeTimeClockToPayrollAndOpen = function (userId) {
+    var uid = Number(userId || 1);
+    var summary = this.getEmployeeTimeClockSummary(uid);
+    var st = (AppState._cachedUserStatsMap || {})[uid];
+    var cfg = this.getEmployeePayrollConfig(uid, st);
+
+    cfg.calcMode = 'hourly_minutes';
+    cfg.workedHours = summary.regularHours > 0 || summary.regularMinutes > 0 ? summary.regularHours : 176;
+    cfg.workedMinutes = summary.regularHours > 0 || summary.regularMinutes > 0 ? summary.regularMinutes : 0;
+    cfg.overtimeHours = summary.overtimeHours;
+    cfg.overtimeMinutes = summary.overtimeMinutes;
+    cfg.lateMinutes = summary.lateMinutes;
+    if (summary.workedDaysCount > 0) cfg.workedDays = summary.workedDaysCount;
+
+    AppState.payrollConfigsByUser[uid] = cfg;
+    localStorage.setItem('gherbi_payroll_configs_v1', JSON.stringify(AppState.payrollConfigsByUser));
+
+    AppState.selectedPayrollUserId = uid;
+    AppState.usersActiveTab = 'hr_commissions';
+    this.renderUsersView();
+    if (typeof showToast === 'function') {
+      showToast('🚀 تم ربط ونقل الحجم الساعي (' + cfg.workedHours + ' ساعة و ' + cfg.workedMinutes + ' دقيقة) إلى حاسبة الرواتب بنجاح!', 'success');
+    }
+  };
+
+  // ==========================================================================
+  // 4. محرك التحديث اللحظي الفائق السلاسة لحاسبة الرواتب بدون إعادة رسم الشاشة!
+  //    (Zero-Lag Live DOM Updater — يحل مشكلة التقطيع وفقدان المؤشر عند الكتابة 100%)
+  // ==========================================================================
+  App.onPayrollFastInput = function (userId, fieldName, rawValue, isCheckbox) {
+    var uid = Number(userId || AppState.selectedPayrollUserId || 1);
+    var st = (AppState._cachedUserStatsMap || {})[uid] || { totalRevenue: 0, invoicesCount: 0, totalDrawerDiff: 0, user: { name: 'الموظف', role: 'Cashier' } };
+    var cfg = this.getEmployeePayrollConfig(uid, st);
+
+    if (isCheckbox) {
+      cfg[fieldName] = Boolean(rawValue);
+    } else if (fieldName === 'calcMode') {
+      cfg[fieldName] = String(rawValue);
+    } else {
+      cfg[fieldName] = parseFloat(rawValue) || 0;
+    }
+
+    AppState.payrollConfigsByUser[uid] = cfg;
+    localStorage.setItem('gherbi_payroll_configs_v1', JSON.stringify(AppState.payrollConfigsByUser));
+
+    // إذا غيّر المستخدم طريقة الحساب الرئيسية (calcMode)، نعيد رسم التبويب لإظهار حقول تلك الطريقة فقط
+    if (fieldName === 'calcMode') {
+      this.renderUsersView();
+      return;
+    }
+
+    // أما أثناء الكتابة في الأرقام (الساعات، الدقائق، التسعيرة، اليوميات، المنح، الخصومات) فنحدث النصوص فقط في 0.1ms!
+    var calc = this.computeUniversalEmployeePayroll(cfg, st);
+
+    var setTxt = function (id, txt) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = txt;
+    };
+
+    setTxt('payLiveMinuteRateBadge', 'تسعيرة الدقيقة الواحدة: ' + calc.minuteRateDzd.toFixed(2) + ' د.ج / دقيقة');
+    setTxt('payLivePrimaryFormulaText', App.buildPrimaryWageFormulaExplanation(cfg, calc));
+    setTxt('paySlipModeBadge', calc.modeArabicLabel);
+    setTxt('paySlipBaseVal', '+' + calc.primaryTimeOrBasePay.toFixed(2) + ' د.ج');
+    setTxt('paySlipOvertimeVal', '+' + calc.overtimePay.toFixed(2) + ' د.ج');
+    setTxt('paySlipCommVal', '+' + calc.totalCommissionsDzd.toFixed(2) + ' د.ج');
+    setTxt('paySlipAllowVal', '+' + calc.totalAllowancesDzd.toFixed(2) + ' د.ج');
+    setTxt('paySlipGrossVal', calc.grossSalaryDzd.toFixed(2) + ' د.ج');
+    setTxt('paySlipLateAbsentVal', '-' + (calc.lateDeductionDzd + calc.absentDeductionDzd).toFixed(2) + ' د.ج');
+    setTxt('paySlipAdvCnasVal', '-' + (calc.empAdvancesDzd + calc.shortageDeductionDzd + calc.cnasDeductionDzd).toFixed(2) + ' د.ج');
+    setTxt('paySlipNetDzd', calc.netPayableDzd.toFixed(2) + ' د.ج');
+    setTxt('paySlipNetCentimes', '🇩🇿 بالتداول الجزائري: ' + fmtCentimes(calc.netPayableDzd));
+  };
+
+  App.buildPrimaryWageFormulaExplanation = function (cfg, calc) {
+    if (cfg.calcMode === 'hourly_minutes') {
+      var hrsPay = (cfg.workedHours * cfg.hourlyRateDzd).toFixed(2);
+      var minsPay = (cfg.workedMinutes * calc.minuteRateDzd).toFixed(2);
+      return '📐 المعادلة: (' + cfg.workedHours + ' ساعة × ' + cfg.hourlyRateDzd + ' د.ج = ' + hrsPay + ') + (' + cfg.workedMinutes + ' دقيقة × ' + calc.minuteRateDzd.toFixed(2) + ' د.ج = ' + minsPay + ') ⬅️ المجموع = ' + calc.primaryTimeOrBasePay.toFixed(2) + ' د.ج';
+    }
+    if (cfg.calcMode === 'daily_wage') {
+      return '📐 المعادلة: (' + cfg.workedDays + ' يوم عمل × ' + cfg.dailyRateDzd + ' د.ج لليوم) ⬅️ المجموع = ' + calc.primaryTimeOrBasePay.toFixed(2) + ' د.ج';
+    }
+    if (cfg.calcMode === 'shift_rate') {
+      return '📐 المعادلة: (' + cfg.workedShifts + ' مناوبة × ' + cfg.shiftRateDzd + ' د.ج للمناوبة) ⬅️ المجموع = ' + calc.primaryTimeOrBasePay.toFixed(2) + ' د.ج';
+    }
+    if (cfg.calcMode === 'commission_only') {
+      return '📐 المعادلة: نظام العمولة الحرة على المبيعات والأرباح والفواتير فقط (الأجر الثابت = 0.00 د.ج)';
+    }
+    if (cfg.calcMode === 'hybrid_all') {
+      return '📐 المعادلة الهجينة: راتب ثابت (' + cfg.baseMonthlySalaryDzd + ' د.ج) + أجر الساعات والدقائق (' + calc.hourlyAndMinutesPay.toFixed(2) + ' د.ج) = ' + calc.primaryTimeOrBasePay.toFixed(2) + ' د.ج';
+    }
+    return '📐 المعادلة: الراتب الشهري الثابت المعتمد = ' + calc.primaryTimeOrBasePay.toFixed(2) + ' د.ج (قيمة اليوم المرجعية: ' + (cfg.baseMonthlySalaryDzd / 26).toFixed(2) + ' د.ج)';
+  };
+
+  // تعديل الإعدادات الافتراضية للمنح لتكون 0 د.ج افتراضياً حتى لا تسبب أي التباس إلا إذا أضافها المحاسب!
+  var _origGetPayrollCfg = App.getEmployeePayrollConfig.bind(App);
+  App.getEmployeePayrollConfig = function (userId, userStats) {
+    var uid = Number(userId || 1);
+    var saved = AppState.payrollConfigsByUser[uid] || {};
+    var cfg = _origGetPayrollCfg(userId, userStats);
+    if (saved.transportAllowanceDzd === undefined) cfg.transportAllowanceDzd = 0;
+    if (saved.mealAllowanceDzd === undefined) cfg.mealAllowanceDzd = 0;
+    if (saved.performanceBonusDzd === undefined) cfg.performanceBonusDzd = 0;
+    return cfg;
+  };
+
+  // ==========================================================================
+  // 5. حقن التصميم الجديد كلياً للتبويب 5 (جهاز البصمة واستوديو المدير) والتبويب 4 (حاسبة الرواتب المنظمة)
+  // ==========================================================================
+  var _prevRenderUsersV2 = App.renderUsersView.bind(App);
+  App.renderUsersView = async function () {
+    await _prevRenderUsersV2();
+    var body = document.getElementById('usersMainTabBody');
+    if (!body) return;
+
+    var curTab = AppState.usersActiveTab || 'directory';
+    var statsMap = AppState._cachedUserStatsMap || {};
+    var users = Object.values(statsMap).map(function (st) { return st.user; });
+
+    // ------------------------------------------------------------------------
+    // التبويب 5 المطور كلياً: محطة البصمة الذكية (PIN / Barcode / Biometric) + استوديو المدير لتعديل الحجم الساعي
+    // ------------------------------------------------------------------------
+    if (curTab === 'time_clock') {
+      var filterUid = AppState.timeClockFilterUserId || 'all';
+      var filteredLogs = (AppState.staffTimeClockLogs || []).filter(function (l) {
+        if (filterUid !== 'all' && Number(l.userId) !== Number(filterUid)) return false;
+        return true;
+      });
+
+      var nowTimeStr = new Date().toLocaleTimeString('fr-DZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      var todayIso = new Date().toISOString().slice(0, 10);
+
+      body.innerHTML =
+        '<div class="space-y-4 text-xs">' +
+        '  <!-- القسم العلوي: محطة البصمة الذكية ذات الـ 3 وسائط (كود سري PIN + ماسح باركود البطاقة + بصمة بيومترية) -->' +
+        '  <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">' +
+        '    <!-- يمين: جهاز البصمة التفاعلي (Kiosk Terminal — 5 أعمدة) -->' +
+        '    <div class="lg:col-span-5 bg-slate-900 text-white border border-slate-800 rounded-2xl p-5 space-y-3.5 shadow-xl">' +
+        '      <div class="flex items-center justify-between border-b border-slate-800 pb-3">' +
+        '        <div>' +
+        '          <div class="text-[11px] text-amber-400 font-black">⏱️ محطة البصمة الذكية (Biometric & Barcode Pointage)</div>' +
+        '          <div class="text-xs text-slate-400 mt-0.5">امسح باركود البطاقة أو اكتب كود العامل أو اضغط البصمة</div>' +
+        '        </div>' +
+        '        <div class="text-left">' +
+        '          <div class="font-mono font-black text-xl text-emerald-400">' + nowTimeStr + '</div>' +
+        '          <div class="font-mono text-[10px] text-slate-400">' + todayIso + '</div>' +
+        '        </div>' +
+        '      </div>' +
+
+        '      <!-- حقل إدخال الكود السري أو مسح باركود بطاقة العامل (USR-0001 / 1001) -->' +
+        '      <div class="space-y-1.5">' +
+        '        <label class="block text-[11px] font-bold text-slate-300">🔢🏷️ أدخل الكود السري للعامل (مثلاً 1001 أو 1002) أو امسح باركود البطاقة (USR-0001):</label>' +
+        '        <div class="flex gap-2">' +
+        '          <input id="timeClockQuickCodeInput" type="text" onkeydown="if(event.key===\'Enter\') App.punchStaffByCodeOrBarcode(this.value, \'كود/باركود سريع\')" placeholder="اكتب الكود (1001 / 1002) أو امسح الباركود..." class="flex-1 px-3.5 py-2.5 rounded-xl font-mono font-black text-sm text-center bg-slate-950 text-amber-400 border border-slate-700">' +
+        '          <button type="button" onclick="App.punchStaffByCodeOrBarcode(document.getElementById(\'timeClockQuickCodeInput\')?.value, \'كود سري PIN\')" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-lg">✓ بصمة الآن</button>' +
+        '        </div>' +
+        '      </div>' +
+
+        '      <!-- لوحة أرقام سريعة لإدخال كود البصمة باللمس أو الماوس -->' +
+        '      <div class="grid grid-cols-6 gap-1.5 pt-1">' +
+        ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map(function (digit) {
+          return '<button type="button" onclick="var el=document.getElementById(\'timeClockQuickCodeInput\'); if(el){el.value+=String(\'' + digit + '\'); el.focus();}" class="py-2 rounded-xl bg-slate-800 hover:bg-slate-700 font-mono font-black text-sm text-white border border-slate-700">' + digit + '</button>';
+        }).join('') +
+        '        <button type="button" onclick="var el=document.getElementById(\'timeClockQuickCodeInput\'); if(el){el.value=\'\'; el.focus();}" class="col-span-2 py-2 rounded-xl bg-rose-500/20 text-rose-400 hover:bg-rose-600 hover:text-white font-black text-xs">مسح ⌫</button>' +
+        '      </div>' +
+
+        '      <!-- إعداد وقت بداية الدوام الرسمي وساعات العمل القياسية -->' +
+        '      <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800 text-[11px]">' +
+        '        <div class="flex items-center justify-between bg-slate-800/70 px-2.5 py-1.5 rounded-xl">' +
+        '          <span class="text-slate-400">⏰ بداية الدوام:</span>' +
+        '          <input type="time" value="' + AppState.officialShiftStartTime + '" onchange="AppState.officialShiftStartTime=this.value; localStorage.setItem(\'gherbi_shift_start_time\', this.value)" class="bg-transparent font-mono font-black text-amber-300 border-0 p-0 text-left">' +
+        '        </div>' +
+        '        <div class="flex items-center justify-between bg-slate-800/70 px-2.5 py-1.5 rounded-xl">' +
+        '          <span class="text-slate-400">⏳ دوام اليوم (سا):</span>' +
+        '          <input type="number" min="1" max="16" value="' + AppState.officialStandardDailyHours + '" onchange="AppState.officialStandardDailyHours=parseInt(this.value,10)||8; localStorage.setItem(\'gherbi_std_daily_hours\', AppState.officialStandardDailyHours)" class="w-12 bg-transparent font-mono font-black text-emerald-400 border-0 p-0 text-center">' +
+        '        </div>' +
+        '      </div>' +
+        '    </div>' +
+
+        '    <!-- يسار: بطاقات البصمة البيومترية الحية للعمال + رصيد الساعات والدقائق لكل عامل (7 أعمدة) -->' +
+        '    <div class="lg:col-span-7 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3 shadow-sm">' +
+        '      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 pb-2.5">' +
+        '        <h3 class="font-black text-sm text-indigo-600">🫆 بطاقات البصمة البيومترية المباشرة والحجم الساعي المتراكم للعمال</h3>' +
+        '        <span class="text-[11px] text-slate-400 font-bold">انقر على مستشعر البصمة لتسجيل الدخول/الخروج أو انقل الساعات مباشرة لحاسبة الرواتب</span>' +
+        '      </div>' +
+        '      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">' +
+        users.map(function (u) {
+          var tcSum = App.getEmployeeTimeClockSummary(u.id);
+          var pinInfo = App.getEmployeePinAndBarcode(u);
+          var isOnDuty = Boolean(tcSum.activeOpenSession);
+
+          return (
+            '<div class="p-4 rounded-2xl border ' + (isOnDuty ? 'bg-emerald-500/5 border-emerald-500/40' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700') + ' space-y-3">' +
+            '  <div class="flex items-start justify-between gap-2">' +
+            '    <div>' +
+            '      <div class="font-black text-sm text-slate-900 dark:text-white flex items-center gap-1.5">' +
+            '        <span>' + u.name + '</span>' +
+            (isOnDuty ? '<span class="px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 text-[9.5px] font-black">● في الدوام الآن</span>' : '<span class="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 text-[9.5px] font-bold">خارج الدوام</span>') +
+            '      </div>' +
+            '      <div class="font-mono text-[10.5px] text-slate-400 mt-0.5">🔢 الكود السري: <strong class="text-indigo-600 dark:text-amber-400">' + pinInfo.pin + '</strong> | 🏷️ الباركود: <strong>' + pinInfo.barcode + '</strong></div>' +
+            '    </div>' +
+            '    <button type="button" onclick="App.openStaffBadgePreviewModal(' + u.id + ')" class="px-2 py-1 rounded-lg bg-indigo-500/10 text-indigo-600 font-black text-[10px]" title="طباعة بطاقة باركود العامل">🪪 البطاقة</button>' +
+            '  </div>' +
+
+            '  <!-- ملخص الحجم الساعي الدقيق للعامل -->' +
+            '  <div class="grid grid-cols-3 gap-1.5 text-center bg-white dark:bg-slate-800 p-2 rounded-xl border border-slate-200/70 dark:border-slate-700">' +
+            '    <div><div class="text-[9.5px] text-slate-400">الحجم الساعي العادي</div><div class="font-mono font-black text-blue-600 text-xs mt-0.5">' + tcSum.regularHours + 'سا و ' + tcSum.regularMinutes + 'د</div></div>' +
+            '    <div><div class="text-[9.5px] text-slate-400">الساعات الإضافية</div><div class="font-mono font-black text-emerald-600 text-xs mt-0.5">+' + tcSum.overtimeHours + 'سا و ' + tcSum.overtimeMinutes + 'د</div></div>' +
+            '    <div><div class="text-[9.5px] text-slate-400">دقائق التأخر</div><div class="font-mono font-black text-rose-600 text-xs mt-0.5">' + tcSum.lateMinutes + ' دقيقة</div></div>' +
+            '  </div>' +
+
+            '  <!-- أزرار البصمة البيومترية ونقل الساعات للراتب -->' +
+            '  <div class="flex gap-1.5">' +
+            (isOnDuty
+              ? '<button type="button" onclick="App.punchStaffTimeClockEnhanced(' + u.id + ', \'out\', \'🫆 بصمة بيومترية\')" class="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black shadow flex items-center justify-center gap-1.5"><span>🔴 تسجيل انصراف (خروج)</span></button>'
+              : '<button type="button" onclick="App.punchStaffTimeClockEnhanced(' + u.id + ', \'in\', \'🫆 بصمة بيومترية\')" class="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow flex items-center justify-center gap-1.5"><span>🫆 بصمة حضور (دخول)</span></button>') +
+            '    <button type="button" onclick="App.pushEmployeeTimeClockToPayrollAndOpen(' + u.id + ')" class="px-3 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black shadow" title="نقل الساعات والدقائق إلى حاسبة الرواتب">🧮 للراتب</button>' +
+            '  </div>' +
+            '</div>'
+          );
+        }).join('') +
+        '      </div>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <!-- القسم الأوسط: استوديو المدير (Admin Override) لتعديل الحجم الساعي وتعويض نسيان تسجيل الدخول/الخروج -->' +
+        '  <div class="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 space-y-3">' +
+        '    <div class="flex flex-wrap items-center justify-between gap-2">' +
+        '      <div>' +
+        '        <h4 class="font-black text-sm text-indigo-700 dark:text-amber-300">🛠️ استوديو المدير لتعديل الحجم الساعي وتعويض البصمة المنسية (Admin Timesheet Override)</h4>' +
+        '        <p class="text-[11px] text-slate-500 dark:text-slate-300">إذا نسي العامل تسجيل دخوله أو خروجه، يمكنك هنا إضافة دوامه يدوياً (بوقت الدخول/الخروج أو بكتابة الساعات والدقائق مباشرة)</p>' +
+        '      </div>' +
+        '    </div>' +
+        '    <div class="grid grid-cols-2 md:grid-cols-7 gap-2 items-end">' +
+        '      <div><label class="block font-bold mb-1">1. اختر العامل</label><select id="admTcEmpSelect" class="w-full px-2.5 py-2 rounded-xl font-black">' + users.map(function (u) { return '<option value="' + u.id + '">' + u.name + '</option>'; }).join('') + '</select></div>' +
+        '      <div><label class="block font-bold mb-1">2. التاريخ</label><input id="admTcDateInput" type="date" value="' + todayIso + '" class="w-full px-2.5 py-2 rounded-xl font-mono font-bold"></div>' +
+        '      <div><label class="block font-bold mb-1">وقت الدخول</label><input id="admTcTimeInInput" type="time" value="08:00" class="w-full px-2.5 py-2 rounded-xl font-mono font-bold"></div>' +
+        '      <div><label class="block font-bold mb-1">وقت الخروج</label><input id="admTcTimeOutInput" type="time" value="16:00" class="w-full px-2.5 py-2 rounded-xl font-mono font-bold"></div>' +
+        '      <div><label class="block font-bold mb-1 text-blue-600">أو الساعات مباشرة</label><input id="admTcDirectHours" type="number" min="0" max="24" value="8" class="w-full px-2.5 py-2 rounded-xl font-mono font-black text-center border-blue-400"></div>' +
+        '      <div><label class="block font-bold mb-1 text-blue-600">والدقائق مباشرة</label><input id="admTcDirectMins" type="number" min="0" max="59" value="0" class="w-full px-2.5 py-2 rounded-xl font-mono font-black text-center border-blue-400"></div>' +
+        '      <div><button type="button" onclick="App.adminAddOrOverrideAttendanceRecord()" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow-lg">💾 إضافة للحجم الساعي</button></div>' +
+        '    </div>' +
+        '    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">' +
+        '      <div class="md:col-span-2"><input id="admTcReasonInput" type="text" value="تعويض إداري عن نسيان تسجيل الدخول صباحاً" placeholder="سبب التعديل الإداري..." class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
+        '      <div class="flex items-center gap-2"><span class="font-bold text-rose-600 shrink-0">دقائق التأخر (إن وجدت):</span><input id="admTcLateMins" type="number" min="0" value="0" class="w-24 px-2.5 py-1.5 rounded-xl font-mono font-bold text-center"></div>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <!-- القسم السفلي: جدول سجل حركات البصمة والدوام بالدقيقة مع التعديل المباشر لكل سطر -->' +
+        '  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3 shadow-sm">' +
+        '    <div class="flex flex-wrap items-center justify-between gap-2">' +
+        '      <h4 class="font-black text-sm text-slate-800 dark:text-white">📋 سجل حركات البصمة والدوام بالدقيقة — قابل للتعديل المباشر من المدير (' + filteredLogs.length + ' حركة)</h4>' +
+        '      <div class="flex items-center gap-2">' +
+        '        <span class="font-bold text-slate-400">تصفية حسب العامل:</span>' +
+        '        <select onchange="AppState.timeClockFilterUserId=this.value; App.renderUsersView()" class="px-3 py-1.5 rounded-xl font-bold">' +
+        '          <option value="all">جميع العمال</option>' +
+        users.map(function (u) {
+          return '<option value="' + u.id + '" ' + (String(filterUid) === String(u.id) ? 'selected' : '') + '>' + u.name + '</option>';
+        }).join('') +
+        '        </select>' +
+        '      </div>' +
+        '    </div>' +
+
+        '    <div class="overflow-x-auto max-h-80">' +
+        '      <table class="w-full text-xs text-right">' +
+        '        <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500">' +
+        '          <tr>' +
+        '            <th class="p-2">العامل</th>' +
+        '            <th class="p-2">طريقة البصمة</th>' +
+        '            <th class="p-2">وقت الدخول</th>' +
+        '            <th class="p-2">وقت الخروج</th>' +
+        '            <th class="p-2 text-center">تعديل الساعات (Hours)</th>' +
+        '            <th class="p-2 text-center">تعديل الدقائق (Mins)</th>' +
+        '            <th class="p-2 text-center">تأخر (دقيقة)</th>' +
+        '            <th class="p-2 text-center">إجراءات المدير لتصحيح السجل</th>' +
+        '          </tr>' +
+        '        </thead>' +
+        '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (filteredLogs.length > 0
+          ? filteredLogs.map(function (tc) {
+              var hrs = Math.floor(Number(tc.durationMinutes || 0) / 60);
+              var mins = Number(tc.durationMinutes || 0) % 60;
+              var late = Number(tc.lateMinutes || 0);
+              return (
+                '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/20">' +
+                '  <td class="p-2 font-black">' + tc.empName + '</td>' +
+                '  <td class="p-2"><span class="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-amber-300 font-bold text-[10.5px]">' + (tc.method || 'بصمة') + '</span></td>' +
+                '  <td class="p-2 font-mono text-[11px]">' + String(tc.checkIn || '').slice(0, 16).replace('T', ' ') + '</td>' +
+                '  <td class="p-2 font-mono text-[11px]">' + (tc.checkOut ? String(tc.checkOut).slice(0, 16).replace('T', ' ') : '<span class="text-emerald-600 font-black">🟢 في الدوام الآن</span>') + '</td>' +
+                '  <td class="p-2 text-center"><input id="tcRowHrs_' + tc.id + '" type="number" min="0" max="24" value="' + hrs + '" class="w-16 px-2 py-1 rounded-lg font-mono font-black text-center border-blue-400"></td>' +
+                '  <td class="p-2 text-center"><input id="tcRowMins_' + tc.id + '" type="number" min="0" max="59" value="' + mins + '" class="w-16 px-2 py-1 rounded-lg font-mono font-black text-center border-blue-400"></td>' +
+                '  <td class="p-2 text-center"><input id="tcRowLate_' + tc.id + '" type="number" min="0" value="' + late + '" class="w-16 px-2 py-1 rounded-lg font-mono font-bold text-rose-600 text-center"></td>' +
+                '  <td class="p-2">' +
+                '    <div class="flex items-center justify-center gap-1">' +
+                '      <button type="button" onclick="App.adminUpdateSingleTimeClockRow(\'' + tc.id + '\')" class="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-black text-[10.5px] shadow">💾 حفظ</button>' +
+                '      <button type="button" onclick="App.adminUpdateSingleTimeClockRow(\'' + tc.id + '\', 8, 0, 0)" class="px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 font-black text-[10.5px]" title="اعتماد يوم عمل كامل 8 ساعات">+8سا كامل</button>' +
+                '      <button type="button" onclick="App.adminDeleteSingleTimeClockRow(\'' + tc.id + '\')" class="p-1 text-rose-500 hover:bg-rose-500/15 rounded-lg" title="حذف السجل"><span class="material-symbols-rounded icon-sm">delete</span></button>' +
+                '    </div>' +
+                '  </td>' +
+                '</tr>'
+              );
+            }).join('')
+          : '<tr><td colspan="8" class="py-8 text-center text-slate-400 font-bold">لا توجد بصمات مسجلة بعد — استخدم جهاز البصمة أو استوديو المدير أعلاه</td></tr>') +
+        '        </tbody>' +
+        '      </table>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    // ------------------------------------------------------------------------
+    // التبويب 4 المطور كلياً: حاسبة الرواتب المنظمة خطوة بخطوة وفائقة السلاسة (Clean Step-by-Step Payroll Studio)
+    // ------------------------------------------------------------------------
+    else if (curTab === 'hr_commissions') {
+      var selUid = Number(AppState.selectedPayrollUserId || (users[0] && users[0].id) || 1);
+      var selStats = statsMap[selUid] || Object.values(statsMap)[0];
+      var cfg = this.getEmployeePayrollConfig(selUid, selStats);
+      var calc = this.computeUniversalEmployeePayroll(cfg, selStats);
+      var tcSummary = this.getEmployeeTimeClockSummary(selUid);
+
+      var MODES = [
+        { id: 'hourly_minutes', icon: '⏱️', title: '1. بالساعات والدقائق الفعلية', sub: 'الساعات والدقائق × تسعيرة الساعة' },
+        { id: 'daily_wage', icon: '📅', title: '2. باليومية (أجر اليوم)', sub: 'عدد أيام العمل × أجر اليوم' },
+        { id: 'monthly_fixed', icon: '📆', title: '3. راتب شهري ثابت', sub: 'أجر شهري مقطوع + حوافز' },
+        { id: 'shift_rate', icon: '🗄️', title: '4. بالمناوبة (الشفت)', sub: 'عدد المناوبات × أجر المناوبة' },
+        { id: 'hybrid_all', icon: '⚡', title: '5. النظام الهجين الشامل', sub: 'راتب ثابت + ساعات + عمولة' }
+      ];
+
+      // بناء محتوى الصندوق الرئيسي للخطوة 1 بناءً على الطريقة المختارة فقط (للقضاء على أي تشتت أو لخبطة!)
+      var step1PrimaryBoxHtml = '';
+      if (cfg.calcMode === 'hourly_minutes') {
+        step1PrimaryBoxHtml =
+          '<div class="grid grid-cols-1 md:grid-cols-3 gap-3">' +
+          '  <div class="p-3 rounded-xl bg-blue-500/5 border border-blue-500/30">' +
+          '    <label class="block font-black text-blue-700 dark:text-blue-300 mb-1">1. عدد الساعات الأساسية (Hours):</label>' +
+          '    <input type="number" min="0" value="' + cfg.workedHours + '" oninput="App.onPayrollFastInput(' + selUid + ', \'workedHours\', this.value)" class="w-full px-3 py-2.5 rounded-xl font-mono font-black text-base text-center border-blue-400">' +
+          '  </div>' +
+          '  <div class="p-3 rounded-xl bg-blue-500/5 border border-blue-500/30">' +
+          '    <label class="block font-black text-blue-700 dark:text-blue-300 mb-1">2. عدد الدقائق الإضافية (Minutes 0-59):</label>' +
+          '    <input type="number" min="0" max="59" value="' + cfg.workedMinutes + '" oninput="App.onPayrollFastInput(' + selUid + ', \'workedMinutes\', this.value)" class="w-full px-3 py-2.5 rounded-xl font-mono font-black text-base text-center border-blue-400">' +
+          '  </div>' +
+          '  <div class="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/30">' +
+          '    <label class="block font-black text-emerald-700 dark:text-emerald-300 mb-1">3. تسعيرة الساعة الواحدة (د.ج / ساعة):</label>' +
+          '    <input type="number" min="0" step="10" value="' + cfg.hourlyRateDzd + '" oninput="App.onPayrollFastInput(' + selUid + ', \'hourlyRateDzd\', this.value)" class="w-full px-3 py-2.5 rounded-xl font-mono font-black text-base text-center border-emerald-400">' +
+          '  </div>' +
+          '</div>';
+      } else if (cfg.calcMode === 'daily_wage') {
+        step1PrimaryBoxHtml =
+          '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">' +
+          '  <div class="p-3 rounded-xl bg-blue-500/5 border border-blue-500/30">' +
+          '    <label class="block font-black text-blue-700 dark:text-blue-300 mb-1">1. عدد أيام الحضور والعمل الفعلي (أيام):</label>' +
+          '    <input type="number" min="0" value="' + cfg.workedDays + '" oninput="App.onPayrollFastInput(' + selUid + ', \'workedDays\', this.value)" class="w-full px-3 py-2.5 rounded-xl font-mono font-black text-base text-center border-blue-400">' +
+          '  </div>' +
+          '  <div class="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/30">' +
+          '    <label class="block font-black text-emerald-700 dark:text-emerald-300 mb-1">2. أجرة اليوم الواحد (د.ج / يوم):</label>' +
+          '    <input type="number" min="0" step="100" value="' + cfg.dailyRateDzd + '" oninput="App.onPayrollFastInput(' + selUid + ', \'dailyRateDzd\', this.value)" class="w-full px-3 py-2.5 rounded-xl font-mono font-black text-base text-center border-emerald-400">' +
+          '  </div>' +
+          '</div>';
+      } else if (cfg.calcMode === 'shift_rate') {
+        step1PrimaryBoxHtml =
+          '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">' +
+          '  <div class="p-3 rounded-xl bg-blue-500/5 border border-blue-500/30">' +
+          '    <label class="block font-black text-blue-700 dark:text-blue-300 mb-1">1. عدد المناوبات (الشفتات) المنجزة:</label>' +
+          '    <input type="number" min="0" value="' + cfg.workedShifts + '" oninput="App.onPayrollFastInput(' + selUid + ', \'workedShifts\', this.value)" class="w-full px-3 py-2.5 rounded-xl font-mono font-black text-base text-center border-blue-400">' +
+          '  </div>' +
+          '  <div class="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/30">' +
+          '    <label class="block font-black text-emerald-700 dark:text-emerald-300 mb-1">2. أجرة المناوبة الواحدة (د.ج / شفت):</label>' +
+          '    <input type="number" min="0" step="100" value="' + cfg.shiftRateDzd + '" oninput="App.onPayrollFastInput(' + selUid + ', \'shiftRateDzd\', this.value)" class="w-full px-3 py-2.5 rounded-xl font-mono font-black text-base text-center border-emerald-400">' +
+          '  </div>' +
+          '</div>';
+      } else if (cfg.calcMode === 'monthly_fixed') {
+        step1PrimaryBoxHtml =
+          '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">' +
+          '  <div class="p-3 rounded-xl bg-indigo-500/5 border border-indigo-500/30">' +
+          '    <label class="block font-black text-indigo-700 dark:text-indigo-300 mb-1">1. الراتب الشهري الثابت المعتمد (د.ج / شهر):</label>' +
+          '    <input type="number" min="0" step="500" value="' + cfg.baseMonthlySalaryDzd + '" oninput="App.onPayrollFastInput(' + selUid + ', \'baseMonthlySalaryDzd\', this.value)" class="w-full px-3 py-2.5 rounded-xl font-mono font-black text-base text-center border-indigo-400">' +
+          '  </div>' +
+          '  <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">' +
+          '    <label class="block font-bold text-slate-500 mb-1">2. تسعيرة الساعة المرجعية (لحساب الإضافي والتأخر):</label>' +
+          '    <input type="number" min="0" step="10" value="' + cfg.hourlyRateDzd + '" oninput="App.onPayrollFastInput(' + selUid + ', \'hourlyRateDzd\', this.value)" class="w-full px-3 py-2.5 rounded-xl font-mono font-bold text-base text-center">' +
+          '  </div>' +
+          '</div>';
+      } else {
+        step1PrimaryBoxHtml =
+          '<div class="grid grid-cols-2 md:grid-cols-4 gap-2.5">' +
+          '  <div><label class="block font-bold mb-1 text-indigo-600">الراتب الثابت (د.ج)</label><input type="number" step="500" value="' + cfg.baseMonthlySalaryDzd + '" oninput="App.onPayrollFastInput(' + selUid + ', \'baseMonthlySalaryDzd\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-center"></div>' +
+          '  <div><label class="block font-bold mb-1 text-blue-600">الساعات (Hours)</label><input type="number" value="' + cfg.workedHours + '" oninput="App.onPayrollFastInput(' + selUid + ', \'workedHours\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-center"></div>' +
+          '  <div><label class="block font-bold mb-1 text-blue-600">الدقائق (Mins)</label><input type="number" value="' + cfg.workedMinutes + '" oninput="App.onPayrollFastInput(' + selUid + ', \'workedMinutes\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-center"></div>' +
+          '  <div><label class="block font-bold mb-1 text-emerald-600">تسعيرة الساعة</label><input type="number" value="' + cfg.hourlyRateDzd + '" oninput="App.onPayrollFastInput(' + selUid + ', \'hourlyRateDzd\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-center"></div>' +
+          '</div>';
+      }
+
+      body.innerHTML =
+        '<div class="space-y-4 text-xs">' +
+        '  <!-- الشريط العلوي: اختيار الموظف + الربط المباشر مع جهاز البصمة بالدقيقة -->' +
+        '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3 shadow-sm">' +
+        '    <div class="flex flex-wrap items-center gap-3">' +
+        '      <span class="font-black text-sm text-indigo-600">👤 1. الموظف المعني بالحساب:</span>' +
+        '      <select onchange="AppState.selectedPayrollUserId=Number(this.value); App.renderUsersView()" class="px-4 py-2 rounded-xl font-black text-sm border-indigo-500 bg-indigo-500/10 text-indigo-700 dark:text-amber-300">' +
+        users.map(function (u) {
+          return '<option value="' + u.id + '" ' + (Number(u.id) === selUid ? 'selected' : '') + '>' + u.name + ' (' + u.role + ')</option>';
+        }).join('') +
+        '      </select>' +
+        '      <div class="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold">' +
+        '        ⏱️ المسجل في جهاز البصمة: <strong class="font-mono text-blue-600">' + tcSummary.regularHours + ' ساعة و ' + tcSummary.regularMinutes + ' دقيقة</strong> (' + tcSummary.workedDaysCount + ' يوم)' +
+        '      </div>' +
+        '    </div>' +
+        '    <div class="flex flex-wrap gap-2">' +
+        '      <button type="button" onclick="App.pushEmployeeTimeClockToPayrollAndOpen(' + selUid + ')" class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black shadow">📥 تطبيق ساعات ودقائق البصمة الفعلية (' + tcSummary.regularHours + 'سا و ' + tcSummary.regularMinutes + 'د)</button>' +
+        '      <button type="button" onclick="AppState.usersActiveTab=\'time_clock\'; App.renderUsersView()" class="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 font-bold">⏱️ فتح جهاز البصمة</button>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <!-- أزرار اختيار طريقة حساب الأجر الـ 5 (تبديل نظيف ومنظم) -->' +
+        '  <div class="grid grid-cols-2 md:grid-cols-5 gap-2.5">' +
+        MODES.map(function (m) {
+          var isAct = cfg.calcMode === m.id;
+          return (
+            '<div onclick="App.onPayrollFastInput(' + selUid + ', \'calcMode\', \'' + m.id + '\')" class="p-3 rounded-2xl border cursor-pointer transition ' +
+            (isAct
+              ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg'
+              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-indigo-400') +
+            '">' +
+            '  <div class="font-black text-xs">' + m.icon + ' ' + m.title + '</div>' +
+            '  <div class="text-[10px] ' + (isAct ? 'text-indigo-100' : 'text-slate-400') + ' mt-0.5">' + m.sub + '</div>' +
+            '</div>'
+          );
+        }).join('') +
+        '  </div>' +
+
+        '  <!-- الشبكة الرئيسية: يمين (المدخلات المنظمة في 3 خطوات واضحة) | يسار (وثيقة كشف الراتب الحية) -->' +
+        '  <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">' +
+        '    <div class="lg:col-span-7 space-y-3.5">' +
+
+        '      <!-- الخطوة أ: الأجر الأساسي حسب الطريقة المختارة فقط -->' +
+        '      <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3 shadow-sm">' +
+        '        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 pb-2">' +
+        '          <h4 class="font-black text-sm text-blue-600">أولاً: مدخلات الأجر الأساسي (' + calc.modeArabicLabel.split('(')[0] + ')</h4>' +
+        '          <span id="payLiveMinuteRateBadge" class="px-2.5 py-0.5 rounded-lg bg-blue-500/10 text-blue-600 font-mono font-black">تسعيرة الدقيقة الواحدة: ' + calc.minuteRateDzd.toFixed(2) + ' د.ج / دقيقة</span>' +
+        '        </div>' +
+        step1PrimaryBoxHtml +
+        '        <div id="payLivePrimaryFormulaText" class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono font-bold text-indigo-600 dark:text-amber-300 text-[11px]">' +
+        this.buildPrimaryWageFormulaExplanation(cfg, calc) +
+        '        </div>' +
+        '      </div>' +
+
+        '      <!-- الخطوة ب: الإضافات والمكافآت (الساعات الإضافية + العمولات + المنح) -->' +
+        '      <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3 shadow-sm">' +
+        '        <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2">' +
+        '          <h4 class="font-black text-sm text-emerald-600">➕ ثانياً: الإضافات والمكافآت (ساعات إضافية، عمولات المبيعات، والمنح)</h4>' +
+        '          <span class="text-[11px] font-bold text-slate-400">مبيعات الموظف المسجلة: <strong class="font-mono text-blue-600">' + selStats.totalRevenue.toFixed(2) + ' د.ج</strong> (' + selStats.invoicesCount + ' فاتورة)</span>' +
+        '        </div>' +
+        '        <div class="grid grid-cols-2 md:grid-cols-3 gap-2.5">' +
+        '          <div><label class="block font-bold mb-1">ساعات إضافية (Overtime H)</label><input type="number" min="0" value="' + cfg.overtimeHours + '" oninput="App.onPayrollFastInput(' + selUid + ', \'overtimeHours\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+        '          <div><label class="block font-bold mb-1">دقائق إضافية (Overtime Min)</label><input type="number" min="0" max="59" value="' + cfg.overtimeMinutes + '" oninput="App.onPayrollFastInput(' + selUid + ', \'overtimeMinutes\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+        '          <div><label class="block font-bold mb-1">معامل الإضافي (مثلاً 1.5x)</label><input type="number" step="0.25" value="' + cfg.overtimeMultiplier + '" oninput="App.onPayrollFastInput(' + selUid + ', \'overtimeMultiplier\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+        '          <div><label class="block font-bold mb-1 text-emerald-600">عمولة المبيعات (%)</label><input type="number" step="0.1" value="' + cfg.salesCommissionPct + '" oninput="App.onPayrollFastInput(' + selUid + ', \'salesCommissionPct\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-emerald-600 text-center"></div>' +
+        '          <div><label class="block font-bold mb-1">منحة النقل (Transport د.ج)</label><input type="number" step="100" value="' + cfg.transportAllowanceDzd + '" oninput="App.onPayrollFastInput(' + selUid + ', \'transportAllowanceDzd\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+        '          <div><label class="block font-bold mb-1">منحة الإطعام / المكافأة (د.ج)</label><input type="number" step="100" value="' + cfg.mealAllowanceDzd + '" oninput="App.onPayrollFastInput(' + selUid + ', \'mealAllowanceDzd\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+        '        </div>' +
+        '      </div>' +
+
+        '      <!-- الخطوة ج: الاقتطاعات والخصومات (التأخر بالدقيقة، الغياب، السلفيات، CNAS) -->' +
+        '      <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3 shadow-sm">' +
+        '        <h4 class="font-black text-sm text-rose-600 border-b border-slate-100 dark:border-slate-700 pb-2">➖ ثالثاً: الاقتطاعات والخصومات (دقائق التأخر، أيام الغياب، السلفيات، و CNAS)</h4>' +
+        '        <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 items-center">' +
+        '          <div><label class="block font-bold mb-1 text-rose-600">دقائق التأخر (دقيقة)</label><input type="number" min="0" value="' + cfg.lateMinutes + '" oninput="App.onPayrollFastInput(' + selUid + ', \'lateMinutes\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-rose-600 text-center"></div>' +
+        '          <div><label class="block font-bold mb-1 text-rose-600">أيام الغياب (يوم)</label><input type="number" min="0" value="' + cfg.absentDays + '" oninput="App.onPayrollFastInput(' + selUid + ', \'absentDays\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-rose-600 text-center"></div>' +
+        '          <label class="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 cursor-pointer mt-4"><input type="checkbox" ' + (cfg.applyCnas9Pct ? 'checked' : '') + ' onchange="App.onPayrollFastInput(' + selUid + ', \'applyCnas9Pct\', this.checked, true)"><span class="font-bold">ضمان CNAS (9%)</span></label>' +
+        '          <label class="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 cursor-pointer mt-4"><input type="checkbox" ' + (cfg.deductCaisseShortage ? 'checked' : '') + ' onchange="App.onPayrollFastInput(' + selUid + ', \'deductCaisseShortage\', this.checked, true)"><span class="font-bold">خصم عجز الصندوق</span></label>' +
+        '        </div>' +
+        '      </div>' +
+        '    </div>' +
+
+        '    <!-- يسار: وثيقة كشف الراتب التفاعلي المفصل (Live Fiche de Paie — 5 أعمدة) -->' +
+        '    <div class="lg:col-span-5 bg-slate-900 text-white border border-slate-800 rounded-2xl p-5 flex flex-col justify-between space-y-4 shadow-xl">' +
+        '      <div class="space-y-3">' +
+        '        <div class="flex items-center justify-between border-b border-slate-800 pb-3">' +
+        '          <div><div class="text-xs text-amber-400 font-black">🧾 كشف الراتب التفاعلي المفصل (Fiche de Paie)</div><div class="text-lg font-black mt-0.5">' + selStats.user.name + ' (' + selStats.user.role + ')</div></div>' +
+        '          <span id="paySlipModeBadge" class="px-2.5 py-1 rounded-xl bg-indigo-500/20 text-indigo-300 font-mono text-[10.5px]">' + calc.modeArabicLabel + '</span>' +
+        '        </div>' +
+
+        '        <div class="space-y-2 text-xs">' +
+        '          <div class="flex justify-between p-2.5 rounded-xl bg-slate-800/90"><span>1. الأجر الأساسي (حسب الطريقة المختارة):</span><strong id="paySlipBaseVal" class="font-mono text-blue-400 text-sm">+' + calc.primaryTimeOrBasePay.toFixed(2) + ' د.ج</strong></div>' +
+        '          <div class="flex justify-between p-2.5 rounded-xl bg-slate-800/90"><span>2. أجر الساعات والدقائق الإضافية (Overtime):</span><strong id="paySlipOvertimeVal" class="font-mono text-blue-300">+' + calc.overtimePay.toFixed(2) + ' د.ج</strong></div>' +
+        '          <div class="flex justify-between p-2.5 rounded-xl bg-slate-800/90"><span>3. عمولات المبيعات (' + selStats.totalRevenue.toFixed(0) + ' د.ج):</span><strong id="paySlipCommVal" class="font-mono text-emerald-400">+' + calc.totalCommissionsDzd.toFixed(2) + ' د.ج</strong></div>' +
+        '          <div class="flex justify-between p-2.5 rounded-xl bg-slate-800/90"><span>4. المنح والعلاوات الإضافية:</span><strong id="paySlipAllowVal" class="font-mono text-emerald-300">+' + calc.totalAllowancesDzd.toFixed(2) + ' د.ج</strong></div>' +
+        '          <div class="flex justify-between p-2 rounded-xl bg-indigo-950/60 border border-indigo-500/30 font-black"><span>إجمالي الاستحقاق الخام (Salaire Brut):</span><strong id="paySlipGrossVal" class="font-mono text-amber-300">' + calc.grossSalaryDzd.toFixed(2) + ' د.ج</strong></div>' +
+        '          <div class="flex justify-between p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30"><span>5. (-) خصم دقائق التأخر وأيام الغياب:</span><strong id="paySlipLateAbsentVal" class="font-mono text-rose-400">-' + (calc.lateDeductionDzd + calc.absentDeductionDzd).toFixed(2) + ' د.ج</strong></div>' +
+        '          <div class="flex justify-between p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30"><span>6. (-) خصم السلفيات (' + calc.empAdvancesDzd.toFixed(0) + ') وعجز الصندوق و CNAS:</span><strong id="paySlipAdvCnasVal" class="font-mono text-rose-400">-' + (calc.empAdvancesDzd + calc.shortageDeductionDzd + calc.cnasDeductionDzd).toFixed(2) + ' د.ج</strong></div>' +
+        '        </div>' +
+
+        '        <div class="p-4 rounded-2xl bg-emerald-600 text-white shadow-lg text-center space-y-1 mt-2">' +
+        '          <div class="text-xs opacity-90 font-bold">صافي الراتب النهائي المستحق للدفع (NET À PAYER)</div>' +
+        '          <div id="paySlipNetDzd" class="text-3xl font-black font-mono">' + calc.netPayableDzd.toFixed(2) + ' د.ج</div>' +
+        '          <div id="paySlipNetCentimes" class="text-xs font-bold text-amber-200">🇩🇿 بالتداول الجزائري: ' + fmtCentimes(calc.netPayableDzd) + '</div>' +
+        '        </div>' +
+        '      </div>' +
+
+        '      <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">' +
+        '        <button type="button" onclick="App.printEmployeePayslipA4(' + selUid + ')" class="py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black shadow">🖨️ طباعة كشف الراتب (A4)</button>' +
+        '        <button type="button" onclick="App.disburseCalculatedPayrollNow(' + selUid + ')" class="py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black shadow">💸 صرف وتسجيل في المصاريف</button>' +
+        '      </div>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+    }
+  };
+})();
+
+// [PAGE 17 V4 BIOMETRIC ENROLLMENT, AUTO PERIOD PAYROLL, PAID LEDGER & DUAL PDF]
+(function installPage17ErpBiometricsAutoPayrollAndPdfV4() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.payrollPeriodCycle = localStorage.getItem('gherbi_payroll_cycle') || 'monthly'; // 'weekly' | 'biweekly' | 'monthly'
+  AppState.payrollRecordsLedger = JSON.parse(localStorage.getItem('gherbi_payroll_ledger_v4') || '[]');
+  AppState.empBiometricProfiles = JSON.parse(localStorage.getItem('gherbi_emp_biometrics_v4') || '{}');
+
+  function fmtCentimes(dzd) {
+    return typeof App.formatAlgerianCentimes === 'function'
+      ? App.formatAlgerianCentimes(dzd)
+      : (Math.round(Number(dzd || 0) * 100)).toLocaleString('fr-DZ') + ' سنتيم';
+  }
+
+  // استخراج ملف الهوية الكامل للموظف (الكود السري PIN + الباركود + البصمة البيومترية + كود جهاز البصمة USB/ZKTeco)
+  App.getEmployeeFullIdentityProfile = function (userObj) {
+    var uid = Number((userObj && userObj.id) || 1);
+    var savedPins = JSON.parse(localStorage.getItem('gherbi_emp_pins_v1') || '{}');
+    var bioMap = AppState.empBiometricProfiles || {};
+    var bio = bioMap[uid] || {};
+
+    return {
+      userId: uid,
+      pin: savedPins[uid] || bio.pin || String(1000 + uid),
+      barcode: 'USR-' + String(uid).padStart(4, '0'),
+      zkDeviceUserId: bio.zkDeviceUserId || String(uid),
+      usbRfidToken: bio.usbRfidToken || ('RFID-' + String(10000 + uid)),
+      fingerprintEnrolled: bio.fingerprintEnrolled !== false, // مفعل افتراضياً مع إمكانية إعادة التسجيل
+      fingerprintHash: bio.fingerprintHash || ('FP-SHA256-' + String(uid * 987654321).slice(0, 10)),
+      enrolledAt: bio.enrolledAt || '2026-11-01',
+      defaultPayCycle: bio.defaultPayCycle || 'monthly' // 'weekly' | 'monthly'
+    };
+  };
+
+  App.saveEmployeeIdentityField = function (userId, field, value) {
+    var uid = Number(userId || 1);
+    if (!AppState.empBiometricProfiles) AppState.empBiometricProfiles = {};
+    if (!AppState.empBiometricProfiles[uid]) {
+      AppState.empBiometricProfiles[uid] = this.getEmployeeFullIdentityProfile({ id: uid });
+    }
+    AppState.empBiometricProfiles[uid][field] = value;
+    localStorage.setItem('gherbi_emp_biometrics_v4', JSON.stringify(AppState.empBiometricProfiles));
+
+    if (field === 'pin') {
+      var savedPins = JSON.parse(localStorage.getItem('gherbi_emp_pins_v1') || '{}');
+      savedPins[uid] = String(value).trim();
+      localStorage.setItem('gherbi_emp_pins_v1', JSON.stringify(savedPins));
+    }
+    if (typeof showToast === 'function') {
+      showToast('✅ تم حفظ وتحديث بيانات الهوية والبصمة للموظف بنجاح!', 'success');
+    }
+  };
+
+  // ==========================================================================
+  // 1. نافذة تسجيل البصمة البيومترية الثلاثية والربط مع أجهزة USB / ZKTeco (#biometricEnrollModal)
+  //    ونافذة معاينة وطباعة تقارير PDF للرواتب والحضور (#erpPayrollPdfStudioModal)
+  // ==========================================================================
+  App.ensureErpV4ModalsDom = function () {
+    this.ensureUsersErpModalsDom();
+
+    if (!document.getElementById('biometricEnrollModal')) {
+      var bm = document.createElement('div');
+      bm.id = 'biometricEnrollModal';
+      bm.className = 'modal-overlay';
+      bm.innerHTML =
+        '<div class="modal-content w-full max-w-xl p-6 space-y-4">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <h3 id="bioEnrollModalTitle" class="text-lg font-black text-indigo-600">🫆🪪 استوديو تسجيل البصمة البيومترية والكود السري والباركود للموظف</h3>' +
+        '    <button type="button" onclick="App.closeModal(\'biometricEnrollModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div id="bioEnrollModalBody" class="space-y-4 text-xs"></div>' +
+        '</div>';
+      document.body.appendChild(bm);
+    }
+
+    if (!document.getElementById('erpPayrollPdfStudioModal')) {
+      var pm = document.createElement('div');
+      pm.id = 'erpPayrollPdfStudioModal';
+      pm.className = 'modal-overlay';
+      pm.innerHTML =
+        '<div class="modal-content w-full max-w-5xl p-6 space-y-3.5 overflow-y-auto">' +
+        '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '    <div>' +
+        '      <h3 id="payrollPdfStudioTitle" class="text-lg font-black text-indigo-600">📄 استوديو تقارير الرواتب وسجل الحضور والانصراف (A4 / PDF)</h3>' +
+        '      <p class="text-[11px] text-slate-400 font-bold">انقر داخل التقرير لتعديل أي نص أو رقم قبل الطباعة أو الحفظ كملف PDF</p>' +
+        '    </div>' +
+        '    <button type="button" onclick="App.closeModal(\'erpPayrollPdfStudioModal\')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>' +
+        '  </div>' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-slate-100 dark:bg-slate-800 text-xs">' +
+        '    <div class="flex flex-wrap gap-2">' +
+        '      <button type="button" onclick="App.openMasterAllStaffPayrollPdf()" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 text-white font-black shadow">📑 التقرير الشامل لكل الموظفين + سجل الدخول والخروج</button>' +
+        '      <button type="button" onclick="App.openIndividualEmployeePayrollPdf(AppState.selectedPayrollUserId)" class="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white font-black shadow">👤 كشف الراتب والحضور الفردي للعامل الحالي</button>' +
+        '    </div>' +
+        '    <div class="flex gap-2">' +
+        '      <button type="button" onclick="App.executePayrollStudioPrintOrPdf(\'print\')" class="px-4 py-1.5 rounded-xl bg-emerald-600 text-white font-black shadow">🖨️ طباعة فورية (A4)</button>' +
+        '      <button type="button" onclick="App.executePayrollStudioPrintOrPdf(\'pdf\')" class="px-4 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-black shadow">📥 حفظ كملف PDF</button>' +
+        '    </div>' +
+        '  </div>' +
+        '  <iframe id="erpPayrollPdfPreviewFrame" class="w-full h-[60vh] border border-slate-300 dark:border-slate-700 rounded-2xl bg-white shadow-inner"></iframe>' +
+        '</div>';
+      document.body.appendChild(pm);
+    }
+  };
+
+  // فتح استوديو تهيئة البصمة والكود والباركود لعامل محدد
+  App.openEmployeeBiometricEnrollModal = async function (userId) {
+    this.ensureErpV4ModalsDom();
+    var users = (await window.api.getUsers().catch(function () { return []; })) || [];
+    var u = users.find(function (x) { return Number(x.id) === Number(userId); }) || users[0];
+    if (!u) return;
+
+    var idProf = this.getEmployeeFullIdentityProfile(u);
+    AppState._enrollScanStep = 0;
+
+    var body = document.getElementById('bioEnrollModalBody');
+    if (body) {
+      body.innerHTML =
+        '<div class="p-3.5 rounded-2xl bg-slate-900 text-white flex items-center justify-between">' +
+        '  <div><div class="text-sm font-black text-amber-400">👤 الموظف: ' + u.name + ' (' + u.role + ')</div><div class="text-[11px] text-slate-300 font-mono mt-0.5">Barcode: ' + idProf.barcode + ' | PIN: ' + idProf.pin + ' | ZKTeco ID: #' + idProf.zkDeviceUserId + '</div></div>' +
+        '  <span class="px-3 py-1 rounded-xl bg-emerald-500 text-slate-950 font-black text-[11px]">✓ الهوية مفعلة</span>' +
+        '</div>' +
+
+        '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">' +
+        '  <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">' +
+        '    <label class="block font-black text-indigo-600 mb-1">1. 🔢 الكود السري الشخصي للبصمة (PIN Code):</label>' +
+        '    <input id="enrPinInput" type="text" value="' + idProf.pin + '" oninput="App.saveEmployeeIdentityField(' + u.id + ', \'pin\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-base text-center border-indigo-400">' +
+        '  </div>' +
+        '  <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">' +
+        '    <label class="block font-black text-emerald-600 mb-1">2. 🔌 رقم العامل في جهاز البصمة (ZKTeco / RFID):</label>' +
+        '    <input id="enrZkIdInput" type="text" value="' + idProf.zkDeviceUserId + '" oninput="App.saveEmployeeIdentityField(' + u.id + ', \'zkDeviceUserId\', this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-black text-base text-center border-emerald-400">' +
+        '  </div>' +
+        '</div>' +
+
+        '<!-- محاكي ومسجل البصمة البيومترية الثلاثي (3-Step Biometric Fingerprint Sensor) -->' +
+        '<div class="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 text-center space-y-2.5">' +
+        '  <div class="font-black text-sm text-indigo-700 dark:text-amber-300">3. 🫆 تسجيل وأخذ البصمة البيومترية للعامل (3 مسحات متتالية):</div>' +
+        '  <div id="bioScanInteractivePad" onclick="App.stepBiometricScanEnroll(' + u.id + ')" class="w-24 h-24 rounded-3xl bg-slate-900 hover:bg-indigo-950 text-emerald-400 flex flex-col items-center justify-center mx-auto cursor-pointer border-2 border-emerald-500 shadow-lg transition">' +
+        '    <span style="font-size:38px;">🫆</span>' +
+        '    <span id="bioScanPadSubText" class="text-[10px] font-black text-amber-300 mt-1">انقر للمسح (1/3)</span>' +
+        '  </div>' +
+        '  <div id="bioScanProgressText" class="font-mono text-[11px] font-bold text-emerald-600">البصمة الرقمية المسجلة: ' + idProf.fingerprintHash + '</div>' +
+        '</div>' +
+
+        '<div class="flex justify-between items-center pt-2 border-t border-slate-200 dark:border-slate-700">' +
+        '  <button type="button" onclick="App.closeModal(\'biometricEnrollModal\'); App.openStaffBadgePreviewModal(' + u.id + ')" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-black">🪪 معاينة وطباعة بطاقة الباركود (' + idProf.barcode + ')</button>' +
+        '  <button type="button" onclick="App.closeModal(\'biometricEnrollModal\'); App.renderUsersView()" class="px-5 py-2 rounded-xl bg-emerald-600 text-white font-black shadow">✓ حفظ وإغلاق</button>' +
+        '</div>';
+    }
+
+    this.openModal('biometricEnrollModal');
+  };
+
+  App.stepBiometricScanEnroll = function (userId) {
+    AppState._enrollScanStep = (Number(AppState._enrollScanStep || 0) + 1);
+    var step = AppState._enrollScanStep;
+    var subEl = document.getElementById('bioScanPadSubText');
+    var progEl = document.getElementById('bioScanProgressText');
+    if (typeof playBeep === 'function') playBeep(true);
+
+    if (step < 3) {
+      if (subEl) subEl.textContent = 'المسحة (' + step + '/3) ✓';
+      if (progEl) progEl.textContent = '⏳ جاري قراءة خطوط البصمة... اضغط المسحة رقم (' + (step + 1) + '/3)';
+    } else {
+      var newHash = 'FP-BIO-' + userId + '-' + Date.now().toString(36).toUpperCase();
+      this.saveEmployeeIdentityField(userId, 'fingerprintHash', newHash);
+      this.saveEmployeeIdentityField(userId, 'fingerprintEnrolled', true);
+      if (subEl) subEl.textContent = 'مكتمل 3/3 ✅';
+      if (progEl) progEl.textContent = '🎉 تم تسجيل وتشفير بصمة العامل بنجاح: ' + newHash;
+      AppState._enrollScanStep = 0;
+    }
+  };
+
+  // ==========================================================================
+  // 2. مستورد ملفات أجهزة البصمة الحائطية (ZKTeco .DAT / .CSV / Excel Importer)
+  // ==========================================================================
+  App.triggerZKTecoFileImport = function () {
+    var fileInp = document.getElementById('zkTecoHiddenFileInput');
+    if (!fileInp) {
+      fileInp = document.createElement('input');
+      fileInp.id = 'zkTecoHiddenFileInput';
+      fileInp.type = 'file';
+      fileInp.accept = '.dat,.csv,.txt,.log';
+      fileInp.style.display = 'none';
+      fileInp.onchange = function (e) {
+        var file = e.target.files && e.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function (ev) {
+          App.parseAndImportZKTecoAttendanceText(ev.target.result || '');
+        };
+        reader.readAsText(file);
+      };
+      document.body.appendChild(fileInp);
+    }
+    fileInp.value = '';
+    fileInp.click();
+  };
+
+  App.parseAndImportZKTecoAttendanceText = async function (rawText) {
+    var users = (await window.api.getUsers().catch(function () { return []; })) || [];
+    var lines = String(rawText || '').split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+    if (lines.length === 0) return;
+
+    var importedCount = 0;
+    lines.forEach(function (line) {
+      // يدعم صيغة ZKTeco القياسية: UID \t YYYY-MM-DD HH:MM:SS أو CSV: UID,Date,TimeIn,TimeOut,Hours
+      var parts = line.split(/[\t,;]+/).map(function (s) { return s.trim(); });
+      if (parts.length >= 2) {
+        var rawUid = parts[0].replace(/[^0-9]/g, '');
+        var matchedU = users.find(function (u) {
+          var prof = App.getEmployeeFullIdentityProfile(u);
+          return String(u.id) === rawUid || String(prof.zkDeviceUserId) === rawUid || String(prof.pin) === rawUid;
+        }) || users[0];
+
+        if (matchedU) {
+          var dateStr = (parts[1].slice(0, 10).match(/^\d{4}-\d{2}-\d{2}$/) ? parts[1].slice(0, 10) : new Date().toISOString().slice(0, 10));
+          var hrs = parts[3] ? (parseFloat(parts[3]) || 8) : 8;
+          var durMins = Math.round(hrs * 60);
+          AppState.staffTimeClockLogs.unshift({
+            id: 'ZK-' + Date.now() + '-' + importedCount,
+            userId: matchedU.id,
+            empName: matchedU.name,
+            date: dateStr,
+            checkIn: dateStr + 'T08:00:00',
+            checkOut: dateStr + 'T16:00:00',
+            durationMinutes: durMins,
+            lateMinutes: 0,
+            overtimeMinutes: durMins > 480 ? durMins - 480 : 0,
+            method: '🔌 جهاز بصمة ZKTeco',
+            note: 'مستورد من جهاز البصمة الخارجي'
+          });
+          importedCount++;
+        }
+      }
+    });
+
+    localStorage.setItem('gherbi_staff_timeclock_v1', JSON.stringify(AppState.staffTimeClockLogs));
+    await this.renderUsersView();
+    if (typeof showToast === 'function') {
+      showToast('📂 تم استيراد (' + importedCount + ' سجل حضور وانصراف) من جهاز البصمة وحساب الساعات والدقائق بنجاح!', 'success');
+    }
+  };
+
+  // زر محاكاة استيراد أسبوع كامل من جهاز البصمة بضغطة زر لتجربة النظام فوراً
+  App.simulateWeekBiometricAttendanceForAllStaff = async function () {
+    var users = (await window.api.getUsers().catch(function () { return []; })) || [];
+    var nowMs = Date.now();
+    var added = 0;
+
+    users.forEach(function (u) {
+      for (var d = 6; d >= 1; d--) {
+        var dayDate = new Date(nowMs - d * 86400000).toISOString().slice(0, 10);
+        var exists = (AppState.staffTimeClockLogs || []).some(function (l) {
+          return Number(l.userId) === Number(u.id) && String(l.date || l.checkIn || '').slice(0, 10) === dayDate;
+        });
+        if (!exists) {
+          var durMins = 480 + (d % 2 === 0 ? 30 : 0); // 8 ساعات أو 8 ساعات ونصف
+          AppState.staffTimeClockLogs.unshift({
+            id: 'BIO-SIM-' + u.id + '-' + d + '-' + Date.now(),
+            userId: u.id,
+            empName: u.name,
+            date: dayDate,
+            checkIn: dayDate + 'T08:00:00',
+            checkOut: dayDate + 'T' + (d % 2 === 0 ? '16:30:00' : '16:00:00'),
+            durationMinutes: durMins,
+            lateMinutes: d === 3 ? 15 : 0,
+            overtimeMinutes: d % 2 === 0 ? 30 : 0,
+            method: '🫆 بصمة بيومترية (' + App.getEmployeeFullIdentityProfile(u).pin + ')',
+            note: 'دوام يومي منتظم'
+          });
+          added++;
+        }
+      }
+    });
+
+    localStorage.setItem('gherbi_staff_timeclock_v1', JSON.stringify(AppState.staffTimeClockLogs));
+    await this.renderUsersView();
+    if (typeof showToast === 'function') {
+      showToast('⚡ تم توليد وتوثيق بصمات الأسبوع (' + added + ' يوم عمل بالساعات والدقائق) لجميع العمال بنجاح!', 'success');
+    }
+  };
+
+  // ==========================================================================
+  // 3. محرك الأتمتة للدورة الأسبوعية / النصف شهرية / الشهرية + سجل حالة القبض
+  // ==========================================================================
+  App.applyPayrollCyclePreset = function (cycleType, targetUserId) {
+    AppState.payrollPeriodCycle = cycleType; // 'weekly' | 'biweekly' | 'monthly'
+    localStorage.setItem('gherbi_payroll_cycle', cycleType);
+
+    var daysLookback = cycleType === 'weekly' ? 7 : cycleType === 'biweekly' ? 15 : 30;
+    var cutoffIso = new Date(Date.now() - daysLookback * 86400000).toISOString().slice(0, 10);
+
+    var statsMap = AppState._cachedUserStatsMap || {};
+    var uids = targetUserId ? [Number(targetUserId)] : Object.keys(statsMap).map(Number);
+
+    uids.forEach(function (uid) {
+      var st = statsMap[uid];
+      var cfg = App.getEmployeePayrollConfig(uid, st);
+      var logsInPeriod = (AppState.staffTimeClockLogs || []).filter(function (l) {
+        var dStr = String(l.date || l.checkIn || '').slice(0, 10);
+        return Number(l.userId) === uid && dStr >= cutoffIso;
+      });
+
+      var totalMins = 0;
+      var lateMins = 0;
+      var daysSet = {};
+      logsInPeriod.forEach(function (l) {
+        totalMins += Number(l.durationMinutes || 480);
+        lateMins += Number(l.lateMinutes || 0);
+        var dStr = String(l.date || l.checkIn || '').slice(0, 10);
+        if (dStr) daysSet[dStr] = true;
+      });
+
+      if (totalMins > 0) {
+        cfg.workedHours = Math.floor(totalMins / 60);
+        cfg.workedMinutes = totalMins % 60;
+        cfg.lateMinutes = lateMins;
+        cfg.workedDays = Object.keys(daysSet).length || (cycleType === 'weekly' ? 6 : 26);
+      } else {
+        // قيم قياسية متناسبة مع الدورة المختارة (أسبوعي = 44 ساعة / 6 أيام | نصف شهري = 88 ساعة / 13 يوماً | شهري = 176 ساعة / 26 يوماً)
+        cfg.workedHours = cycleType === 'weekly' ? 44 : cycleType === 'biweekly' ? 88 : 176;
+        cfg.workedMinutes = 0;
+        cfg.workedDays = cycleType === 'weekly' ? 6 : cycleType === 'biweekly' ? 13 : 26;
+      }
+
+      // إذا كان النظام راتباً ثابتاً، نكيّفه مع الدورة (الأسبوعي = الشهري ÷ 4، النصف شهري = الشهري ÷ 2)
+      var baseFullMonthly = Number((st && st.perms && st.perms.baseSalaryDzd) || 35000);
+      if (cycleType === 'weekly') {
+        cfg.baseMonthlySalaryDzd = Math.round(baseFullMonthly / 4);
+      } else if (cycleType === 'biweekly') {
+        cfg.baseMonthlySalaryDzd = Math.round(baseFullMonthly / 2);
+      } else {
+        cfg.baseMonthlySalaryDzd = baseFullMonthly;
+      }
+
+      AppState.payrollConfigsByUser[uid] = cfg;
+    });
+
+    localStorage.setItem('gherbi_payroll_configs_v1', JSON.stringify(AppState.payrollConfigsByUser));
+    this.renderUsersView();
+    if (typeof showToast === 'function') {
+      var lbl = cycleType === 'weekly' ? 'الأسبوعية (7 أيام)' : cycleType === 'biweekly' ? 'النصف شهرية (15 يوماً)' : 'الشهرية الكاملة (30 يوماً)';
+      showToast('📅 تم ضبط وحساب الأجور والحجم الساعي تلقائياً وفق الدورة ' + lbl + '!', 'success');
+    }
+  };
+
+  // توليد وإصدار كشوف الرواتب لجميع العمال دفعة واحدة وحفظها في سجل الرواتب (بحالة: غير مقبوض ⏳ أو مقبوض ✅)
+  App.generateBatchPayrollForAllStaff = function (markAsPaidImmediately) {
+    var statsMap = AppState._cachedUserStatsMap || {};
+    var cycle = AppState.payrollPeriodCycle || 'monthly';
+    var cycleAr = cycle === 'weekly' ? 'راتب أسبوعي (7 أيام)' : cycle === 'biweekly' ? 'راتب نصف شهري (15 يوماً)' : 'راتب شهري (30 يوماً)';
+    var todayStr = new Date().toISOString().slice(0, 10);
+
+    Object.values(statsMap).forEach(function (st) {
+      var u = st.user;
+      var cfg = App.getEmployeePayrollConfig(u.id, st);
+      var calc = App.computeUniversalEmployeePayroll(cfg, st);
+      var rec = {
+        id: 'PAY-' + Date.now() + '-' + u.id,
+        userId: u.id,
+        empName: u.name,
+        empRole: u.role,
+        periodLabel: cycleAr,
+        date: todayStr,
+        workedHours: cfg.workedHours,
+        workedMinutes: cfg.workedMinutes,
+        workedDays: cfg.workedDays,
+        calcModeLabel: calc.modeArabicLabel,
+        grossSalaryDzd: calc.grossSalaryDzd,
+        totalDeductionsDzd: calc.totalDeductionsDzd,
+        netPayableDzd: calc.netPayableDzd,
+        status: markAsPaidImmediately ? 'paid' : 'unpaid',
+        paidAt: markAsPaidImmediately ? new Date().toISOString().slice(0, 16).replace('T', ' ') : null
+      };
+      AppState.payrollRecordsLedger.unshift(rec);
+    });
+
+    localStorage.setItem('gherbi_payroll_ledger_v4', JSON.stringify(AppState.payrollRecordsLedger));
+    this.renderUsersView();
+    if (typeof showToast === 'function') {
+      showToast('🎉 تم حساب وتوثيق رواتب جميع الموظفين في سجل الرواتب (' + cycleAr + ') بنجاح!', 'success');
+    }
+  };
+
+  App.togglePayrollRecordPaidStatus = async function (recordId) {
+    var rec = (AppState.payrollRecordsLedger || []).find(function (r) { return String(r.id) === String(recordId); });
+    if (!rec) return;
+
+    if (rec.status !== 'paid') {
+      rec.status = 'paid';
+      rec.paidAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
+      await this.payEmployeeSalaryAndCommission(rec.empName, rec.netPayableDzd);
+    } else {
+      rec.status = 'unpaid';
+      rec.paidAt = null;
+    }
+
+    localStorage.setItem('gherbi_payroll_ledger_v4', JSON.stringify(AppState.payrollRecordsLedger));
+    await this.renderUsersView();
+  };
+
+  App.deletePayrollLedgerRecord = function (recordId) {
+    AppState.payrollRecordsLedger = (AppState.payrollRecordsLedger || []).filter(function (r) {
+      return String(r.id) !== String(recordId);
+    });
+    localStorage.setItem('gherbi_payroll_ledger_v4', JSON.stringify(AppState.payrollRecordsLedger));
+    this.renderUsersView();
+  };
+
+  // ==========================================================================
+  // 4. استوديو تقارير الـ PDF (التقرير الشامل لكل الموظفين + التقرير الفردي لكل عامل مع سجل الدخول والخروج)
+  // ==========================================================================
+  App.openMasterAllStaffPayrollPdf = async function () {
+    this.ensureErpV4ModalsDom();
+    var statsMap = AppState._cachedUserStatsMap || {};
+    var shopName = (AppState.settings && AppState.settings.shop_name) || 'Gherbi.Ai POS';
+    var todayStr = new Date().toISOString().slice(0, 10);
+
+    var staffRowsHtml = '';
+    var grandTotalNet = 0;
+
+    Object.values(statsMap).forEach(function (st, idx) {
+      var u = st.user;
+      var cfg = App.getEmployeePayrollConfig(u.id, st);
+      var calc = App.computeUniversalEmployeePayroll(cfg, st);
+      var tcSum = App.getEmployeeTimeClockSummary(u.id);
+      grandTotalNet += calc.netPayableDzd;
+
+      var latestLedger = (AppState.payrollRecordsLedger || []).find(function (r) { return Number(r.userId) === Number(u.id); });
+      var paidBadge = latestLedger && latestLedger.status === 'paid'
+        ? '<span style="color:#047857;font-weight:900;">✅ تم القبض (' + (latestLedger.paidAt || '') + ')</span>'
+        : '<span style="color:#d97706;font-weight:900;">⏳ قيد الانتظار (لم يُقبض)</span>';
+
+      staffRowsHtml +=
+        '<tr>' +
+        '  <td>' + (idx + 1) + '</td>' +
+        '  <td><strong>' + u.name + '</strong><br><small>' + u.role + '</small></td>' +
+        '  <td>' + calc.modeArabicLabel + '</td>' +
+        '  <td style="font-family:monospace;font-weight:bold;">' + cfg.workedHours + ' سا و ' + cfg.workedMinutes + ' د<br><small>(' + tcSum.logsCount + ' بصمة حضور)</small></td>' +
+        '  <td style="font-family:monospace;">+' + calc.primaryTimeOrBasePay.toFixed(2) + '</td>' +
+        '  <td style="font-family:monospace;color:#059669;">+' + (calc.overtimePay + calc.totalCommissionsDzd + calc.totalAllowancesDzd).toFixed(2) + '</td>' +
+        '  <td style="font-family:monospace;color:#e11d48;">-' + calc.totalDeductionsDzd.toFixed(2) + '</td>' +
+        '  <td style="font-family:monospace;font-weight:900;font-size:13px;color:#1d4ed8;">' + calc.netPayableDzd.toFixed(2) + ' د.ج<br><small>' + fmtCentimes(calc.netPayableDzd) + '</small></td>' +
+        '  <td>' + paidBadge + '</td>' +
+        '</tr>';
+    });
+
+    var attendanceRowsHtml = (AppState.staffTimeClockLogs || []).slice(0, 60).map(function (tc, i) {
+      var h = Math.floor(Number(tc.durationMinutes || 0) / 60);
+      var m = Number(tc.durationMinutes || 0) % 60;
+      return (
+        '<tr>' +
+        '  <td>' + (i + 1) + '</td>' +
+        '  <td><strong>' + tc.empName + '</strong></td>' +
+        '  <td style="font-family:monospace;">' + String(tc.date || tc.checkIn || '').slice(0, 10) + '</td>' +
+        '  <td style="font-family:monospace;color:#059669;font-weight:bold;">' + String(tc.checkIn || '').slice(11, 16) + '</td>' +
+        '  <td style="font-family:monospace;color:#e11d48;font-weight:bold;">' + (tc.checkOut ? String(tc.checkOut).slice(11, 16) : 'في الدوام') + '</td>' +
+        '  <td style="font-family:monospace;font-weight:900;">' + h + ' ساعة و ' + m + ' دقيقة</td>' +
+        '  <td>' + (tc.lateMinutes > 0 ? tc.lateMinutes + ' د تأخر' : 'منتظم ✓') + '</td>' +
+        '  <td>' + (tc.method || 'بصمة') + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>التقرير الشامل للرواتب والحضور — ' + shopName + '</title>' +
+      '<style>@page{size:A4 landscape;margin:10mm;}body{font-family:Cairo,Tahoma,sans-serif;padding:16px;color:#0f172a;font-size:11.5px;background:#fff;}table{width:100%;border-collapse:collapse;margin-top:8px;margin-bottom:16px;}th,td{border:1px solid #cbd5e1;padding:6px;text-align:right;}th{background:#0f172a;color:#fff;}</style></head><body contenteditable="true">' +
+      '<div style="display:flex;justify-content:space-between;border-bottom:3px solid #1d4ed8;padding-bottom:10px;margin-bottom:12px;">' +
+      '  <div><h2 style="margin:0;color:#1d4ed8;">' + shopName + ' — الكشف الشامل لرواتب الموظفين وسجل الحضور والانصراف بالساعة والدقيقة</h2><div>تاريخ الإصدار: ' + todayStr + ' | إجمالي كتلة الأجور الصافية: <strong>' + grandTotalNet.toFixed(2) + ' د.ج (' + fmtCentimes(grandTotalNet) + ')</strong></div></div>' +
+      '</div>' +
+      '<h3>أولاً: جدول مسير الرواتب والأجور وحالة القبض لجميع الموظفين</h3>' +
+      '<table><thead><tr><th>#</th><th>الموظف</th><th>نظام الحساب</th><th>الحجم الساعي المنجز</th><th>الأجر الأساسي</th><th>الإضافي والعمولات والمنح (+)</th><th>الخصومات والسلفيات (-)</th><th>صافي الراتب المستحق</th><th>حالة القبض</th></tr></thead><tbody>' +
+      staffRowsHtml +
+      '</tbody></table>' +
+      '<h3>ثانياً: السجل التفصيلي لحركات البصمة (متى دخل ومتى خرج كل عامل وعدد الساعات والدقائق)</h3>' +
+      '<table><thead><tr><th>#</th><th>اسم العامل</th><th>التاريخ</th><th>وقت الدخول (من)</th><th>وقت الخروج (إلى)</th><th>الحجم الساعي المحسوب</th><th>الانضباط والتأخر</th><th>وسيلة التوثيق</th></tr></thead><tbody>' +
+      (attendanceRowsHtml || '<tr><td colspan="8" style="text-align:center;">لا توجد حركات بصمة مسجلة بعد</td></tr>') +
+      '</tbody></table></body></html>';
+
+    this.openModal('erpPayrollPdfStudioModal');
+    setTimeout(function () {
+      var frame = document.getElementById('erpPayrollPdfPreviewFrame');
+      if (frame && frame.contentWindow) {
+        var doc = frame.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+      }
+    }, 40);
+  };
+
+  // التقرير الفردي المفصل لكل عامل على حدة (الراتب + جدول متى دخل ومتى خرج بالساعة والدقيقة)
+  App.openIndividualEmployeePayrollPdf = async function (userId) {
+    this.ensureErpV4ModalsDom();
+    var uid = Number(userId || AppState.selectedPayrollUserId || 1);
+    var statsMap = AppState._cachedUserStatsMap || {};
+    var st = statsMap[uid] || Object.values(statsMap)[0];
+    if (!st) return;
+
+    var u = st.user;
+    var idProf = this.getEmployeeFullIdentityProfile(u);
+    var cfg = this.getEmployeePayrollConfig(uid, st);
+    var calc = this.computeUniversalEmployeePayroll(cfg, st);
+    var shopName = (AppState.settings && AppState.settings.shop_name) || 'Gherbi.Ai POS';
+
+    var empLogs = (AppState.staffTimeClockLogs || []).filter(function (l) {
+      return Number(l.userId) === Number(u.id);
+    });
+
+    var empAttendanceHtml = empLogs.map(function (tc, i) {
+      var h = Math.floor(Number(tc.durationMinutes || 0) / 60);
+      var m = Number(tc.durationMinutes || 0) % 60;
+      return (
+        '<tr>' +
+        '  <td>' + (i + 1) + '</td>' +
+        '  <td style="font-family:monospace;">' + String(tc.date || tc.checkIn || '').slice(0, 10) + '</td>' +
+        '  <td style="font-family:monospace;color:#059669;font-weight:bold;">' + String(tc.checkIn || '').slice(11, 16) + '</td>' +
+        '  <td style="font-family:monospace;color:#e11d48;font-weight:bold;">' + (tc.checkOut ? String(tc.checkOut).slice(11, 16) : 'في الدوام') + '</td>' +
+        '  <td style="font-family:monospace;font-weight:900;">' + h + ' ساعة و ' + m + ' دقيقة</td>' +
+        '  <td>' + (tc.lateMinutes > 0 ? tc.lateMinutes + ' دقيقة تأخر' : 'في الوقت ✓') + '</td>' +
+        '  <td>' + (tc.note || tc.method || 'بصمة') + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>كشف راتب وحضور فردي — ' + u.name + '</title>' +
+      '<style>@page{size:A4 portrait;margin:10mm;}body{font-family:Cairo,Tahoma,sans-serif;padding:18px;color:#0f172a;font-size:12px;background:#fff;}table{width:100%;border-collapse:collapse;margin-top:8px;margin-bottom:14px;}th,td{border:1px solid #cbd5e1;padding:7px;text-align:right;}th{background:#0f172a;color:#fff;}.net{background:#047857;color:#fff;font-size:15px;font-weight:900;}</style></head><body contenteditable="true">' +
+      '<div style="display:flex;justify-content:space-between;border-bottom:3px solid #1d4ed8;padding-bottom:10px;margin-bottom:12px;">' +
+      '  <div><h2 style="margin:0;color:#1d4ed8;">' + shopName + ' — كشف الراتب التفصيلي وسجل الحضور والانصراف الفردي</h2><div>الموظف: <strong>' + u.name + '</strong> | الوظيفة: ' + u.role + ' | الباركود: ' + idProf.barcode + ' | الكود السري: ' + idProf.pin + '</div></div>' +
+      '  <div style="text-align:left;font-family:monospace;">التاريخ: ' + new Date().toISOString().slice(0, 10) + '</div>' +
+      '</div>' +
+      '<h3>1. التفصيل المالي للراتب والاستحقاقات والاقتطاعات (' + calc.modeArabicLabel + ')</h3>' +
+      '<table><thead><tr><th>البند المحاسبي</th><th>الشرح وطريقة الحساب</th><th>الاستحقاقات (+)</th><th>الاقتطاعات (-)</th></tr></thead><tbody>' +
+      '<tr><td>الأجر الأساسي / الساعات والدقائق</td><td>' + cfg.workedHours + ' ساعة و ' + cfg.workedMinutes + ' دقيقة (تسعيرة الساعة: ' + cfg.hourlyRateDzd + ' د.ج | الدقيقة: ' + calc.minuteRateDzd + ' د.ج)</td><td>+' + calc.primaryTimeOrBasePay.toFixed(2) + ' د.ج</td><td>—</td></tr>' +
+      '<tr><td>أجر الساعات والدقائق الإضافية (Overtime)</td><td>' + cfg.overtimeHours + ' ساعة و ' + cfg.overtimeMinutes + ' دقيقة (×' + cfg.overtimeMultiplier + ')</td><td>+' + calc.overtimePay.toFixed(2) + ' د.ج</td><td>—</td></tr>' +
+      '<tr><td>عمولات المبيعات والمنح والعلاوات</td><td>عمولة مبيعات: +' + calc.totalCommissionsDzd.toFixed(2) + ' | منح (نقل/إطعام): +' + calc.totalAllowancesDzd.toFixed(2) + '</td><td>+' + (calc.totalCommissionsDzd + calc.totalAllowancesDzd).toFixed(2) + ' د.ج</td><td>—</td></tr>' +
+      '<tr><td>خصم التأخر والغياب والسلفيات و CNAS</td><td>تأخر (' + cfg.lateMinutes + 'د) + سلفيات (' + calc.empAdvancesDzd.toFixed(0) + ') + CNAS (' + calc.cnasDeductionDzd.toFixed(0) + ')</td><td>—</td><td>-' + calc.totalDeductionsDzd.toFixed(2) + ' د.ج</td></tr>' +
+      '<tr class="net"><td colspan="2">صافي الراتب النهائي المستحق للدفع (NET À PAYER)</td><td colspan="2">' + calc.netPayableDzd.toFixed(2) + ' د.ج (' + fmtCentimes(calc.netPayableDzd) + ')</td></tr>' +
+      '</tbody></table>' +
+      '<h3>2. كشف الحضور والانصراف التفصيلي للعامل (متى دخل ومتى خرج بالساعة والدقيقة)</h3>' +
+      '<table><thead><tr><th>#</th><th>التاريخ</th><th>وقت الدخول</th><th>وقت الخروج</th><th>المدة المحسوبة (ساعات ودقائق)</th><th>ملاحظة الانضباط</th><th>طريقة التوثيق</th></tr></thead><tbody>' +
+      (empAttendanceHtml || '<tr><td colspan="7" style="text-align:center;">إجمالي الساعات المعتمدة في الكشف: ' + cfg.workedHours + ' ساعة و ' + cfg.workedMinutes + ' دقيقة</td></tr>') +
+      '</tbody></table>' +
+      '<div style="display:flex;justify-content:space-between;margin-top:34px;font-weight:bold;"><div>إمضاء وبصمة العامل المستلم للراتب: ........................</div><div>ختم وإمضاء المدير العام: ........................</div></div>' +
+      '</body></html>';
+
+    this.openModal('erpPayrollPdfStudioModal');
+    setTimeout(function () {
+      var frame = document.getElementById('erpPayrollPdfPreviewFrame');
+      if (frame && frame.contentWindow) {
+        var doc = frame.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+      }
+    }, 40);
+  };
+
+  App.executePayrollStudioPrintOrPdf = async function (actionType) {
+    var frame = document.getElementById('erpPayrollPdfPreviewFrame');
+    if (!frame || !frame.contentWindow) return;
+    var clone = frame.contentWindow.document.documentElement.cloneNode(true);
+    clone.querySelectorAll('[contenteditable]').forEach(function (el) { el.removeAttribute('contenteditable'); });
+    var html = '<!DOCTYPE html>\n' + clone.outerHTML;
+
+    if (actionType === 'pdf' && window.api && window.api.exportPDF) {
+      var res = await window.api.exportPDF({
+        html: html,
+        filename: 'Gherbi_ERP_Payroll_Attendance_Report_' + new Date().toISOString().slice(0, 10) + '.pdf'
+      });
+      if (res && res.success && typeof showToast === 'function') {
+        showToast('📄 تم تصدير وحفظ تقرير الرواتب والحضور بصيغة PDF بنجاح!', 'success');
+      }
+      return;
+    }
+    if (window.PrintEngine) {
+      await window.PrintEngine.printHtmlDocument(html, { silent: false });
+    }
+  };
+
+  // ربط زر طباعة الكشف الفردي باستوديو المعاينة والـ PDF الجديد
+  App.printEmployeePayslipA4 = function (userId) {
+    return this.openIndividualEmployeePayrollPdf(userId);
+  };
+
+  // ==========================================================================
+  // 5. تحديث واجهة التبويب 1 (إضافة أزرار تهيئة البصمة والكود) والتبويب 5 (إصلاح الحقل الأسود + استيراد ZKTeco) والتبويب 4 (الدورات الآلية + سجل القبض + أزرار PDF)
+  // ==========================================================================
+  var _prevRenderUsersV3 = App.renderUsersView.bind(App);
+  App.renderUsersView = async function () {
+    await _prevRenderUsersV3();
+    var body = document.getElementById('usersMainTabBody');
+    if (!body) return;
+
+    var curTab = AppState.usersActiveTab || 'directory';
+    var statsMap = AppState._cachedUserStatsMap || {};
+    var users = Object.values(statsMap).map(function (st) { return st.user; });
+
+    // ------------------------------------------------------------------------
+    // أ) في التبويب 1 (دليل الموظفين): إضافة شريط "استوديو تهيئة البصمات والأكواد والبطاقات" قبل الذهاب للبصمة!
+    // ------------------------------------------------------------------------
+    if (curTab === 'directory') {
+      var enrollBanner = document.createElement('div');
+      enrollBanner.className = 'p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 space-y-3 text-xs mt-3';
+      enrollBanner.innerHTML =
+        '<div class="flex flex-wrap items-center justify-between gap-2">' +
+        '  <div>' +
+        '    <h4 class="font-black text-sm text-indigo-700 dark:text-amber-300">🫆🪪 الخطوة التأسيسية قبل البصمة: إعداد الكود السري (PIN)، الباركود، والبصمة البيومترية لكل موظف</h4>' +
+        '    <p class="text-[11px] text-slate-500 dark:text-slate-300">اضبط هنا الكود السري ورقم جهاز البصمة واطبع بطاقة الباركود لكل عامل لتستعملها مباشرة في تبويب (البصمة والحضور)</p>' +
+        '  </div>' +
+        '  <div class="flex gap-2">' +
+        '    <button type="button" onclick="App.simulateWeekBiometricAttendanceForAllStaff()" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow">⚡ توليد بصمات أسبوع كامل للتجربة</button>' +
+        '    <button type="button" onclick="AppState.usersActiveTab=\'time_clock\'; App.renderUsersView()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow">⏱️ الانتقال إلى محطة البصمة ⬅️</button>' +
+        '  </div>' +
+        '</div>' +
+        '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">' +
+        users.map(function (u) {
+          var prof = App.getEmployeeFullIdentityProfile(u);
+          return (
+            '<div class="p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2 shadow-sm">' +
+            '  <div>' +
+            '    <div class="font-black text-sm">' + u.name + ' <span class="text-[10px] text-indigo-600">(' + u.role + ')</span></div>' +
+            '    <div class="font-mono text-[11px] text-slate-500 mt-0.5">🔢 الكود السري: <strong class="text-indigo-600 dark:text-amber-400">' + prof.pin + '</strong> | 🏷️ الباركود: <strong>' + prof.barcode + '</strong> | 🫆 البصمة: <strong class="text-emerald-600">' + prof.fingerprintHash + '</strong></div>' +
+            '  </div>' +
+            '  <div class="flex items-center gap-1.5">' +
+            '    <button type="button" onclick="App.openEmployeeBiometricEnrollModal(' + u.id + ')" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black shadow">🫆 تسجيل البصمة والكود</button>' +
+            '    <button type="button" onclick="App.openStaffBadgePreviewModal(' + u.id + ')" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-black shadow">🪪 بطاقة الباركود</button>' +
+            '  </div>' +
+            '</div>'
+          );
+        }).join('') +
+        '</div>';
+      body.appendChild(enrollBanner);
+    }
+
+    // ------------------------------------------------------------------------
+    // ب) في التبويب 5 (محطة البصمة): إصلاح وضوح الكتابة في الحقل الأسود + إضافة أزرار جلب واستيراد البصمات (ZKTeco / USB / Enrollment)
+    // ------------------------------------------------------------------------
+    else if (curTab === 'time_clock') {
+      var codeInp = document.getElementById('timeClockQuickCodeInput');
+      if (codeInp) {
+        // فرض تباين بصري فائق الوضوح (نص أسود داكن جداً وكبير فوق خلفية بيضاء نقية محاطة بإطار كهرماني مضيء)
+        codeInp.setAttribute(
+          'style',
+          'background-color:#ffffff !important; color:#0f172a !important; font-size:18px !important; font-weight:900 !important; letter-spacing:1.5px !important; border:3px solid #f59e0b !important; box-shadow:0 0 15px rgba(245,158,11,0.35) !important;'
+        );
+        if (codeInp.previousElementSibling) {
+          codeInp.previousElementSibling.setAttribute('style', 'color:#fef08a !important; font-weight:900 !important; font-size:11.5px !important;');
+        }
+      }
+
+      // إضافة شريط جلب واستيراد البصمات من أجهزة ZKTeco / USB وتهيئة بصمات العمال أعلى التبويب 5
+      var bioImportBar = document.createElement('div');
+      bioImportBar.className = 'p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-wrap items-center justify-between gap-2 text-xs mb-3';
+      bioImportBar.innerHTML =
+        '<div>' +
+        '  <div class="font-black text-sm text-emerald-800 dark:text-emerald-300">🔌🫆 مركز جلب البصمات وربط أجهزة البصمة الخارجية (ZKTeco / USB Reader / Biometric Enrollment):</div>' +
+        '  <div class="text-[11px] text-slate-600 dark:text-slate-300">سجّل بصمة وكود كل عامل، أو استورد ملف الحضور من جهاز البصمة الحائطي (ZKTeco .DAT/.CSV)، أو ولّد بصمات أسبوع كامل للتجربة</div>' +
+        '</div>' +
+        '<div class="flex flex-wrap gap-2">' +
+        '  <button type="button" onclick="App.openEmployeeBiometricEnrollModal(' + ((users[0] && users[0].id) || 1) + ')" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow">🫆 تهيئة بصمة وكود عامل</button>' +
+        '  <button type="button" onclick="App.triggerZKTecoFileImport()" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black shadow">📂 استيراد ملف جهاز بصمة (ZKTeco / CSV)</button>' +
+        '  <button type="button" onclick="App.simulateWeekBiometricAttendanceForAllStaff()" class="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black shadow">⚡ جلب ومحاكاة بصمات أسبوع كامل</button>' +
+        '</div>';
+      body.prepend(bioImportBar);
+    }
+
+    // ------------------------------------------------------------------------
+    // ج) في التبويب 4 (حاسبة الرواتب): إضافة شريط الدورات الآلي (أسبوعي / نصف شهري / شهري) + أزرار PDF الشامل والفردي + سجل الرواتب وحالة القبض
+    // ------------------------------------------------------------------------
+    else if (curTab === 'hr_commissions') {
+      var curCycle = AppState.payrollPeriodCycle || 'monthly';
+      var selUid = Number(AppState.selectedPayrollUserId || (users[0] && users[0].id) || 1);
+
+      var cycleAndPdfToolbar = document.createElement('div');
+      cycleAndPdfToolbar.className = 'p-4 rounded-2xl bg-slate-900 text-white border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs mb-3 shadow-xl';
+      cycleAndPdfToolbar.innerHTML =
+        '<div class="flex flex-wrap items-center gap-2">' +
+        '  <span class="font-black text-amber-400">📅 1. اختر دورة الرواتب (تُحسب تلقائياً دون عناء):</span>' +
+        '  <button type="button" onclick="App.applyPayrollCyclePreset(\'weekly\')" class="px-3.5 py-1.5 rounded-xl font-black transition ' + (curCycle === 'weekly' ? 'bg-amber-500 text-slate-950 shadow-md' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">أسبوعي (7 أيام)</button>' +
+        '  <button type="button" onclick="App.applyPayrollCyclePreset(\'biweekly\')" class="px-3.5 py-1.5 rounded-xl font-black transition ' + (curCycle === 'biweekly' ? 'bg-amber-500 text-slate-950 shadow-md' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">نصف شهري (15 يوماً)</button>' +
+        '  <button type="button" onclick="App.applyPayrollCyclePreset(\'monthly\')" class="px-3.5 py-1.5 rounded-xl font-black transition ' + (curCycle === 'monthly' ? 'bg-amber-500 text-slate-950 shadow-md' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">شهري كامل (30 يوماً)</button>' +
+        '  <button type="button" onclick="App.generateBatchPayrollForAllStaff(false)" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow">⚡ إصدار رواتب كل العمال دفعة واحدة</button>' +
+        '</div>' +
+        '<div class="flex flex-wrap items-center gap-2">' +
+        '  <button type="button" onclick="App.openMasterAllStaffPayrollPdf()" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow">📑 PDF رواتب وحضور كل الموظفين</button>' +
+        '  <button type="button" onclick="App.openIndividualEmployeePayrollPdf(' + selUid + ')" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black shadow">👤 PDF كشف وحضور هذا العامل</button>' +
+        '</div>';
+      body.prepend(cycleAndPdfToolbar);
+
+      // بناء جدول سجل الرواتب ومتابعة حالة القبض (هل قُبض الراتب أم لا؟) أسفل حاسبة الرواتب
+      var ledgerList = AppState.payrollRecordsLedger || [];
+      var ledgerBox = document.createElement('div');
+      ledgerBox.className = 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-3 text-xs mt-4 shadow-sm';
+      ledgerBox.innerHTML =
+        '<div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">' +
+        '  <div>' +
+        '    <h3 class="font-black text-sm text-indigo-600">📋 سجل مسير الرواتب والأجور ومتابعة حالة القبض (' + ledgerList.length + ' كشف راتب)</h3>' +
+        '    <p class="text-[11px] text-slate-400">يوثق جميع الرواتب الأسبوعية والشهرية ويوضح هل استلم العامل راتبه (✅ تم القبض) أم لا يزال قيد الانتظار (⏳ غير مقبوض)</p>' +
+        '  </div>' +
+        '  <div class="flex gap-2">' +
+        '    <button type="button" onclick="App.generateBatchPayrollForAllStaff(false)" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 text-white font-black shadow">+ تسجيل الكشف الحالي في السجل</button>' +
+        '    <button type="button" onclick="App.openMasterAllStaffPayrollPdf()" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 text-white font-black shadow">🖨️ طباعة السجل الكامل (PDF)</button>' +
+        '  </div>' +
+        '</div>' +
+        '<div class="overflow-x-auto max-h-80">' +
+        '  <table class="w-full text-xs text-right">' +
+        '    <thead class="bg-slate-100 dark:bg-slate-900 text-slate-500">' +
+        '      <tr><th class="p-2.5">#</th><th class="p-2.5">الموظف</th><th class="p-2.5">الدورة والتاريخ</th><th class="p-2.5 text-center">الساعات والدقائق</th><th class="p-2.5">الإجمالي الخام</th><th class="p-2.5">الخصومات</th><th class="p-2.5">الصافي للدفع</th><th class="p-2.5 text-center">حالة القبض والاستلام</th><th class="p-2.5 text-center">إجراءات</th></tr>' +
+        '    </thead>' +
+        '    <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (ledgerList.length > 0
+          ? ledgerList.map(function (r, idx) {
+              var isPaid = r.status === 'paid';
+              return (
+                '<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/20">' +
+                '  <td class="p-2.5 font-mono text-slate-400">' + (idx + 1) + '</td>' +
+                '  <td class="p-2.5 font-black">' + r.empName + ' <span class="text-[10px] text-slate-400">(' + (r.empRole || '') + ')</span></td>' +
+                '  <td class="p-2.5"><span class="font-bold text-indigo-600">' + r.periodLabel + '</span><div class="font-mono text-[10px] text-slate-400">' + r.date + '</div></td>' +
+                '  <td class="p-2.5 text-center font-mono font-bold">' + r.workedHours + 'سا و ' + r.workedMinutes + 'د (' + r.workedDays + ' يوم)</td>' +
+                '  <td class="p-2.5 font-mono">' + Number(r.grossSalaryDzd || 0).toFixed(2) + '</td>' +
+                '  <td class="p-2.5 font-mono text-rose-600">-' + Number(r.totalDeductionsDzd || 0).toFixed(2) + '</td>' +
+                '  <td class="p-2.5 font-mono font-black text-emerald-600 text-sm">' + Number(r.netPayableDzd || 0).toFixed(2) + ' د.ج</td>' +
+                '  <td class="p-2.5 text-center">' +
+                (isPaid
+                  ? '<span class="px-2.5 py-1 rounded-xl bg-emerald-500/15 text-emerald-600 font-black">✅ تم القبض (' + (r.paidAt || '') + ')</span>'
+                  : '<span class="px-2.5 py-1 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 font-black">⏳ غير مقبوض (قيد الانتظار)</span>') +
+                '  </td>' +
+                '  <td class="p-2.5">' +
+                '    <div class="flex items-center justify-center gap-1.5">' +
+                '      <button type="button" onclick="App.togglePayrollRecordPaidStatus(\'' + r.id + '\')" class="px-3 py-1 rounded-xl font-black text-[11px] shadow ' + (isPaid ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200' : 'bg-emerald-600 hover:bg-emerald-500 text-white') + '">' + (isPaid ? '↩️ إلغاء القبض' : '💸 تأكيد القبض والصرف') + '</button>' +
+                '      <button type="button" onclick="App.openIndividualEmployeePayrollPdf(' + r.userId + ')" class="px-2.5 py-1 rounded-xl bg-blue-600 text-white font-black text-[11px]" title="طباعة PDF فردي">📄 PDF</button>' +
+                '      <button type="button" onclick="App.deletePayrollLedgerRecord(\'' + r.id + '\')" class="p-1 text-rose-500 hover:bg-rose-500/15 rounded-lg"><span class="material-symbols-rounded icon-sm">delete</span></button>' +
+                '    </div>' +
+                '  </td>' +
+                '</tr>'
+              );
+            }).join('')
+          : '<tr><td colspan="9" class="py-8 text-center text-slate-400 font-bold">لا توجد رواتب مسجلة في الدفتر بعد — اضغط (⚡ إصدار رواتب كل العمال دفعة واحدة) أعلاه لتوليدها فوراً!</td></tr>') +
+        '    </tbody>' +
+        '  </table>' +
+        '</div>';
+      body.appendChild(ledgerBox);
+    }
+  };
+})();

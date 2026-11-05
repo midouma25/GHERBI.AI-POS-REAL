@@ -2493,6 +2493,73 @@ function registerIpcHandlers() {
     if (await isLanClientMode()) return lanClient.getSegmentProducts(params);
     return await analyticsQueries.getSegmentProducts(db, params);
   });
+  
+  ipcMain.handle('merge-duplicate-products', async (_e, payload = {}) => {
+    const keepId = Number(payload.keepProductId || payload.keep_id || 0);
+    const removeId = Number(payload.removeProductId || payload.remove_id || 0);
+    if (!keepId || !removeId || keepId === removeId) {
+      throw new Error('معرفات المنتجات غير صالحة للدمج');
+    }
+
+    return await db.withTransaction(async () => {
+      await dbRun('UPDATE inventory_batches SET product_id = ? WHERE product_id = ?', [keepId, removeId]);
+      await dbRun('UPDATE sale_items SET product_id = ? WHERE product_id = ?', [keepId, removeId]);
+      await dbRun('UPDATE purchase_items SET product_id = ? WHERE product_id = ?', [keepId, removeId]);
+      await dbRun('UPDATE proforma_items SET product_id = ? WHERE product_id = ?', [keepId, removeId]);
+      await dbRun('UPDATE customer_order_items SET product_id = ? WHERE product_id = ?', [keepId, removeId]);
+      await dbRun('UPDATE bundle_items SET product_id = ? WHERE product_id = ?', [keepId, removeId]);
+      await dbRun('UPDATE product_barcodes SET product_id = ? WHERE product_id = ?', [keepId, removeId]);
+      await dbRun('DELETE FROM products WHERE id = ?', [removeId]);
+      return { success: true, keepId, removeId };
+    });
+  });
+
+  ipcMain.handle('ask-copilot-cloud-ai', async (_e, payload = {}) => {
+    const axios = require('axios');
+    const apiKey = String(payload.apiKey || (await db.getSetting('gemini_api_key', '')) || '').trim();
+    if (!apiKey) {
+      return { ok: false, reason: 'no_api_key' };
+    }
+    const promptText = String(payload.prompt || '');
+    const contextText = String(payload.contextSummary || '');
+
+    try {
+      const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(apiKey);
+      const res = await axios.post(
+        url,
+        {
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  text:
+                    'أنت الوكيل الذكي التنفيذي (Gherbi.Ai ERP Agent) لمتجر في الجزائر. أجب باحترافية وإيجاز وخطوات عملية واضحة بالدينار الجزائري والسنتيم بناءً على بيانات المتجر الحية التالية:\n' +
+                    contextText +
+                    '\n\nسؤال التاجر أو البائع: ' +
+                    promptText
+                }
+              ]
+            }
+          ]
+        },
+        { timeout: 15000 }
+      );
+      const reply =
+        res.data &&
+        res.data.candidates &&
+        res.data.candidates[0] &&
+        res.data.candidates[0].content &&
+        res.data.candidates[0].content.parts &&
+        res.data.candidates[0].content.parts[0]
+          ? res.data.candidates[0].content.parts[0].text
+          : '';
+      return { ok: Boolean(reply), reply };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
   ipcMain.handle('get-ai-copilot-insights', async () => {
     if (await isLanClientMode()) return lanClient.getAiCopilotInsights();
     return await analyticsQueries.getAiCopilotInsights(db);
@@ -3368,6 +3435,68 @@ function registerIpcHandlers() {
   });
 
   
+  
+  ipcMain.handle('assign-sale-customer', async (_e, payload = {}) => {
+    const saleId = Number(payload.saleId || payload.sale_id || 0);
+    const customerId = payload.customerId || payload.customer_id ? Number(payload.customerId || payload.customer_id) : null;
+    if (!saleId) throw new Error('رقم الفاتورة غير صالح');
+
+    return await db.withTransaction(async () => {
+      const sale = await dbGet('SELECT id, total, customer_id FROM sales WHERE id = ? AND deleted_at IS NULL', [saleId]);
+      if (!sale) throw new Error('الفاتورة غير موجودة');
+
+      await dbRun('UPDATE sales SET customer_id = ? WHERE id = ?', [customerId, saleId]);
+      await dbRun('UPDATE sale_payments SET customer_id = ? WHERE sale_id = ?', [customerId, saleId]);
+
+      if (customerId && Number(sale.total || 0) > 0 && Number(sale.customer_id || 0) !== customerId) {
+        const ptsRate = Number(await db.getSetting('loyalty_points_per_100_dzd', '1')) || 1;
+        const earnedPts = Math.floor((Number(sale.total || 0) / 100) * ptsRate);
+        if (earnedPts > 0) {
+          await dbRun('UPDATE customers SET loyalty_points = COALESCE(loyalty_points, 0) + ? WHERE id = ?', [earnedPts, customerId]);
+        }
+      }
+      return { success: true, saleId, customerId };
+    });
+  });
+
+  ipcMain.handle('bulk-assign-walkin-sales-to-customer', async (_e, payload = {}) => {
+    const customerId = Number(payload.customerId || payload.customer_id || 0);
+    if (!customerId) throw new Error('يرجى اختيار الزبون');
+
+    return await db.withTransaction(async () => {
+      const walkinSales = await dbAll('SELECT id, total FROM sales WHERE customer_id IS NULL AND deleted_at IS NULL');
+      const totalAmt = walkinSales.reduce((s, r) => s + Math.max(0, Number(r.total || 0)), 0);
+      await dbRun('UPDATE sales SET customer_id = ? WHERE customer_id IS NULL AND deleted_at IS NULL', [customerId]);
+      await dbRun('UPDATE sale_payments SET customer_id = ? WHERE customer_id IS NULL AND deleted_at IS NULL', [customerId]);
+
+      const ptsRate = Number(await db.getSetting('loyalty_points_per_100_dzd', '1')) || 1;
+      const earnedPts = Math.floor((totalAmt / 100) * ptsRate);
+      if (earnedPts > 0) {
+        await dbRun('UPDATE customers SET loyalty_points = COALESCE(loyalty_points, 0) + ? WHERE id = ?', [earnedPts, customerId]);
+      }
+      return { success: true, updatedCount: walkinSales.length, earnedPts };
+    });
+  });
+
+  ipcMain.handle('redeem-customer-loyalty-points', async (_e, payload = {}) => {
+    const customerId = Number(payload.customerId || payload.customer_id || 0);
+    const pointsToRedeem = Math.max(0, Number(payload.points || 0));
+    const saleId = payload.saleId ? Number(payload.saleId) : null;
+    if (!customerId || pointsToRedeem <= 0) return { success: false };
+
+    return await db.withTransaction(async () => {
+      await dbRun(
+        'UPDATE customers SET loyalty_points = MAX(0, COALESCE(loyalty_points, 0) - ?) WHERE id = ?',
+        [pointsToRedeem, customerId]
+      );
+      await dbRun(
+        'INSERT INTO loyalty_transactions (customer_id, sale_id, points_delta, reason) VALUES (?, ?, ?, ?)',
+        [customerId, saleId, -pointsToRedeem, payload.reason || 'اختزال نقاط ولاء في فاتورة بيع']
+      );
+      return { success: true };
+    });
+  });
+
   ipcMain.handle('get-algerian-fiscal-report', async (_e, params = {}) => {
     const dateFrom = params.dateFrom ? String(params.dateFrom).slice(0, 10) : null;
     const dateTo = params.dateTo ? String(params.dateTo).slice(0, 10) : null;
