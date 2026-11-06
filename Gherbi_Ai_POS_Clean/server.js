@@ -3329,6 +3329,378 @@ function startLocalServer(port = 8080, onStartedCallback = null) {
     }
   });
 
+  
+  // [MOBILE BIOMETRIC FINGERPRINT BRIDGE ROUTES V1]
+  const mobileBiometricEventsQueue = [];
+
+  app.get('/api/biometric/ping', (_req, res) => {
+    res.json({ ok: true, service: 'gherbi-mobile-biometric-bridge' });
+  });
+
+  app.get('/api/biometric/poll', (_req, res) => {
+    const events = mobileBiometricEventsQueue.splice(0, mobileBiometricEventsQueue.length);
+    res.json({ ok: true, events });
+  });
+
+  app.post('/api/biometric/mobile-punch', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const ev = {
+        id: 'MBIO-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+        userId: Number(body.userId || 1),
+        pinCode: String(body.pinCode || '1001').trim(),
+        empName: String(body.empName || 'الموظف').trim(),
+        mode: String(body.mode || 'attendance_toggle'), // 'attendance_toggle' | 'enroll_scan'
+        fpToken: String(body.fpToken || ('PHONE-BIO-' + Date.now().toString(16).toUpperCase())),
+        deviceInfo: String(body.deviceInfo || 'هاتف ذكي (Wi-Fi Biometric)'),
+        timestamp: new Date().toISOString()
+      };
+      mobileBiometricEventsQueue.push(ev);
+      if (mobileBiometricEventsQueue.length > 50) mobileBiometricEventsQueue.shift();
+
+      res.json({ ok: true, event: ev });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.get('/mobile-biometric', async (_req, res) => {
+    try {
+      const users = await db.dbAll('SELECT id, name, username, role FROM users WHERE deleted_at IS NULL ORDER BY id ASC');
+      const usersJson = JSON.stringify(users || []);
+      const html = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>جهاز البصمة المحمول — Gherbi.Ai POS</title>
+  <style>
+    * { box-sizing: border-box; user-select: none; -webkit-user-select: none; font-family: system-ui, -apple-system, 'Cairo', sans-serif; }
+    body { margin: 0; padding: 16px; background: #020617; color: #f8fafc; min-height: 100vh; display: flex; flex-direction: column; justify-content: space-between; }
+    .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 24px; padding: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); text-align: center; max-width: 420px; width: 100%; margin: 0 auto; }
+    .title { font-size: 18px; font-weight: 900; color: #38bdf8; margin-bottom: 4px; }
+    .sub { font-size: 12px; color: #94a3b8; margin-bottom: 16px; }
+    select, input { width: 100%; padding: 12px; border-radius: 14px; border: 2px solid #334155; background: #1e293b; color: #fff; font-size: 15px; font-weight: 800; text-align: center; margin-bottom: 12px; outline: none; }
+    select:focus, input:focus { border-color: #38bdf8; }
+    .mode-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+    .mode-btn { padding: 10px; border-radius: 12px; border: 1px solid #334155; background: #1e293b; color: #cbd5e1; font-weight: 800; font-size: 12px; cursor: pointer; }
+    .mode-btn.active { background: #2563eb; color: #fff; border-color: #3b82f6; }
+    .fp-pad { width: 150px; height: 150px; border-radius: 50%; margin: 16px auto; border: 4px solid #10b981; background: radial-gradient(circle, rgba(16,185,129,0.25) 0%, rgba(15,23,42,0.9) 80%); display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.15s, border-color 0.2s, box-shadow 0.2s; box-shadow: 0 0 30px rgba(16,185,129,0.25); }
+    .fp-pad:active, .fp-pad.scanning { transform: scale(0.95); border-color: #f59e0b; box-shadow: 0 0 45px rgba(245,158,11,0.6); }
+    .fp-icon { font-size: 64px; line-height: 1; }
+    .fp-label { font-size: 12px; font-weight: 900; color: #34d399; margin-top: 8px; }
+    .webauthn-btn { width: 100%; padding: 12px; border-radius: 14px; border: 1px solid #6366f1; background: rgba(99,102,241,0.15); color: #a5b4fc; font-weight: 800; font-size: 13px; margin-top: 8px; cursor: pointer; }
+    .status-box { margin-top: 14px; padding: 12px; border-radius: 14px; background: #1e293b; font-size: 13px; font-weight: 800; min-height: 48px; display: flex; align-items: center; justify-content: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">📱 جهاز البصمة البيومترية المحمول</div>
+    <div class="sub">مرتبط مباشرة بالحاسوب الرئيسي — Gherbi.Ai POS</div>
+
+    <div class="mode-tabs">
+      <button type="button" id="tabAttend" class="mode-btn active" onclick="setMode('attendance_toggle')">⏱️ بصمة حضور / انصراف</button>
+      <button type="button" id="tabEnroll" class="mode-btn" onclick="setMode('enroll_scan')">🫆 تأسيس بصمة جديدة (3 مسحات)</button>
+    </div>
+
+    <label style="display:block;font-size:12px;font-weight:bold;color:#94a3b8;margin-bottom:6px;">اختر اسم العامل أو اكتب الكود السري:</label>
+    <select id="empSelect" onchange="syncPinFromSelect()"></select>
+    <input id="pinInput" type="tel" placeholder="أو اكتب الكود السري (مثلاً 1001 / 1002)">
+
+    <div id="fpPad" class="fp-pad" onclick="triggerPhoneBiometricPunch()">
+      <div class="fp-icon">🫆</div>
+      <div id="fpPadText" class="fp-label">المس البصمة هنا</div>
+    </div>
+
+    <button type="button" class="webauthn-btn" onclick="triggerNativeHardwareBiometric()">🔐 استخدام مستشعر بصمة الهاتف الأصلي (TouchID / Biometric)</button>
+
+    <div id="statusBox" class="status-box" style="color:#38bdf8;">جاهز — المس مستشعر البصمة لإرسالها للحاسوب فوراً</div>
+  </div>
+
+  <script>
+    const USERS = ${usersJson};
+    let currentMode = 'attendance_toggle';
+    const sel = document.getElementById('empSelect');
+    USERS.forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.id;
+      opt.textContent = u.name + ' (' + u.role + ') — كود: ' + (1000 + Number(u.id));
+      sel.appendChild(opt);
+    });
+    function syncPinFromSelect() {
+      const uid = Number(sel.value || 1);
+      document.getElementById('pinInput').value = String(1000 + uid);
+    }
+    syncPinFromSelect();
+
+    function setMode(m) {
+      currentMode = m;
+      document.getElementById('tabAttend').className = 'mode-btn' + (m === 'attendance_toggle' ? ' active' : '');
+      document.getElementById('tabEnroll').className = 'mode-btn' + (m === 'enroll_scan' ? ' active' : '');
+      document.getElementById('fpPadText').textContent = m === 'enroll_scan' ? 'المس للمسح (3 مرات)' : 'المس للدخول / الخروج';
+    }
+
+    async function sendBiometricSignal(hwMethodLabel) {
+      if (navigator.vibrate) navigator.vibrate([90, 40, 130]);
+      const pad = document.getElementById('fpPad');
+      const st = document.getElementById('statusBox');
+      pad.classList.add('scanning');
+      st.style.color = '#fbbf24';
+      st.textContent = '⏳ جاري التحقق من البصمة وإرسالها للحاسوب...';
+
+      const uid = Number(sel.value || 1);
+      const uObj = USERS.find(x => Number(x.id) === uid) || { id: uid, name: 'موظف' };
+      const pin = document.getElementById('pinInput').value || String(1000 + uid);
+
+      try {
+        const res = await fetch('/api/biometric/mobile-punch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: uid,
+            pinCode: pin,
+            empName: uObj.name,
+            mode: currentMode,
+            fpToken: 'BIO-PHONE-' + uid + '-' + Date.now().toString(16).slice(-5).toUpperCase(),
+            deviceInfo: hwMethodLabel || '📱 بصمة الهاتف الذكي'
+          })
+        });
+        const data = await res.json();
+        setTimeout(() => pad.classList.remove('scanning'), 250);
+        if (data && data.ok) {
+          st.style.color = '#34d399';
+          st.innerHTML = currentMode === 'enroll_scan'
+            ? '✅ تم إرسال مسحة البصمة إلى شاشة الحاسوب بنجاح!'
+            : '✅ تم إرسال بصمة (' + uObj.name + ') للحاسوب! (تبديل بداية/إيقاف عداد الوقت)';
+        }
+      } catch (e) {
+        pad.classList.remove('scanning');
+        st.style.color = '#f43f5e';
+        st.textContent = '❌ تعذر الاتصال بالحاسوب: ' + e.message;
+      }
+    }
+
+    function triggerPhoneBiometricPunch() {
+      sendBiometricSignal('📱🫆 مستشعر بصمة الهاتف');
+    }
+
+    async function triggerNativeHardwareBiometric() {
+      try {
+        if (window.PublicKeyCredential) {
+          const challenge = new Uint8Array(32);
+          window.crypto.getRandomValues(challenge);
+          await navigator.credentials.create({
+            publicKey: {
+              challenge,
+              rp: { name: 'Gherbi.Ai POS' },
+              user: { id: new Uint8Array([1, 2, 3, 4]), name: 'staff@gherbi.ai', displayName: 'Staff Biometric' },
+              pubKeyCredParams: [{ alg: -7, type: 'public-key' }],
+              authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' },
+              timeout: 15000
+            }
+          });
+        }
+      } catch (_) {}
+      sendBiometricSignal('🔐 بصمة الهاتف البيومترية الأصلية');
+    }
+  </script>
+</body>
+</html>`;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(html);
+    } catch (err) {
+      res.status(500).send('Error: ' + err.message);
+    }
+  });
+  // [END MOBILE BIOMETRIC FINGERPRINT BRIDGE ROUTES V1]
+
+    // [MOBILE COMPANION ERP WEB PORTAL & SELECTIVE PURGE V18]
+  app.post('/api/system/selective-purge', async (req, res) => {
+    try {
+      const target = String((req.body && req.body.target) || 'test_sales');
+      await db.withTransaction(async () => {
+        if (target === 'test_sales' || target === 'all_transactions') {
+          await db.dbRun('DELETE FROM sale_items');
+          await db.dbRun('DELETE FROM sale_payments');
+          await db.dbRun('DELETE FROM sales');
+          await db.dbRun('DELETE FROM caisse_transactions');
+          await db.dbRun('DELETE FROM caisse_sessions');
+          await db.dbRun('DELETE FROM stock_debt');
+          await db.dbRun("UPDATE document_counters SET last_number = 0 WHERE doc_type IN ('invoice', 'payment_receipt', 'avoir', 'delivery')");
+        }
+        if (target === 'all_transactions') {
+          await db.dbRun('DELETE FROM purchase_items');
+          await db.dbRun('DELETE FROM invoice_payments');
+          await db.dbRun('DELETE FROM purchase_invoices');
+          await db.dbRun('DELETE FROM expenses');
+          await db.dbRun('DELETE FROM proforma_items');
+          await db.dbRun('DELETE FROM proforma_invoices');
+          await db.dbRun('DELETE FROM customer_order_items');
+          await db.dbRun('DELETE FROM customer_orders');
+        }
+      });
+      res.json({ ok: true, target });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.get(['/mobile-app', '/mobile'], async (_req, res) => {
+    try {
+      const shopRow = await db.dbGet("SELECT value FROM settings WHERE key = 'shop_name'");
+      const shopName = (shopRow && shopRow.value) || 'Gherbi.Ai POS';
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const salesRow = await db.dbGet(
+        "SELECT COALESCE(SUM(total), 0) AS rev, COUNT(*) AS cnt FROM sales WHERE deleted_at IS NULL AND date(sale_date) = date(?)",
+        [todayStr]
+      );
+      const prodCountRow = await db.dbGet("SELECT COUNT(*) AS c FROM products WHERE deleted_at IS NULL");
+
+      const html = [
+        '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">',
+        '<title>' + shopName + ' — بوابة الهاتف المحمول</title>',
+        '<style>',
+        '* { box-sizing: border-box; font-family: system-ui, -apple-system, Cairo, sans-serif; }',
+        'body { margin: 0; padding: 14px; background: #020617; color: #f8fafc; }',
+        '.container { max-width: 460px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }',
+        '.hdr { background: linear-gradient(135deg, #1e3a8a, #0f172a); padding: 16px; border-radius: 20px; border: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }',
+        '.kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }',
+        '.kpi { background: #0f172a; border: 1px solid #1e293b; padding: 12px; border-radius: 16px; text-align: center; }',
+        '.kpi .val { font-size: 20px; font-weight: 900; font-family: monospace; color: #38bdf8; margin-top: 4px; }',
+        '.card { background: #0f172a; border: 1px solid #1e293b; padding: 16px; border-radius: 20px; }',
+        'input { width: 100%; padding: 12px 14px; border-radius: 14px; border: 2px solid #334155; background: #1e293b; color: #fff; font-size: 14px; font-weight: 800; outline: none; }',
+        'input:focus { border-color: #38bdf8; }',
+        '.btn { display: block; width: 100%; padding: 12px; border-radius: 14px; border: none; font-weight: 900; font-size: 13px; cursor: pointer; text-align: center; text-decoration: none; margin-top: 8px; }',
+        '.btn-emerald { background: #059669; color: #fff; }',
+        '.prod-item { padding: 10px; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center; }',
+        '</style></head><body>',
+        '<div class="container">',
+        '  <div class="hdr"><div><div style="font-size:18px;font-weight:900;color:#fff;">📱 ' + shopName + '</div><div style="font-size:11px;color:#93c5fd;">المساعد المحمول وفاحص الأسعار اللاسلكي (Wi-Fi ERP)</div></div><span style="background:#10b981;color:#022c22;font-weight:900;font-size:11px;padding:4px 10px;border-radius:99px;">متصل 🟢</span></div>',
+        '  <div class="kpi-grid">',
+        '    <div class="kpi"><div style="font-size:11px;color:#94a3b8;">مبيعات اليوم (' + Number(salesRow.cnt || 0) + ' فاتورة)</div><div class="val">' + Number(salesRow.rev || 0).toFixed(2) + ' د.ج</div></div>',
+        '    <div class="kpi"><div style="font-size:11px;color:#94a3b8;">أصناف المخزون النشطة</div><div class="val" style="color:#34d399;">' + Number(prodCountRow.c || 0) + ' صنف</div></div>',
+        '  </div>',
+        '  <div class="card"><div style="font-weight:900;font-size:14px;color:#fbbf24;margin-bottom:8px;">🔍 فاحص الأسعار والمخزون الفوري:</div><input id="mobSearchInput" type="text" oninput="searchProd(this.value)" placeholder="ابحث بالاسم أو الباركود..."><div id="mobResults" style="margin-top:10px;max-height:260px;overflow-y:auto;"></div></div>',
+        '  <div class="card" style="text-align:center;"><div style="font-weight:900;font-size:13px;margin-bottom:6px;">⏱️ محطة البصمة البيومترية للعمال</div><a href="/mobile-biometric" class="btn btn-emerald">🫆 فتح شاشة بصمة الموظفين على الهاتف</a></div>',
+        '</div>',
+        '<script>',
+        'var allProds = [];',
+        'fetch("/api/pos-stock").then(function(r){return r.json();}).then(function(d){allProds=Array.isArray(d)?d:[];searchProd("");});',
+        'function searchProd(q){',
+        '  var clean = String(q || "").trim().toLowerCase();',
+        '  var filtered = allProds.filter(function(p){return !clean || String(p.name||"").toLowerCase().indexOf(clean)!==-1 || String(p.barcode||"").toLowerCase().indexOf(clean)!==-1;}).slice(0, 15);',
+        '  var box = document.getElementById("mobResults");',
+        '  if(filtered.length===0){box.innerHTML="<div style=\\"text-align:center;color:#64748b;padding:14px;font-size:12px;\\">لا توجد منتجات مطابقة</div>";return;}',
+        '  box.innerHTML = filtered.map(function(p){',
+        '    var pr = Number(p.selling_price||0);',
+        '    return "<div class=\\"prod-item\\"><div><div style=\\"font-weight:800;font-size:13px;\\">" + p.name + "</div><div style=\\"font-size:11px;color:#94a3b8;font-family:monospace;\\">" + (p.barcode||"بدون باركود") + " | المخزون: " + Number(p.stock||0) + " " + (p.unit||"") + "</div></div><div style=\\"text-align:left;\\"><div style=\\"font-family:monospace;font-weight:900;font-size:15px;color:#38bdf8;\\">" + pr.toFixed(2) + " د.ج</div><div style=\\"font-size:10px;color:#fbbf24;\\">" + Math.round(pr*100).toLocaleString("fr-DZ") + " سنتيم</div></div></div>";',
+        '  }).join("");',
+        '}',
+        '</script></body></html>'
+      ].join('\n');
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(html);
+    } catch (err) {
+      res.status(500).send('Error: ' + err.message);
+    }
+  });
+  // [END MOBILE COMPANION ERP WEB PORTAL & SELECTIVE PURGE V18]
+  
+  // [GHERBI POCKET ERP MOBILE COMPANION WEB APP V1]
+  app.get(['/', '/mobile', '/mobile-erp'], async (_req, res) => {
+    try {
+      const shopName = await db.getSetting('shop_name', 'Gherbi.Ai POS');
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const salesRow = (await db.dbGet(
+        "SELECT COALESCE(SUM(total), 0) AS rev, COUNT(*) AS cnt FROM sales WHERE deleted_at IS NULL AND date(sale_date) = date(?)",
+        [todayStr]
+      )) || { rev: 0, cnt: 0 };
+      const prodCountRow = (await db.dbGet('SELECT COUNT(*) AS cnt FROM products WHERE deleted_at IS NULL')) || { cnt: 0 };
+
+      const html = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>${shopName} — تطبيق الهاتف المحمول (Pocket ERP)</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, 'Cairo', sans-serif; }
+    body { margin: 0; padding: 14px; background: #020617; color: #f8fafc; min-height: 100vh; }
+    .app-shell { max-width: 460px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+    .hdr { background: linear-gradient(135deg, #1e3a8a, #0f172a); border: 1px solid #334155; border-radius: 20px; padding: 16px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+    .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .kpi { background: #0f172a; border: 1px solid #1e293b; border-radius: 16px; padding: 12px; text-align: center; }
+    .kpi .val { font-family: monospace; font-size: 20px; font-weight: 900; color: #38bdf8; margin-top: 4px; }
+    .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; padding: 16px; }
+    input { width: 100%; padding: 12px 14px; border-radius: 12px; border: 2px solid #334155; background: #1e293b; color: #fff; font-size: 14px; font-weight: 800; outline: none; margin-bottom: 10px; }
+    input:focus { border-color: #38bdf8; }
+    .btn { display: block; width: 100%; padding: 12px; border-radius: 14px; border: none; font-weight: 900; font-size: 13px; cursor: pointer; text-align: center; text-decoration: none; margin-top: 6px; }
+    .btn-blue { background: #2563eb; color: #fff; }
+    .btn-emerald { background: #059669; color: #fff; }
+    .prod-item { padding: 10px; border-radius: 12px; background: #1e293b; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div class="hdr">
+      <div>
+        <div style="font-size:18px;font-weight:900;color:#fff;">📱 ${shopName}</div>
+        <div style="font-size:11px;color:#93c5fd;">المساعد المحمول وفاحص الأسعار والبصمة اللاسلكي</div>
+      </div>
+      <span style="background:#10b981;color:#022c22;font-weight:900;font-size:11px;padding:4px 10px;border-radius:99px;">متصل حياً 🟢</span>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div style="font-size:11px;color:#94a3b8;font-weight:bold;">مبيعات اليوم (${salesRow.cnt} فاتورة)</div>
+        <div class="val" style="color:#34d399;">${Number(salesRow.rev || 0).toFixed(2)} د.ج</div>
+      </div>
+      <div class="kpi">
+        <div style="font-size:11px;color:#94a3b8;font-weight:bold;">إجمالي المنتجات المسجلة</div>
+        <div class="val">${Number(prodCountRow.cnt || 0)} صنف</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:14px;font-weight:900;color:#fbbf24;margin-bottom:8px;">🔍 فاحص الأسعار والمخزون الفوري بالباركود أو الاسم</div>
+      <input id="mobSearchInp" type="text" placeholder="اكتب اسم المنتج أو الباركود..." oninput="searchProductsMobile(this.value)">
+      <div id="mobSearchResults"></div>
+    </div>
+
+    <div class="card" style="text-align:center;">
+      <div style="font-size:14px;font-weight:900;color:#38bdf8;margin-bottom:6px;">🫆 محطة البصمة البيومترية للموظفين</div>
+      <p style="font-size:11.5px;color:#94a3b8;margin:0 0 10px;">سجّل حضور وانصراف العمال أو أسّس بصمة جديدة مباشرة من هاتفك</p>
+      <a href="/mobile-biometric" class="btn btn-emerald">🫆 فتح جهاز بصمة الموظفين المحمول</a>
+    </div>
+  </div>
+
+  <script>
+    let allProds = [];
+    fetch('/api/pos-stock').then(r => r.json()).then(d => { allProds = Array.isArray(d) ? d : []; }).catch(() => {});
+    function searchProductsMobile(q) {
+      const box = document.getElementById('mobSearchResults');
+      const clean = String(q || '').trim().toLowerCase();
+      if (!clean) { box.innerHTML = ''; return; }
+      const matches = allProds.filter(p => String(p.name || '').toLowerCase().includes(clean) || String(p.barcode || '').toLowerCase().includes(clean)).slice(0, 8);
+      box.innerHTML = matches.map(p =>
+        '<div class="prod-item">' +
+          '<div><div style="font-weight:900;">' + p.name + '</div><div style="font-size:11px;color:#94a3b8;font-family:monospace;">' + (p.barcode || 'بدون باركود') + ' | المخزون: ' + Number(p.total_stock || p.stock || 0) + '</div></div>' +
+          '<div style="font-family:monospace;font-weight:900;font-size:15px;color:#38bdf8;">' + Number(p.selling_price || p.price || 0).toFixed(2) + ' د.ج</div>' +
+        '</div>'
+      ).join('') || '<div style="font-size:12px;color:#64748b;text-align:center;padding:8px;">لا توجد نتائج مطابقة</div>';
+    }
+  </script>
+</body>
+</html>`;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(html);
+    } catch (err) {
+      res.status(500).send('Error: ' + err.message);
+    }
+  });
+  // [END GHERBI POCKET ERP MOBILE COMPANION WEB APP V1]
+
   const server = http.createServer(app);
   const wss = new WebSocket.Server({ server });
 

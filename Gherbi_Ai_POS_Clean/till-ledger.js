@@ -53,7 +53,12 @@ async function resolveOpenSession(db, preferredSessionId = null, userId = null, 
       db,
       "SELECT id FROM caisse_sessions WHERE user_id IS NULL AND status = 'open' AND deleted_at IS NULL ORDER BY opened_at DESC, id DESC LIMIT 1"
     );
-    return unownedRow ? unownedRow.id : null;
+    if (unownedRow && unownedRow.id) return unownedRow.id;
+    const fallbackOpen = await dbGet(
+      db,
+      "SELECT id FROM caisse_sessions WHERE status = 'open' AND deleted_at IS NULL ORDER BY opened_at DESC, id DESC LIMIT 1"
+    );
+    return fallbackOpen ? fallbackOpen.id : null;
   }
 
   if (deviceId) {
