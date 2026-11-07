@@ -14,6 +14,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
 const db = require('./database');
+const enterpriseBridge = require('./gherbi-enterprise-ipc-and-lan');
 const { processImage } = require('./imageUtils');
 const productWriterMod = require('./product-write');
 const batchAlloc = require('./batch-alloc');
@@ -3701,6 +3702,7 @@ function startLocalServer(port = 8080, onStartedCallback = null) {
   });
   // [END GHERBI POCKET ERP MOBILE COMPANION WEB APP V1]
 
+  enterpriseBridge.registerEnterpriseExpressRoutes(app, db);
   const server = http.createServer(app);
   const wss = new WebSocket.Server({ server });
 

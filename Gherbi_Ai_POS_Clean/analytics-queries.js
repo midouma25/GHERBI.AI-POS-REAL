@@ -944,7 +944,59 @@ async function getAiCopilotInsights(db) {
   };
 }
 
+
+/**
+ * الكشف الضريبي الجزائري السنوي للزبائن (État 104)
+ */
+async function getEtat104Report(db, params = {}) {
+  const year = String(params.year || new Date().getFullYear()).trim();
+  if (db && db.enterprise && typeof db.enterprise.getEtat104Report === 'function') {
+    return await db.enterprise.getEtat104Report(year);
+  }
+  const dateFrom = `${year}-01-01`;
+  const dateTo = `${year}-12-31`;
+  return await queryAll(
+    db,
+    `
+    SELECT
+      c.id AS customer_id,
+      c.name AS customer_name,
+      COALESCE(NULLIF(TRIM(c.nif), ''), '---') AS nif,
+      COALESCE(NULLIF(TRIM(c.rc), ''), '---') AS rc,
+      COALESCE(NULLIF(TRIM(c.ai), ''), '---') AS ai,
+      COALESCE(NULLIF(TRIM(c.nis), ''), '---') AS nis,
+      COALESCE(c.address, '') AS address,
+      COUNT(s.id) AS invoices_count,
+      ROUND(SUM(
+        CASE
+          WHEN COALESCE(s.tax_percentage, 0) > 0
+          THEN (s.total - COALESCE(s.stamp_amount, 0)) / (1.0 + (s.tax_percentage / 100.0))
+          ELSE (s.total - COALESCE(s.stamp_amount, 0))
+        END
+      ), 2) AS total_ht,
+      ROUND(SUM(
+        CASE
+          WHEN COALESCE(s.tax_percentage, 0) > 0
+          THEN (s.total - COALESCE(s.stamp_amount, 0)) - ((s.total - COALESCE(s.stamp_amount, 0)) / (1.0 + (s.tax_percentage / 100.0)))
+          ELSE 0
+        END
+      ), 2) AS total_tva,
+      ROUND(SUM(COALESCE(s.stamp_amount, 0)), 2) AS total_stamp,
+      ROUND(SUM(s.total), 2) AS total_ttc
+    FROM customers c
+    INNER JOIN sales s ON s.customer_id = c.id AND s.deleted_at IS NULL
+    WHERE c.deleted_at IS NULL
+      AND s.total > 0
+      AND date(s.sale_date) BETWEEN date(?) AND date(?)
+    GROUP BY c.id
+    ORDER BY total_ttc DESC
+    `,
+    [dateFrom, dateTo]
+  );
+}
+
 module.exports = {
+  getEtat104Report,
   getAnalytics,
   computeAnalytics: getAnalytics,
   getSegmentAnalytics,

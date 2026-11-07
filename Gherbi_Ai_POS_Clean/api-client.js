@@ -282,6 +282,41 @@ class LanApiClient {
     return this._req('POST', '/api/dz-dictionary/import-csv');
   }
 
+
+  // === التوسعات المؤسسية الـ 6 عبر الشبكة المحلية (LAN Enterprise V14) ===
+  getInstallmentContracts(filters = {}) { return this._req('GET', '/api/enterprise/installment-contracts', undefined, filters); }
+  createInstallmentContract(payload) { return this._req('POST', '/api/enterprise/installment-contracts', payload); }
+  payInstallmentSchedule(payload) { return this._req('POST', '/api/enterprise/installment-schedules/pay', payload); }
+  reconcileCcpStatement(payload) { return this._req('POST', '/api/enterprise/ccp-reconcile', payload); }
+  getCcpReconciliationLogs(filters = {}) { return this._req('GET', '/api/enterprise/ccp-reconciliation-logs', undefined, filters); }
+  getEtat104(year) { return this._req('GET', '/api/enterprise/etat-104', undefined, { year }); }
+  getWarehouses() { return this._req('GET', '/api/enterprise/warehouses'); }
+  saveWarehouse(payload) { return this._req('POST', '/api/enterprise/warehouses', payload); }
+  deleteWarehouse(id) { return this._req('DELETE', `/api/enterprise/warehouses/${id}`); }
+  getStockTransfers() { return this._req('GET', '/api/enterprise/stock-transfers'); }
+  createStockTransfer(payload) { return this._req('POST', '/api/enterprise/stock-transfers', payload); }
+  updateBatchShelfLocation(payload) { return this._req('PUT', '/api/enterprise/batches-shelf', payload); }
+  getDrivers() { return this._req('GET', '/api/enterprise/drivers'); }
+  saveDriver(payload) { return this._req('POST', '/api/enterprise/drivers', payload); }
+  deleteDriver(id) { return this._req('DELETE', `/api/enterprise/drivers/${id}`); }
+  getDeliveryShipments(filters = {}) { return this._req('GET', '/api/enterprise/delivery-shipments', undefined, filters); }
+  saveDeliveryShipment(payload) { return this._req('POST', '/api/enterprise/delivery-shipments', payload); }
+  settleShipmentCod(payload) { return this._req('POST', '/api/enterprise/delivery-shipments/settle-cod', payload); }
+  getDiscountCoupons() { return this._req('GET', '/api/enterprise/coupons'); }
+  saveDiscountCoupon(payload) { return this._req('POST', '/api/enterprise/coupons', payload); }
+  deleteDiscountCoupon(id) { return this._req('DELETE', `/api/enterprise/coupons/${id}`); }
+  validateDiscountCoupon(payload) { return this._req('POST', '/api/enterprise/coupons/validate', payload); }
+  getSystemAuditLogs(filters = {}) { return this._req('GET', '/api/enterprise/system-audit-logs', undefined, filters); }
+  logSystemAudit(payload) { return this._req('POST', '/api/enterprise/system-audit-logs', payload); }
+  getEmployees() { return this._req('GET', '/api/enterprise/employees'); }
+  saveEmployee(payload) { return this._req('POST', '/api/enterprise/employees', payload); }
+  deleteEmployee(id) { return this._req('DELETE', `/api/enterprise/employees/${id}`); }
+  getPayrollPayments() { return this._req('GET', '/api/enterprise/payroll'); }
+  payEmployeeSalary(payload) { return this._req('POST', '/api/enterprise/payroll', payload); }
+  getServiceTickets(filters = {}) { return this._req('GET', '/api/enterprise/service-tickets', undefined, filters); }
+  saveServiceTicket(payload) { return this._req('POST', '/api/enterprise/service-tickets', payload); }
+  convertServiceTicketToSale(payload) { return this._req('POST', '/api/enterprise/service-tickets/convert', payload); }
+
   getSettings() { return this._req('GET', '/api/settings'); }
   updateSettings(data) { return this._req('PUT', '/api/settings', data); }
 }

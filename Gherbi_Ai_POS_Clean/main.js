@@ -21,6 +21,7 @@ const QRCode = require('qrcode');
 const bwipjs = require('bwip-js');
 
 const db = require('./database');
+const enterpriseBridge = require('./gherbi-enterprise-ipc-and-lan');
 const { processImage, getImagesDir } = require('./imageUtils');
 const productWriterMod = require('./product-write');
 const batchAlloc = require('./batch-alloc');
@@ -1529,11 +1530,14 @@ function registerIpcHandlers() {
     const extraCostPerUnit = totalUnits > 0 ? additionalCosts / totalUnits : 0;
 
     return await db.withTransaction(async () => {
+      const freightCost = Number(data.freight_cost ?? 0);
+      const customsCost = Number(data.customs_cost ?? 0);
+      const handlingCost = Number(data.handling_cost ?? 0);
       const ins = await dbRun(
         `INSERT INTO purchase_invoices (
-          invoice_number, supplier_id, subtotal, tax_percentage, additional_costs, total, paid_amount, due_date, date
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [invNumber, supplierId, subtotal, taxPercentage, additionalCosts, total, paidAmount, data.due_date || null, invDate]
+          invoice_number, supplier_id, subtotal, tax_percentage, additional_costs, freight_cost, customs_cost, handling_cost, total, paid_amount, due_date, date
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [invNumber, supplierId, subtotal, taxPercentage, additionalCosts, freightCost, customsCost, handlingCost, total, paidAmount, data.due_date || null, invDate]
       );
       const invoiceId = ins.lastID;
 
@@ -1566,15 +1570,30 @@ function registerIpcHandlers() {
         const sellPrice = Number(it.selling_price ?? 0);
         const wholesalePrice = it.wholesale_price && Number(it.wholesale_price) > 0 ? Number(it.wholesale_price) : null;
 
+        const prevStockRow = await dbGet(
+          `SELECT
+             COALESCE(SUM(CASE WHEN stock > 0 THEN stock ELSE 0 END), 0) AS old_stk,
+             COALESCE(SUM(CASE WHEN stock > 0 THEN stock * COALESCE(NULLIF(wac_cost, 0), cost_price) ELSE 0 END), 0) AS old_val
+           FROM inventory_batches
+           WHERE product_id = ? AND deleted_at IS NULL`,
+          [pid]
+        );
+        const oldStk = Number((prevStockRow && prevStockRow.old_stk) || 0);
+        const oldVal = Number((prevStockRow && prevStockRow.old_val) || 0);
+        const newWacCost = (oldStk + totalStockReceived) > 0
+          ? Number(((oldVal + (totalStockReceived * effectiveCostPrice)) / (oldStk + totalStockReceived)).toFixed(2))
+          : effectiveCostPrice;
+
         const batchIns = await dbRun(
           `INSERT INTO inventory_batches (
-            product_id, variant_id, stock, cost_price, selling_price, wholesale_price, expiry_date, location, supplier_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            product_id, variant_id, stock, cost_price, wac_cost, selling_price, wholesale_price, expiry_date, location, supplier_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             pid,
             it.variant_id || null,
             totalStockReceived,
             effectiveCostPrice,
+            newWacCost,
             sellPrice,
             wholesalePrice,
             it.expiry_date || null,
@@ -1582,6 +1601,7 @@ function registerIpcHandlers() {
             supplierId
           ]
         );
+        await dbRun('UPDATE inventory_batches SET wac_cost = ? WHERE product_id = ? AND deleted_at IS NULL', [newWacCost, pid]);
 
         if (unifySellingPrice && sellPrice > 0) {
           await dbRun(

@@ -1707,4 +1707,13 @@ function autoSeedFullAlgerianCsvDictionary() {
 }
 autoSeedFullAlgerianCsvDictionary();
 
+
+// الترقية المؤسسية النظيفة (6 Clean-Room Enterprise Modules)
+try {
+  const { initEnterpriseFoundation } = require('./gherbi-enterprise-foundation');
+  initEnterpriseFoundation(db);
+} catch (entErr) {
+  console.warn('[Enterprise Foundation Init] Warning:', entErr.message);
+}
+
 module.exports = db;

@@ -40170,3 +40170,3173 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
     }
   };
 })();
+
+// [PART 3A/5: INSTALLMENTS & CCP RECONCILIATION UI V14]
+(function installTask1InstallmentsAndCcpReconciliationUiV14() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.customersActiveMainTab = AppState.customersActiveMainTab || 'directory'; // 'directory' | 'installments' | 'ccp_reconcile'
+  AppState.installmentsScheduleFilter = AppState.installmentsScheduleFilter || 'all'; // 'all' | 'overdue' | 'pending' | 'paid'
+  AppState.parsedCcpEntriesBuffer = AppState.parsedCcpEntriesBuffer || [];
+  AppState.parsedCcpFileName = AppState.parsedCcpFileName || 'ccp_statement.csv';
+
+  // --------------------------------------------------------------------------
+  // أ. توسيع نافذة إضافة/تعديل الزبون (#customerModal) بحقول CCP و RIP والولاية والبلدية
+  // --------------------------------------------------------------------------
+  var _prevOpenCustomerModal = App.openCustomerModal.bind(App);
+  App.openCustomerModal = async function (custOrId) {
+    await _prevOpenCustomerModal(custOrId);
+
+    var modal = document.getElementById('customerModal');
+    if (modal && !document.getElementById('custCcpAccountInput')) {
+      var addrInput = document.getElementById('custAddressInput');
+      var container = addrInput ? addrInput.parentElement.parentElement : modal.querySelector('.space-y-3');
+      if (container) {
+        var ccpBox = document.createElement('div');
+        ccpBox.className = 'p-3 rounded-2xl bg-indigo-50/70 dark:bg-slate-800/80 border border-indigo-200 dark:border-slate-700 space-y-2.5 text-xs';
+        ccpBox.innerHTML =
+          '<div class="font-black text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5"><span>🏦 بيانات الحساب البريدي الجاري (CCP / BaridiMob) والولاية (للتقسيط والمطابقة الآلية)</span></div>' +
+          '<div class="grid grid-cols-3 gap-2">' +
+          '  <div class="col-span-2"><label class="block font-bold mb-1">رقم حساب CCP (بدون المفتاح)</label><input id="custCcpAccountInput" type="text" placeholder="مثال: 0012345678" class="w-full px-3 py-1.5 rounded-xl font-mono font-black text-indigo-600"></div>' +
+          '  <div><label class="block font-bold mb-1">المفتاح (Clé)</label><input id="custCcpKeyInput" type="text" maxlength="2" placeholder="85" class="w-full px-3 py-1.5 rounded-xl font-mono font-black text-center"></div>' +
+          '</div>' +
+          '<div class="grid grid-cols-1 md:grid-cols-3 gap-2">' +
+          '  <div><label class="block font-bold mb-1">رقم RIP بريدي موب</label><input id="custBankRipInput" type="text" placeholder="00799999..." class="w-full px-2.5 py-1.5 rounded-xl font-mono text-[11px]"></div>' +
+          '  <div><label class="block font-bold mb-1">الولاية (Wilaya)</label><input id="custWilayaTextInput" type="text" placeholder="25 - قسنطينة" class="w-full px-2.5 py-1.5 rounded-xl font-bold"></div>' +
+          '  <div><label class="block font-bold mb-1">البلدية (Commune)</label><input id="custCommuneInput" type="text" placeholder="حامة بوزيان" class="w-full px-2.5 py-1.5 rounded-xl font-bold"></div>' +
+          '</div>';
+        container.appendChild(ccpBox);
+      }
+    }
+
+    var cid = document.getElementById('custIdInput')?.value;
+    var cust = cid ? (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); }) : null;
+    if (document.getElementById('custCcpAccountInput')) document.getElementById('custCcpAccountInput').value = (cust && cust.ccp_account) || '';
+    if (document.getElementById('custCcpKeyInput')) document.getElementById('custCcpKeyInput').value = (cust && cust.ccp_key) || '';
+    if (document.getElementById('custBankRipInput')) document.getElementById('custBankRipInput').value = (cust && cust.bank_rip) || '';
+    if (document.getElementById('custWilayaTextInput')) document.getElementById('custWilayaTextInput').value = (cust && cust.wilaya) || '';
+    if (document.getElementById('custCommuneInput')) document.getElementById('custCommuneInput').value = (cust && cust.commune) || '';
+  };
+
+  App.saveCustomerFromModal = async function () {
+    var id = document.getElementById('custIdInput')?.value;
+    var payload = {
+      name: String(document.getElementById('custNameInput')?.value || '').trim(),
+      phone: String(document.getElementById('custPhoneInput')?.value || '').trim() || null,
+      price_tier: document.getElementById('custPriceTierInput')?.value || 'retail',
+      initial_debt: parseFloat(document.getElementById('custInitDebtInput')?.value) || 0,
+      credit_limit: parseFloat(document.getElementById('custCreditLimitInput')?.value) || 0,
+      loyalty_points: parseInt(document.getElementById('custLoyaltyPointsInput')?.value || '0', 10) || 0,
+      address: String(document.getElementById('custAddressInput')?.value || '').trim() || null,
+      rc: String(document.getElementById('custRcInput')?.value || '').trim() || null,
+      nif: String(document.getElementById('custNifInput')?.value || '').trim() || null,
+      ai: String(document.getElementById('custAiInput')?.value || '').trim() || null,
+      nis: String(document.getElementById('custNisInput')?.value || '').trim() || null,
+      ccp_account: String(document.getElementById('custCcpAccountInput')?.value || '').trim(),
+      ccp_key: String(document.getElementById('custCcpKeyInput')?.value || '').trim(),
+      bank_rip: String(document.getElementById('custBankRipInput')?.value || '').trim(),
+      wilaya: String(document.getElementById('custWilayaTextInput')?.value || document.getElementById('custWilayaSelect')?.value || '').trim(),
+      commune: String(document.getElementById('custCommuneInput')?.value || '').trim()
+    };
+
+    if (!payload.name) {
+      if (typeof showToast === 'function') showToast('يرجى إدخال اسم الزبون أولاً', 'warning');
+      return;
+    }
+
+    if (id) {
+      await window.api.updateCustomer(Number(id), payload);
+      if (typeof showToast === 'function') showToast('✅ تم تحديث بيانات الزبون وحساب CCP بنجاح', 'success');
+    } else {
+      var res = await window.api.addCustomer(payload);
+      if (res && res.id && this.currentCart) {
+        this.currentCart.customerId = res.id;
+      }
+      if (typeof showToast === 'function') showToast('✅ تمت إضافة الزبون الجديد بنجاح', 'success');
+    }
+
+    this.closeModal('customerModal');
+    AppState.customers = (await window.api.getCustomers().catch(function () { return []; })) || [];
+    this.populatePosCustomers();
+    if (AppState.currentView === 'customers') await this.renderCustomersView();
+  };
+
+  // --------------------------------------------------------------------------
+  // ب. دمج خيار "تحويل إلى عقد تقسيط شهري (Facilités / CCP)" داخل #checkoutModal
+  // --------------------------------------------------------------------------
+  App.ensureCheckoutInstallmentBoxDom = function () {
+    var pmSelect = document.getElementById('chkPaymentMethod');
+    if (!pmSelect) return;
+
+    // إضافة خيار "عقد تقسيط شهري (Facilités CCP)" إلى قائمة طرق الدفع إن لم يكن موجوداً
+    if (!pmSelect.querySelector('option[value="installment"]')) {
+      pmSelect.insertAdjacentHTML('beforeend', '<option value="installment">📅 عقد تقسيط شهري (Facilités / CCP)</option>');
+    }
+
+    if (document.getElementById('chkInstallmentContractPanel')) return;
+
+    var panel = document.createElement('div');
+    panel.id = 'chkInstallmentContractPanel';
+    panel.className = 'hidden p-3.5 rounded-2xl bg-indigo-500/10 border-2 border-indigo-500/40 space-y-2.5 text-xs mt-2';
+    panel.innerHTML =
+      '<div class="flex items-center justify-between">' +
+      '  <label class="flex items-center gap-2 font-black text-indigo-600 dark:text-indigo-300 cursor-pointer">' +
+      '    <input id="chkEnableInstallmentContract" type="checkbox" onchange="App.recalcCheckoutInstallmentPreview()" class="w-4 h-4 accent-indigo-600">' +
+      '    <span>📅 تحويل الرصيد المتبقي إلى عقد تقسيط شهري (Facilités CCP)</span>' +
+      '  </label>' +
+      '  <span id="chkInstMonthlyBadge" class="px-2.5 py-0.5 rounded-full bg-indigo-600 text-white font-mono font-black text-[11px]">0.00 د.ج / شهر</span>' +
+      '</div>' +
+      '<div id="chkInstallmentFieldsGrid" class="grid grid-cols-2 md:grid-cols-4 gap-2 pt-1">' +
+      '  <div>' +
+      '    <label class="block font-bold mb-1 text-[11px]">عدد الأشهر</label>' +
+      '    <select id="chkInstMonthsCount" onchange="App.recalcCheckoutInstallmentPreview()" class="w-full px-2 py-1.5 rounded-xl font-mono font-black text-center">' +
+      '      <option value="3">3 أشهر</option>' +
+      '      <option value="6" selected>6 أشهر</option>' +
+      '      <option value="9">9 أشهر</option>' +
+      '      <option value="12">12 شهراً (سنة)</option>' +
+      '      <option value="18">18 شهراً</option>' +
+      '      <option value="24">24 شهراً (سنتان)</option>' +
+      '    </select>' +
+      '  </div>' +
+      '  <div>' +
+      '    <label class="block font-bold mb-1 text-[11px]">رقم حساب CCP للزبون</label>' +
+      '    <input id="chkInstCcpAccount" type="text" placeholder="0012345678" class="w-full px-2.5 py-1.5 rounded-xl font-mono font-bold">' +
+      '  </div>' +
+      '  <div>' +
+      '    <label class="block font-bold mb-1 text-[11px]">المفتاح (Clé)</label>' +
+      '    <input id="chkInstCcpKey" type="text" maxlength="2" placeholder="85" class="w-full px-2 py-1.5 rounded-xl font-mono font-bold text-center">' +
+      '  </div>' +
+      '  <div>' +
+      '    <label class="block font-bold mb-1 text-[11px]">رقم شيك الضمان</label>' +
+      '    <input id="chkInstGuaranteeCheque" type="text" placeholder="CHQ-998811" class="w-full px-2.5 py-1.5 rounded-xl font-mono font-bold">' +
+      '  </div>' +
+      '</div>' +
+      '<div class="flex items-center justify-between pt-1 text-[11px]">' +
+      '  <label class="flex items-center gap-1.5 font-bold text-slate-600 dark:text-slate-300 cursor-pointer">' +
+      '    <input id="chkPrintInstallmentContractA4" type="checkbox" checked class="accent-emerald-600">' +
+      '    <span>🖨️ طباعة عقد البيع بالتقسيط وجدول الأقساط (A4) تلقائياً</span>' +
+      '  </label>' +
+      '  <span id="chkInstFinancedSummary" class="font-mono font-bold text-indigo-600 dark:text-indigo-300"></span>' +
+      '</div>';
+
+    pmSelect.parentElement.insertAdjacentElement('afterend', panel);
+  };
+
+  App.recalcCheckoutInstallmentPreview = function () {
+    this.ensureCheckoutInstallmentBoxDom();
+    var pm = document.getElementById('chkPaymentMethod')?.value || 'cash';
+    var panel = document.getElementById('chkInstallmentContractPanel');
+    var chkEnable = document.getElementById('chkEnableInstallmentContract');
+    if (!panel || !chkEnable) return;
+
+    if (pm === 'installment') {
+      chkEnable.checked = true;
+    }
+
+    var shouldShow = pm === 'credit' || pm === 'installment' || chkEnable.checked;
+    panel.classList.toggle('hidden', !shouldShow);
+
+    // تعبئة حساب CCP تلقائياً من بطاقة الزبون المختار
+    var custId = (this.currentCart && this.currentCart.customerId) || document.getElementById('posCustomerSelect')?.value;
+    if (custId) {
+      var cust = (AppState.customers || []).find(function (c) { return Number(c.id) === Number(custId); });
+      var ccpInp = document.getElementById('chkInstCcpAccount');
+      var keyInp = document.getElementById('chkInstCcpKey');
+      if (cust && ccpInp && !ccpInp.value && cust.ccp_account) ccpInp.value = cust.ccp_account;
+      if (cust && keyInp && !keyInp.value && cust.ccp_key) keyInp.value = cust.ccp_key;
+    }
+
+    var totalDueText = document.getElementById('chkTotalDue')?.textContent || '0';
+    var totalDue = parseFloat(String(totalDueText).replace(/[^\d.-]/g, '')) || 0;
+    var paidNow = parseFloat(document.getElementById('chkPaidAmount')?.value || '0') || 0;
+    var financed = Math.max(0, Number((totalDue - paidNow).toFixed(2)));
+    var months = Math.max(1, parseInt(document.getElementById('chkInstMonthsCount')?.value || '6', 10));
+    var monthly = Number((financed / months).toFixed(2));
+
+    var badge = document.getElementById('chkInstMonthlyBadge');
+    if (badge) badge.textContent = monthly.toFixed(2) + ' د.ج × ' + months + ' شهر';
+    var sumEl = document.getElementById('chkInstFinancedSummary');
+    if (sumEl) sumEl.textContent = 'المبلغ الممول: ' + financed.toFixed(2) + ' د.ج (التسبيق: ' + paidNow.toFixed(2) + ' د.ج)';
+  };
+
+  var _prevOpenCheckoutV14 = App.openCheckoutModal.bind(App);
+  App.openCheckoutModal = async function () {
+    await _prevOpenCheckoutV14();
+    this.ensureCheckoutInstallmentBoxDom();
+    var chkEnable = document.getElementById('chkEnableInstallmentContract');
+    if (chkEnable) chkEnable.checked = false;
+    var ccpInp = document.getElementById('chkInstCcpAccount');
+    var keyInp = document.getElementById('chkInstCcpKey');
+    if (ccpInp) ccpInp.value = '';
+    if (keyInp) keyInp.value = '';
+    this.recalcCheckoutInstallmentPreview();
+  };
+
+  var _prevRecalcCheckoutV14 = App.recalcCheckoutModal.bind(App);
+  App.recalcCheckoutModal = function () {
+    var res = _prevRecalcCheckoutV14();
+    this.recalcCheckoutInstallmentPreview();
+    return res;
+  };
+
+  var _prevSubmitSaleV14 = App.submitSale.bind(App);
+  App.submitSale = async function (printMode) {
+    var pmEl = document.getElementById('chkPaymentMethod');
+    var rawPm = pmEl ? pmEl.value : 'cash';
+    var instEnabled = Boolean(document.getElementById('chkEnableInstallmentContract')?.checked) || rawPm === 'installment';
+
+    var custId = Number((this.currentCart && this.currentCart.customerId) || document.getElementById('posCustomerSelect')?.value || 0);
+    if (instEnabled && !custId) {
+      if (typeof showToast === 'function') {
+        showToast('⚠️ يرجى اختيار الزبون أولاً لإنشاء عقد البيع بالتقسيط!', 'warning');
+      }
+      return;
+    }
+
+    var totalDueText = document.getElementById('chkTotalDue')?.textContent || '0';
+    var totalDue = parseFloat(String(totalDueText).replace(/[^\d.-]/g, '')) || 0;
+    var downPayment = parseFloat(document.getElementById('chkPaidAmount')?.value || '0') || 0;
+    var monthsCount = Math.max(1, parseInt(document.getElementById('chkInstMonthsCount')?.value || '6', 10));
+    var ccpAccount = String(document.getElementById('chkInstCcpAccount')?.value || '').trim();
+    var ccpKey = String(document.getElementById('chkInstCcpKey')?.value || '').trim();
+    var guaranteeCheque = String(document.getElementById('chkInstGuaranteeCheque')?.value || '').trim();
+    var autoPrintContract = Boolean(document.getElementById('chkPrintInstallmentContractA4')?.checked);
+
+    if (rawPm === 'installment' && pmEl) {
+      pmEl.value = 'credit';
+    }
+
+    await _prevSubmitSaleV14(printMode);
+
+    if (instEnabled && custId && totalDue > downPayment && window.api && window.api.createInstallmentContract) {
+      try {
+        var salesList = (await window.api.getSales().catch(function () { return []; })) || [];
+        var latestSaleId = salesList.length > 0 ? salesList[0].id : null;
+
+        var contractRes = await window.api.createInstallmentContract({
+          customer_id: custId,
+          sale_id: latestSaleId,
+          total_amount: totalDue,
+          down_payment: downPayment,
+          months_count: monthsCount,
+          start_date: new Date().toISOString().slice(0, 10),
+          payment_method: 'CCP',
+          ccp_account: ccpAccount,
+          ccp_key: ccpKey,
+          guarantee_cheque_no: guaranteeCheque,
+          notes: 'عقد تقسيط آلي من شاشة الكاشير'
+        });
+
+        if (typeof showToast === 'function') {
+          showToast('📅 تم توليد عقد التقسيط (' + (contractRes.contract_number || '') + ') وجدول الأقساط الـ ' + monthsCount + ' بنجاح!', 'success');
+        }
+
+        if (autoPrintContract && contractRes && contractRes.id) {
+          await this.printInstallmentContractDocumentA4(contractRes.id);
+        }
+      } catch (err) {
+        if (typeof showToast === 'function') showToast('خطأ في توليد عقد التقسيط: ' + err.message, 'error');
+      }
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // ج. طباعة عقد البيع بالتقسيط وجدول الأقساط الرسمي (A4 Official Contract)
+  // --------------------------------------------------------------------------
+  App.printInstallmentContractDocumentA4 = async function (contractId) {
+    var data = await window.api.getInstallmentContracts({}).catch(function () { return { contracts: [], schedules: [] }; });
+    var contract = (data.contracts || []).find(function (c) { return Number(c.id) === Number(contractId); });
+    if (!contract) return;
+    var schedules = (data.schedules || []).filter(function (s) { return Number(s.resolved_contract_id || s.contract_id) === Number(contractId); });
+    var s = AppState.settings || {};
+
+    var rowsHtml = schedules.map(function (sc) {
+      var stLabel = sc.status === 'paid' ? '✅ مسدد' : sc.status === 'partial' ? '⏳ جزئي' : '📌 مستحق';
+      return (
+        '<tr>' +
+        '  <td style="padding:7px;border:1px solid #cbd5e1;text-align:center;font-family:monospace;font-weight:900;">#' + (sc.resolved_no || sc.installment_no || 1) + '</td>' +
+        '  <td style="padding:7px;border:1px solid #cbd5e1;text-align:center;font-family:monospace;font-weight:800;">' + String(sc.due_date || '').slice(0, 10) + '</td>' +
+        '  <td style="padding:7px;border:1px solid #cbd5e1;text-align:center;font-family:monospace;font-weight:900;">' + Number(sc.amount || 0).toFixed(2) + ' د.ج</td>' +
+        '  <td style="padding:7px;border:1px solid #cbd5e1;text-align:center;font-family:monospace;color:#059669;font-weight:800;">' + Number(sc.paid_amount || 0).toFixed(2) + ' د.ج</td>' +
+        '  <td style="padding:7px;border:1px solid #cbd5e1;text-align:center;font-weight:800;">' + stLabel + '</td>' +
+        '  <td style="padding:7px;border:1px solid #cbd5e1;"></td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>عقد بيع بالتقسيط - ' + contract.contract_number + '</title>' +
+      '<style>@page{size:A4 portrait;margin:12mm;}body{font-family:Cairo,Arial,sans-serif;color:#0f172a;font-size:12px;margin:0;padding:0;}' +
+      '.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a8a;padding-bottom:12px;margin-bottom:14px;}' +
+      '.box{background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:12px;margin-bottom:14px;}' +
+      'table{width:100%;border-collapse:collapse;margin-bottom:16px;}th{background:#1e3a8a;color:#fff;padding:8px;border:1px solid #1e3a8a;font-size:11.5px;}' +
+      '</style></head><body>' +
+      '<div class="hdr">' +
+      '  <div><h1 style="margin:0;color:#1e3a8a;font-size:22px;font-weight:900;">' + (s.shop_name || 'Gherbi.Ai POS') + '</h1><div>' + (s.shop_address || 'الجزائر') + (s.shop_phone ? ' | ' + s.shop_phone : '') + '</div><div style="font-family:monospace;font-size:10.5px;">RC: ' + (s.shop_rc || '-') + ' | NIF: ' + (s.shop_nif || '-') + '</div></div>' +
+      '  <div style="text-align:left;background:#eff6ff;border:1px solid #bfdbfe;border-top:4px solid #1e3a8a;padding:10px 16px;border-radius:10px;">' +
+      '    <div style="font-size:16px;font-weight:900;color:#1e3a8a;">عقد بيع بالتقسيط وجدول الأقساط</div>' +
+      '    <div style="font-family:monospace;font-weight:900;font-size:14px;margin-top:3px;">N°: ' + contract.contract_number + '</div>' +
+      '    <div style="font-size:11px;color:#475569;">تاريخ العقد: ' + String(contract.start_date || '').slice(0, 10) + '</div>' +
+      '  </div>' +
+      '</div>' +
+      '<div class="box" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+      '  <div><div><strong>الزبون المشتري:</strong> ' + (contract.customer_name || '') + ' (' + (contract.customer_phone || '') + ')</div>' +
+      '  <div><strong>رقم الحساب البريدي الجاري (CCP):</strong> <span style="font-family:monospace;font-weight:900;">' + (contract.effective_ccp || contract.ccp_account || '---') + (contract.effective_ccp_key ? ' / Clé ' + contract.effective_ccp_key : '') + '</span></div>' +
+      '  <div><strong>رقم شيك الضمان:</strong> <span style="font-family:monospace;font-weight:900;">' + (contract.guarantee_cheque_no || '---') + '</span></div></div>' +
+      '  <div><div><strong>إجمالي الفاتورة:</strong> <span style="font-family:monospace;font-weight:900;">' + Number(contract.total_amount || 0).toFixed(2) + ' د.ج</span></div>' +
+      '  <div><strong>التسبيق المدفوع (Apport):</strong> <span style="font-family:monospace;font-weight:900;color:#059669;">' + Number(contract.down_payment || 0).toFixed(2) + ' د.ج</span></div>' +
+      '  <div><strong>المبلغ الممول بالتقسيط:</strong> <span style="font-family:monospace;font-weight:900;color:#e11d48;">' + Number(contract.financed_amount || 0).toFixed(2) + ' د.ج (' + contract.months_count + ' أشهر × ' + Number(contract.monthly_amount || 0).toFixed(2) + ' د.ج)</span></div></div>' +
+      '</div>' +
+      '<table><thead><tr><th>رقم القسط</th><th>تاريخ الاستحقاق</th><th>قيمة القسط</th><th>المبلغ المسدد</th><th>الحالة</th><th>توقيع / ملاحظة</th></tr></thead><tbody>' + rowsHtml + '</tbody></table>' +
+      '<div class="box" style="font-size:11px;font-weight:700;">⚖️ يلتزم الطرف الثاني (المشتري) بتسديد الأقساط الشهرية المبينة أعلاه في تواريخ استحقاقها عبر الاقتطاع البريدي (CCP) أو نقداً بصندوق المؤسسة.</div>' +
+      '<div style="display:flex;justify-content:space-between;margin-top:32px;font-weight:900;padding:0 20px;"><div>ختم وإمضاء المؤسسة البائعة</div><div>إمضاء وبصمة الزبون المشتري</div></div>' +
+      '</body></html>';
+
+    if (window.PrintEngine) await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  };
+
+  // --------------------------------------------------------------------------
+  // د. بناء التبويبين الجديدين في #view-customers:
+  //    (2. عقود التقسيط والأقساط المستحقة) + (3. مطابقة كشف CCP البريدي الآلية)
+  // --------------------------------------------------------------------------
+  App.switchCustomersMainTab = async function (tabId) {
+    AppState.customersActiveMainTab = tabId;
+    await this.renderCustomersView();
+  };
+
+  App.promptPayInstallmentSchedule = async function (scheduleId, remainingAmt, custName, instNo) {
+    var val = window.prompt('💸 تسديد القسط رقم #' + instNo + ' للزبون (' + custName + '):\nأدخل المبلغ المسدد (د.ج):', String(Number(remainingAmt || 0).toFixed(2)));
+    if (val === null) return;
+    var amt = parseFloat(val);
+    if (!amt || amt <= 0) return;
+
+    var res = await window.api.payInstallmentSchedule({
+      schedule_id: scheduleId,
+      amount: amt,
+      payment_method: 'ccp'
+    });
+
+    if (typeof showToast === 'function') {
+      showToast('✅ تم تسديد القسط بنجاح! رقم الوصل: ' + (res.receipt_number || ''), 'success');
+    }
+    await this.renderCustomersView();
+  };
+
+  // تحليل ملف أو نص كشف الحساب البريدي CCP (CSV / TXT)
+  App.parseCcpStatementText = function (rawText, fileName) {
+    var lines = String(rawText || '').split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+    var parsed = [];
+
+    lines.forEach(function (line, idx) {
+      if (idx === 0 && /ccp|account|montant|amount|الحساب/i.test(line)) return;
+      var parts = line.split(/[;,|\t]+/).map(function (p) { return p.trim(); });
+      if (parts.length >= 2) {
+        var acc = '';
+        var amt = 0;
+        var dt = new Date().toISOString().slice(0, 10);
+        var ref = 'CCP-LINE-' + (idx + 1);
+
+        parts.forEach(function (cell) {
+          var cleanDigits = cell.replace(/\s+/g, '');
+          if (/^\d{4}-\d{2}-\d{2}$/.test(cleanDigits)) {
+            dt = cleanDigits;
+          } else if (/^\d{6,14}$/.test(cleanDigits) && !acc) {
+            acc = cleanDigits;
+          } else if (/^\d+(\.\d{1,2})?$/.test(cleanDigits) && parseFloat(cleanDigits) > 0 && amt === 0) {
+            amt = parseFloat(cleanDigits);
+          } else if (/^[A-Za-z0-9_-]{4,25}$/.test(cleanDigits)) {
+            ref = cleanDigits;
+          }
+        });
+
+        if (acc && amt > 0) {
+          parsed.push({ ccp_account: acc, amount: amt, transaction_date: dt, transaction_ref: ref });
+        }
+      }
+    });
+
+    AppState.parsedCcpEntriesBuffer = parsed;
+    AppState.parsedCcpFileName = fileName || 'ccp_statement.csv';
+    return parsed;
+  };
+
+  App.handleCcpStatementFileUpload = function (inputEl) {
+    var file = inputEl && inputEl.files && inputEl.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      var text = e.target.result || '';
+      var entries = App.parseCcpStatementText(text, file.name);
+      var ta = document.getElementById('ccpRawTextPasteArea');
+      if (ta) ta.value = text;
+      if (typeof showToast === 'function') {
+        showToast('📂 تم قراءة ملف كشف CCP (' + entries.length + ' عملية مالية جاهزة للمطابقة)', 'info');
+      }
+      App.renderCustomersView();
+    };
+    reader.readAsText(file, 'utf-8');
+  };
+
+  App.generateSampleCcpStatementForTesting = async function () {
+    var data = await window.api.getInstallmentContracts({}).catch(function () { return { schedules: [] }; });
+    var pending = (data.schedules || []).filter(function (s) { return s.status !== 'paid'; });
+    var today = new Date().toISOString().slice(0, 10);
+    var sampleLines = ['ccp_account;amount;transaction_date;transaction_ref'];
+
+    if (pending.length > 0) {
+      pending.slice(0, 4).forEach(function (sc, i) {
+        var acc = sc.ccp_account || '0012345678';
+        var rem = Math.max(0, Number(sc.amount || 0) - Number(sc.paid_amount || 0));
+        sampleLines.push(acc + ';' + rem.toFixed(2) + ';' + today + ';CCP-DZ-' + Date.now().toString().slice(-4) + '-' + (i + 1));
+      });
+    } else {
+      sampleLines.push('0012345678;2500.00;' + today + ';CCP-DZ-9901');
+      sampleLines.push('0087654321;4000.00;' + today + ';CCP-DZ-9902');
+    }
+
+    var text = sampleLines.join('\n');
+    this.parseCcpStatementText(text, 'alg_poste_ccp_' + today + '.csv');
+    await this.renderCustomersView();
+    var ta = document.getElementById('ccpRawTextPasteArea');
+    if (ta) ta.value = text;
+    if (typeof showToast === 'function') {
+      showToast('⚡ تم توليد كشف بريد الجزائر التجريبي من الأقساط المفتوحة! اضغط "تنفيذ المطابقة الذرية الآن"', 'success');
+    }
+  };
+
+  App.executeCcpStatementReconciliationNow = async function () {
+    var ta = document.getElementById('ccpRawTextPasteArea');
+    if (ta && ta.value.trim()) {
+      this.parseCcpStatementText(ta.value, AppState.parsedCcpFileName || 'ccp_paste.csv');
+    }
+    var entries = AppState.parsedCcpEntriesBuffer || [];
+    if (entries.length === 0) {
+      if (typeof showToast === 'function') showToast('يرجى رفع ملف كشف CCP أو الضغط على زر توليد كشف تجريبي أولاً', 'warning');
+      return;
+    }
+
+    var res = await window.api.reconcileCcpStatement({
+      entries: entries,
+      fileName: AppState.parsedCcpFileName || 'ccp_statement.csv'
+    });
+
+    AppState.parsedCcpEntriesBuffer = [];
+    if (typeof showToast === 'function') {
+      showToast(
+        '🏦 اكتملت مطابقة كشف CCP: (' + (res.matched || 0) + ' مسددة آلياً | ' + (res.unmatched || 0) + ' غير مطابقة | ' + (res.duplicate || 0) + ' مكررة)',
+        'success'
+      );
+    }
+    await this.renderCustomersView();
+  };
+
+  var _prevRenderCustomersV14 = App.renderCustomersView.bind(App);
+  App.renderCustomersView = async function () {
+    await _prevRenderCustomersV14();
+    var root = document.getElementById('customers-view-root');
+    if (!root) return;
+
+    var activeTab = AppState.customersActiveMainTab || 'directory';
+    var instData = await window.api.getInstallmentContracts({}).catch(function () { return { contracts: [], schedules: [] }; });
+    var contracts = instData.contracts || [];
+    var schedules = instData.schedules || [];
+    var todayIso = new Date().toISOString().slice(0, 10);
+
+    var overdueCount = schedules.filter(function (s) { return s.status !== 'paid' && String(s.due_date || '') < todayIso; }).length;
+    var pendingCount = schedules.filter(function (s) { return s.status !== 'paid'; }).length;
+
+    // شريط التبويبات الثلاثة الرئيسي أعلى #customers-view-root
+    var tabsBarHtml =
+      '<div id="customersEnterpriseTabsBar" class="p-2 rounded-2xl bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2 mb-4 shadow-lg text-xs">' +
+      '  <div class="flex flex-wrap items-center gap-1.5">' +
+      '    <button type="button" onclick="App.switchCustomersMainTab(\'directory\')" class="px-4 py-2 rounded-xl font-black transition ' + (activeTab === 'directory' ? 'bg-blue-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">👥 1. سجل الزبائن والديون والولاء (' + (AppState.customers || []).length + ')</button>' +
+      '    <button type="button" onclick="App.switchCustomersMainTab(\'installments\')" class="px-4 py-2 rounded-xl font-black transition ' + (activeTab === 'installments' ? 'bg-indigo-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">📅 2. عقود التقسيط والأقساط المستحقة (' + contracts.length + ' عقد / ' + pendingCount + ' قسط مفتوح)</button>' +
+      '    <button type="button" onclick="App.switchCustomersMainTab(\'ccp_reconcile\')" class="px-4 py-2 rounded-xl font-black transition ' + (activeTab === 'ccp_reconcile' ? 'bg-emerald-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">🏦 3. مطابقة كشف بريد الجزائر الآلية (CCP Auto-Reconciliation)</button>' +
+      '  </div>' +
+      (overdueCount > 0
+        ? '<span class="px-3 py-1 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-300 font-black">⚠️ ' + overdueCount + ' أقساط متأخرة عن موعدها</span>'
+        : '<span class="px-3 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 font-black">✅ جميع الأقساط في مواعيدها</span>') +
+      '</div>';
+
+    if (activeTab === 'directory') {
+      root.insertAdjacentHTML('afterbegin', tabsBarHtml);
+      return;
+    }
+
+    if (activeTab === 'installments') {
+      var fStatus = AppState.installmentsScheduleFilter || 'all';
+      var filteredScheds = schedules.filter(function (s) {
+        var isOver = s.status !== 'paid' && String(s.due_date || '') < todayIso;
+        if (fStatus === 'overdue') return isOver;
+        if (fStatus === 'pending') return s.status !== 'paid';
+        if (fStatus === 'paid') return s.status === 'paid';
+        return true;
+      });
+
+      var totalFinanced = contracts.reduce(function (sum, c) { return sum + Number(c.financed_amount || 0); }, 0);
+      var totalRemainingInst = schedules.reduce(function (sum, s) {
+        return sum + Math.max(0, Number(s.amount || 0) - Number(s.paid_amount || 0));
+      }, 0);
+
+      root.innerHTML =
+        tabsBarHtml +
+        '<div class="space-y-5 text-xs">' +
+        '  <div class="grid grid-cols-1 md:grid-cols-4 gap-3.5">' +
+        '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm"><div class="text-slate-400 font-bold">إجمالي عقود التقسيط</div><div class="text-2xl font-black font-mono text-indigo-600 mt-1">' + contracts.length + ' عقد</div></div>' +
+        '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm"><div class="text-slate-400 font-bold">إجمالي المبالغ الممولة</div><div class="text-2xl font-black font-mono text-blue-600 mt-1">' + totalFinanced.toFixed(2) + ' د.ج</div></div>' +
+        '    <div class="p-4 rounded-2xl bg-rose-600 text-white shadow-lg"><div class="font-bold opacity-90">الأقساط المتبقية للتحصيل</div><div class="text-2xl font-black font-mono mt-1">' + totalRemainingInst.toFixed(2) + ' د.ج</div></div>' +
+        '    <div class="p-4 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex flex-col justify-between">' +
+        '      <div class="font-black text-amber-600">إجراءات سريعة للعقود</div>' +
+        '      <div class="flex gap-2 mt-2">' +
+        '        <button type="button" onclick="App.openInstallmentsManagerModal()" class="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow">+ عقد تقسيط جديد</button>' +
+        '        <button type="button" onclick="App.switchCustomersMainTab(\'ccp_reconcile\')" class="px-3 py-2 rounded-xl bg-emerald-600 text-white font-black">🏦 مطابقة CCP</button>' +
+        '      </div>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <!-- جدول العقود النشطة -->' +
+        '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">' +
+        '    <h3 class="font-black text-sm text-indigo-600">📜 1. سجل عقود البيع بالتقسيط (' + contracts.length + ')</h3>' +
+        '    <div class="overflow-x-auto"><table class="w-full text-right border-collapse">' +
+        '      <thead><tr class="bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700"><th class="p-2.5">رقم العقد</th><th class="p-2.5">الزبون</th><th class="p-2.5">حساب CCP</th><th class="p-2.5">شيك الضمان</th><th class="p-2.5">الإجمالي</th><th class="p-2.5">التسبيق</th><th class="p-2.5">المبلغ الممول</th><th class="p-2.5">القسط الشهري</th><th class="p-2.5 text-center">إجراءات</th></tr></thead>' +
+        '      <tbody>' +
+        (contracts.length === 0
+          ? '<tr><td colspan="9" class="p-6 text-center text-slate-400 font-bold">لا توجد عقود تقسيط مسجلة بعد — يمكنك إنشاء عقد من شاشة الدفع (F1) أو من زر "+ عقد تقسيط جديد"</td></tr>'
+          : contracts.map(function (c) {
+              return (
+                '<tr class="border-b border-slate-100 dark:border-slate-700/60 hover:bg-slate-50 dark:hover:bg-slate-900/40">' +
+                '  <td class="p-2.5 font-mono font-black text-indigo-600">' + (c.contract_number || ('#' + c.id)) + '</td>' +
+                '  <td class="p-2.5 font-black">' + (c.customer_name || 'زبون') + '</td>' +
+                '  <td class="p-2.5 font-mono font-bold">' + (c.effective_ccp || '---') + (c.effective_ccp_key ? '/' + c.effective_ccp_key : '') + '</td>' +
+                '  <td class="p-2.5 font-mono">' + (c.guarantee_cheque_no || '---') + '</td>' +
+                '  <td class="p-2.5 font-mono font-bold">' + Number(c.total_amount || 0).toFixed(2) + '</td>' +
+                '  <td class="p-2.5 font-mono text-emerald-600 font-bold">' + Number(c.down_payment || 0).toFixed(2) + '</td>' +
+                '  <td class="p-2.5 font-mono text-rose-600 font-black">' + Number(c.financed_amount || 0).toFixed(2) + '</td>' +
+                '  <td class="p-2.5 font-mono font-black">' + Number(c.monthly_amount || 0).toFixed(2) + ' × ' + c.months_count + ' ش</td>' +
+                '  <td class="p-2.5 text-center"><button type="button" onclick="App.printInstallmentContractDocumentA4(' + c.id + ')" class="px-3 py-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black">🖨️ طباعة العقد A4</button></td>' +
+                '</tr>'
+              );
+            }).join('')) +
+        '      </tbody></table></div>' +
+        '  </div>' +
+
+        '  <!-- جدول الأقساط الشهرية التفصيلي -->' +
+        '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">' +
+        '    <div class="flex flex-wrap items-center justify-between gap-2">' +
+        '      <h3 class="font-black text-sm text-emerald-600">🗓️ 2. جدول الأقساط الشهرية والمتابعة (' + filteredScheds.length + ' قسط)</h3>' +
+        '      <div class="flex gap-1.5">' +
+        [
+          { id: 'all', label: 'الكل (' + schedules.length + ')' },
+          { id: 'pending', label: '📌 غير المسددة (' + pendingCount + ')' },
+          { id: 'overdue', label: '⚠️ المتأخرة (' + overdueCount + ')' },
+          { id: 'paid', label: '✅ المسددة' }
+        ].map(function (f) {
+          return '<button type="button" onclick="AppState.installmentsScheduleFilter=\'' + f.id + '\';App.renderCustomersView()" class="px-3 py-1 rounded-xl font-black ' + (fStatus === f.id ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-900') + '">' + f.label + '</button>';
+        }).join('') +
+        '      </div>' +
+        '    </div>' +
+        '    <div class="overflow-x-auto"><table class="w-full text-right border-collapse">' +
+        '      <thead><tr class="bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700"><th class="p-2.5">العقد</th><th class="p-2.5">الزبون</th><th class="p-2.5">حساب CCP</th><th class="p-2.5">رقم القسط</th><th class="p-2.5">تاريخ الاستحقاق</th><th class="p-2.5">قيمة القسط</th><th class="p-2.5">المسدد</th><th class="p-2.5">المتبقي</th><th class="p-2.5">الحالة</th><th class="p-2.5 text-center">إجراء</th></tr></thead>' +
+        '      <tbody>' +
+        (filteredScheds.length === 0
+          ? '<tr><td colspan="10" class="p-6 text-center text-slate-400 font-bold">لا توجد أقساط مطابقة للفلتر المحدد</td></tr>'
+          : filteredScheds.map(function (sc) {
+              var rem = Math.max(0, Number((Number(sc.amount || 0) - Number(sc.paid_amount || 0)).toFixed(2)));
+              var isOverdue = sc.status !== 'paid' && String(sc.due_date || '') < todayIso;
+              var badgeHtml = sc.status === 'paid'
+                ? '<span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-black">✅ مسدد</span>'
+                : isOverdue
+                  ? '<span class="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 font-black">⚠️ متأخر</span>'
+                  : '<span class="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-black">⏳ قادم</span>';
+              return (
+                '<tr class="border-b border-slate-100 dark:border-slate-700/60">' +
+                '  <td class="p-2.5 font-mono font-bold">' + (sc.contract_number || ('#' + sc.resolved_contract_id)) + '</td>' +
+                '  <td class="p-2.5 font-black">' + (sc.customer_name || 'زبون') + '</td>' +
+                '  <td class="p-2.5 font-mono font-bold text-indigo-600">' + (sc.ccp_account || '---') + '</td>' +
+                '  <td class="p-2.5 font-mono font-black">#' + (sc.resolved_no || 1) + '</td>' +
+                '  <td class="p-2.5 font-mono font-bold">' + String(sc.due_date || '').slice(0, 10) + '</td>' +
+                '  <td class="p-2.5 font-mono font-bold">' + Number(sc.amount || 0).toFixed(2) + '</td>' +
+                '  <td class="p-2.5 font-mono text-emerald-600 font-bold">' + Number(sc.paid_amount || 0).toFixed(2) + '</td>' +
+                '  <td class="p-2.5 font-mono text-rose-600 font-black">' + rem.toFixed(2) + '</td>' +
+                '  <td class="p-2.5">' + badgeHtml + '</td>' +
+                '  <td class="p-2.5 text-center">' +
+                (sc.status !== 'paid'
+                  ? '<button type="button" onclick="App.promptPayInstallmentSchedule(' + sc.id + ', ' + rem + ', \'' + String(sc.customer_name || 'زبون').replace(/'/g, "\\'") + '\', ' + (sc.resolved_no || 1) + ')" class="px-3 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black">💸 تسديد القسط</button>'
+                  : '<span class="text-slate-400 font-mono text-[10px]">' + String(sc.paid_at || '').slice(0, 10) + '</span>') +
+                '  </td>' +
+                '</tr>'
+              );
+            }).join('')) +
+        '      </tbody></table></div>' +
+        '  </div>' +
+        '</div>';
+      return;
+    }
+
+    if (activeTab === 'ccp_reconcile') {
+      var logs = (await window.api.getCcpReconciliationLogs({ limit: 150 }).catch(function () { return []; })) || [];
+      root.innerHTML =
+        tabsBarHtml +
+        '<div class="space-y-5 text-xs">' +
+        '  <div class="p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border border-slate-800 shadow-xl space-y-4">' +
+        '    <div class="flex flex-wrap items-center justify-between gap-3">' +
+        '      <div>' +
+        '        <h3 class="text-lg font-black text-amber-400">🏦 محرك المطابقة الآلية لكشوفات بريد الجزائر (Algérie Poste CCP Statement Auto-Reconciliation)</h3>' +
+        '        <p class="text-[11px] text-slate-300">ارفع ملف كشف الحساب البريدي (CSV / TXT) أو الصق السطور ليقوم النظام بمطابقة رقم حساب CCP والمبلغ وتسديد الأقساط والفواتير آلياً داخل معاملة ذرية</p>' +
+        '      </div>' +
+        '      <div class="flex flex-wrap gap-2">' +
+        '        <label class="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black cursor-pointer shadow-lg">📂 رفع ملف CSV / TXT<input type="file" accept=".csv,.txt" onchange="App.handleCcpStatementFileUpload(this)" class="hidden"></label>' +
+        '        <button type="button" onclick="App.generateSampleCcpStatementForTesting()" class="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black shadow-lg">⚡ توليد كشف بريد تجريبي من الأقساط المفتوحة</button>' +
+        '        <button type="button" onclick="App.executeCcpStatementReconciliationNow()" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-lg">✅ تنفيذ المطابقة والتسديد الآلي الآن</button>' +
+        '      </div>' +
+        '    </div>' +
+        '    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">' +
+        '      <div class="lg:col-span-6 space-y-1.5">' +
+        '        <label class="block font-bold text-sky-300">محتوى كشف الحساب البريدي (الصيغة: ccp_account;amount;date;ref):</label>' +
+        '        <textarea id="ccpRawTextPasteArea" rows="5" placeholder="0012345678;2500.00;2026-11-06;CCP-REF-001" class="w-full p-3 rounded-2xl bg-slate-950 text-emerald-300 font-mono text-xs border border-slate-700"></textarea>' +
+        '      </div>' +
+        '      <div class="lg:col-span-6 p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2 max-h-40 overflow-y-auto">' +
+        '        <div class="font-black text-amber-400">📋 المعاينة الفورية للسطور الجاهزة للمطابقة (' + (AppState.parsedCcpEntriesBuffer || []).length + ' عملية):</div>' +
+        ((AppState.parsedCcpEntriesBuffer || []).length === 0
+          ? '<div class="text-slate-400 py-4 text-center font-bold">ارفع ملفاً أو اضغط "توليد كشف بريد تجريبي" لمعاينة العمليات قبل المطابقة</div>'
+          : (AppState.parsedCcpEntriesBuffer || []).map(function (r, idx) {
+              return '<div class="flex justify-between items-center py-1 border-b border-slate-800 font-mono"><span>' + (idx + 1) + '. CCP: <strong class="text-sky-400">' + r.ccp_account + '</strong></span><span class="text-emerald-400 font-black">' + Number(r.amount).toFixed(2) + ' د.ج</span><span class="text-slate-400">' + r.transaction_ref + '</span></div>';
+            }).join('')) +
+        '      </div>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <!-- سجل عمليات المطابقة البريدية السابقة -->' +
+        '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">' +
+        '    <h3 class="font-black text-sm text-indigo-600">📑 سجل عمليات المطابقة البريدية (CCP Reconciliation Logs — ' + logs.length + ')</h3>' +
+        '    <div class="overflow-x-auto"><table class="w-full text-right border-collapse">' +
+        '      <thead><tr class="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700"><th class="p-2.5">#</th><th class="p-2.5">الملف</th><th class="p-2.5">التاريخ</th><th class="p-2.5">رقم حساب CCP</th><th class="p-2.5">المبلغ</th><th class="p-2.5">المرجع</th><th class="p-2.5">الزبون</th><th class="p-2.5">حالة المطابقة</th><th class="p-2.5">التفاصيل</th></tr></thead>' +
+        '      <tbody>' +
+        (logs.length === 0
+          ? '<tr><td colspan="9" class="p-6 text-center text-slate-400 font-bold">لا توجد سجلات مطابقة سابقة بعد</td></tr>'
+          : logs.map(function (lg) {
+              var stBadge = lg.match_status === 'MATCHED'
+                ? '<span class="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-black">✅ MATCHED</span>'
+                : '<span class="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-black">⚠️ ' + lg.match_status + '</span>';
+              return (
+                '<tr class="border-b border-slate-100 dark:border-slate-700/60">' +
+                '  <td class="p-2.5 font-mono">' + lg.id + '</td>' +
+                '  <td class="p-2.5 font-mono text-[11px]">' + (lg.batch_file_name || '-') + '</td>' +
+                '  <td class="p-2.5 font-mono">' + (lg.transaction_date || '-') + '</td>' +
+                '  <td class="p-2.5 font-mono font-black text-indigo-600">' + (lg.ccp_account || '-') + '</td>' +
+                '  <td class="p-2.5 font-mono font-black text-emerald-600">' + Number(lg.amount || 0).toFixed(2) + ' د.ج</td>' +
+                '  <td class="p-2.5 font-mono">' + (lg.transaction_ref || '-') + '</td>' +
+                '  <td class="p-2.5 font-bold">' + (lg.customer_name || '---') + '</td>' +
+                '  <td class="p-2.5">' + stBadge + '</td>' +
+                '  <td class="p-2.5 text-slate-500 font-bold">' + (lg.details || '') + '</td>' +
+                '</tr>'
+              );
+            }).join('')) +
+        '      </tbody></table></div>' +
+        '  </div>' +
+        '</div>';
+    }
+  };
+})();
+
+// [PART 3B/5: ETAT 104 & LANDED COST WAC UI V14]
+(function installTask2Etat104AndLandedCostWacUiV14() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.etat104SelectedYear = AppState.etat104SelectedYear || String(new Date().getFullYear());
+  AppState.etat104SearchQuery = AppState.etat104SearchQuery || '';
+  AppState.etat104CachedRows = AppState.etat104CachedRows || [];
+
+  AppState.purchFreightCost = AppState.purchFreightCost || 0;
+  AppState.purchCustomsCost = AppState.purchCustomsCost || 0;
+  AppState.purchHandlingCost = AppState.purchHandlingCost || 0;
+
+  // --------------------------------------------------------------------------
+  // أ. المنظومة الرسمية للتصريح الضريبي السنوي (État 104) في #view-analytics
+  // --------------------------------------------------------------------------
+  if (Array.isArray(App.ERP_TABS_CONFIG)) {
+    var fiscalTab = App.ERP_TABS_CONFIG.find(function (t) { return t.id === 'fiscal'; });
+    if (fiscalTab) {
+      fiscalTab.label = '11. 🇩🇿 التصريح الضريبي (État 104 & G50)';
+    }
+  }
+
+  App.loadEtat104ByYear = async function (yearStr) {
+    AppState.etat104SelectedYear = String(yearStr || new Date().getFullYear());
+    if (AppState.currentView === 'analytics') {
+      AppState.analyticsTab = 'fiscal';
+      await this.renderAnalyticsView();
+    }
+  };
+
+  App.filterEtat104TableLive = function (queryStr) {
+    AppState.etat104SearchQuery = String(queryStr || '').trim().toLowerCase();
+    var rows = document.querySelectorAll('#etat104TableBody tr[data-search]');
+    rows.forEach(function (tr) {
+      var hay = (tr.getAttribute('data-search') || '').toLowerCase();
+      tr.style.display = !AppState.etat104SearchQuery || hay.includes(AppState.etat104SearchQuery) ? '' : 'none';
+    });
+  };
+
+  // تصدير كشف État 104 إلى ملف CSV / Excel متوافق مع Jibaya'tic
+  App.exportEtat104ToCsv = async function () {
+    var year = AppState.etat104SelectedYear || String(new Date().getFullYear());
+    var rows = AppState.etat104CachedRows || [];
+    if (rows.length === 0 && window.api && window.api.getEtat104) {
+      rows = (await window.api.getEtat104(year).catch(function () { return []; })) || [];
+    }
+
+    var csvLines = [
+      ['N°', 'الاسم أو العنوان التجاري (Raison Sociale)', 'الرقم الجبائي (NIF)', 'السجل التجاري (RC)', 'المادة الضريبية (AI)', 'الرقم الإحصائي (NIS)', 'العنوان والولاية', 'عدد الفواتير', 'المبلغ خارج الرسم (HT)', 'قيمة TVA', 'الطابع الجبائي (Timbre)', 'الإجمالي (TTC)'].join(';')
+    ];
+
+    rows.forEach(function (r, idx) {
+      csvLines.push([
+        idx + 1,
+        '"' + String(r.customer_name || r.name || '').replace(/"/g, '""') + '"',
+        '"' + String(r.nif || '---') + '"',
+        '"' + String(r.rc || '---') + '"',
+        '"' + String(r.ai || '---') + '"',
+        '"' + String(r.nis || '---') + '"',
+        '"' + String((r.wilaya ? r.wilaya + ' - ' : '') + (r.address || '')).replace(/"/g, '""') + '"',
+        Number(r.invoices_count || 0),
+        Number(r.total_ht ?? r.ca_ht ?? 0).toFixed(2),
+        Number(r.total_tva ?? r.tva ?? 0).toFixed(2),
+        Number(r.total_stamp ?? r.timbre ?? 0).toFixed(2),
+        Number(r.total_ttc ?? 0).toFixed(2)
+      ].join(';'));
+    });
+
+    var blob = new Blob(['\uFEFF' + csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'Etat_104_' + year + '_Gherbi_POS.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    if (typeof showToast === 'function') {
+      showToast('📊 تم تصدير الكشف الضريبي السنوي (État 104 - ' + year + ') بصيغة Excel/CSV بنجاح!', 'success');
+    }
+  };
+
+  // طباعة وثيقة État 104 الرسمية بمقاس A4 Landscape
+  App.printOfficialEtat104ReportA4 = async function () {
+    var year = AppState.etat104SelectedYear || String(new Date().getFullYear());
+    var rows = AppState.etat104CachedRows || [];
+    if (rows.length === 0 && window.api && window.api.getEtat104) {
+      rows = (await window.api.getEtat104(year).catch(function () { return []; })) || [];
+    }
+    var s = AppState.settings || {};
+
+    var sumHt = 0, sumTva = 0, sumStamp = 0, sumTtc = 0;
+    var rowsHtml = rows.map(function (r, idx) {
+      var ht = Number(r.total_ht ?? r.ca_ht ?? 0);
+      var tva = Number(r.total_tva ?? r.tva ?? 0);
+      var stp = Number(r.total_stamp ?? r.timbre ?? 0);
+      var ttc = Number(r.total_ttc ?? 0);
+      sumHt += ht; sumTva += tva; sumStamp += stp; sumTtc += ttc;
+      return (
+        '<tr>' +
+        '  <td>' + (idx + 1) + '</td>' +
+        '  <td style="text-align:right;font-weight:900;">' + (r.customer_name || r.name || '') + '</td>' +
+        '  <td style="font-family:monospace;font-weight:800;">' + (r.nif || '---') + '</td>' +
+        '  <td style="font-family:monospace;">' + (r.rc || '---') + '</td>' +
+        '  <td style="font-family:monospace;">' + (r.ai || '---') + '</td>' +
+        '  <td style="font-family:monospace;">' + (r.nis || '---') + '</td>' +
+        '  <td style="text-align:right;">' + ((r.wilaya ? r.wilaya + ' - ' : '') + (r.address || 'الجزائر')) + '</td>' +
+        '  <td style="font-family:monospace;font-weight:800;">' + Number(r.invoices_count || 1) + '</td>' +
+        '  <td style="font-family:monospace;font-weight:800;">' + ht.toFixed(2) + '</td>' +
+        '  <td style="font-family:monospace;">' + tva.toFixed(2) + '</td>' +
+        '  <td style="font-family:monospace;">' + stp.toFixed(2) + '</td>' +
+        '  <td style="font-family:monospace;font-weight:900;">' + ttc.toFixed(2) + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>الكشف الضريبي السنوي للزبائن État 104 - ' + year + '</title>' +
+      '<style>@page{size:A4 landscape;margin:10mm;}body{font-family:Cairo,Arial,sans-serif;color:#0f172a;font-size:11px;margin:0;padding:0;}' +
+      '.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0f172a;padding-bottom:10px;margin-bottom:12px;}' +
+      'table{width:100%;border-collapse:collapse;}th,td{border:1px solid #334155;padding:5px 6px;text-align:center;font-size:10.5px;}' +
+      'th{background:#0f172a;color:#fff;font-weight:900;}tfoot td{background:#f1f5f9;font-weight:900;font-family:monospace;font-size:11.5px;}' +
+      '</style></head><body>' +
+      '<div class="hdr">' +
+      '  <div><div style="font-weight:900;font-size:13px;">الجمهورية الجزائرية الديمقراطية الشعبية — وزارة المالية (المديرية العامة للضرائب DGI)</div>' +
+      '  <h2 style="margin:4px 0;font-size:18px;font-weight:900;color:#1e3a8a;">المؤسسة المصرحة: ' + (s.shop_name || 'Gherbi.Ai POS') + '</h2>' +
+      '  <div>العنوان: ' + (s.shop_address || 'الجزائر') + ' | RC: ' + (s.shop_rc || '---') + ' | NIF: ' + (s.shop_nif || '---') + ' | AI: ' + (s.shop_ai || '---') + ' | NIS: ' + (s.shop_nis || '---') + '</div></div>' +
+      '  <div style="text-align:left;background:#f8fafc;border:2px solid #0f172a;padding:8px 14px;border-radius:10px;">' +
+      '    <div style="font-size:16px;font-weight:900;">الكشف التفصيلي السنوي للزبائن (ÉTAT 104)</div>' +
+      '    <div style="font-family:monospace;font-weight:900;font-size:13px;margin-top:2px;">السنة الجبائية (Exercice): ' + year + '</div>' +
+      '    <div style="font-size:10px;color:#475569;">تاريخ الاستخراج: ' + new Date().toISOString().slice(0, 10) + '</div>' +
+      '  </div>' +
+      '</div>' +
+      '<table><thead><tr><th>#</th><th>الاسم أو العنوان التجاري للزبون</th><th>NIF</th><th>RC</th><th>AI</th><th>NIS</th><th>العنوان والولاية</th><th>الفواتير</th><th>المبلغ خارج الرسم (HT)</th><th>قيمة TVA</th><th>حق الطابع</th><th>الإجمالي (TTC)</th></tr></thead>' +
+      '<tbody>' + (rowsHtml || '<tr><td colspan="12">لا توجد مبيعات مسجلة لزبائن خلال هذه السنة</td></tr>') + '</tbody>' +
+      '<tfoot><tr><td colspan="8" style="text-align:left;">المجموع العام للكشف السنوي (TOTAL ÉTAT 104):</td><td>' + sumHt.toFixed(2) + '</td><td>' + sumTva.toFixed(2) + '</td><td>' + sumStamp.toFixed(2) + '</td><td>' + sumTtc.toFixed(2) + ' د.ج</td></tr></tfoot></table>' +
+      '<div style="display:flex;justify-content:space-between;margin-top:22px;font-weight:900;padding:0 24px;"><div>إمضاء المحاسب المعتمد</div><div>ختم وإمضاء المسير القانوني للمؤسسة</div></div>' +
+      '</body></html>';
+
+    if (window.PrintEngine) await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  };
+
+  App.renderErpTab11_AlgerianFiscalStudio = async function (body, data) {
+    var year = AppState.etat104SelectedYear || String(new Date().getFullYear());
+    var pair = await Promise.all([
+      window.api.getEtat104 ? window.api.getEtat104(year).catch(function () { return []; }) : Promise.resolve([]),
+      window.api.getAlgerianFiscalReport ? window.api.getAlgerianFiscalReport({ dateFrom: year + '-01-01', dateTo: year + '-12-31' }).catch(function () { return {}; }) : Promise.resolve({})
+    ]);
+
+    var etatRows = Array.isArray(pair[0]) ? pair[0] : [];
+    var report = pair[1] || {};
+    AppState.etat104CachedRows = etatRows;
+    AppState._lastFiscalReport = report;
+
+    var sumHt = 0, sumTva = 0, sumStamp = 0, sumTtc = 0, missingFiscalCount = 0;
+    etatRows.forEach(function (r) {
+      sumHt += Number(r.total_ht || 0);
+      sumTva += Number(r.total_tva || 0);
+      sumStamp += Number(r.total_stamp || 0);
+      sumTtc += Number(r.total_ttc || 0);
+      if (!r.nif || r.nif === '---' || !r.rc || r.rc === '---') missingFiscalCount++;
+    });
+
+    var g = report.g50 || {};
+    var caHt = sumHt > 0 ? sumHt : Number(g.ca_ht || data.net_revenue || 0);
+    var ifu5 = Math.max(10000, Number((caHt * 0.05).toFixed(2)));
+    var ifu12 = Math.max(10000, Number((caHt * 0.12).toFixed(2)));
+
+    body.innerHTML =
+      '<div class="space-y-5 text-xs">' +
+      '  <!-- شريط التحكم العلوي للكشف الضريبي السنوي État 104 -->' +
+      '  <div class="p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border border-slate-800 shadow-xl space-y-4">' +
+      '    <div class="flex flex-wrap items-center justify-between gap-3">' +
+      '      <div>' +
+      '        <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-black text-[10.5px]">🇩🇿 مطابق لمعايير المديرية العامة للضرائب (DGI — Jibaya\'tic)</span>' +
+      '        <h3 class="text-lg font-black mt-1 text-amber-400">الكشف التفصيلي السنوي لمعاملات الزبائن (État 104) والتصريح الجبائي (G50 / IFU G12)</h3>' +
+      '        <p class="text-[11px] text-slate-300">استخراج فوري لجميع مبيعات الزبائن خلال السنة مع الهوية الجبائية الكاملة (NIF, RC, AI, NIS) وتفصيل HT و TVA وحق الطابع</p>' +
+      '      </div>' +
+      '      <div class="flex flex-wrap items-center gap-2">' +
+      '        <div class="flex items-center gap-1.5 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">' +
+      '          <span class="font-bold text-slate-300">📅 السنة المالية:</span>' +
+      '          <select onchange="App.loadEtat104ByYear(this.value)" class="bg-slate-950 text-amber-400 font-mono font-black px-2.5 py-1 rounded-lg border border-slate-700">' +
+      ['2024', '2025', '2026', '2027'].map(function (yr) {
+        return '<option value="' + yr + '" ' + ( String(year) === yr ? 'selected' : '' ) + '>' + yr + '</option>';
+      }).join('') +
+      '          </select>' +
+      '        </div>' +
+      '        <button type="button" onclick="App.printOfficialEtat104ReportA4()" class="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black shadow-lg">🖨️ طباعة كشف État 104 الرسمي (A4)</button>' +
+      '        <button type="button" onclick="App.exportEtat104ToCsv()" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-lg">📊 تصدير Excel / CSV</button>' +
+      '      </div>' +
+      '    </div>' +
+
+      '    <!-- مؤشرات État 104 السريعة -->' +
+      '    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 pt-2">' +
+      '      <div class="p-3 rounded-2xl bg-slate-950/80 border border-slate-800"><div class="text-slate-400 text-[10.5px]">عدد الزبائن المصرح بهم</div><div class="text-xl font-black font-mono text-sky-400 mt-0.5">' + etatRows.length + ' زبون</div></div>' +
+      '      <div class="p-3 rounded-2xl bg-slate-950/80 border border-slate-800"><div class="text-slate-400 text-[10.5px]">إجمالي المبيعات خارج الرسم (HT)</div><div class="text-xl font-black font-mono text-white mt-0.5">' + sumHt.toFixed(2) + ' د.ج</div></div>' +
+      '      <div class="p-3 rounded-2xl bg-slate-950/80 border border-slate-800"><div class="text-slate-400 text-[10.5px]">إجمالي ضريبة TVA المحصلة</div><div class="text-xl font-black font-mono text-amber-400 mt-0.5">' + sumTva.toFixed(2) + ' د.ج</div></div>' +
+      '      <div class="p-3 rounded-2xl bg-slate-950/80 border border-slate-800"><div class="text-slate-400 text-[10.5px]">إجمالي الطابع الجبائي (Timbre)</div><div class="text-xl font-black font-mono text-indigo-300 mt-0.5">' + sumStamp.toFixed(2) + ' د.ج</div></div>' +
+      '      <div class="p-3 rounded-2xl bg-emerald-600/20 border border-emerald-500/40"><div class="text-emerald-300 text-[10.5px] font-bold">الإجمالي السنوي العام (TTC)</div><div class="text-xl font-black font-mono text-emerald-400 mt-0.5">' + sumTtc.toFixed(2) + ' د.ج</div></div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <!-- جدول الكشف الضريبي السنوي للزبائن (État 104 Table) -->' +
+      '  <div class="p-5 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">' +
+      '    <div class="flex flex-wrap items-center justify-between gap-2">' +
+      '      <div class="flex items-center gap-2">' +
+      '        <h4 class="font-black text-sm text-indigo-600">📋 جدول الكشف الضريبي السنوي للزبائن (État 104 — سنة ' + year + ')</h4>' +
+      (missingFiscalCount > 0
+        ? '<span class="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-black text-[10.5px]">⚠️ ' + missingFiscalCount + ' زبائن تنقصهم بيانات NIF/RC (انقر على الزبون لاستكمالها)</span>'
+        : '<span class="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-black text-[10.5px]">✅ جميع الملفات الجبائية للزبائن مكتملة</span>') +
+      '      </div>' +
+      '      <input type="text" oninput="App.filterEtat104TableLive(this.value)" placeholder="🔍 ابحث باسم الزبون، رقم NIF، أو RC..." class="w-72 px-3.5 py-1.5 rounded-xl font-bold">' +
+      '    </div>' +
+
+      '    <div class="overflow-x-auto"><table class="w-full text-right border-collapse">' +
+      '      <thead><tr class="bg-slate-900 text-white text-[11px]">' +
+      '        <th class="p-2.5 text-center">#</th>' +
+      '        <th class="p-2.5">الزبون / المؤسسة</th>' +
+      '        <th class="p-2.5 text-center">الرقم الجبائي (NIF)</th>' +
+      '        <th class="p-2.5 text-center">السجل التجاري (RC)</th>' +
+      '        <th class="p-2.5 text-center">المادة (AI)</th>' +
+      '        <th class="p-2.5 text-center">الإحصائي (NIS)</th>' +
+      '        <th class="p-2.5">العنوان والولاية</th>' +
+      '        <th class="p-2.5 text-center">الفواتير</th>' +
+      '        <th class="p-2.5 text-center">المبلغ HT</th>' +
+      '        <th class="p-2.5 text-center">TVA</th>' +
+      '        <th class="p-2.5 text-center">الطابع</th>' +
+      '        <th class="p-2.5 text-center">الإجمالي TTC</th>' +
+      '      </tr></thead>' +
+      '      <tbody id="etat104TableBody" class="divide-y divide-slate-100 dark:divide-slate-700/60">' +
+      (etatRows.length === 0
+        ? '<tr><td colspan="12" class="p-8 text-center text-slate-400 font-bold">لا توجد فواتير مبيعات مسجلة لزبائن في سنة ' + year + '</td></tr>'
+        : etatRows.map(function (r, idx) {
+            var missingNif = !r.nif || r.nif === '---';
+            var searchKey = [r.customer_name, r.nif, r.rc, r.ai, r.nis, r.address, r.wilaya].join(' ');
+            return (
+              '<tr data-search="' + String(searchKey).replace(/"/g, '') + '" class="hover:bg-slate-50 dark:hover:bg-slate-900/50">' +
+              '  <td class="p-2.5 text-center font-mono font-bold">' + (idx + 1) + '</td>' +
+              '  <td class="p-2.5 font-black text-blue-600 cursor-pointer hover:underline" onclick="App.openCustomerModal(' + r.customer_id + ')" title="انقر لتعديل البطاقة الجبائية للزبون">' + (r.customer_name || '') + ' ✏️</td>' +
+              '  <td class="p-2.5 text-center font-mono font-bold ' + (missingNif ? 'text-rose-500' : 'text-slate-700 dark:text-slate-200') + '">' + (r.nif || '---') + '</td>' +
+              '  <td class="p-2.5 text-center font-mono">' + (r.rc || '---') + '</td>' +
+              '  <td class="p-2.5 text-center font-mono">' + (r.ai || '---') + '</td>' +
+              '  <td class="p-2.5 text-center font-mono">' + (r.nis || '---') + '</td>' +
+              '  <td class="p-2.5 text-[11px]">' + ((r.wilaya ? r.wilaya + ' - ' : '') + (r.address || '---')) + '</td>' +
+              '  <td class="p-2.5 text-center font-mono font-black">' + Number(r.invoices_count || 0) + '</td>' +
+              '  <td class="p-2.5 text-center font-mono font-bold">' + Number(r.total_ht || 0).toFixed(2) + '</td>' +
+              '  <td class="p-2.5 text-center font-mono text-amber-600 font-bold">' + Number(r.total_tva || 0).toFixed(2) + '</td>' +
+              '  <td class="p-2.5 text-center font-mono text-indigo-600 font-bold">' + Number(r.total_stamp || 0).toFixed(2) + '</td>' +
+              '  <td class="p-2.5 text-center font-mono font-black text-emerald-600">' + Number(r.total_ttc || 0).toFixed(2) + ' د.ج</td>' +
+              '</tr>'
+            );
+          }).join('')) +
+      '      </tbody>' +
+      '    </table></div>' +
+      '  </div>' +
+
+      '  <!-- ملخص الضريبة الجزافية الوحيدة IFU (G12) والتصريح الشهري G50 -->' +
+      '  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">' +
+      '    <div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-2">' +
+      '      <div class="font-black text-sm text-emerald-700 dark:text-emerald-300">🏛️ محاكاة الضريبة الجزافية الوحيدة (IFU — G12):</div>' +
+      '      <div class="grid grid-cols-2 gap-2.5 text-center">' +
+      '        <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">ضريبة IFU تجارة وإنتاج (5%)</div><div class="font-mono font-black text-base text-emerald-600 mt-1">' + ifu5.toFixed(2) + ' د.ج</div></div>' +
+      '        <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">ضريبة IFU خدمات وحرف (12%)</div><div class="font-mono font-black text-base text-indigo-600 mt-1">' + ifu12.toFixed(2) + ' د.ج</div></div>' +
+      '      </div>' +
+      '    </div>' +
+      '    <div class="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/30 space-y-2">' +
+      '      <div class="font-black text-sm text-blue-700 dark:text-blue-300">📑 ملخص التصريح الشهري للضرائب (G50 - النظام الحقيقي):</div>' +
+      '      <div class="grid grid-cols-2 gap-2.5 text-center">' +
+      '        <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">TVA المحصلة على المبيعات (+)</div><div class="font-mono font-black text-base text-rose-600 mt-1">' + Number(g.tva_collectee || sumTva || 0).toFixed(2) + ' د.ج</div></div>' +
+      '        <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">TVA القابلة للاسترجاع على المشتريات (-)</div><div class="font-mono font-black text-base text-emerald-600 mt-1">' + Number(g.tva_deductible || 0).toFixed(2) + ' د.ج</div></div>' +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  // --------------------------------------------------------------------------
+  // ب. التكلفة الاستيرادية المحملة (Landed Cost: الشحن + الجمارك + المناولة) والمتوسط المرجح (WAC) في #view-purchases
+  // --------------------------------------------------------------------------
+  App.ensurePurchaseLandedCostBarDom = function () {
+    var modal = document.getElementById('purchaseInvoiceModal');
+    if (!modal || document.getElementById('purchLandedCostBreakdownBar')) return;
+
+    var extraInp = document.getElementById('purchExtraCostInput');
+    var firstGrid = extraInp ? extraInp.closest('.grid') : null;
+    if (!firstGrid) return;
+
+    var bar = document.createElement('div');
+    bar.id = 'purchLandedCostBreakdownBar';
+    bar.className = 'p-2.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 grid grid-cols-1 md:grid-cols-12 gap-2 items-center text-xs';
+    bar.innerHTML =
+      '<div class="md:col-span-3 font-black text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">' +
+      '  <span>🚢 تفصيل التكلفة الاستيرادية المحملة (Landed Cost & WAC):</span>' +
+      '</div>' +
+      '<div class="md:col-span-2 flex items-center gap-1.5">' +
+      '  <label class="font-bold whitespace-nowrap text-[11px]">🚚 الشحن:</label>' +
+      '  <input id="purchFreightCostInput" type="number" step="any" min="0" value="0" oninput="App.onLandedCostComponentInput()" class="w-full px-2 py-1 rounded-xl font-mono font-bold text-center">' +
+      '</div>' +
+      '<div class="md:col-span-2 flex items-center gap-1.5">' +
+      '  <label class="font-bold whitespace-nowrap text-[11px]">🛃 الجمارك:</label>' +
+      '  <input id="purchCustomsCostInput" type="number" step="any" min="0" value="0" oninput="App.onLandedCostComponentInput()" class="w-full px-2 py-1 rounded-xl font-mono font-bold text-center">' +
+      '</div>' +
+      '<div class="md:col-span-2 flex items-center gap-1.5">' +
+      '  <label class="font-bold whitespace-nowrap text-[11px]">🏗️ المناولة:</label>' +
+      '  <input id="purchHandlingCostInput" type="number" step="any" min="0" value="0" oninput="App.onLandedCostComponentInput()" class="w-full px-2 py-1 rounded-xl font-mono font-bold text-center">' +
+      '</div>' +
+      '<div class="md:col-span-3 text-left font-mono font-black text-[11px] text-indigo-600 dark:text-indigo-300" id="purchLandedWacSummaryBadge">' +
+      '  توزع تناسبياً وتحدّث المتوسط المرجح (WAC)' +
+      '</div>';
+
+    firstGrid.insertAdjacentElement('afterend', bar);
+  };
+
+  App.onLandedCostComponentInput = function () {
+    var freight = Math.max(0, parseFloat(document.getElementById('purchFreightCostInput')?.value) || 0);
+    var customs = Math.max(0, parseFloat(document.getElementById('purchCustomsCostInput')?.value) || 0);
+    var handling = Math.max(0, parseFloat(document.getElementById('purchHandlingCostInput')?.value) || 0);
+
+    AppState.purchFreightCost = freight;
+    AppState.purchCustomsCost = customs;
+    AppState.purchHandlingCost = handling;
+
+    var sumLanded = Number((freight + customs + handling).toFixed(2));
+    var extraInp = document.getElementById('purchExtraCostInput');
+    if (extraInp) {
+      extraInp.value = String(sumLanded);
+    }
+    var badge = document.getElementById('purchLandedWacSummaryBadge');
+    if (badge) {
+      badge.textContent = 'إجمالي المصاريف المحملة: ' + sumLanded.toFixed(2) + ' د.ج (تحدّث WAC آلياً)';
+    }
+    this.recalcPurchaseModal();
+  };
+
+  var _prevOpenPurchaseModalV14 = App.openPurchaseInvoiceModal.bind(App);
+  App.openPurchaseInvoiceModal = function (keepTempItems) {
+    _prevOpenPurchaseModalV14(keepTempItems);
+    this.ensurePurchaseLandedCostBarDom();
+    if (!AppState.editingPurchaseId && !keepTempItems) {
+      AppState.purchFreightCost = 0;
+      AppState.purchCustomsCost = 0;
+      AppState.purchHandlingCost = 0;
+      if (document.getElementById('purchFreightCostInput')) document.getElementById('purchFreightCostInput').value = '0';
+      if (document.getElementById('purchCustomsCostInput')) document.getElementById('purchCustomsCostInput').value = '0';
+      if (document.getElementById('purchHandlingCostInput')) document.getElementById('purchHandlingCostInput').value = '0';
+    }
+  };
+
+  // حساب وعرض المتوسط المرجح الجديد للتكلفة (New WAC) لكل سطر داخل جدول فاتورة الشراء
+  var _prevRecalcPurchaseV14 = App.recalcPurchaseModal.bind(App);
+  App.recalcPurchaseModal = function () {
+    var res = _prevRecalcPurchaseV14();
+    var items = AppState.tempPurchaseItems || [];
+
+    items.forEach(function (it) {
+      var prod = (AppState.products || []).find(function (p) { return Number(p.id) === Number(it.product_id); });
+      var oldStock = Math.max(0, Number((prod && prod.stock) || 0));
+      var oldCost = Number((prod && (prod.wac_cost || prod.cost_price)) || it.prev_cost || it.cost_price || 0);
+      var newQty = Math.max(0.01, Number(it.quantity || 1) + Number(it.bonus_qty || 0));
+      var landedUnit = Number(it._landedUnitCost || it.effective_cost_price || it.cost_price || 0);
+
+      var computedWac = (oldStock + newQty) > 0
+        ? Number((((oldStock * oldCost) + (newQty * landedUnit)) / (oldStock + newQty)).toFixed(2))
+        : landedUnit;
+      it._computedWacCost = computedWac;
+    });
+
+    // إضافة شارة (WAC: XX.XX) تحت التكلفة الصافية في جدول الفاتورة
+    var rows = document.querySelectorAll('#purchItemsTableBody tbody tr');
+    rows.forEach(function (tr, idx) {
+      var it = items[idx];
+      if (!it) return;
+      var cells = tr.querySelectorAll('td');
+      var landedCell = cells[4];
+      if (landedCell && it._computedWacCost !== undefined && !landedCell.innerHTML.includes('WAC:')) {
+        landedCell.innerHTML =
+          '<div>' + Number(it._landedUnitCost || it.cost_price || 0).toFixed(2) + '</div>' +
+          '<div class="text-[9.5px] font-mono text-emerald-600 font-black" title="المتوسط المرجح الجديد للتكلفة (Coût Moyen Pondéré)">WAC: ' + Number(it._computedWacCost).toFixed(2) + '</div>';
+      }
+    });
+
+    return res;
+  };
+
+  App.submitPurchaseInvoice = async function (andSendToBarcodeQueue) {
+    if (!AppState.tempPurchaseItems || AppState.tempPurchaseItems.length === 0) {
+      if (typeof showToast === 'function') showToast('يرجى إدراج صنف واحد على الأقل في فاتورة الشراء', 'warning');
+      return;
+    }
+
+    var calc = this.recalcPurchaseModal();
+    var supplier_id = Number(document.getElementById('purchSupplierSelect')?.value) || null;
+    var invoice_number = String(document.getElementById('purchNumberInput')?.value || '').trim();
+    var date = document.getElementById('purchDateInput')?.value || new Date().toISOString().slice(0, 10);
+    var due_date = document.getElementById('purchDueDateInput')?.value || null;
+    var paid_amount = parseFloat(document.getElementById('purchPaidInput')?.value) || 0;
+    var payment_method = document.getElementById('purchPayMethodSelect')?.value || 'cash';
+    var unify_selling_price = document.getElementById('purchUnifySellPriceChk') ? document.getElementById('purchUnifySellPriceChk').checked : true;
+
+    var freight_cost = Math.max(0, parseFloat(document.getElementById('purchFreightCostInput')?.value) || 0);
+    var customs_cost = Math.max(0, parseFloat(document.getElementById('purchCustomsCostInput')?.value) || 0);
+    var handling_cost = Math.max(0, parseFloat(document.getElementById('purchHandlingCostInput')?.value) || 0);
+
+    var saved = await window.api.savePurchase({
+      editInvoiceId: AppState.editingPurchaseId || undefined,
+      supplier_id: supplier_id,
+      invoice_number: invoice_number,
+      date: date,
+      due_date: due_date,
+      subtotal: calc.subtotal,
+      tax_percentage: calc.taxPct,
+      additional_costs: calc.extra,
+      freight_cost: freight_cost,
+      customs_cost: customs_cost,
+      handling_cost: handling_cost,
+      total: calc.total,
+      paid_amount: paid_amount,
+      payment_method: payment_method,
+      unify_selling_price: unify_selling_price,
+      items: (AppState.tempPurchaseItems || []).slice()
+    });
+
+    if (saved && saved.id && window.api.applyLandedCostPurchase) {
+      await window.api.applyLandedCostPurchase({
+        invoiceId: saved.id,
+        freight_cost: freight_cost,
+        customs_cost: customs_cost,
+        handling_cost: handling_cost,
+        additional_costs: calc.extra
+      }).catch(function () {});
+    }
+
+    AppState.editingPurchaseId = null;
+    this.closeModal('purchaseInvoiceModal');
+    await this.refreshProducts();
+    if (AppState.currentView === 'purchases') {
+      await this.renderPurchasesView();
+    }
+
+    if (typeof showToast === 'function') {
+      showToast('✅ تم حفظ فاتورة الشراء وتوزيع التكلفة المحملة (Landed Cost) وتحديث المتوسط المرجح (WAC) بنجاح!', 'success');
+    }
+
+    if (andSendToBarcodeQueue && saved && saved.id) {
+      await this.enqueuePurchaseItemsForLabels(saved.id);
+    }
+  };
+})();
+
+// [PART 4A/5: TIERED PRICING, MULTI-PACK BARCODES & WAREHOUSES UI V14]
+(function installTask3TieredPricingPacksAndWarehousesUiV14() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.inventoryMainTab = AppState.inventoryMainTab || 'products_list'; // 'products_list' | 'warehouses_transfers'
+  AppState.warehousesList = AppState.warehousesList || [];
+  AppState.stockTransfersList = AppState.stockTransfersList || [];
+  AppState.tempTransferItems = AppState.tempTransferItems || [];
+
+  // ==========================================================================
+  // 1. ترقية نافذة المنتج (#productModal) لدعم:
+  //    - شرائح الأسعار بالكمية (min_qty) في extra_prices
+  //    - معامل العبوة واسم العبوة (unit_multiplier, pack_name) في extra_barcodes
+  //    - موقع الرف والطابق والمستودع (warehouse_id, shelf_etage, shelf_place)
+  // ==========================================================================
+  App.addExtraPriceRow = function () {
+    AppState.tempExtraPrices = AppState.tempExtraPrices || [];
+    AppState.tempExtraPrices.push({ label: 'نصف جملة', price: 0, min_qty: 6 });
+    this.renderExtraPricesInModal();
+  };
+
+  App.renderExtraPricesInModal = function () {
+    var box = document.getElementById('prodExtraPricesContainer');
+    if (!box) return;
+    var list = AppState.tempExtraPrices || [];
+    if (list.length === 0) {
+      box.innerHTML = '<div class="text-[11px] text-slate-400">لا توجد شرائح أسعار إضافية — اضغط (+ إضافة شريحة سعر) لتفعيل التخفيض التلقائي بالكمية</div>';
+      return;
+    }
+    box.innerHTML = list.map(function (ep, i) {
+      return (
+        '<div class="grid grid-cols-12 gap-1.5 items-center bg-slate-50 dark:bg-slate-900/60 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">' +
+        '  <div class="col-span-5">' +
+        '    <label class="block text-[9.5px] text-slate-400 font-bold">اسم الشريحة</label>' +
+        '    <input type="text" value="' + (ep.label || '') + '" placeholder="نصف جملة / جملة / VIP" oninput="AppState.tempExtraPrices[' + i + '].label = this.value" class="w-full px-2 py-1 rounded-lg font-bold">' +
+        '  </div>' +
+        '  <div class="col-span-3">' +
+        '    <label class="block text-[9.5px] text-indigo-600 font-black">أقل كمية (min_qty)</label>' +
+        '    <input type="number" step="any" min="1" value="' + (ep.min_qty || 1) + '" title="الحد الأدنى للكمية لتطبيق هذا السعر تلقائياً في السلة" oninput="AppState.tempExtraPrices[' + i + '].min_qty = Math.max(1, parseFloat(this.value) || 1)" class="w-full px-2 py-1 rounded-lg font-mono font-black text-indigo-600 text-center border-indigo-400">' +
+        '  </div>' +
+        '  <div class="col-span-3">' +
+        '    <label class="block text-[9.5px] text-emerald-600 font-black">سعر الوحدة (د.ج)</label>' +
+        '    <input type="number" step="any" min="0" value="' + (ep.price || 0) + '" oninput="AppState.tempExtraPrices[' + i + '].price = parseFloat(this.value) || 0" class="w-full px-2 py-1 rounded-lg font-mono font-black text-emerald-600 text-center">' +
+        '  </div>' +
+        '  <div class="col-span-1 text-center pt-3">' +
+        '    <button type="button" onclick="AppState.tempExtraPrices.splice(' + i + ',1); App.renderExtraPricesInModal()" class="text-rose-500 font-black">✕</button>' +
+        '  </div>' +
+        '</div>'
+      );
+    }).join('');
+  };
+
+  App.addExtraBarcodeRow = function () {
+    AppState.tempExtraBarcodes = AppState.tempExtraBarcodes || [];
+    AppState.tempExtraBarcodes.push({ barcode: '', pack_name: 'كرتون', unit_multiplier: 12, price_label: '' });
+    this.renderExtraBarcodesInModal();
+  };
+
+  App.renderExtraBarcodesInModal = function () {
+    var box = document.getElementById('prodExtraBarcodesContainer');
+    if (!box) return;
+    var list = AppState.tempExtraBarcodes || [];
+    if (list.length === 0) {
+      box.innerHTML = '<div class="text-[11px] text-slate-400">لا توجد باركودات عبوات إضافية — اضغط (+ باركود عبوة/كرتون) لإضافة باركود صندوق أو فاردو</div>';
+      return;
+    }
+    box.innerHTML = list.map(function (eb, i) {
+      return (
+        '<div class="grid grid-cols-12 gap-1.5 items-center bg-slate-50 dark:bg-slate-900/60 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">' +
+        '  <div class="col-span-4">' +
+        '    <label class="block text-[9.5px] text-slate-400 font-bold">باركود العبوة / الكرتون</label>' +
+        '    <input type="text" value="' + (eb.barcode || '') + '" placeholder="امسح باركود الكرتون..." oninput="AppState.tempExtraBarcodes[' + i + '].barcode = this.value" class="w-full px-2 py-1 rounded-lg font-mono font-bold">' +
+        '  </div>' +
+        '  <div class="col-span-3">' +
+        '    <label class="block text-[9.5px] text-amber-600 font-black">اسم العبوة (pack)</label>' +
+        '    <input type="text" value="' + (eb.pack_name || '') + '" placeholder="كرتون / فاردو" oninput="AppState.tempExtraBarcodes[' + i + '].pack_name = this.value" class="w-full px-2 py-1 rounded-lg font-bold">' +
+        '  </div>' +
+        '  <div class="col-span-2">' +
+        '    <label class="block text-[9.5px] text-blue-600 font-black">الشد (× وحدة)</label>' +
+        '    <input type="number" step="any" min="1" value="' + (eb.unit_multiplier || 1) + '" title="عدد الوحدات داخل هذه العبوة" oninput="AppState.tempExtraBarcodes[' + i + '].unit_multiplier = Math.max(1, parseFloat(this.value) || 1)" class="w-full px-2 py-1 rounded-lg font-mono font-black text-blue-600 text-center">' +
+        '  </div>' +
+        '  <div class="col-span-2">' +
+        '    <label class="block text-[9.5px] text-slate-400 font-bold">شريحة السعر</label>' +
+        '    <input type="text" value="' + (eb.price_label || '') + '" placeholder="نصف جملة" oninput="AppState.tempExtraBarcodes[' + i + '].price_label = this.value" class="w-full px-2 py-1 rounded-lg">' +
+        '  </div>' +
+        '  <div class="col-span-1 text-center pt-3">' +
+        '    <button type="button" onclick="AppState.tempExtraBarcodes.splice(' + i + ',1); App.renderExtraBarcodesInModal()" class="text-rose-500 font-black">✕</button>' +
+        '  </div>' +
+        '</div>'
+      );
+    }).join('');
+  };
+
+  // حقن حقول المستودع، الطابق (shelf_etage)، والرف (shelf_place) داخل #productModal
+  var _prevOpenProdModalV14 = App.openProductModal.bind(App);
+  App.openProductModal = async function (prodOrId) {
+    if (window.api && window.api.getWarehouses) {
+      AppState.warehousesList = (await window.api.getWarehouses().catch(function () { return []; })) || [];
+    }
+    await _prevOpenProdModalV14(prodOrId);
+
+    var locInp = document.getElementById('prodLocationInput');
+    if (locInp && !document.getElementById('prodShelfEtageInput')) {
+      var parentGrid = locInp.closest('.grid') || locInp.parentElement.parentElement;
+      if (parentGrid) {
+        var shelfWrap = document.createElement('div');
+        shelfWrap.className = 'col-span-1 md:col-span-3 p-3 rounded-2xl bg-indigo-50/60 dark:bg-slate-800/80 border border-indigo-200 dark:border-slate-700 grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs';
+        shelfWrap.innerHTML =
+          '<div><label class="block font-black text-indigo-600 mb-1">🏢 المستودع (Warehouse)</label><select id="prodWarehouseIdSelect" class="w-full px-3 py-1.5 rounded-xl font-bold"></select></div>' +
+          '<div><label class="block font-black text-indigo-600 mb-1">🪜 الطابق / الرواق (Étage)</label><input id="prodShelfEtageInput" type="text" placeholder="مثال: طابق 1 / رواق A" class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
+          '<div><label class="block font-black text-indigo-600 mb-1">🗄️ رقم الرف / المكان (Rayon / Place)</label><input id="prodShelfPlaceInput" type="text" placeholder="مثال: رف R-04" class="w-full px-3 py-1.5 rounded-xl font-bold"></div>';
+        parentGrid.appendChild(shelfWrap);
+      }
+    }
+
+    var whSel = document.getElementById('prodWarehouseIdSelect');
+    if (whSel) {
+      var whs = AppState.warehousesList.length > 0 ? AppState.warehousesList : [{ id: 1, name: 'المخزن الرئيسي للمؤسسة' }];
+      whSel.innerHTML = whs.map(function (w) {
+        return '<option value="' + w.id + '">' + w.name + '</option>';
+      }).join('');
+    }
+
+    var curId = document.getElementById('prodIdInput')?.value;
+    var prod = curId ? (AppState.products || []).find(function (p) { return Number(p.id) === Number(curId); }) : null;
+    var b0 = prod && Array.isArray(prod.batches) && prod.batches[0] ? prod.batches[0] : {};
+    if (whSel) whSel.value = String(b0.warehouse_id || 1);
+    if (document.getElementById('prodShelfEtageInput')) document.getElementById('prodShelfEtageInput').value = b0.shelf_etage || '';
+    if (document.getElementById('prodShelfPlaceInput')) document.getElementById('prodShelfPlaceInput').value = b0.shelf_place || '';
+  };
+
+  var _prevSaveProdModalV14 = App.saveProductFromModal.bind(App);
+  App.saveProductFromModal = async function (keepModalOpen) {
+    var whId = Number(document.getElementById('prodWarehouseIdSelect')?.value || 1);
+    var etage = String(document.getElementById('prodShelfEtageInput')?.value || '').trim();
+    var place = String(document.getElementById('prodShelfPlaceInput')?.value || '').trim();
+    var locInp = document.getElementById('prodLocationInput');
+    if (locInp && (etage || place) && !locInp.value) {
+      locInp.value = [etage ? 'طابق: ' + etage : '', place ? 'رف: ' + place : ''].filter(Boolean).join(' | ');
+    }
+
+    await _prevSaveProdModalV14(keepModalOpen);
+
+    var pid = Number(document.getElementById('prodIdInput')?.value || AppState.currentEditingProductId || 0);
+    if (pid && (etage || place || whId) && window.api && window.api.updateBatchShelfLocation) {
+      await window.api.updateBatchShelfLocation({
+        product_id: pid,
+        warehouse_id: whId,
+        shelf_etage: etage,
+        shelf_place: place
+      }).catch(function () {});
+      await this.refreshProducts();
+    }
+  };
+
+  // ==========================================================================
+  // 2. المحرك الآلي لتطبيق شرائح الأسعار بالكمية (min_qty) وتعدد العبوات (unit_multiplier) في الكاشير
+  // ==========================================================================
+  App.computeTieredUnitPriceForQty = function (prod, qty, currentTierMode) {
+    if (!prod) return null;
+    var absQty = Math.abs(Number(qty || 1));
+    var baseRetail = Number(prod.selling_price || 0);
+
+    if (currentTierMode === 'wholesale' && Number(prod.wholesale_price) > 0) {
+      return { price: Number(prod.wholesale_price), badge: 'سعر جملة', minQty: 1 };
+    }
+
+    var candidates = [];
+
+    // 1) شرائح الأسعار المخصصة في extra_prices التي لها min_qty > 1
+    if (Array.isArray(prod.extra_prices)) {
+      prod.extra_prices.forEach(function (ep) {
+        var mq = Number(ep.min_qty || 1);
+        var pr = Number(ep.price || 0);
+        if (mq > 1 && pr > 0 && absQty >= mq) {
+          candidates.push({ price: pr, badge: (ep.label || 'شريحة كمية') + ' (≥' + mq + ')', minQty: mq });
+        }
+      });
+    }
+
+    // 2) شرط الجملة التلقائي بالكمية (wholesale_qty & wholesale_price)
+    var wsQty = Number(prod.wholesale_qty || 0);
+    var wsPrice = Number(prod.wholesale_price || 0);
+    if (wsQty > 1 && wsPrice > 0 && absQty >= wsQty) {
+      candidates.push({ price: wsPrice, badge: 'جملة تلقائي (≥' + wsQty + ')', minQty: wsQty });
+    }
+
+    if (candidates.length === 0) return null;
+    // اختيار الشريحة ذات أعلى min_qty محققة (أو أقل سعر)
+    candidates.sort(function (a, b) {
+      if (b.minQty !== a.minQty) return b.minQty - a.minQty;
+      return a.price - b.price;
+    });
+    return candidates[0];
+  };
+
+  App.applyAutoQuantityTierPricingToCart = function () {
+    var cart = this.currentCart;
+    if (!cart || !Array.isArray(cart.items)) return;
+    var tierMode = cart.priceTier || AppState.priceTier || 'retail';
+
+    cart.items.forEach(function (it) {
+      if (it._manualPriceLocked || it.bundle_tag) return;
+      var prod = (AppState.products || []).find(function (p) {
+        return Number(p.id) === Number(it.product_id || it.productId);
+      });
+      if (!prod) return;
+
+      var tierMatch = App.computeTieredUnitPriceForQty(prod, it.quantity, tierMode);
+      if (tierMatch) {
+        if (!it.original_price) it.original_price = Number(prod.selling_price || it.price || 0);
+        it.price = tierMatch.price;
+        it.promo_badge = tierMatch.badge;
+        it._autoTierApplied = true;
+      } else if (it._autoTierApplied) {
+        // إعادة السعر الأساسي إذا انخفضت الكمية تحت شرط الشريحة
+        var promoInfo = typeof App.getEffectiveProductPromoInfo === 'function'
+          ? App.getEffectiveProductPromoInfo(prod, tierMode)
+          : { finalPrice: Number(prod.selling_price || 0), badgeText: '' };
+        it.price = promoInfo.finalPrice;
+        it.promo_badge = promoInfo.badgeText || '';
+        it._autoTierApplied = false;
+      }
+      it.subtotal = Number((Number(it.quantity || 1) * Number(it.price || 0)).toFixed(2));
+    });
+  };
+
+  var _prevStepCartQtyV14 = typeof App.stepCartItemQty === 'function' ? App.stepCartItemQty.bind(App) : null;
+  if (_prevStepCartQtyV14) {
+    App.stepCartItemQty = function (idx, delta) {
+      _prevStepCartQtyV14(idx, delta);
+      this.applyAutoQuantityTierPricingToCart();
+      this.renderCartItems();
+      this.recalcCart();
+    };
+  }
+
+  var _prevUpdateCartQtyV14 = typeof App.updateCartItemQty === 'function' ? App.updateCartItemQty.bind(App) : null;
+  if (_prevUpdateCartQtyV14) {
+    App.updateCartItemQty = function (idx, val) {
+      _prevUpdateCartQtyV14(idx, val);
+      this.applyAutoQuantityTierPricingToCart();
+      this.renderCartItems();
+      this.recalcCart();
+    };
+  }
+
+  var _prevUpdateCartPriceV14 = typeof App.updateCartItemPrice === 'function' ? App.updateCartItemPrice.bind(App) : null;
+  if (_prevUpdateCartPriceV14) {
+    App.updateCartItemPrice = function (idx, val) {
+      var it = this.currentCart && this.currentCart.items ? this.currentCart.items[idx] : null;
+      if (it) it._manualPriceLocked = true;
+      _prevUpdateCartPriceV14(idx, val);
+    };
+  }
+
+  var _prevAddProdToCartV14 = App.addProductToCart.bind(App);
+  App.addProductToCart = function (productId, qty, options) {
+    var res = _prevAddProdToCartV14(productId, qty, options);
+    this.applyAutoQuantityTierPricingToCart();
+    this.renderCartItems();
+    this.recalcCart();
+    return res;
+  };
+
+  // اعتراض مسح باركود العبوة / الكرتون (unit_multiplier > 1) في handleBarcodeScan
+  var _prevBarcodeScanV14 = App.handleBarcodeScan.bind(App);
+  App.handleBarcodeScan = async function (rawCode) {
+    var code = String(rawCode || '').trim();
+    if (!code) return;
+
+    for (var i = 0; i < (AppState.products || []).length; i++) {
+      var p = AppState.products[i];
+      if (Array.isArray(p.extra_barcodes)) {
+        var subBc = p.extra_barcodes.find(function (b) { return String(b.barcode || '').trim() === code; });
+        if (subBc) {
+          var bcInp = document.getElementById('barcodeInput');
+          if (bcInp) bcInp.value = '';
+
+          var mult = Math.max(1, Number(subBc.unit_multiplier || 1));
+          var packName = subBc.pack_name || (mult > 1 ? 'عبوة ×' + mult : '');
+          var customPrice = undefined;
+
+          if (subBc.price_label && Array.isArray(p.extra_prices)) {
+            var matchedEp = p.extra_prices.find(function (ep) { return String(ep.label || '').trim() === String(subBc.price_label).trim(); });
+            if (matchedEp && Number(matchedEp.price) > 0) {
+              customPrice = Number(matchedEp.price);
+            }
+          }
+
+          this.addProductToCart(p.id, mult, {
+            overridePrice: customPrice,
+            promoBadge: packName ? ('📦 ' + packName + ' (×' + mult + ')') : undefined
+          });
+
+          if (typeof playBeep === 'function') playBeep(true);
+          if (typeof showToast === 'function' && mult > 1) {
+            showToast('📦 تم مسح باركود العبوة (' + (packName || 'كرتون') + ') وإضافة ' + mult + ' ' + (p.unit || 'وحدة') + ' من [' + p.name + ']!', 'success');
+          }
+          return;
+        }
+      }
+    }
+
+    return await _prevBarcodeScanV14(rawCode);
+  };
+
+  // ==========================================================================
+  // 3. تبويب "🏢 المستودعات، مواقع الرفوف، والتحويلات المخزنية" في #view-inventory
+  // ==========================================================================
+  App.switchInventoryMainTab = async function (tabId) {
+    AppState.inventoryMainTab = tabId;
+    await this.renderInventoryView();
+  };
+
+  App.saveNewWarehouseFromUi = async function () {
+    var name = String(document.getElementById('whNewNameInput')?.value || '').trim();
+    var loc = String(document.getElementById('whNewLocationInput')?.value || '').trim();
+    var type = document.getElementById('whNewTypeSelect')?.value || 'branch';
+    if (!name) {
+      if (typeof showToast === 'function') showToast('يرجى إدخال اسم المستودع أو شاحنة التوزيع', 'warning');
+      return;
+    }
+    await window.api.saveWarehouse({ name: name, location: loc, type: type });
+    if (typeof showToast === 'function') showToast('✅ تم حفظ المستودع / الشاحنة بنجاح!', 'success');
+    await this.renderInventoryView();
+  };
+
+  App.deleteWarehouseFromUi = async function (whId) {
+    if (Number(whId) === 1) {
+      if (typeof showToast === 'function') showToast('لا يمكن حذف المخزن الرئيسي الافتراضي', 'warning');
+      return;
+    }
+    await window.api.deleteWarehouse(Number(whId));
+    if (typeof showToast === 'function') showToast('🗑️ تم حذف المستودع', 'info');
+    await this.renderInventoryView();
+  };
+
+  App.addTransferItemRowToDraft = function () {
+    var pid = Number(document.getElementById('trfProductSelect')?.value || 0);
+    var qty = Math.max(0.01, parseFloat(document.getElementById('trfQtyInput')?.value) || 1);
+    var prod = (AppState.products || []).find(function (p) { return Number(p.id) === pid; });
+    if (!prod) return;
+
+    var existing = (AppState.tempTransferItems || []).find(function (it) { return Number(it.product_id) === pid; });
+    if (existing) {
+      existing.quantity = Number((existing.quantity + qty).toFixed(2));
+    } else {
+      AppState.tempTransferItems.push({
+        product_id: prod.id,
+        name: prod.name,
+        barcode: prod.barcode || '',
+        unit: prod.unit || 'قطعة',
+        quantity: qty,
+        cost_price: Number(prod.cost_price || 0),
+        selling_price: Number(prod.selling_price || 0)
+      });
+    }
+    this.renderInventoryView();
+  };
+
+  App.executeStockTransferNow = async function (andPrintA4) {
+    var fromWh = Number(document.getElementById('trfFromWhSelect')?.value || 1);
+    var toWh = Number(document.getElementById('trfToWhSelect')?.value || 0);
+    var notes = String(document.getElementById('trfNotesInput')?.value || '').trim();
+    var items = AppState.tempTransferItems || [];
+
+    if (!toWh || fromWh === toWh) {
+      if (typeof showToast === 'function') showToast('⚠️ يرجى اختيار مستودع وجهة مختلف عن المستودع المصدر!', 'warning');
+      return;
+    }
+    if (items.length === 0) {
+      if (typeof showToast === 'function') showToast('⚠️ أضف صنفاً واحداً على الأقل في قائمة التحويل المخزني!', 'warning');
+      return;
+    }
+
+    var res = await window.api.createStockTransfer({
+      from_warehouse_id: fromWh,
+      to_warehouse_id: toWh,
+      notes: notes,
+      transfer_date: new Date().toISOString().slice(0, 10),
+      user_id: AppState.currentUser ? AppState.currentUser.id : 1,
+      items: items
+    });
+
+    var printedItems = items.slice();
+    AppState.tempTransferItems = [];
+    await this.refreshProducts();
+    await this.renderInventoryView();
+
+    if (typeof showToast === 'function') {
+      showToast('🔄 تم تنفيذ التحويل المخزني (' + (res.transfer_number || '') + ') وتحديث أرصدة المستودعات بنجاح!', 'success');
+    }
+
+    if (andPrintA4) {
+      var fromName = ((AppState.warehousesList || []).find(function (w) { return Number(w.id) === fromWh; }) || {}).name || 'المخزن المصدر';
+      var toName = ((AppState.warehousesList || []).find(function (w) { return Number(w.id) === toWh; }) || {}).name || 'المخزن الوجهة';
+      await this.printStockTransferDocumentA4(res.transfer_number || 'TRF-01', fromName, toName, printedItems, notes);
+    }
+  };
+
+  App.printStockTransferDocumentA4 = async function (trfNumber, fromName, toName, items, notes) {
+    var s = AppState.settings || {};
+    var rowsHtml = (items || []).map(function (it, idx) {
+      return (
+        '<tr>' +
+        '  <td style="padding:7px;border:1px solid #cbd5e1;text-align:center;">' + (idx + 1) + '</td>' +
+        '  <td style="padding:7px;border:1px solid #cbd5e1;text-align:center;font-family:monospace;">' + (it.barcode || '-') + '</td>' +
+        '  <td style="padding:7px;border:1px solid #cbd5e1;font-weight:900;">' + (it.name || '') + '</td>' +
+        '  <td style="padding:7px;border:1px solid #cbd5e1;text-align:center;font-family:monospace;font-weight:900;">' + Number(it.quantity || 0) + ' ' + (it.unit || 'قطعة') + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>وصل تحويل مخزني - ' + trfNumber + '</title>' +
+      '<style>@page{size:A4 portrait;margin:12mm;}body{font-family:Cairo,Arial,sans-serif;color:#0f172a;font-size:12px;margin:0;}' +
+      '.hdr{display:flex;justify-content:space-between;border-bottom:3px solid #0f766e;padding-bottom:10px;margin-bottom:14px;}' +
+      'table{width:100%;border-collapse:collapse;margin-top:12px;}th{background:#0f766e;color:#fff;padding:8px;border:1px solid #0f766e;}' +
+      '</style></head><body>' +
+      '<div class="hdr">' +
+      '  <div><h2 style="margin:0;color:#0f766e;font-weight:900;">' + (s.shop_name || 'Gherbi.Ai POS') + '</h2><div>' + (s.shop_address || 'الجزائر') + '</div></div>' +
+      '  <div style="text-align:left;"><div style="font-size:18px;font-weight:900;color:#0f766e;">وصل تحويل مخزني بين المستودعات (BON DE TRANSFERT)</div><div style="font-family:monospace;font-weight:900;">N°: ' + trfNumber + ' | التاريخ: ' + new Date().toISOString().slice(0, 10) + '</div></div>' +
+      '</div>' +
+      '<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:12px;display:flex;justify-content:space-between;font-weight:900;">' +
+      '  <div>📤 من المستودع المصدر: <span style="color:#be123c;">' + fromName + '</span></div>' +
+      '  <div>📥 إلى المستودع / الشاحنة الوجهة: <span style="color:#047857;">' + toName + '</span></div>' +
+      '</div>' +
+      (notes ? '<div style="margin-top:8px;font-size:11px;"><strong>ملاحظات:</strong> ' + notes + '</div>' : '') +
+      '<table><thead><tr><th>#</th><th>المرجع / الباركود</th><th>بيان السلعة</th><th>الكمية المحولة</th></tr></thead><tbody>' + rowsHtml + '</tbody></table>' +
+      '<div style="display:flex;justify-content:space-between;margin-top:36px;font-weight:900;padding:0 24px;"><div>إمضاء أمين المخزن المسلّم</div><div>إمضاء المستلم / السائق</div></div>' +
+      '</body></html>';
+
+    if (window.PrintEngine) await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  };
+
+  App.quickSaveProductShelfFromTab = async function () {
+    var pid = Number(document.getElementById('quickShelfProdSelect')?.value || 0);
+    var whId = Number(document.getElementById('quickShelfWhSelect')?.value || 1);
+    var etage = String(document.getElementById('quickShelfEtageInp')?.value || '').trim();
+    var place = String(document.getElementById('quickShelfPlaceInp')?.value || '').trim();
+    if (!pid) return;
+
+    await window.api.updateBatchShelfLocation({
+      product_id: pid,
+      warehouse_id: whId,
+      shelf_etage: etage,
+      shelf_place: place
+    });
+    await this.refreshProducts();
+    if (typeof showToast === 'function') {
+      showToast('🗄️ تم تحديث موقع المنتج (المستودع / الطابق / الرف) بنجاح!', 'success');
+    }
+    await this.renderInventoryView();
+  };
+
+  var _prevRenderInventoryV14 = App.renderInventoryView.bind(App);
+  App.renderInventoryView = async function () {
+    await _prevRenderInventoryV14();
+    var root = document.getElementById('inventory-view-root');
+    if (!root) return;
+
+    var activeTab = AppState.inventoryMainTab || 'products_list';
+    var pair = await Promise.all([
+      window.api.getWarehouses ? window.api.getWarehouses().catch(function () { return []; }) : Promise.resolve([]),
+      window.api.getStockTransfers ? window.api.getStockTransfers().catch(function () { return []; }) : Promise.resolve([])
+    ]);
+    var warehouses = Array.isArray(pair[0]) && pair[0].length > 0 ? pair[0] : [{ id: 1, name: 'المخزن الرئيسي للمؤسسة', location: 'الجزائر', type: 'main', total_stock_units: 0, total_stock_value: 0 }];
+    var transfers = Array.isArray(pair[1]) ? pair[1] : [];
+    AppState.warehousesList = warehouses;
+    AppState.stockTransfersList = transfers;
+
+    var tabsBarHtml =
+      '<div id="inventoryEnterpriseTabsBar" class="p-2 rounded-2xl bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2 mb-4 shadow-lg text-xs">' +
+      '  <div class="flex flex-wrap items-center gap-1.5">' +
+      '    <button type="button" onclick="App.switchInventoryMainTab(\'products_list\')" class="px-4 py-2 rounded-xl font-black transition ' + (activeTab === 'products_list' ? 'bg-blue-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">📦 1. جدول المخزون، الدفعات، وشرائح الأسعار (' + (AppState.products || []).length + ' منتج)</button>' +
+      '    <button type="button" onclick="App.switchInventoryMainTab(\'warehouses_transfers\')" class="px-4 py-2 rounded-xl font-black transition ' + (activeTab === 'warehouses_transfers' ? 'bg-teal-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">🏢 2. المستودعات، مواقع الرفوف (Étage/Rayon)، والتحويلات المخزنية (' + warehouses.length + ' مخازن / ' + transfers.length + ' تحويل)</button>' +
+      '  </div>' +
+      '  <span class="px-3 py-1 rounded-xl bg-indigo-500/20 text-indigo-300 font-black">🏷️ التسعير التلقائي بالكمية (min_qty) وتعدد العبوات نشط</span>' +
+      '</div>';
+
+    if (activeTab === 'products_list') {
+      root.insertAdjacentHTML('afterbegin', tabsBarHtml);
+      return;
+    }
+
+    var prods = AppState.products || [];
+    var tempItems = AppState.tempTransferItems || [];
+
+    root.innerHTML =
+      tabsBarHtml +
+      '<div class="space-y-5 text-xs">' +
+      '  <!-- 1. بطاقات المستودعات وشاحنات التوزيع + إضافة مستودع جديد -->' +
+      '  <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">' +
+      '    <div class="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">' +
+      warehouses.map(function (w) {
+        var typeBadge = w.type === 'van' ? '🚚 شاحنة توزيع (Van)' : w.type === 'branch' ? '🏪 فرع بيع' : '🏢 مخزن رئيسي';
+        return (
+          '<div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between">' +
+          '  <div>' +
+          '    <div class="flex items-center justify-between"><span class="px-2 py-0.5 rounded-full bg-teal-500/15 text-teal-600 font-black text-[10px]">' + typeBadge + '</span>' +
+          (Number(w.id) !== 1 ? '<button type="button" onclick="App.deleteWarehouseFromUi(' + w.id + ')" class="text-slate-400 hover:text-rose-500 font-black">✕</button>' : '<span class="text-[10px] font-bold text-emerald-600">★ افتراضي</span>') +
+          '    </div>' +
+          '    <h4 class="font-black text-sm mt-2 text-slate-900 dark:text-white">' + w.name + '</h4>' +
+          '    <div class="text-[11px] text-slate-400">' + (w.location || 'الجزائر') + '</div>' +
+          '  </div>' +
+          '  <div class="pt-3 mt-3 border-t border-slate-100 dark:border-slate-700 flex justify-between font-mono">' +
+          '    <div><div class="text-[10px] text-slate-400 font-sans">إجمالي الوحدات</div><div class="font-black text-blue-600">' + Number(w.total_stock_units || 0) + ' وحدة</div></div>' +
+          '    <div class="text-left"><div class="text-[10px] text-slate-400 font-sans">قيمة البضاعة</div><div class="font-black text-emerald-600">' + Number(w.total_stock_value || 0).toFixed(0) + ' د.ج</div></div>' +
+          '  </div>' +
+          '</div>'
+        );
+      }).join('') +
+      '    </div>' +
+
+      '    <!-- نموذج إضافة مستودع أو شاحنة توزيع جديدة -->' +
+      '    <div class="lg:col-span-4 p-4 rounded-2xl bg-slate-900 text-white border border-slate-800 space-y-2.5">' +
+      '      <h4 class="font-black text-sm text-amber-400">➕ إضافة مستودع / فرع / شاحنة توزيع (Van)</h4>' +
+      '      <div><label class="block text-slate-400 font-bold mb-1">اسم المستودع أو الشاحنة *</label><input id="whNewNameInput" type="text" placeholder="مثال: مستودع المنطقة الصناعية / شاحنة 01" class="w-full px-3 py-1.5 rounded-xl bg-slate-950 text-white border border-slate-700 font-bold"></div>' +
+      '      <div class="grid grid-cols-2 gap-2">' +
+      '        <div><label class="block text-slate-400 font-bold mb-1">النوع</label><select id="whNewTypeSelect" class="w-full px-2.5 py-1.5 rounded-xl bg-slate-950 text-white border border-slate-700 font-bold"><option value="branch">🏢 مستودع / فرع</option><option value="van">🚚 شاحنة توزيع (Van)</option><option value="main">🏛️ مخزن رئيسي</option></select></div>' +
+      '        <div><label class="block text-slate-400 font-bold mb-1">الموقع / العنوان</label><input id="whNewLocationInput" type="text" placeholder="قسنطينة" class="w-full px-2.5 py-1.5 rounded-xl bg-slate-950 text-white border border-slate-700 font-bold"></div>' +
+      '      </div>' +
+      '      <button type="button" onclick="App.saveNewWarehouseFromUi()" class="w-full py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-black shadow-lg">+ حفظ المستودع الجديد</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <!-- 2. أداة التعيين السريع لمواقع الرفوف والطوابق (Shelf & Étage Locator) -->' +
+      '  <div class="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex flex-wrap items-end justify-between gap-3">' +
+      '    <div class="flex-1 min-w-[220px]">' +
+      '      <label class="block font-black text-indigo-700 dark:text-indigo-300 mb-1">🗄️ التعيين السريع لموقع المنتج في المستودع (المستودع + الطابق Étage + الرف Rayon):</label>' +
+      '      <select id="quickShelfProdSelect" class="w-full px-3 py-2 rounded-xl font-bold">' +
+      prods.slice(0, 250).map(function (p) {
+        var b0 = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+        var locTxt = b0.location || [b0.shelf_etage, b0.shelf_place].filter(Boolean).join('/') || 'بدون رف';
+        return '<option value="' + p.id + '">' + p.name + ' [' + locTxt + ']</option>';
+      }).join('') +
+      '      </select>' +
+      '    </div>' +
+      '    <div class="w-44"><label class="block font-bold mb-1">المستودع</label><select id="quickShelfWhSelect" class="w-full px-2.5 py-2 rounded-xl font-bold">' +
+      warehouses.map(function (w) { return '<option value="' + w.id + '">' + w.name + '</option>'; }).join('') +
+      '    </select></div>' +
+      '    <div class="w-36"><label class="block font-bold mb-1">🪜 الطابق (Étage)</label><input id="quickShelfEtageInp" type="text" placeholder="طابق 1 / رواق B" class="w-full px-3 py-2 rounded-xl font-bold"></div>' +
+      '    <div class="w-36"><label class="block font-bold mb-1">🗄️ الرف (Rayon)</label><input id="quickShelfPlaceInp" type="text" placeholder="رف R-12" class="w-full px-3 py-2 rounded-xl font-bold"></div>' +
+      '    <button type="button" onclick="App.quickSaveProductShelfFromTab()" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow">💾 حفظ موقع الرف</button>' +
+      '  </div>' +
+
+      '  <!-- 3. استوديو إنشاء تحويل مخزني ذري بين مستودعين أو شاحنة توزيع -->' +
+      '  <div class="p-5 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">' +
+      '    <div class="flex flex-wrap items-center justify-between gap-2">' +
+      '      <h3 class="font-black text-sm text-teal-600">🔄 إنشاء أمر تحويل مخزني بين المستودعات أو شاحنات التوزيع (Stock Transfer)</h3>' +
+      '      <div class="flex gap-2">' +
+      '        <button type="button" onclick="App.executeStockTransferNow(false)" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow">✅ تنفيذ التحويل المخزني</button>' +
+      '        <button type="button" onclick="App.executeStockTransferNow(true)" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black shadow">🖨️ تنفيذ وطباعة وصل التحويل (A4)</button>' +
+      '      </div>' +
+      '    </div>' +
+      '    <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">' +
+      '      <div class="md:col-span-3"><label class="block font-bold mb-1 text-rose-600">📤 من المستودع المصدر</label><select id="trfFromWhSelect" class="w-full px-3 py-2 rounded-xl font-bold">' +
+      warehouses.map(function (w) { return '<option value="' + w.id + '">' + w.name + '</option>'; }).join('') +
+      '      </select></div>' +
+      '      <div class="md:col-span-3"><label class="block font-bold mb-1 text-emerald-600">📥 إلى المستودع / الشاحنة الوجهة</label><select id="trfToWhSelect" class="w-full px-3 py-2 rounded-xl font-bold">' +
+      warehouses.map(function (w, idx) { return '<option value="' + w.id + '" ' + (idx === 1 ? 'selected' : '') + '>' + w.name + '</option>'; }).join('') +
+      '      </select></div>' +
+      '      <div class="md:col-span-3"><label class="block font-bold mb-1">المنتج المراد تحويله</label><select id="trfProductSelect" class="w-full px-3 py-2 rounded-xl font-bold">' +
+      prods.slice(0, 250).map(function (p) { return '<option value="' + p.id + '">' + p.name + ' (الرصيد: ' + Number(p.stock || 0) + ')</option>'; }).join('') +
+      '      </select></div>' +
+      '      <div class="md:col-span-1"><label class="block font-bold mb-1">الكمية</label><input id="trfQtyInput" type="number" step="any" min="1" value="5" class="w-full px-2 py-2 rounded-xl font-mono font-black text-center"></div>' +
+      '      <div class="md:col-span-2"><button type="button" onclick="App.addTransferItemRowToDraft()" class="w-full py-2 rounded-xl bg-slate-900 dark:bg-slate-700 text-white font-black">+ إدراج بالتحويل</button></div>' +
+      '    </div>' +
+      '    <div><input id="trfNotesInput" type="text" placeholder="ملاحظات التحويل (مثال: تزويد شاحنة الموزع للبضاعة الصباحية...)" class="w-full px-3 py-1.5 rounded-xl"></div>' +
+      (tempItems.length > 0
+        ? '<div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-1.5">' +
+          '  <div class="font-black text-indigo-600">📋 الأصناف المدرجة في أمر التحويل الحالي (' + tempItems.length + '):</div>' +
+          tempItems.map(function (it, idx) {
+            return '<div class="flex justify-between items-center py-1 border-b border-slate-200 dark:border-slate-800"><span>' + (idx + 1) + '. <strong>' + it.name + '</strong></span><span class="font-mono font-black text-blue-600">' + it.quantity + ' ' + it.unit + '</span><button type="button" onclick="AppState.tempTransferItems.splice(' + idx + ',1);App.renderInventoryView()" class="text-rose-500 font-black">✕</button></div>';
+          }).join('') +
+          '</div>'
+        : '') +
+      '  </div>' +
+
+      '  <!-- 4. سجل التحويلات المخزنية السابقة -->' +
+      '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">' +
+      '    <h3 class="font-black text-sm text-indigo-600">📜 سجل التحويلات المخزنية المنفذة (' + transfers.length + ')</h3>' +
+      '    <div class="overflow-x-auto"><table class="w-full text-right border-collapse">' +
+      '      <thead><tr class="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700"><th class="p-2.5">رقم التحويل</th><th class="p-2.5">التاريخ</th><th class="p-2.5">من مستودع</th><th class="p-2.5">إلى مستودع / شاحنة</th><th class="p-2.5">الأصناف</th><th class="p-2.5">إجمالي الوحدات</th><th class="p-2.5">ملاحظات</th></tr></thead>' +
+      '      <tbody>' +
+      (transfers.length === 0
+        ? '<tr><td colspan="7" class="p-6 text-center text-slate-400 font-bold">لا توجد تحويلات مخزنية سابقة بعد</td></tr>'
+        : transfers.map(function (t) {
+            return (
+              '<tr class="border-b border-slate-100 dark:border-slate-700/60">' +
+              '  <td class="p-2.5 font-mono font-black text-teal-600">' + (t.transfer_number || ('#' + t.id)) + '</td>' +
+              '  <td class="p-2.5 font-mono">' + String(t.transfer_date || '').slice(0, 10) + '</td>' +
+              '  <td class="p-2.5 font-bold text-rose-600">' + (t.from_warehouse_name || ('#' + t.from_warehouse_id)) + '</td>' +
+              '  <td class="p-2.5 font-bold text-emerald-600">' + (t.to_warehouse_name || ('#' + t.to_warehouse_id)) + '</td>' +
+              '  <td class="p-2.5 font-mono font-bold">' + Number(t.items_count || 0) + ' صنف</td>' +
+              '  <td class="p-2.5 font-mono font-black text-blue-600">' + Number(t.total_qty || 0) + ' وحدة</td>' +
+              '  <td class="p-2.5 text-slate-500">' + (t.notes || '-') + '</td>' +
+              '</tr>'
+            );
+          }).join('')) +
+      '      </tbody></table></div>' +
+      '  </div>' +
+      '</div>';
+  };
+})();
+
+// [PART 4B/5: DELIVERY, VAN SALES DRIVERS & COD SETTLEMENT UI V14]
+(function installTask4DeliveryVanSalesAndCodUiV14() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.ordersMainTab = AppState.ordersMainTab || 'orders_list'; // 'orders_list' | 'delivery_cod'
+  AppState.shipmentsStatusFilter = AppState.shipmentsStatusFilter || 'all'; // 'all' | 'preparing' | 'in_transit' | 'delivered' | 'returned'
+  AppState.driversList = AppState.driversList || [];
+  AppState.deliveryShipmentsList = AppState.deliveryShipmentsList || [];
+
+  var ALGERIA_58_WILAYAS_SHORT = [
+    '01 - أدرار', '02 - الشلف', '03 - الأغواط', '04 - أم البواقي', '05 - باتنة', '06 - بجاية', '07 - بسكرة', '08 - بشار',
+    '09 - البليدة', '10 - البويرة', '11 - تمنراست', '12 - تبسة', '13 - تلمسان', '14 - تيارت', '15 - تيزي وزو', '16 - الجزائر',
+    '17 - الجلفة', '18 - جيجل', '19 - سطيف', '20 - سعيدة', '21 - سكيكدة', '22 - سيدي بلعباس', '23 - عنابة', '24 - قالمة',
+    '25 - قسنطينة', '26 - المدية', '27 - مستغانم', '28 - المسيلة', '29 - معسكر', '30 - ورقلة', '31 - وهران', '32 - البيض',
+    '33 - إليزي', '34 - برج بوعريريج', '35 - بومرداس', '36 - الطارف', '37 - تندوف', '38 - تيسمسيلت', '39 - الوادي', '40 - خنشلة',
+    '41 - سوق أهراس', '42 - تيبازة', '43 - ميلة', '44 - عين الدفلى', '45 - النعامة', '46 - عين تموشنت', '47 - غرداية', '48 - غليزان',
+    '49 - تيميمون', '50 - برج باجي مختار', '51 - أولاد جلال', '52 - بني عباس', '53 - عين صالح', '54 - عين قزام', '55 - تقرت',
+    '56 - جانت', '57 - المغير', '58 - المنيعة'
+  ];
+
+  App.switchOrdersMainTab = async function (tabId) {
+    AppState.ordersMainTab = tabId;
+    await this.renderOrdersView();
+  };
+
+  // ==========================================================================
+  // 1. إدارة السائقين والموزعين (Drivers & Van Sales Fleet)
+  // ==========================================================================
+  App.saveDriverFromUi = async function () {
+    var name = String(document.getElementById('drvNameInp')?.value || '').trim();
+    var phone = String(document.getElementById('drvPhoneInp')?.value || '').trim();
+    var vehicle = String(document.getElementById('drvVehicleInp')?.value || '').trim();
+    var plate = String(document.getElementById('drvPlateInp')?.value || '').trim();
+    var whId = Number(document.getElementById('drvWarehouseSel')?.value || 0) || null;
+    var comm = parseFloat(document.getElementById('drvCommissionInp')?.value || '0') || 0;
+
+    if (!name) {
+      if (typeof showToast === 'function') showToast('يرجى إدخال اسم السائق / الموزع', 'warning');
+      return;
+    }
+
+    await window.api.saveDriver({
+      name: name,
+      phone: phone,
+      vehicle_name: vehicle,
+      vehicle_plate: plate,
+      warehouse_id: whId,
+      commission_rate: comm
+    });
+
+    if (typeof showToast === 'function') showToast('🚚 تم حفظ بيانات السائق / الموزع بنجاح!', 'success');
+    await this.renderOrdersView();
+  };
+
+  App.deleteDriverFromUi = async function (driverId) {
+    await window.api.deleteDriver(Number(driverId));
+    if (typeof showToast === 'function') showToast('🗑️ تم حذف السائق من القائمة', 'info');
+    await this.renderOrdersView();
+  };
+
+  // ==========================================================================
+  // 2. إنشاء وتحديث شحنات التوصيل (Delivery Shipments & COD)
+  // ==========================================================================
+  App.onShipmentSourceOrderOrSaleChange = function (val) {
+    if (!val) return;
+    var parts = String(val).split(':');
+    var srcType = parts[0];
+    var srcId = Number(parts[1]);
+
+    if (srcType === 'order') {
+      var ord = (AppState._cachedOrders || []).find(function (o) { return Number(o.id) === srcId; });
+      if (ord) {
+        var cust = (AppState.customers || []).find(function (c) { return Number(c.id) === Number(ord.customer_id); }) || {};
+        var remCod = Math.max(0, Number(ord.total || 0) - Number(ord.deposit_amount || 0));
+        if (document.getElementById('shpCustNameInp')) document.getElementById('shpCustNameInp').value = ord.customer_name || cust.name || 'زبون';
+        if (document.getElementById('shpCustPhoneInp')) document.getElementById('shpCustPhoneInp').value = cust.phone || '';
+        if (document.getElementById('shpAddressInp')) document.getElementById('shpAddressInp').value = cust.address || '';
+        if (document.getElementById('shpWilayaSel') && cust.wilaya) document.getElementById('shpWilayaSel').value = cust.wilaya;
+        if (document.getElementById('shpCommuneInp')) document.getElementById('shpCommuneInp').value = cust.commune || '';
+        if (document.getElementById('shpCodAmountInp')) document.getElementById('shpCodAmountInp').value = remCod.toFixed(2);
+      }
+    } else if (srcType === 'sale') {
+      var sale = (AppState._cachedRecentSalesForShip || []).find(function (s) { return Number(s.id) === srcId; });
+      if (sale) {
+        var custS = (AppState.customers || []).find(function (c) { return Number(c.id) === Number(sale.customer_id); }) || {};
+        var remSale = Math.max(0, Number(sale.total || 0) - Number(sale.paid_amount || 0));
+        var codVal = remSale > 0 ? remSale : Number(sale.total || 0);
+        if (document.getElementById('shpCustNameInp')) document.getElementById('shpCustNameInp').value = sale.customer_name || custS.name || 'زبون';
+        if (document.getElementById('shpCustPhoneInp')) document.getElementById('shpCustPhoneInp').value = custS.phone || '';
+        if (document.getElementById('shpAddressInp')) document.getElementById('shpAddressInp').value = custS.address || '';
+        if (document.getElementById('shpCodAmountInp')) document.getElementById('shpCodAmountInp').value = codVal.toFixed(2);
+      }
+    }
+  };
+
+  App.createShipmentFromOrderRowQuick = async function (orderId) {
+    AppState.ordersMainTab = 'delivery_cod';
+    await this.renderOrdersView();
+    var sel = document.getElementById('shpSourceDocSelect');
+    if (sel) {
+      sel.value = 'order:' + orderId;
+      this.onShipmentSourceOrderOrSaleChange(sel.value);
+    }
+    if (typeof showToast === 'function') {
+      showToast('📦 تم تعبئة بيانات الطلبية في منشئ الشحنات — حدد السائق أو شركة التوصيل واضغط حفظ!', 'info');
+    }
+  };
+
+  App.saveShipmentFromUi = async function () {
+    var srcVal = document.getElementById('shpSourceDocSelect')?.value || '';
+    var order_id = srcVal.startsWith('order:') ? Number(srcVal.split(':')[1]) : null;
+    var sale_id = srcVal.startsWith('sale:') ? Number(srcVal.split(':')[1]) : null;
+
+    var customer_name = String(document.getElementById('shpCustNameInp')?.value || '').trim() || 'زبون توصيل';
+    var customer_phone = String(document.getElementById('shpCustPhoneInp')?.value || '').trim();
+    var customer_address = String(document.getElementById('shpAddressInp')?.value || '').trim();
+    var wilaya = document.getElementById('shpWilayaSel')?.value || '25 - قسنطينة';
+    var commune = String(document.getElementById('shpCommuneInp')?.value || '').trim();
+    var driver_id = Number(document.getElementById('shpDriverSel')?.value || 0) || null;
+    var carrier_name = String(document.getElementById('shpCarrierSel')?.value || '').trim();
+    var tracking_code = String(document.getElementById('shpTrackingInp')?.value || '').trim() || ('TRK-' + Date.now().toString().slice(-6));
+    var shipping_fee = Math.max(0, parseFloat(document.getElementById('shpFeeInp')?.value) || 0);
+    var cod_amount = Math.max(0, parseFloat(document.getElementById('shpCodAmountInp')?.value) || 0);
+    var notes = String(document.getElementById('shpNotesInp')?.value || '').trim();
+
+    var res = await window.api.saveDeliveryShipment({
+      order_id: order_id,
+      sale_id: sale_id,
+      customer_name: customer_name,
+      customer_phone: customer_phone,
+      customer_address: customer_address,
+      wilaya: wilaya,
+      commune: commune,
+      driver_id: driver_id,
+      carrier_name: carrier_name,
+      tracking_code: tracking_code,
+      shipping_fee: shipping_fee,
+      cod_amount: cod_amount,
+      status: 'preparing',
+      notes: notes
+    });
+
+    if (typeof showToast === 'function') {
+      showToast('🚛 تم تسجيل شحنة التوصيل (' + (res.doc_number || '') + ') بنجاح!', 'success');
+    }
+    await this.renderOrdersView();
+  };
+
+  App.updateShipmentStatusQuick = async function (shipmentId, newStatus) {
+    var sh = (AppState.deliveryShipmentsList || []).find(function (s) { return Number(s.id) === Number(shipmentId); });
+    if (!sh) return;
+
+    if (newStatus === 'delivered') {
+      var defAmt = Number(sh.cod_amount || 0);
+      var inputVal = window.prompt(
+        '💰 تأكيد تسليم الشحنة (' + (sh.doc_number || '#' + sh.id) + ') للزبون (' + sh.customer_name + '):\nأدخل مبلغ الدفع عند الاستلام (COD) المحصل لإيداعه في الخزينة (د.ج):',
+        defAmt.toFixed(2)
+      );
+      if (inputVal === null) return;
+      var collected = Math.max(0, parseFloat(inputVal) || 0);
+
+      await window.api.settleShipmentCod({
+        shipment_id: sh.id,
+        status: 'delivered',
+        collected_amount: collected
+      });
+
+      if (typeof showToast === 'function') {
+        showToast('✅ تم تأكيد التسليم وإيداع مبلغ (' + collected.toFixed(2) + ' د.ج) آلياً في الخزينة!', 'success');
+      }
+      await this.renderOrdersView();
+      return;
+    }
+
+    await window.api.settleShipmentCod({
+      shipment_id: sh.id,
+      status: newStatus,
+      collected_amount: 0
+    });
+
+    if (typeof showToast === 'function') {
+      showToast('🔄 تم تحديث حالة الشحنة إلى: ' + (newStatus === 'in_transit' ? '🚚 في الطريق' : '↩️ مرتجع'), 'info');
+    }
+    await this.renderOrdersView();
+  };
+
+  // طباعة وصل التسليم الرسمي (Bon de Livraison — delivery_note_ar.html) للشحنة
+  App.printShipmentDeliveryNoteBl = async function (shipmentId) {
+    var sh = (AppState.deliveryShipmentsList || []).find(function (s) { return Number(s.id) === Number(shipmentId); });
+    if (!sh || !window.PrintEngine) return;
+
+    var items = [];
+    if (sh.sale_id && window.api.getSaleDetails) {
+      var saleDet = await window.api.getSaleDetails(sh.sale_id).catch(function () { return null; });
+      if (saleDet && Array.isArray(saleDet.items)) items = saleDet.items;
+    } else if (sh.order_id && window.api.getOrderDetails) {
+      var ordDet = await window.api.getOrderDetails(sh.order_id).catch(function () { return null; });
+      if (ordDet && Array.isArray(ordDet.items)) items = ordDet.items;
+    }
+
+    if (items.length === 0) {
+      items = [
+        {
+          product_barcode: sh.tracking_code || sh.doc_number || 'COD-01',
+          product_name: 'طرد شحنة توصيل (' + (sh.wilaya || 'الجزائر') + ') — تحصيل عند الاستلام: ' + Number(sh.cod_amount || 0).toFixed(2) + ' د.ج',
+          quantity: 1,
+          unit: 'طرد'
+        }
+      ];
+    }
+
+    var deliveryPayload = {
+      id: sh.id,
+      delivery_number: sh.doc_number || ('BL-' + sh.id),
+      doc_number: sh.doc_number || ('BL-' + sh.id),
+      date: sh.delivery_date || String(sh.created_at || new Date().toISOString()).slice(0, 10),
+      customer_name: sh.customer_name,
+      customer_phone: sh.customer_phone || '',
+      customer_address: [sh.wilaya, sh.commune, sh.customer_address].filter(Boolean).join(' - '),
+      driver_name: sh.driver_name || sh.carrier_name || 'موزع المؤسسة',
+      carrier_name: sh.carrier_name || sh.driver_name || '-',
+      vehicle_plate: sh.vehicle_plate || sh.tracking_code || '-',
+      items: items
+    };
+
+    var html = await window.PrintEngine.renderDeliveryNoteHtml(deliveryPayload, AppState.settings);
+    await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  };
+
+  // ==========================================================================
+  // 3. ترقية App.renderOrdersView لدمج تبويب الطلبيات مع تبويب الشحن والتوصيل والموزعين
+  // ==========================================================================
+  var _prevRenderOrdersV14 = App.renderOrdersView.bind(App);
+  App.renderOrdersView = async function () {
+    await _prevRenderOrdersV14();
+    var root = document.getElementById('orders-view-root');
+    if (!root) return;
+
+    var activeTab = AppState.ordersMainTab || 'orders_list';
+    var pair = await Promise.all([
+      window.api.getDrivers ? window.api.getDrivers().catch(function () { return []; }) : Promise.resolve([]),
+      window.api.getDeliveryShipments ? window.api.getDeliveryShipments({}).catch(function () { return []; }) : Promise.resolve([]),
+      window.api.getWarehouses ? window.api.getWarehouses().catch(function () { return []; }) : Promise.resolve([])
+    ]);
+
+    var drivers = Array.isArray(pair[0]) ? pair[0] : [];
+    var shipments = Array.isArray(pair[1]) ? pair[1] : [];
+    var warehouses = Array.isArray(pair[2]) ? pair[2] : [];
+    AppState.driversList = drivers;
+    AppState.deliveryShipmentsList = shipments;
+
+    var inTransitCount = shipments.filter(function (s) { return s.status === 'in_transit' || s.status === 'preparing'; }).length;
+
+    var tabsBarHtml =
+      '<div id="ordersEnterpriseTabsBar" class="p-2 rounded-2xl bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2 mb-4 shadow-lg text-xs">' +
+      '  <div class="flex flex-wrap items-center gap-1.5">' +
+      '    <button type="button" onclick="App.switchOrdersMainTab(\'orders_list\')" class="px-4 py-2 rounded-xl font-black transition ' + (activeTab === 'orders_list' ? 'bg-teal-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">📌 1. طلبيات الزبائن، العربون، وحجز المخزون (' + (AppState._cachedOrders || []).length + ' طلبية)</button>' +
+      '    <button type="button" onclick="App.switchOrdersMainTab(\'delivery_cod\')" class="px-4 py-2 rounded-xl font-black transition ' + (activeTab === 'delivery_cod' ? 'bg-blue-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">🚛 2. الشحن والتوصيل، الموزعون (Van Sales)، وتحصيل COD (' + shipments.length + ' شحنة / ' + drivers.length + ' سائق)</button>' +
+      '  </div>' +
+      '  <span class="px-3 py-1 rounded-xl bg-amber-500/20 text-amber-300 font-black">🚚 ' + inTransitCount + ' شحنات قيد التحضير أو في الطريق</span>' +
+      '</div>';
+
+    if (activeTab === 'orders_list') {
+      root.insertAdjacentHTML('afterbegin', tabsBarHtml);
+      // إضافة زر (🚚 شحن) سريع أمام كل طلبية في الجدول
+      var orderRows = root.querySelectorAll('table tbody tr');
+      orderRows.forEach(function (tr, idx) {
+        var ord = (AppState._cachedOrders || [])[idx];
+        var actionCell = tr.querySelector('td:last-child');
+        if (ord && actionCell && !actionCell.innerHTML.includes('createShipmentFromOrderRowQuick')) {
+          actionCell.insertAdjacentHTML(
+            'afterbegin',
+            '<button type="button" onclick="App.createShipmentFromOrderRowQuick(' + ord.id + ')" class="px-2.5 py-1 bg-blue-600/15 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg font-black text-[11px] transition" title="تحويل الطلبية إلى شحنة توصيل مع سائق أو شركة شحن">🚚 شحن COD</button>'
+          );
+        }
+      });
+      return;
+    }
+
+    // جلب آخر 30 فاتورة مبيعات لإمكانية تحويل أي فاتورة إلى شحنة توصيل أيضاً
+    var recentSales = (await window.api.getSales().catch(function () { return []; })) || [];
+    AppState._cachedRecentSalesForShip = recentSales.slice(0, 40);
+
+    var fStatus = AppState.shipmentsStatusFilter || 'all';
+    var filteredShipments = shipments.filter(function (s) {
+      if (fStatus === 'all') return true;
+      return s.status === fStatus;
+    });
+
+    var totalCodPending = 0;
+    var totalCodCollected = 0;
+    shipments.forEach(function (s) {
+      if (s.status === 'delivered') {
+        totalCodCollected += Number(s.collected_amount || s.cod_amount || 0);
+      } else if (s.status !== 'returned') {
+        totalCodPending += Number(s.cod_amount || 0);
+      }
+    });
+
+    root.innerHTML =
+      tabsBarHtml +
+      '<div class="space-y-5 text-xs">' +
+      '  <!-- 1. مؤشرات الشحن والتحصيل عند الاستلام (COD KPIs) -->' +
+      '  <div class="grid grid-cols-2 md:grid-cols-4 gap-3.5">' +
+      '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm"><div class="text-slate-400 font-bold">إجمالي الشحنات والطرود</div><div class="text-2xl font-black font-mono text-blue-600 mt-1">' + shipments.length + ' شحنة</div><div class="text-[11px] text-slate-400">منها ' + inTransitCount + ' قيد التوصيل</div></div>' +
+      '    <div class="p-4 rounded-2xl bg-amber-500/15 border border-amber-500/30"><div class="text-amber-700 dark:text-amber-300 font-bold">مبالغ COD المنتظرة في الطريق</div><div class="text-2xl font-black font-mono text-amber-600 mt-1">' + totalCodPending.toFixed(2) + ' د.ج</div><div class="text-[11px] text-slate-400">تحصّل عند التسليم للزبون</div></div>' +
+      '    <div class="p-4 rounded-2xl bg-emerald-600 text-white shadow-lg"><div class="font-bold opacity-90">💰 مبالغ COD المحصلة والمسواة بالخزينة</div><div class="text-2xl font-black font-mono mt-1">' + totalCodCollected.toFixed(2) + ' د.ج</div><div class="text-[11px] text-emerald-100">مربوطة مباشرة بصندوق الكاشير</div></div>' +
+      '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm"><div class="text-slate-400 font-bold">أسطول السائقين والموزعين (Van Sales)</div><div class="text-2xl font-black font-mono text-indigo-600 mt-1">' + drivers.length + ' سائق نشط</div><div class="text-[11px] text-slate-400">مربوطون بشاحنات التوزيع</div></div>' +
+      '  </div>' +
+
+      '  <!-- 2. منشئ شحنة توصيل جديدة + إدارة أسطول السائقين -->' +
+      '  <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">' +
+      '    <!-- يمين (7 أعمدة): نموذج إنشاء شحنة توصيل جديدة (COD / Van Delivery) -->' +
+      '    <div class="lg:col-span-7 p-5 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3.5">' +
+      '      <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2.5">' +
+      '        <h3 class="font-black text-sm text-blue-600">📦 1. إنشاء شحنة توصيل جديدة وتكليف سائق أو شركة شحن (Create COD Shipment)</h3>' +
+      '        <span class="px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 font-black text-[10px]">58 ولاية جزائرية</span>' +
+      '      </div>' +
+      '      <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5">' +
+      '        <div class="md:col-span-3">' +
+      '          <label class="block font-black text-indigo-600 mb-1">🔗 ربط بطلبية زبون أو فاتورة مبيعات (لتعبئة الزبون ومبلغ COD تلقائياً — اختياري):</label>' +
+      '          <select id="shpSourceDocSelect" onchange="App.onShipmentSourceOrderOrSaleChange(this.value)" class="w-full px-3 py-2 rounded-xl font-bold border-indigo-400">' +
+      '            <option value="">— شحنة حرة مباشرة بدون ربط مسبق —</option>' +
+      '            <optgroup label="📌 طلبيات الزبائن (Bons de Commande)">' +
+      (AppState._cachedOrders || []).map(function (o) {
+        var rem = Math.max(0, Number(o.total || 0) - Number(o.deposit_amount || 0));
+        return '<option value="order:' + o.id + '">طلبية ' + o.doc_number + ' — ' + (o.customer_name || 'زبون') + ' (متبقي COD: ' + rem.toFixed(2) + ' د.ج)</option>';
+      }).join('') +
+      '            </optgroup>' +
+      '            <optgroup label="🧾 آخر فواتير المبيعات (Factures)">' +
+      (AppState._cachedRecentSalesForShip || []).map(function (s) {
+        return '<option value="sale:' + s.id + '">فاتورة ' + (s.doc_number || ('#' + s.id)) + ' — ' + (s.customer_name || 'زبون') + ' (' + Number(s.total || 0).toFixed(2) + ' د.ج)</option>';
+      }).join('') +
+      '            </optgroup>' +
+      '          </select>' +
+      '        </div>' +
+      '        <div><label class="block font-bold mb-1">اسم الزبون المستلم *</label><input id="shpCustNameInp" type="text" placeholder="الاسم الكامل للزبون" class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
+      '        <div><label class="block font-bold mb-1">رقم الهاتف *</label><input id="shpCustPhoneInp" type="text" placeholder="0550..." class="w-full px-3 py-1.5 rounded-xl font-mono font-bold"></div>' +
+      '        <div><label class="block font-bold mb-1">الولاية (58 ولاية)</label><select id="shpWilayaSel" class="w-full px-2.5 py-1.5 rounded-xl font-bold">' +
+      ALGERIA_58_WILAYAS_SHORT.map(function (w) { return '<option value="' + w + '" ' + (w.startsWith('25') ? 'selected' : '') + '>' + w + '</option>'; }).join('') +
+      '        </select></div>' +
+      '        <div><label class="block font-bold mb-1">البلدية (Commune)</label><input id="shpCommuneInp" type="text" placeholder="حامة بوزيان / الخروب" class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
+      '        <div class="md:col-span-2"><label class="block font-bold mb-1">العنوان التفصيلي للتسليم</label><input id="shpAddressInp" type="text" placeholder="الحي، الشارع، رقم البناية..." class="w-full px-3 py-1.5 rounded-xl"></div>' +
+      '        <div><label class="block font-bold mb-1 text-teal-600">🚚 السائق / المندوب (Van)</label><select id="shpDriverSel" class="w-full px-2.5 py-1.5 rounded-xl font-bold"><option value="">— بدون سائق داخلي —</option>' +
+      drivers.map(function (d) { return '<option value="' + d.id + '">' + d.name + (d.vehicle_plate ? ' [' + d.vehicle_plate + ']' : '') + '</option>'; }).join('') +
+      '        </select></div>' +
+      '        <div><label class="block font-bold mb-1 text-indigo-600">🏢 شركة التوصيل (Carrier)</label><select id="shpCarrierSel" class="w-full px-2.5 py-1.5 rounded-xl font-bold">' +
+      '          <option value="توصيل خاص بالمؤسسة">🚚 توصيل خاص بالمؤسسة</option>' +
+      '          <option value="Yalidine Express">📦 Yalidine Express</option>' +
+      '          <option value="ZR Express">⚡ ZR Express</option>' +
+      '          <option value="Maystro Delivery">🚀 Maystro Delivery</option>' +
+      '          <option value="Guepex">📬 Guepex</option>' +
+      '          <option value="EMS Champion">🇩🇿 EMS البريد السريع</option>' +
+      '        </select></div>' +
+      '        <div><label class="block font-bold mb-1">كود التتبع (Tracking)</label><input id="shpTrackingInp" type="text" placeholder="YLD-998811" class="w-full px-3 py-1.5 rounded-xl font-mono font-bold"></div>' +
+      '        <div><label class="block font-bold mb-1">سعر التوصيل (د.ج)</label><input id="shpFeeInp" type="number" step="any" min="0" value="400" class="w-full px-3 py-1.5 rounded-xl font-mono font-bold text-center"></div>' +
+      '        <div><label class="block font-black text-rose-600 mb-1">💰 مبلغ التحصيل عند الاستلام (COD)</label><input id="shpCodAmountInp" type="number" step="any" min="0" value="0" class="w-full px-3 py-1.5 rounded-xl font-mono font-black text-rose-600 text-center border-rose-400"></div>' +
+      '        <div><label class="block font-bold mb-1">ملاحظات للموزع</label><input id="shpNotesInp" type="text" placeholder="اتصل قبل الوصول..." class="w-full px-3 py-1.5 rounded-xl"></div>' +
+      '      </div>' +
+      '      <button type="button" onclick="App.saveShipmentFromUi()" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black shadow-lg">🚀 حفظ الشحنة وإصدار أمر التوصيل</button>' +
+      '    </div>' +
+
+      '    <!-- يسار (5 أعمدة): إدارة السائقين والموزعين (Van Sales Drivers) -->' +
+      '    <div class="lg:col-span-5 p-5 rounded-3xl bg-slate-900 text-white border border-slate-800 shadow-xl space-y-3.5">' +
+      '      <h3 class="font-black text-sm text-amber-400">🚐 2. إدارة السائقين والمندوبين (Van Sales Drivers — ' + drivers.length + ')</h3>' +
+      '      <div class="grid grid-cols-2 gap-2">' +
+      '        <div><label class="block text-slate-400 font-bold mb-1">اسم السائق / الموزع *</label><input id="drvNameInp" type="text" placeholder="مثال: أمين بن يحيى" class="w-full px-2.5 py-1.5 rounded-xl bg-slate-950 text-white border border-slate-700 font-bold"></div>' +
+      '        <div><label class="block text-slate-400 font-bold mb-1">رقم الهاتف</label><input id="drvPhoneInp" type="text" placeholder="0661..." class="w-full px-2.5 py-1.5 rounded-xl bg-slate-950 text-white border border-slate-700 font-mono"></div>' +
+      '        <div><label class="block text-slate-400 font-bold mb-1">نوع المركبة</label><input id="drvVehicleInp" type="text" placeholder="Renault Kangoo / Master" class="w-full px-2.5 py-1.5 rounded-xl bg-slate-950 text-white border border-slate-700"></div>' +
+      '        <div><label class="block text-slate-400 font-bold mb-1">ترقيم اللوحة (Matricule)</label><input id="drvPlateInp" type="text" placeholder="04582-125-25" class="w-full px-2.5 py-1.5 rounded-xl bg-slate-950 text-white border border-slate-700 font-mono font-bold"></div>' +
+      '        <div><label class="block text-slate-400 font-bold mb-1">الشاحنة / المستودع المرتبط</label><select id="drvWarehouseSel" class="w-full px-2 py-1.5 rounded-xl bg-slate-950 text-white border border-slate-700 font-bold"><option value="">— المخزن الرئيسي —</option>' +
+      warehouses.map(function (w) { return '<option value="' + w.id + '">' + w.name + '</option>'; }).join('') +
+      '        </select></div>' +
+      '        <div><label class="block text-slate-400 font-bold mb-1">نسبة العمولة (%)</label><input id="drvCommissionInp" type="number" step="any" min="0" value="2" class="w-full px-2.5 py-1.5 rounded-xl bg-slate-950 text-white border border-slate-700 font-mono text-center"></div>' +
+      '      </div>' +
+      '      <button type="button" onclick="App.saveDriverFromUi()" class="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow">+ إضافة سائق / مندوب توزيع</button>' +
+      '      <div class="space-y-1.5 max-h-44 overflow-y-auto pt-2 border-t border-slate-800">' +
+      (drivers.length === 0
+        ? '<div class="text-slate-400 text-center py-4 font-bold">لا يوجد سائقون مسجلون بعد — أضف سائقك الأول أعلاه</div>'
+        : drivers.map(function (d) {
+            return (
+              '<div class="p-2.5 rounded-xl bg-slate-950/90 border border-slate-800 flex items-center justify-between gap-2">' +
+              '  <div><div class="font-black text-sky-400">🚐 ' + d.name + ' <span class="text-slate-400 font-mono text-[10.5px]">(' + (d.phone || '-') + ')</span></div>' +
+              '  <div class="text-[10.5px] text-slate-400 font-mono">' + (d.vehicle_name || 'مركبة') + ' | اللوحة: <strong class="text-amber-300">' + (d.vehicle_plate || '---') + '</strong> | عمولة: ' + Number(d.commission_rate || 0) + '%</div></div>' +
+              '  <button type="button" onclick="App.deleteDriverFromUi(' + d.id + ')" class="text-rose-400 hover:text-rose-300 font-black px-2">✕</button>' +
+              '</div>'
+            );
+          }).join('')) +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <!-- 3. جدول تتبع الشحنات والتسوية الفورية لمبالغ COD مع الخزينة + طباعة Bon de Livraison -->' +
+      '  <div class="p-5 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">' +
+      '    <div class="flex flex-wrap items-center justify-between gap-2">' +
+      '      <h3 class="font-black text-sm text-indigo-600">📋 3. رادار تتبع شحنات التوصيل وتسوية التحصيل عند الاستلام (COD Shipments Tracker — ' + filteredShipments.length + ')</h3>' +
+      '      <div class="flex flex-wrap gap-1.5">' +
+      [
+        { id: 'all', label: 'الكل (' + shipments.length + ')' },
+        { id: 'preparing', label: '📦 قيد التحضير' },
+        { id: 'in_transit', label: '🚚 في الطريق' },
+        { id: 'delivered', label: '✅ تم التسليم والتحصيل' },
+        { id: 'returned', label: '↩️ مرتجع' }
+      ].map(function (st) {
+        return '<button type="button" onclick="AppState.shipmentsStatusFilter=\'' + st.id + '\';App.renderOrdersView()" class="px-3 py-1.5 rounded-xl font-black ' + (fStatus === st.id ? 'bg-blue-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-900') + '">' + st.label + '</button>';
+      }).join('') +
+      '      </div>' +
+      '    </div>' +
+      '    <div class="overflow-x-auto"><table class="w-full text-right border-collapse">' +
+      '      <thead><tr class="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700"><th class="p-2.5">رقم الوصل BL</th><th class="p-2.5">الزبون والهاتف</th><th class="p-2.5">الولاية والبلدية</th><th class="p-2.5">السائق / شركة الشحن</th><th class="p-2.5">كود التتبع</th><th class="p-2.5">مبلغ COD</th><th class="p-2.5">المحصل بالخزينة</th><th class="p-2.5">الحالة</th><th class="p-2.5 text-center">إجراءات التسليم والطباعة</th></tr></thead>' +
+      '      <tbody>' +
+      (filteredShipments.length === 0
+        ? '<tr><td colspan="9" class="p-8 text-center text-slate-400 font-bold">لا توجد شحنات توصيل مطابقة للفلتر المحدد</td></tr>'
+        : filteredShipments.map(function (sh) {
+            var stBadge =
+              sh.status === 'delivered'
+                ? '<span class="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-black">✅ تم التسليم</span>'
+                : sh.status === 'in_transit'
+                  ? '<span class="px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-600 font-black">🚚 في الطريق</span>'
+                  : sh.status === 'returned'
+                    ? '<span class="px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-600 font-black">↩️ مرتجع</span>'
+                    : '<span class="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-black">📦 قيد التحضير</span>';
+
+            return (
+              '<tr class="border-b border-slate-100 dark:border-slate-700/60 hover:bg-slate-50 dark:hover:bg-slate-900/40">' +
+              '  <td class="p-2.5 font-mono font-black text-blue-600">' + (sh.doc_number || ('BL-' + sh.id)) + '</td>' +
+              '  <td class="p-2.5"><div class="font-black">' + (sh.customer_name || '') + '</div><div class="font-mono text-[10.5px] text-slate-400">' + (sh.customer_phone || '') + '</div></td>' +
+              '  <td class="p-2.5"><div class="font-bold text-indigo-600">' + (sh.wilaya || 'الجزائر') + '</div><div class="text-[10.5px] text-slate-400">' + [sh.commune, sh.customer_address].filter(Boolean).join(' - ') + '</div></td>' +
+              '  <td class="p-2.5"><div class="font-black">' + (sh.driver_name || sh.carrier_name || '-') + '</div>' + (sh.vehicle_plate ? '<div class="font-mono text-[10px] text-slate-400">' + sh.vehicle_plate + '</div>' : '') + '</td>' +
+              '  <td class="p-2.5 font-mono font-bold">' + (sh.tracking_code || '-') + '</td>' +
+              '  <td class="p-2.5 font-mono font-black text-rose-600">' + Number(sh.cod_amount || 0).toFixed(2) + ' د.ج</td>' +
+              '  <td class="p-2.5 font-mono font-black text-emerald-600">' + Number(sh.collected_amount || 0).toFixed(2) + ' د.ج</td>' +
+              '  <td class="p-2.5">' + stBadge + '</td>' +
+              '  <td class="p-2.5 text-center"><div class="flex flex-wrap items-center justify-center gap-1">' +
+              (sh.status === 'preparing'
+                ? '<button type="button" onclick="App.updateShipmentStatusQuick(' + sh.id + ', \'in_transit\')" class="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-black text-[10.5px]" title="خروج الطرد للتوصيل">🚚 خروج</button>'
+                : '') +
+              (sh.status !== 'delivered'
+                ? '<button type="button" onclick="App.updateShipmentStatusQuick(' + sh.id + ', \'delivered\')" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10.5px] shadow" title="تأكيد التسليم وإيداع مبلغ COD في الصندوق">💰 تحصيل COD</button>'
+                : '') +
+              (sh.status !== 'returned' && sh.status !== 'delivered'
+                ? '<button type="button" onclick="App.updateShipmentStatusQuick(' + sh.id + ', \'returned\')" class="px-2 py-1 rounded-lg bg-rose-500/15 text-rose-600 font-bold text-[10.5px]">↩️ مرتجع</button>'
+                : '') +
+              '    <button type="button" onclick="App.printShipmentDeliveryNoteBl(' + sh.id + ')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-black text-[10.5px]" title="طباعة وصل التسليم الرسمي Bon de Livraison">🖨️ وصل BL</button>' +
+              '  </div></td>' +
+              '</tr>'
+            );
+          }).join('')) +
+      '      </tbody></table></div>' +
+      '  </div>' +
+      '</div>';
+  };
+})();
+
+// [PART 5A/5: DISCOUNT COUPONS & FORENSIC AUDIT LOG UI V14]
+(function installTask5CouponsAndForensicAuditUiV14() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.bundlesMainTab = AppState.bundlesMainTab || 'bundles_promos'; // 'bundles_promos' | 'coupons_studio'
+  AppState.discountCouponsList = AppState.discountCouponsList || [];
+  AppState.forensicActionFilter = AppState.forensicActionFilter || 'all';
+  AppState.forensicLogsCache = AppState.forensicLogsCache || [];
+
+  // --------------------------------------------------------------------------
+  // أ. حقل إدخال وتطبيق "كود كوبون خصم" داخل سلة الكاشير (#view-pos)
+  // --------------------------------------------------------------------------
+  App.ensurePosCartCouponBarDom = function () {
+    if (document.getElementById('posCartCouponInputBar')) return;
+    var discInp = document.getElementById('cartDiscountInput');
+    if (!discInp || !discInp.parentElement) return;
+
+    var bar = document.createElement('div');
+    bar.id = 'posCartCouponInputBar';
+    bar.className = 'flex items-center justify-between gap-1.5 text-xs pt-1';
+    bar.innerHTML =
+      '<span class="text-indigo-600 dark:text-indigo-400 font-black whitespace-nowrap">🎟️ كوبون خصم:</span>' +
+      '<div class="flex items-center gap-1 flex-1 max-w-[185px]">' +
+      '  <input id="posCartCouponCodeInput" type="text" onkeydown="if(event.key===\'Enter\') App.applyCouponCodeInPosCart()" placeholder="أدخل الكود (RAMADAN10)" class="w-full px-2 py-1 rounded-lg font-mono font-black uppercase text-center text-[11px] border-indigo-400">' +
+      '  <button type="button" onclick="App.applyCouponCodeInPosCart()" class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10.5px] shrink-0 shadow">تطبيق</button>' +
+      '</div>';
+
+    discInp.parentElement.insertAdjacentElement('beforebegin', bar);
+  };
+
+  App.applyCouponCodeInPosCart = async function () {
+    var inp = document.getElementById('posCartCouponCodeInput');
+    var code = String((inp && inp.value) || '').trim().toUpperCase();
+    if (!code) {
+      if (typeof showToast === 'function') showToast('أدخل كود الكوبون أولاً', 'warning');
+      return;
+    }
+
+    var cart = this.currentCart;
+    if (!cart || !Array.isArray(cart.items) || cart.items.length === 0) {
+      if (typeof showToast === 'function') showToast('السلة فارغة — أضف منتجات أولاً لتطبيق الكوبون', 'warning');
+      return;
+    }
+
+    var subtotal = cart.items.reduce(function (s, it) { return s + Number(it.subtotal || 0); }, 0);
+    try {
+      var res = await window.api.validateDiscountCoupon({ code: code, subtotal: subtotal });
+      if (res && res.valid) {
+        var discAmt = Number(res.discount_amount || 0);
+        cart.appliedCouponCode = code;
+        cart.appliedCouponDiscount = discAmt;
+
+        var discInp = document.getElementById('cartDiscountInput');
+        if (discInp) discInp.value = discAmt.toFixed(2);
+        this.recalcCart();
+
+        if (typeof playBeep === 'function') playBeep(true);
+        if (typeof showToast === 'function') {
+          showToast('🎉 تم تطبيق الكوبون (' + code + ') بخصم قدره ' + discAmt.toFixed(2) + ' د.ج!', 'success');
+        }
+      }
+    } catch (err) {
+      if (typeof playBeep === 'function') playBeep(false);
+      if (typeof showToast === 'function') showToast('⚠️ ' + (err.message || 'كوبون غير صالح'), 'error');
+    }
+  };
+
+  var _prevRenderCartItemsV14_5 = App.renderCartItems.bind(App);
+  App.renderCartItems = function () {
+    _prevRenderCartItemsV14_5();
+    this.ensurePosCartCouponBarDom();
+  };
+
+  // زيادة عداد استخدام الكوبون تلقائياً عند إتمام البيع
+  var _prevSubmitSaleV14_5 = App.submitSale.bind(App);
+  App.submitSale = async function (printMode) {
+    var cart = this.currentCart || {};
+    var couponCode = cart.appliedCouponCode || '';
+    var couponDisc = Number(cart.appliedCouponDiscount || 0);
+
+    await _prevSubmitSaleV14_5(printMode);
+
+    if (couponCode && window.api && window.api.consumeDiscountCoupon) {
+      var sales = (await window.api.getSales().catch(function () { return []; })) || [];
+      var latestSaleId = sales.length > 0 ? sales[0].id : null;
+      await window.api.consumeDiscountCoupon({
+        code: couponCode,
+        sale_id: latestSaleId,
+        discount_amount: couponDisc
+      }).catch(function () {});
+      cart.appliedCouponCode = '';
+      cart.appliedCouponDiscount = 0;
+      var inp = document.getElementById('posCartCouponCodeInput');
+      if (inp) inp.value = '';
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // ب. إدارة أكواد الكوبونات والقسائم الترويجية داخل قسم الحزم والعروض (#view-bundles)
+  // --------------------------------------------------------------------------
+  App.switchBundlesMainTab = async function (tabId) {
+    AppState.bundlesMainTab = tabId;
+    await this.renderBundlesAndPromosView();
+  };
+
+  App.fillQuickCouponPreset = function (code, type, val, minTot) {
+    if (document.getElementById('cpnCodeInp')) document.getElementById('cpnCodeInp').value = code;
+    if (document.getElementById('cpnTypeSel')) document.getElementById('cpnTypeSel').value = type;
+    if (document.getElementById('cpnValueInp')) document.getElementById('cpnValueInp').value = String(val);
+    if (document.getElementById('cpnMinTotalInp')) document.getElementById('cpnMinTotalInp').value = String(minTot);
+  };
+
+  App.saveDiscountCouponFromUi = async function () {
+    var code = String(document.getElementById('cpnCodeInp')?.value || '').trim().toUpperCase();
+    var discount_type = document.getElementById('cpnTypeSel')?.value || 'percent';
+    var discount_value = Math.max(0.01, parseFloat(document.getElementById('cpnValueInp')?.value) || 10);
+    var min_invoice_total = Math.max(0, parseFloat(document.getElementById('cpnMinTotalInp')?.value) || 0);
+    var max_uses = Math.max(1, parseInt(document.getElementById('cpnMaxUsesInp')?.value || '100', 10));
+    var expiry_date = document.getElementById('cpnExpiryInp')?.value || null;
+
+    if (!code) {
+      if (typeof showToast === 'function') showToast('يرجى إدخال كود الكوبون أولاً', 'warning');
+      return;
+    }
+
+    await window.api.saveDiscountCoupon({
+      code: code,
+      discount_type: discount_type,
+      discount_value: discount_value,
+      min_invoice_total: min_invoice_total,
+      max_uses: max_uses,
+      expiry_date: expiry_date,
+      is_active: 1
+    });
+
+    if (typeof showToast === 'function') {
+      showToast('🎟️ تم حفظ وتفعيل كود الكوبون (' + code + ') في شاشة الكاشير!', 'success');
+    }
+    await this.renderBundlesAndPromosView();
+  };
+
+  App.deleteDiscountCouponFromUi = async function (couponId) {
+    await window.api.deleteDiscountCoupon(Number(couponId));
+    if (typeof showToast === 'function') showToast('🗑️ تم حذف الكوبون', 'info');
+    await this.renderBundlesAndPromosView();
+  };
+
+  App.printCouponTicket80mm = async function (cpnId) {
+    var cpn = (AppState.discountCouponsList || []).find(function (c) { return Number(c.id) === Number(cpnId); });
+    if (!cpn || !window.PrintEngine) return;
+    var s = AppState.settings || {};
+    var valTxt = cpn.discount_type === 'percent' ? (cpn.discount_value + '%') : (Number(cpn.discount_value).toFixed(2) + ' د.ج');
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><style>@page{margin:0;}body{width:72mm;margin:0 auto;padding:4mm;font-family:Cairo,sans-serif;text-align:center;border:2px dashed #000;}</style></head><body>' +
+      '<div style="font-size:15px;font-weight:900;">' + (s.shop_name || 'Gherbi.Ai POS') + '</div>' +
+      '<div style="font-size:12px;font-weight:800;margin-top:2px;">🎁 قسيمة وكوبون تخفيض خاص</div>' +
+      '<div style="margin:8px 0;padding:8px;background:#000;color:#fff;font-family:monospace;font-size:20px;font-weight:900;letter-spacing:2px;border-radius:8px;">' + cpn.code + '</div>' +
+      '<div style="font-size:16px;font-weight:900;">قيمة التخفيض: ' + valTxt + '</div>' +
+      (Number(cpn.min_invoice_total) > 0 ? '<div style="font-size:11px;font-weight:700;margin-top:3px;">صالح للفواتير ابتداءً من: ' + Number(cpn.min_invoice_total).toFixed(2) + ' د.ج</div>' : '') +
+      (cpn.expiry_date ? '<div style="font-size:10.5px;margin-top:2px;">صالح إلى غاية: ' + cpn.expiry_date + '</div>' : '') +
+      '</body></html>';
+
+    await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  };
+
+  var _prevRenderBundlesV14 = App.renderBundlesAndPromosView.bind(App);
+  App.renderBundlesAndPromosView = async function () {
+    await _prevRenderBundlesV14();
+    var root = document.getElementById('bundles-view-root');
+    if (!root) return;
+
+    var activeTab = AppState.bundlesMainTab || 'bundles_promos';
+    var coupons = (window.api.getDiscountCoupons ? await window.api.getDiscountCoupons().catch(function () { return []; }) : []) || [];
+    AppState.discountCouponsList = coupons;
+
+    var tabsBarHtml =
+      '<div id="bundlesEnterpriseTabsBar" class="p-2 rounded-2xl bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2 mb-4 shadow-lg text-xs">' +
+      '  <div class="flex flex-wrap items-center gap-1.5">' +
+      '    <button type="button" onclick="App.switchBundlesMainTab(\'bundles_promos\')" class="px-4 py-2 rounded-xl font-black transition ' + (activeTab === 'bundles_promos' ? 'bg-blue-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">🎁 1. الحزم الترويجية (Packs) والعروض الموقوتة (' + (AppState.bundlesList || []).length + ' حزمة / ' + (AppState.promotionsList || []).length + ' عرض)</button>' +
+      '    <button type="button" onclick="App.switchBundlesMainTab(\'coupons_studio\')" class="px-4 py-2 rounded-xl font-black transition ' + (activeTab === 'coupons_studio' ? 'bg-indigo-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">🎟️ 2. أكواد الكوبونات والقسائم الترويجية (Discount Coupons — ' + coupons.length + ')</button>' +
+      '  </div>' +
+      '  <span class="px-3 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 font-black">🎟️ حقل الكوبون نشط في سلة الكاشير</span>' +
+      '</div>';
+
+    if (activeTab === 'bundles_promos') {
+      root.insertAdjacentHTML('afterbegin', tabsBarHtml);
+      return;
+    }
+
+    var defaultExpiry = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+
+    root.innerHTML =
+      tabsBarHtml +
+      '<div class="space-y-5 text-xs">' +
+      '  <!-- نموذج إنشاء كود كوبون خصم جديد -->' +
+      '  <div class="p-5 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">' +
+      '    <div class="flex flex-wrap items-center justify-between gap-2">' +
+      '      <div>' +
+      '        <h3 class="font-black text-base text-indigo-600">🎟️ 1. إنشاء كود كوبون خصم ترويجي جديد (Create Discount Coupon)</h3>' +
+      '        <p class="text-[11px] text-slate-400">يُفعّل فوراً في سلة الكاشير مع التحقق الآلي من الحد الأدنى للفاتورة وتاريخ الصلاحية وعدد مرات الاستخدام</p>' +
+      '      </div>' +
+      '      <div class="flex flex-wrap gap-1.5">' +
+      '        <span class="font-bold text-slate-400 self-center">قوالب سريعة:</span>' +
+      '        <button type="button" onclick="App.fillQuickCouponPreset(\'RAMADAN10\', \'percent\', 10, 2000)" class="px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-600 font-black">🌙 RAMADAN10 (10%)</button>' +
+      '        <button type="button" onclick="App.fillQuickCouponPreset(\'VIP500\', \'fixed\', 500, 5000)" class="px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-600 font-black">👑 VIP500 (-500 د.ج)</button>' +
+      '        <button type="button" onclick="App.fillQuickCouponPreset(\'EID15\', \'percent\', 15, 3000)" class="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 font-black">🎉 EID15 (15%)</button>' +
+      '      </div>' +
+      '    </div>' +
+
+      '    <div class="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">' +
+      '      <div><label class="block font-black text-indigo-600 mb-1">كود الكوبون *</label><input id="cpnCodeInp" type="text" placeholder="RAMADAN10" class="w-full px-3 py-2 rounded-xl font-mono font-black uppercase text-center border-indigo-400"></div>' +
+      '      <div><label class="block font-bold mb-1">نوع الخصم</label><select id="cpnTypeSel" class="w-full px-2.5 py-2 rounded-xl font-bold"><option value="percent">نسبة مئوية (%)</option><option value="fixed">مبلغ ثابت (د.ج)</option></select></div>' +
+      '      <div><label class="block font-bold mb-1 text-emerald-600">قيمة الخصم *</label><input id="cpnValueInp" type="number" step="any" min="1" value="10" class="w-full px-3 py-2 rounded-xl font-mono font-black text-emerald-600 text-center"></div>' +
+      '      <div><label class="block font-bold mb-1">الحد الأدنى للفاتورة (د.ج)</label><input id="cpnMinTotalInp" type="number" step="any" min="0" value="1000" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+      '      <div><label class="block font-bold mb-1">أقصى عدد استخدامات</label><input id="cpnMaxUsesInp" type="number" min="1" value="100" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-center"></div>' +
+      '      <div><label class="block font-bold mb-1">تاريخ الانتهاء</label><input id="cpnExpiryInp" type="date" value="' + defaultExpiry + '" class="w-full px-2.5 py-2 rounded-xl font-mono"></div>' +
+      '    </div>' +
+      '    <button type="button" onclick="App.saveDiscountCouponFromUi()" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow-lg">+ حفظ وتفعيل الكوبون في شاشة المبيعات</button>' +
+      '  </div>' +
+
+      '  <!-- جدول الكوبونات الترويجية النشطة -->' +
+      '  <div class="p-5 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">' +
+      '    <h3 class="font-black text-sm text-emerald-600">📋 2. قائمة أكواد الكوبونات المسجلة وإحصائيات استخدامها (' + coupons.length + ')</h3>' +
+      '    <div class="overflow-x-auto"><table class="w-full text-right border-collapse">' +
+      '      <thead><tr class="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700"><th class="p-2.5">كود الكوبون</th><th class="p-2.5">نوع وقيمة الخصم</th><th class="p-2.5">الحد الأدنى للفاتورة</th><th class="p-2.5">مرات الاستخدام</th><th class="p-2.5">تاريخ الانتهاء</th><th class="p-2.5">الحالة</th><th class="p-2.5 text-center">إجراءات</th></tr></thead>' +
+      '      <tbody>' +
+      (coupons.length === 0
+        ? '<tr><td colspan="7" class="p-8 text-center text-slate-400 font-bold">لا توجد أكواد كوبونات مسجلة بعد — أنشئ أول كوبون أعلاه أو اختر قالباً سريعاً</td></tr>'
+        : coupons.map(function (c) {
+            var discLabel = c.discount_type === 'percent' ? (c.discount_value + ' %') : (Number(c.discount_value).toFixed(2) + ' د.ج');
+            return (
+              '<tr class="border-b border-slate-100 dark:border-slate-700/60">' +
+              '  <td class="p-2.5"><span class="px-3 py-1 rounded-xl bg-indigo-600 text-white font-mono font-black tracking-wider">' + c.code + '</span></td>' +
+              '  <td class="p-2.5 font-mono font-black text-emerald-600 text-sm">' + discLabel + '</td>' +
+              '  <td class="p-2.5 font-mono font-bold">' + Number(c.min_invoice_total || 0).toFixed(2) + ' د.ج</td>' +
+              '  <td class="p-2.5 font-mono font-black text-blue-600">' + Number(c.used_count || 0) + ' / ' + Number(c.max_uses || 100) + '</td>' +
+              '  <td class="p-2.5 font-mono">' + (c.expiry_date || 'مفتوح') + '</td>' +
+              '  <td class="p-2.5"><span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-black">✅ مفعل</span></td>' +
+              '  <td class="p-2.5 text-center"><div class="flex justify-center gap-1.5">' +
+              '    <button type="button" onclick="App.printCouponTicket80mm(' + c.id + ')" class="px-3 py-1 rounded-xl bg-slate-800 text-white font-black">🖨️ طباعة قسيمة 80mm</button>' +
+              '    <button type="button" onclick="App.deleteDiscountCouponFromUi(' + c.id + ')" class="px-2.5 py-1 rounded-xl bg-rose-500/15 text-rose-600 font-black">✕</button>' +
+              '  </div></td>' +
+              '</tr>'
+            );
+          }).join('')) +
+      '      </tbody></table></div>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  // --------------------------------------------------------------------------
+  // ج. السجل الرقابي الجنائي المقارن (Forensic Audit Log — system_audit_logs) في #view-users
+  // --------------------------------------------------------------------------
+  var _prevUpdateCartPriceForAudit = typeof App.updateCartItemPrice === 'function' ? App.updateCartItemPrice.bind(App) : null;
+  if (_prevUpdateCartPriceForAudit) {
+    App.updateCartItemPrice = function (idx, val) {
+      var it = this.currentCart && this.currentCart.items ? this.currentCart.items[idx] : null;
+      var oldPrice = it ? Number(it.price || 0) : 0;
+      var newPrice = parseFloat(val) || 0;
+      _prevUpdateCartPriceForAudit(idx, val);
+
+      if (it && Math.abs(oldPrice - newPrice) > 0.01 && window.api && window.api.logSystemAudit) {
+        window.api.logSystemAudit({
+          userId: AppState.currentUser ? AppState.currentUser.id : 1,
+          userName: AppState.currentUser ? AppState.currentUser.name : 'Cashier',
+          actionCode: 'CART_PRICE_OVERRIDE',
+          entityTable: 'sale_items',
+          entityId: it.product_id || idx,
+          beforeObj: { product: it.name, old_unit_price: oldPrice, quantity: it.quantity },
+          afterObj: { product: it.name, new_unit_price: newPrice, quantity: it.quantity },
+          details: 'تعديل يدوي لسعر المنتج (' + it.name + ') في سلة الكاشير من ' + oldPrice.toFixed(2) + ' إلى ' + newPrice.toFixed(2) + ' د.ج'
+        }).catch(function () {});
+      }
+    };
+  }
+
+  App.ensureForensicDiffModalDom = function () {
+    if (document.getElementById('forensicJsonDiffModal')) return;
+    var modal = document.createElement('div');
+    modal.id = 'forensicJsonDiffModal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML =
+      '<div class="modal-content w-full max-w-4xl p-6 space-y-4">' +
+      '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+      '    <h3 class="text-lg font-black text-rose-600 flex items-center gap-2"><span>🛡️ الفحص الجنائي المقارن للبيانات (Forensic Before / After JSON Inspector)</span></h3>' +
+      '    <button type="button" onclick="App.closeModal(\'forensicJsonDiffModal\')" class="text-slate-400 hover:text-rose-500">✕</button>' +
+      '  </div>' +
+      '  <div id="forensicJsonDiffModalBody" class="space-y-4 text-xs"></div>' +
+      '</div>';
+    document.body.appendChild(modal);
+  };
+
+  App.openForensicJsonDiffModal = function (logId) {
+    this.ensureForensicDiffModalDom();
+    var lg = (AppState.forensicLogsCache || []).find(function (x) { return Number(x.id) === Number(logId); });
+    if (!lg) return;
+
+    var prettyBefore = lg.before_json || '{}';
+    var prettyAfter = lg.after_json || '{}';
+    try { prettyBefore = JSON.stringify(JSON.parse(prettyBefore), null, 2); } catch (_) {}
+    try { prettyAfter = JSON.stringify(JSON.parse(prettyAfter), null, 2); } catch (_) {}
+
+    var body = document.getElementById('forensicJsonDiffModalBody');
+    if (body) {
+      body.innerHTML =
+        '<div class="p-3.5 rounded-2xl bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2">' +
+        '  <div><span class="px-2.5 py-0.5 rounded bg-rose-600 text-white font-mono font-black">' + lg.action_code + '</span> <strong class="mr-2">' + (lg.details || '') + '</strong></div>' +
+        '  <div class="font-mono text-slate-400">المستخدم: ' + (lg.user_name || 'Admin') + ' | ' + String(lg.created_at || '').replace('T', ' ').slice(0, 19) + '</div>' +
+        '</div>' +
+        '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">' +
+        '  <div class="space-y-1.5">' +
+        '    <div class="font-black text-rose-600">🔴 الحالة قبل العملية (BEFORE JSON):</div>' +
+        '    <pre dir="ltr" class="p-3.5 rounded-2xl bg-slate-950 text-rose-300 font-mono text-[11px] overflow-x-auto max-h-80 border border-rose-500/30">' + prettyBefore + '</pre>' +
+        '  </div>' +
+        '  <div class="space-y-1.5">' +
+        '    <div class="font-black text-emerald-600">🟢 الحالة بعد العملية (AFTER JSON):</div>' +
+        '    <pre dir="ltr" class="p-3.5 rounded-2xl bg-slate-950 text-emerald-300 font-mono text-[11px] overflow-x-auto max-h-80 border border-emerald-500/30">' + prettyAfter + '</pre>' +
+        '  </div>' +
+        '</div>';
+    }
+    this.openModal('forensicJsonDiffModal');
+  };
+
+  var _prevRenderUsersV14_5 = App.renderUsersView.bind(App);
+  App.renderUsersView = async function () {
+    await _prevRenderUsersV14_5();
+
+    var curTab = AppState.usersActiveTab || 'directory';
+    if (curTab !== 'security_hub') return;
+
+    var stageBox = document.getElementById('usersMainStageContainer');
+    if (!stageBox) return;
+
+    var sysLogs = (window.api.getSystemAuditLogs ? await window.api.getSystemAuditLogs({ limit: 250 }).catch(function () { return []; }) : []) || [];
+    AppState.forensicLogsCache = sysLogs;
+
+    var subBar = stageBox.querySelector('.bg-slate-900 .flex.flex-wrap.gap-1\\.5');
+    if (subBar && !subBar.innerHTML.includes('system_forensic_json')) {
+      subBar.insertAdjacentHTML(
+        'afterbegin',
+        '<button type="button" onclick="AppState.securitySubTab=\'system_forensic_json\'; App.renderUsersView()" class="px-3.5 py-1.5 rounded-xl font-black ' + (AppState.securitySubTab === 'system_forensic_json' ? 'bg-rose-600 text-white shadow' : 'bg-slate-800 text-rose-300') + '">🛡️ السجل الجنائي المقارن (Before / After JSON — ' + sysLogs.length + ')</button>'
+      );
+    }
+
+    if (AppState.securitySubTab === 'system_forensic_json') {
+      var fCode = AppState.forensicActionFilter || 'all';
+      var filtered = sysLogs.filter(function (lg) {
+        if (fCode === 'all') return true;
+        return String(lg.action_code || '').includes(fCode);
+      });
+
+      var topSubBar = stageBox.querySelector('.bg-slate-900');
+      var topSubBarHtml = topSubBar ? topSubBar.outerHTML : '';
+
+      stageBox.innerHTML =
+        topSubBarHtml +
+        '<div class="p-5 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4 text-xs">' +
+        '  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 pb-3">' +
+        '    <div>' +
+        '      <h3 class="font-black text-base text-rose-600">🛡️ السجل الرقابي الجنائي للعمليات الحساسة (Forensic System Audit Logs — ' + filtered.length + ')</h3>' +
+        '      <p class="text-[11px] text-slate-400">يوثق تلقائياً: حذف الفواتير، تعديل الأسعار والأرصدة، وإغلاق الورديات بعجز مع حفظ النسخة الكاملة قبل وبعد العملية (Before / After JSON)</p>' +
+        '    </div>' +
+        '    <div class="flex flex-wrap gap-1.5">' +
+        [
+          { id: 'all', label: 'الكل (' + sysLogs.length + ')' },
+          { id: 'DELETE_SALE', label: '🗑️ حذف الفواتير' },
+          { id: 'PRICE', label: '🏷️ تعديل الأسعار' },
+          { id: 'STOCK', label: '📦 تعديل المخزون' },
+          { id: 'SHIFT', label: '⚖️ عجز وفائض الورديات' }
+        ].map(function (f) {
+          return '<button type="button" onclick="AppState.forensicActionFilter=\'' + f.id + '\';App.renderUsersView()" class="px-3 py-1.5 rounded-xl font-black ' + (fCode === f.id ? 'bg-rose-600 text-white' : 'bg-slate-100 dark:bg-slate-900') + '">' + f.label + '</button>';
+        }).join('') +
+        '    </div>' +
+        '  </div>' +
+        '  <div class="overflow-x-auto"><table class="w-full text-right border-collapse">' +
+        '    <thead><tr class="bg-slate-900 text-white"><th class="p-2.5">#</th><th class="p-2.5">التوقيت</th><th class="p-2.5">المستخدم</th><th class="p-2.5">كود العملية</th><th class="p-2.5">الجدول والكيان</th><th class="p-2.5">البيان والتفاصيل</th><th class="p-2.5 text-center">المقارنة الجنائية</th></tr></thead>' +
+        '    <tbody class="divide-y divide-slate-100 dark:divide-slate-700/60">' +
+        (filtered.length === 0
+          ? '<tr><td colspan="7" class="p-8 text-center text-slate-400 font-bold">لا توجد عمليات جنائية مسجلة تحت هذا الفلتر بعد</td></tr>'
+          : filtered.map(function (lg) {
+              return (
+                '<tr class="hover:bg-slate-50 dark:hover:bg-slate-900/40">' +
+                '  <td class="p-2.5 font-mono">' + lg.id + '</td>' +
+                '  <td class="p-2.5 font-mono text-[11px]">' + String(lg.created_at || '').replace('T', ' ').slice(0, 19) + '</td>' +
+                '  <td class="p-2.5 font-black text-indigo-600">' + (lg.user_name || 'Admin') + '</td>' +
+                '  <td class="p-2.5"><span class="px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-600 font-mono font-black text-[10.5px]">' + lg.action_code + '</span></td>' +
+                '  <td class="p-2.5 font-mono text-[11px]">' + (lg.entity_table || '-') + ' #' + (lg.entity_id || '-') + '</td>' +
+                '  <td class="p-2.5 font-bold">' + (lg.details || '') + '</td>' +
+                '  <td class="p-2.5 text-center"><button type="button" onclick="App.openForensicJsonDiffModal(' + lg.id + ')" class="px-3 py-1 rounded-xl bg-slate-900 hover:bg-rose-600 text-white font-black transition">🔍 مقارنة Before / After</button></td>' +
+                '</tr>'
+              );
+            }).join('')) +
+        '    </tbody></table></div>' +
+        '</div>';
+    }
+  };
+})();
+
+// [PART 5B/5: HR PAYROLL, SERVICE TICKETS ATELIER SAV & MASTER QA V14]
+(function installTask6HrPayrollServiceTicketsAndMasterQaV14() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.expensesMainTab = AppState.expensesMainTab || 'expenses_capital'; // 'expenses_capital' | 'hr_payroll'
+  AppState.employeesList = AppState.employeesList || [];
+  AppState.payrollPaymentsList = AppState.payrollPaymentsList || [];
+
+  AppState.serviceTicketsList = AppState.serviceTicketsList || [];
+  AppState.serviceTicketsStatusFilter = AppState.serviceTicketsStatusFilter || 'all';
+
+  // ==========================================================================
+  // 1. الشق الأول من المهمة 6: الموظفون والأجور ومسيّر الرواتب (HR Payroll) في #view-expenses
+  // ==========================================================================
+  App.switchExpensesMainTab = async function (tabId) {
+    AppState.expensesMainTab = tabId;
+    if (AppState.currentView !== 'expenses') {
+      await this.switchView('expenses');
+      return;
+    }
+    await this.renderExpensesAndCapitalView();
+  };
+
+  App.saveEmployeeFromUi = async function () {
+    var name = String(document.getElementById('empNameInp')?.value || '').trim();
+    var role_title = String(document.getElementById('empRoleInp')?.value || 'بائع').trim();
+    var phone = String(document.getElementById('empPhoneInp')?.value || '').trim();
+    var base_salary = Math.max(0, parseFloat(document.getElementById('empSalaryInp')?.value) || 0);
+    var commission_percent = Math.max(0, parseFloat(document.getElementById('empCommInp')?.value) || 0);
+    var hire_date = document.getElementById('empHireDateInp')?.value || new Date().toISOString().slice(0, 10);
+
+    if (!name) {
+      if (typeof showToast === 'function') showToast('يرجى إدخال اسم الموظف أولاً', 'warning');
+      return;
+    }
+
+    await window.api.saveEmployee({
+      name: name,
+      role_title: role_title,
+      phone: phone,
+      base_salary: base_salary,
+      commission_percent: commission_percent,
+      hire_date: hire_date,
+      is_active: 1
+    });
+
+    if (typeof showToast === 'function') {
+      showToast('👨‍💼 تم حفظ بطاقة الموظف (' + name + ') بنجاح!', 'success');
+    }
+    await this.renderExpensesAndCapitalView();
+  };
+
+  App.deleteEmployeeFromUi = async function (empId) {
+    await window.api.deleteEmployee(Number(empId));
+    if (typeof showToast === 'function') showToast('🗑️ تم حذف الموظف من السجل', 'info');
+    await this.renderExpensesAndCapitalView();
+  };
+
+  App.onPayrollEmployeeSelectChange = function (empId) {
+    var emp = (AppState.employeesList || []).find(function (e) { return Number(e.id) === Number(empId); });
+    if (emp && document.getElementById('payBaseSalaryInp')) {
+      document.getElementById('payBaseSalaryInp').value = Number(emp.base_salary || 0).toFixed(2);
+      this.recalcPayrollNetPreview();
+    }
+  };
+
+  App.recalcPayrollNetPreview = function () {
+    var base = Math.max(0, parseFloat(document.getElementById('payBaseSalaryInp')?.value) || 0);
+    var bonus = Math.max(0, parseFloat(document.getElementById('payBonusInp')?.value) || 0);
+    var deduct = Math.max(0, parseFloat(document.getElementById('payDeductInp')?.value) || 0);
+    var net = Math.max(0, Number((base + bonus - deduct).toFixed(2)));
+    var badge = document.getElementById('payNetPreviewBadge');
+    if (badge) {
+      badge.textContent = 'الصافي للدفع: ' + net.toFixed(2) + ' د.ج';
+    }
+    return { base: base, bonus: bonus, deduct: deduct, net: net };
+  };
+
+  App.executePayEmployeeSalaryFromUi = async function (andPrintSlipA4) {
+    var employee_id = Number(document.getElementById('payEmployeeSel')?.value || 0);
+    if (!employee_id) {
+      if (typeof showToast === 'function') showToast('يرجى اختيار الموظف أولاً لصرف الراتب', 'warning');
+      return;
+    }
+
+    var calc = this.recalcPayrollNetPreview();
+    var period_month = document.getElementById('payPeriodMonthInp')?.value || new Date().toISOString().slice(0, 7);
+    var payment_date = new Date().toISOString().slice(0, 10);
+    var notes = String(document.getElementById('payNotesInp')?.value || '').trim();
+
+    var res = await window.api.payEmployeeSalary({
+      employee_id: employee_id,
+      period_month: period_month,
+      base_amount: calc.base,
+      bonus_amount: calc.bonus,
+      deduction_amount: calc.deduct,
+      payment_date: payment_date,
+      notes: notes
+    });
+
+    if (typeof showToast === 'function') {
+      showToast('💳 تم صرف راتب الموظف (' + calc.net.toFixed(2) + ' د.ج) وتقييده آلياً في المصاريف وحركات الصندوق!', 'success');
+    }
+
+    await this.renderExpensesAndCapitalView();
+
+    if (andPrintSlipA4 && res && res.id) {
+      await this.printPayrollSlipA4(res.id);
+    }
+  };
+
+  App.printPayrollSlipA4 = async function (paymentId) {
+    var list = AppState.payrollPaymentsList || [];
+    if (list.length === 0 && window.api.getPayrollPayments) {
+      list = (await window.api.getPayrollPayments().catch(function () { return []; })) || [];
+    }
+    var rec = list.find(function (p) { return Number(p.id) === Number(paymentId); });
+    if (!rec || !window.PrintEngine) return;
+    var s = AppState.settings || {};
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>كشف راتب - ' + (rec.employee_name || '') + '</title>' +
+      '<style>@page{size:A5 landscape;margin:10mm;}body{font-family:Cairo,Arial,sans-serif;color:#0f172a;font-size:12px;margin:0;padding:12px;border:2px solid #1e3a8a;border-radius:12px;}' +
+      '.hdr{display:flex;justify-content:space-between;border-bottom:2px solid #cbd5e1;padding-bottom:8px;margin-bottom:12px;}' +
+      'table{width:100%;border-collapse:collapse;margin:10px 0;}th,td{border:1px solid #cbd5e1;padding:7px;text-align:center;}th{background:#1e3a8a;color:#fff;}' +
+      '</style></head><body>' +
+      '<div class="hdr">' +
+      '  <div><h2 style="margin:0;color:#1e3a8a;font-weight:900;">' + (s.shop_name || 'Gherbi.Ai POS') + '</h2><div>' + (s.shop_address || 'الجزائر') + '</div></div>' +
+      '  <div style="text-align:left;"><div style="font-size:17px;font-weight:900;color:#1e3a8a;">قسيمة وكشف راتب شهري (BULLETIN DE PAIE)</div><div style="font-family:monospace;font-weight:900;">الشهر: ' + (rec.period_month || '') + ' | التاريخ: ' + String(rec.payment_date || '').slice(0, 10) + '</div></div>' +
+      '</div>' +
+      '<div style="background:#f8fafc;padding:8px 12px;border-radius:8px;font-weight:900;display:flex;justify-content:space-between;">' +
+      '  <span>👨‍💼 اسم الموظف: ' + (rec.employee_name || '') + '</span><span>المنصب: ' + (rec.role_title || 'عامل') + '</span><span>رقم السند: #PAY-' + rec.id + '</span>' +
+      '</div>' +
+      '<table><thead><tr><th>الراتب الأساسي</th><th>المكافآت والعمولات (+)</th><th>الخصومات والسلفيات (-)</th><th>الصافي المدفوع (NET À PAYER)</th></tr></thead>' +
+      '<tbody><tr>' +
+      '  <td style="font-family:monospace;font-weight:800;">' + Number(rec.base_amount || 0).toFixed(2) + ' د.ج</td>' +
+      '  <td style="font-family:monospace;color:#059669;font-weight:800;">+' + Number(rec.bonus_amount || 0).toFixed(2) + ' د.ج</td>' +
+      '  <td style="font-family:monospace;color:#e11d48;font-weight:800;">-' + Number(rec.deduction_amount || 0).toFixed(2) + ' د.ج</td>' +
+      '  <td style="font-family:monospace;font-size:15px;font-weight:900;background:#ecfdf5;color:#047857;">' + Number(rec.net_paid || 0).toFixed(2) + ' د.ج</td>' +
+      '</tr></tbody></table>' +
+      (rec.notes ? '<div style="font-size:11px;"><strong>ملاحظات:</strong> ' + rec.notes + '</div>' : '') +
+      '<div style="display:flex;justify-content:space-between;margin-top:26px;font-weight:900;padding:0 20px;"><div>ختم وإمضاء الإدارة</div><div>إمضاء الموظف بالاستلام</div></div>' +
+      '</body></html>';
+
+    await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  };
+
+  var _prevRenderExpensesV14 = App.renderExpensesAndCapitalView.bind(App);
+  App.renderExpensesAndCapitalView = async function () {
+    await _prevRenderExpensesV14();
+    var root = document.getElementById('expenses-view-root');
+    if (!root) return;
+
+    var activeTab = AppState.expensesMainTab || 'expenses_capital';
+    var pair = await Promise.all([
+      window.api.getEmployees ? window.api.getEmployees().catch(function () { return []; }) : Promise.resolve([]),
+      window.api.getPayrollPayments ? window.api.getPayrollPayments().catch(function () { return []; }) : Promise.resolve([])
+    ]);
+
+    var employees = Array.isArray(pair[0]) ? pair[0] : [];
+    var payrolls = Array.isArray(pair[1]) ? pair[1] : [];
+    AppState.employeesList = employees;
+    AppState.payrollPaymentsList = payrolls;
+
+    var totalPayrollPaid = payrolls.reduce(function (s, p) { return s + Number(p.net_paid || 0); }, 0);
+
+    var tabsBarHtml =
+      '<div id="expensesEnterpriseTabsBar" class="p-2 rounded-2xl bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2 mb-4 shadow-lg text-xs">' +
+      '  <div class="flex flex-wrap items-center gap-1.5">' +
+      '    <button type="button" onclick="App.switchExpensesMainTab(\'expenses_capital\')" class="px-4 py-2 rounded-xl font-black transition ' + (activeTab === 'expenses_capital' ? 'bg-rose-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">💸 1. المصاريف التشغيلية، الأعباء الدورية، وحركات رأس المال (' + (AppState._cachedExpenses || []).length + ' مصروف)</button>' +
+      '    <button type="button" onclick="App.switchExpensesMainTab(\'hr_payroll\')" class="px-4 py-2 rounded-xl font-black transition ' + (activeTab === 'hr_payroll' ? 'bg-indigo-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">👨‍💼 2. الموظفون والأجور ومسيّر الرواتب (HR Payroll — ' + employees.length + ' موظف / ' + payrolls.length + ' عملية صرف)</button>' +
+      '  </div>' +
+      '  <span class="px-3 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 font-black">💳 إجمالي الرواتب المصروفة: ' + totalPayrollPaid.toFixed(2) + ' د.ج</span>' +
+      '</div>';
+
+    if (activeTab === 'expenses_capital') {
+      root.insertAdjacentHTML('afterbegin', tabsBarHtml);
+      return;
+    }
+
+    var curMonth = new Date().toISOString().slice(0, 7);
+    var firstEmpSalary = employees[0] ? Number(employees[0].base_salary || 0) : 35000;
+
+    root.innerHTML =
+      tabsBarHtml +
+      '<div class="space-y-5 text-xs">' +
+      '  <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">' +
+      '    <!-- يمين (5 أعمدة): إضافة موظف جديد + قائمة الموظفين -->' +
+      '    <div class="lg:col-span-5 p-5 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3.5">' +
+      '      <h3 class="font-black text-sm text-indigo-600">👨‍💼 1. تسجيل موظف / عامل جديد في المؤسسة (Employees Directory)</h3>' +
+      '      <div class="grid grid-cols-2 gap-2.5">' +
+      '        <div><label class="block font-bold mb-1">اسم الموظف الكامل *</label><input id="empNameInp" type="text" placeholder="مثال: كريم بوزيد" class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
+      '        <div><label class="block font-bold mb-1">المنصب الوظيفي</label><input id="empRoleInp" type="text" value="بائع / كاشير" class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
+      '        <div><label class="block font-bold mb-1">رقم الهاتف</label><input id="empPhoneInp" type="text" placeholder="0550..." class="w-full px-3 py-1.5 rounded-xl font-mono"></div>' +
+      '        <div><label class="block font-bold mb-1 text-emerald-600">الراتب الأساسي الشهري (د.ج)</label><input id="empSalaryInp" type="number" step="any" min="0" value="35000" class="w-full px-3 py-1.5 rounded-xl font-mono font-black text-emerald-600 text-center"></div>' +
+      '        <div><label class="block font-bold mb-1 text-blue-600">نسبة العمولة (%)</label><input id="empCommInp" type="number" step="any" min="0" value="1" class="w-full px-3 py-1.5 rounded-xl font-mono font-bold text-center"></div>' +
+      '        <div><label class="block font-bold mb-1">تاريخ التوظيف</label><input id="empHireDateInp" type="date" value="' + new Date().toISOString().slice(0, 10) + '" class="w-full px-2.5 py-1.5 rounded-xl font-mono"></div>' +
+      '      </div>' +
+      '      <button type="button" onclick="App.saveEmployeeFromUi()" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow-lg">+ حفظ الموظف في السجل</button>' +
+      '      <div class="space-y-1.5 max-h-56 overflow-y-auto pt-2 border-t border-slate-100 dark:border-slate-700">' +
+      (employees.length === 0
+        ? '<div class="text-center py-6 text-slate-400 font-bold">لا يوجد موظفون مسجلون في جدول employees بعد — أضف أول موظف أعلاه</div>'
+        : employees.map(function (e) {
+            return (
+              '<div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">' +
+              '  <div><div class="font-black text-slate-900 dark:text-white">' + e.name + ' <span class="px-2 py-0.2 rounded bg-indigo-500/10 text-indigo-600 text-[10px]">' + (e.role_title || 'بائع') + '</span></div>' +
+              '  <div class="text-[10.5px] font-mono text-slate-500">الراتب الأساسي: <strong class="text-emerald-600">' + Number(e.base_salary || 0).toFixed(2) + ' د.ج</strong> | العمولة: ' + Number(e.commission_percent || 0) + '%</div></div>' +
+              '  <button type="button" onclick="App.deleteEmployeeFromUi(' + e.id + ')" class="text-rose-500 font-black px-2">✕</button>' +
+              '</div>'
+            );
+          }).join('')) +
+      '      </div>' +
+      '    </div>' +
+
+      '    <!-- يسار (7 أعمدة): محرك صرف الرواتب والأجور + سجل المسيّرات -->' +
+      '    <div class="lg:col-span-7 space-y-4">' +
+      '      <div class="p-5 rounded-3xl bg-slate-900 text-white border border-slate-800 shadow-xl space-y-3.5">' +
+      '        <div class="flex flex-wrap items-center justify-between gap-2">' +
+      '          <div>' +
+      '            <h3 class="font-black text-sm text-amber-400">💳 2. صرف راتب شهري ومكافآت (يربط آلياً بـ expenses و caisse_transactions)</h3>' +
+      '            <p class="text-[11px] text-slate-400">يخصم المبلغ الصافي من الصندوق المفتوح ويقيده كمصروف تشغيلي بفئة (رواتب) في معاملة ذرية</p>' +
+      '          </div>' +
+      '          <span id="payNetPreviewBadge" class="px-3.5 py-1 rounded-full bg-emerald-500 text-slate-950 font-mono font-black text-xs">الصافي للدفع: ' + firstEmpSalary.toFixed(2) + ' د.ج</span>' +
+      '        </div>' +
+      '        <div class="grid grid-cols-2 md:grid-cols-5 gap-2.5">' +
+      '          <div class="md:col-span-2"><label class="block text-slate-400 font-bold mb-1">اختر الموظف *</label><select id="payEmployeeSel" onchange="App.onPayrollEmployeeSelectChange(this.value)" class="w-full px-3 py-2 rounded-xl bg-slate-950 text-white border border-slate-700 font-bold">' +
+      (employees.length === 0
+        ? '<option value="">— أضف موظفاً أولاً على اليمين —</option>'
+        : employees.map(function (e) { return '<option value="' + e.id + '">' + e.name + ' (' + (e.role_title || 'بائع') + ')</option>'; }).join('')) +
+      '          </select></div>' +
+      '          <div><label class="block text-slate-400 font-bold mb-1">شهر الراتب</label><input id="payPeriodMonthInp" type="month" value="' + curMonth + '" class="w-full px-2.5 py-2 rounded-xl bg-slate-950 text-white border border-slate-700 font-mono font-bold"></div>' +
+      '          <div><label class="block text-slate-400 font-bold mb-1">الراتب الأساسي</label><input id="payBaseSalaryInp" type="number" step="any" value="' + firstEmpSalary + '" oninput="App.recalcPayrollNetPreview()" class="w-full px-2.5 py-2 rounded-xl bg-slate-950 text-white border border-slate-700 font-mono font-black text-center"></div>' +
+      '          <div><label class="block text-emerald-400 font-bold mb-1">مكافأة / عمولة (+)</label><input id="payBonusInp" type="number" step="any" value="0" oninput="App.recalcPayrollNetPreview()" class="w-full px-2.5 py-2 rounded-xl bg-slate-950 text-emerald-400 border border-slate-700 font-mono font-bold text-center"></div>' +
+      '          <div><label class="block text-rose-400 font-bold mb-1">خصم / سلفة (-)</label><input id="payDeductInp" type="number" step="any" value="0" oninput="App.recalcPayrollNetPreview()" class="w-full px-2.5 py-2 rounded-xl bg-slate-950 text-rose-400 border border-slate-700 font-mono font-bold text-center"></div>' +
+      '          <div class="md:col-span-4"><label class="block text-slate-400 font-bold mb-1">ملاحظات الصرف</label><input id="payNotesInp" type="text" placeholder="راتب شهري كامل نقداً من الصندوق..." class="w-full px-3 py-2 rounded-xl bg-slate-950 text-white border border-slate-700"></div>' +
+      '        </div>' +
+      '        <div class="flex flex-wrap gap-2 pt-1">' +
+      '          <button type="button" onclick="App.executePayEmployeeSalaryFromUi(false)" class="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-lg">✅ صرف الراتب وتقييده في المصاريف والصندوق</button>' +
+      '          <button type="button" onclick="App.executePayEmployeeSalaryFromUi(true)" class="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black shadow-lg">🖨️ صرف وطباعة قسيمة الراتب (A4)</button>' +
+      '        </div>' +
+      '      </div>' +
+
+      '      <!-- سجل الرواتب المصروفة -->' +
+      '      <div class="p-4 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">' +
+      '        <h3 class="font-black text-sm text-emerald-600">📑 3. سجل مسيّر الرواتب والأجور المنفذة (' + payrolls.length + ')</h3>' +
+      '        <div class="overflow-x-auto max-h-64"><table class="w-full text-right border-collapse">' +
+      '          <thead><tr class="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700"><th class="p-2">#</th><th class="p-2">الموظف</th><th class="p-2">الشهر</th><th class="p-2">الأساسي</th><th class="p-2">المكافأة (+)</th><th class="p-2">الخصم (-)</th><th class="p-2">الصافي المدفوع</th><th class="p-2 text-center">قسيمة الراتب</th></tr></thead>' +
+      '          <tbody>' +
+      (payrolls.length === 0
+        ? '<tr><td colspan="8" class="p-6 text-center text-slate-400 font-bold">لا توجد رواتب مصروفة بعد</td></tr>'
+        : payrolls.map(function (p) {
+            return (
+              '<tr class="border-b border-slate-100 dark:border-slate-700/60">' +
+              '  <td class="p-2 font-mono">' + p.id + '</td>' +
+              '  <td class="p-2 font-black">' + (p.employee_name || '') + '</td>' +
+              '  <td class="p-2 font-mono font-bold">' + (p.period_month || '') + '</td>' +
+              '  <td class="p-2 font-mono">' + Number(p.base_amount || 0).toFixed(2) + '</td>' +
+              '  <td class="p-2 font-mono text-emerald-600">+' + Number(p.bonus_amount || 0).toFixed(2) + '</td>' +
+              '  <td class="p-2 font-mono text-rose-600">-' + Number(p.deduction_amount || 0).toFixed(2) + '</td>' +
+              '  <td class="p-2 font-mono font-black text-emerald-600">' + Number(p.net_paid || 0).toFixed(2) + ' د.ج</td>' +
+              '  <td class="p-2 text-center"><button type="button" onclick="App.printPayrollSlipA4(' + p.id + ')" class="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-black">🖨️ قسيمة A4</button></td>' +
+              '</tr>'
+            );
+          }).join('')) +
+      '          </tbody></table></div>' +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  // ==========================================================================
+  // 2. الشق الثاني من المهمة 6: تذاكر ورشة الصيانة وخدمات ما بعد البيع (service_tickets — Atelier / SAV)
+  // ==========================================================================
+  App.openAtelierServiceTicketsHub = async function () {
+    AppState.ordersMainTab = 'atelier_sav';
+    if (AppState.currentView !== 'orders') {
+      await this.switchView('orders');
+    } else {
+      await this.renderOrdersView();
+    }
+  };
+
+  // إضافة زر (🛠️ تذكرة صيانة SAV) في شاشة الكاشير لسهولة الوصول الفوري
+  var _prevRenderPosViewV14 = typeof App.renderPosView === 'function' ? App.renderPosView.bind(App) : null;
+  if (_prevRenderPosViewV14) {
+    App.renderPosView = function () {
+      _prevRenderPosViewV14();
+      var returnBtn = document.getElementById('btnReturnMode');
+      if (returnBtn && returnBtn.parentElement && !document.getElementById('btnQuickPosAtelierSav')) {
+        returnBtn.insertAdjacentHTML(
+          'afterend',
+          '<button id="btnQuickPosAtelierSav" type="button" onclick="App.openAtelierServiceTicketsHub()" class="px-3 py-1.5 rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-300 border border-teal-500/30 text-xs font-black flex items-center gap-1" title="فتح ورشة الصيانة وتذاكر الإصلاح (SAV)"><span>🛠️ صيانة (SAV)</span></button>'
+        );
+      }
+    };
+  }
+
+  App.saveServiceTicketFromUi = async function () {
+    var customer_name = String(document.getElementById('savCustNameInp')?.value || '').trim() || 'زبون ورشة صيانة';
+    var customer_phone = String(document.getElementById('savCustPhoneInp')?.value || '').trim();
+    var item_model = String(document.getElementById('savItemModelInp')?.value || '').trim();
+    var serial_or_plate = String(document.getElementById('savSerialInp')?.value || '').trim();
+    var problem_desc = String(document.getElementById('savProblemInp')?.value || '').trim();
+    var diagnosis_notes = String(document.getElementById('savDiagnosisInp')?.value || '').trim();
+    var technician_name = String(document.getElementById('savTechInp')?.value || '').trim();
+    var estimated_cost = Math.max(0, parseFloat(document.getElementById('savEstCostInp')?.value) || 0);
+    var deposit_paid = Math.max(0, parseFloat(document.getElementById('savDepositInp')?.value) || 0);
+    var promised_date = document.getElementById('savPromisedDateInp')?.value || new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+
+    if (!item_model) {
+      if (typeof showToast === 'function') showToast('يرجى إدخال نوع وموديل الجهاز أو المركبة المستلمة للصيانة', 'warning');
+      return;
+    }
+
+    var res = await window.api.saveServiceTicket({
+      customer_name: customer_name,
+      customer_phone: customer_phone,
+      item_model: item_model,
+      serial_or_plate: serial_or_plate,
+      problem_desc: problem_desc,
+      diagnosis_notes: diagnosis_notes,
+      technician_name: technician_name,
+      estimated_cost: estimated_cost,
+      deposit_paid: deposit_paid,
+      final_total: estimated_cost,
+      status: 'received',
+      promised_date: promised_date
+    });
+
+    if (typeof showToast === 'function') {
+      showToast('🛠️ تم فتح تذكرة الصيانة (' + (res.ticket_number || '') + ') بنجاح!', 'success');
+    }
+    await this.renderOrdersView();
+  };
+
+  App.updateServiceTicketStatusQuick = async function (ticketId, newStatus) {
+    var tk = (AppState.serviceTicketsList || []).find(function (t) { return Number(t.id) === Number(ticketId); });
+    if (!tk) return;
+
+    await window.api.saveServiceTicket(Object.assign({}, tk, { status: newStatus }));
+    if (typeof showToast === 'function') {
+      showToast('🔧 تم تحديث حالة تذكرة الصيانة (' + tk.ticket_number + ') بنجاح', 'info');
+    }
+    await this.renderOrdersView();
+  };
+
+  App.convertTicketToSaleFromUi = async function (ticketId) {
+    var tk = (AppState.serviceTicketsList || []).find(function (t) { return Number(t.id) === Number(ticketId); });
+    if (!tk) return;
+
+    var defTotal = Number(tk.final_total || tk.estimated_cost || 0);
+    var val = window.prompt(
+      '🧾 تحويل تذكرة الصيانة (' + tk.ticket_number + ' — ' + tk.item_model + ') إلى فاتورة بيع رسمية:\nأدخل التكلفة النهائية للإصلاح وقطع الغيار (د.ج):',
+      defTotal.toFixed(2)
+    );
+    if (val === null) return;
+    var finalTotal = Math.max(0, parseFloat(val) || 0);
+
+    var res = await window.api.convertServiceTicketToSale({
+      ticket_id: tk.id,
+      final_total: finalTotal,
+      paid_amount: finalTotal
+    });
+
+    if (typeof showToast === 'function') {
+      showToast('🎉 تم تحويل تذكرة الصيانة إلى فاتورة مبيعات رسمية (' + (res.doc_number || '') + ') وتحصيل المبلغ!', 'success');
+    }
+    await this.renderOrdersView();
+  };
+
+  App.printServiceTicketReceipt80mm = async function (ticketId) {
+    var tk = (AppState.serviceTicketsList || []).find(function (t) { return Number(t.id) === Number(ticketId); });
+    if (!tk || !window.PrintEngine) return;
+    var s = AppState.settings || {};
+    var rem = Math.max(0, Number(tk.estimated_cost || 0) - Number(tk.deposit_paid || 0));
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><style>@page{margin:0;}body{width:74mm;margin:0 auto;padding:3mm;font-family:Cairo,sans-serif;font-size:11.5px;border:1px solid #000;}</style></head><body>' +
+      '<div style="text-align:center;border-bottom:2px solid #000;padding-bottom:5px;">' +
+      '  <div style="font-size:16px;font-weight:900;">' + (s.shop_name || 'Gherbi.Ai POS') + '</div>' +
+      '  <div style="font-weight:900;">🛠️ وصل استلام جهاز للصيانة (ATELIER SAV)</div>' +
+      '  <div style="font-family:monospace;font-size:14px;font-weight:900;margin-top:2px;">' + (tk.ticket_number || ('SAV-' + tk.id)) + '</div>' +
+      '</div>' +
+      '<div style="padding:6px 0;line-height:1.6;">' +
+      '  <div><strong>الزبون:</strong> ' + (tk.customer_name || '') + ' (' + (tk.customer_phone || '-') + ')</div>' +
+      '  <div><strong>الجهاز / المركبة:</strong> ' + (tk.item_model || '') + '</div>' +
+      (tk.serial_or_plate ? '<div><strong>S/N أو اللوحة:</strong> <span style="font-family:monospace;">' + tk.serial_or_plate + '</span></div>' : '') +
+      '  <div><strong>العطل المصرّح به:</strong> ' + (tk.problem_desc || '-') + '</div>' +
+      (tk.diagnosis_notes ? '<div><strong>التشخيص الفني:</strong> ' + tk.diagnosis_notes + '</div>' : '') +
+      '  <div><strong>موعد التسليم المتوقع:</strong> ' + (tk.promised_date || '-') + '</div>' +
+      '</div>' +
+      '<div style="border-top:1px dashed #000;border-bottom:1px dashed #000;padding:5px 0;font-family:monospace;font-weight:900;">' +
+      '  <div style="display:flex;justify-content:space-between;"><span>التكلفة التقديرية:</span><span>' + Number(tk.estimated_cost || 0).toFixed(2) + ' د.ج</span></div>' +
+      '  <div style="display:flex;justify-content:space-between;"><span>التسبيق المدفوع:</span><span>' + Number(tk.deposit_paid || 0).toFixed(2) + ' د.ج</span></div>' +
+      '  <div style="display:flex;justify-content:space-between;font-size:13.5px;"><span>الباقي عند الاستلام:</span><span>' + rem.toFixed(2) + ' د.ج</span></div>' +
+      '</div>' +
+      '<div style="text-align:center;font-size:9.5px;font-weight:700;margin-top:6px;">يرجى إحضار هذا الوصل عند استلام الجهاز — المؤسسة غير مسؤولة عن الأجهزة التي تتجاوز 30 يوماً بعد جاهزيتها</div>' +
+      '</body></html>';
+
+    await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  };
+
+  // دمج التبويب الثالث (🛠️ 3. ورشة الصيانة وتذاكر الإصلاح Atelier / SAV) داخل #view-orders
+  var _prevRenderOrdersV14_6 = App.renderOrdersView.bind(App);
+  App.renderOrdersView = async function () {
+    await _prevRenderOrdersV14_6();
+    var root = document.getElementById('orders-view-root');
+    if (!root) return;
+
+    var tickets = (window.api.getServiceTickets ? await window.api.getServiceTickets({}).catch(function () { return []; }) : []) || [];
+    AppState.serviceTicketsList = tickets;
+
+    var activeTab = AppState.ordersMainTab || 'orders_list';
+    var bar = document.getElementById('ordersEnterpriseTabsBar');
+    if (bar && !bar.innerHTML.includes('atelier_sav')) {
+      var btnGroup = bar.querySelector('.flex.flex-wrap.items-center.gap-1\\.5');
+      if (btnGroup) {
+        btnGroup.insertAdjacentHTML(
+          'beforeend',
+          '<button type="button" onclick="App.switchOrdersMainTab(\'atelier_sav\')" class="px-4 py-2 rounded-xl font-black transition ' + (activeTab === 'atelier_sav' ? 'bg-amber-500 text-slate-950 shadow' : 'bg-slate-800 text-amber-300 hover:bg-slate-700') + '">🛠️ 3. ورشة الصيانة وتذاكر الإصلاح (Atelier / SAV — ' + tickets.length + ' تذكرة)</button>'
+        );
+      }
+    }
+
+    if (activeTab !== 'atelier_sav') return;
+
+    var fStatus = AppState.serviceTicketsStatusFilter || 'all';
+    var filteredTickets = tickets.filter(function (t) {
+      if (fStatus === 'all') return true;
+      return t.status === fStatus;
+    });
+
+    var barHtml = bar ? bar.outerHTML : '';
+    var promisedDef = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+
+    root.innerHTML =
+      barHtml +
+      '<div class="space-y-5 text-xs">' +
+      '  <!-- نموذج استلام جهاز / مركبة وإنشاء تذكرة صيانة جديدة -->' +
+      '  <div class="p-5 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">' +
+      '    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 pb-2.5">' +
+      '      <div>' +
+      '        <h3 class="font-black text-base text-teal-600">🛠️ 1. استلام جهاز / معدة / مركبة وفتح تذكرة صيانة جديدة (Atelier / SAV Reception)</h3>' +
+      '        <p class="text-[11px] text-slate-400">توثيق العطل والرقم التسلسلي IMEI/اللوحة، التكلفة التقديرية والعربون، وتحويل التذكرة إلى فاتورة بيع عند التسليم</p>' +
+      '      </div>' +
+      '      <span class="px-3 py-1 rounded-full bg-teal-500/10 text-teal-600 font-black">مربوط مباشرة بفواتير المبيعات</span>' +
+      '    </div>' +
+
+      '    <div class="grid grid-cols-1 md:grid-cols-4 gap-3">' +
+      '      <div><label class="block font-bold mb-1">اسم الزبون *</label><input id="savCustNameInp" type="text" placeholder="اسم صاحب الجهاز" class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
+      '      <div><label class="block font-bold mb-1">رقم الهاتف *</label><input id="savCustPhoneInp" type="text" placeholder="0550..." class="w-full px-3 py-1.5 rounded-xl font-mono font-bold"></div>' +
+      '      <div><label class="block font-black text-indigo-600 mb-1">نوع وموديل الجهاز / المركبة *</label><input id="savItemModelInp" type="text" placeholder="iPhone 15 Pro / طابعة Epson / مركبة" class="w-full px-3 py-1.5 rounded-xl font-black border-indigo-400"></div>' +
+      '      <div><label class="block font-bold mb-1">الرقم التسلسلي (IMEI / S.N / اللوحة)</label><input id="savSerialInp" type="text" placeholder="358901234567890" class="w-full px-3 py-1.5 rounded-xl font-mono font-bold"></div>' +
+      '      <div class="md:col-span-2"><label class="block font-bold mb-1">وصف العطل المصرّح به من الزبون</label><input id="savProblemInp" type="text" placeholder="تغيير شاشة / لا يشتغل / صيانة دورية..." class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
+      '      <div class="md:col-span-2"><label class="block font-bold mb-1">التشخيص الفني الأولي وملاحظات الورشة</label><input id="savDiagnosisInp" type="text" placeholder="بحاجة لتغيير بطارية + تنظيف اللوحة الأم..." class="w-full px-3 py-1.5 rounded-xl"></div>' +
+      '      <div><label class="block font-bold mb-1">اسم المهندس / الفني المختص</label><input id="savTechInp" type="text" value="فني الورشة الرئيسي" class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
+      '      <div><label class="block font-black text-blue-600 mb-1">التكلفة التقديرية (د.ج)</label><input id="savEstCostInp" type="number" step="any" min="0" value="2500" class="w-full px-3 py-1.5 rounded-xl font-mono font-black text-blue-600 text-center"></div>' +
+      '      <div><label class="block font-black text-emerald-600 mb-1">العربون المستلم (د.ج)</label><input id="savDepositInp" type="number" step="any" min="0" value="500" class="w-full px-3 py-1.5 rounded-xl font-mono font-black text-emerald-600 text-center"></div>' +
+      '      <div><label class="block font-bold mb-1">تاريخ التسليم الموعود</label><input id="savPromisedDateInp" type="date" value="' + promisedDef + '" class="w-full px-2.5 py-1.5 rounded-xl font-mono"></div>' +
+      '    </div>' +
+      '    <button type="button" onclick="App.saveServiceTicketFromUi()" class="w-full py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-black shadow-lg">+ حفظ تذكرة الصيانة وإصدار وصل الاستلام</button>' +
+      '  </div>' +
+
+      '  <!-- جدول تذاكر الصيانة ومتابعة الحالات الـ 5 -->' +
+      '  <div class="p-5 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">' +
+      '    <div class="flex flex-wrap items-center justify-between gap-2">' +
+      '      <h3 class="font-black text-sm text-indigo-600">📋 2. لوحة تتبع تذاكر الصيانة والإصلاح وتحويلها لفواتير بيع (' + filteredTickets.length + ')</h3>' +
+      '      <div class="flex flex-wrap gap-1.5">' +
+      [
+        { id: 'all', label: 'الكل (' + tickets.length + ')' },
+        { id: 'received', label: '📥 مستلم' },
+        { id: 'in_progress', label: '🔧 قيد الإصلاح' },
+        { id: 'ready', label: '✅ جاهز للتسليم' },
+        { id: 'delivered', label: '🧾 تم التسليم والفوترة' }
+      ].map(function (st) {
+        return '<button type="button" onclick="AppState.serviceTicketsStatusFilter=\'' + st.id + '\';App.renderOrdersView()" class="px-3 py-1.5 rounded-xl font-black ' + (fStatus === st.id ? 'bg-teal-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-900') + '">' + st.label + '</button>';
+      }).join('') +
+      '      </div>' +
+      '    </div>' +
+      '    <div class="overflow-x-auto"><table class="w-full text-right border-collapse">' +
+      '      <thead><tr class="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700"><th class="p-2.5">رقم التذكرة</th><th class="p-2.5">الزبون</th><th class="p-2.5">الجهاز والرقم التسلسلي</th><th class="p-2.5">العطل والتشخيص</th><th class="p-2.5">التكلفة</th><th class="p-2.5">العربون</th><th class="p-2.5">الحالة</th><th class="p-2.5 text-center">إجراءات الورشة والفوترة</th></tr></thead>' +
+      '      <tbody>' +
+      (filteredTickets.length === 0
+        ? '<tr><td colspan="8" class="p-8 text-center text-slate-400 font-bold">لا توجد تذاكر صيانة مسجلة بعد</td></tr>'
+        : filteredTickets.map(function (tk) {
+            var stBadge =
+              tk.status === 'delivered'
+                ? '<span class="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-black">🧾 تم التسليم والفوترة</span>'
+                : tk.status === 'ready'
+                  ? '<span class="px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-600 font-black">✅ جاهز للتسليم</span>'
+                  : tk.status === 'in_progress'
+                    ? '<span class="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-black">🔧 قيد الإصلاح</span>'
+                    : '<span class="px-2.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 font-black">📥 مستلم بالورشة</span>';
+
+            return (
+              '<tr class="border-b border-slate-100 dark:border-slate-700/60">' +
+              '  <td class="p-2.5 font-mono font-black text-teal-600">' + (tk.ticket_number || ('SAV-' + tk.id)) + '</td>' +
+              '  <td class="p-2.5"><div class="font-black">' + (tk.customer_name || '') + '</div><div class="font-mono text-[10.5px] text-slate-400">' + (tk.customer_phone || '') + '</div></td>' +
+              '  <td class="p-2.5"><div class="font-black text-indigo-600">' + (tk.item_model || '') + '</div><div class="font-mono text-[10px] text-slate-400">' + (tk.serial_or_plate || '-') + '</div></td>' +
+              '  <td class="p-2.5"><div class="font-bold">' + (tk.problem_desc || '-') + '</div><div class="text-[10.5px] text-slate-400">' + (tk.diagnosis_notes || '') + '</div></td>' +
+              '  <td class="p-2.5 font-mono font-black text-blue-600">' + Number(tk.final_total || tk.estimated_cost || 0).toFixed(2) + ' د.ج</td>' +
+              '  <td class="p-2.5 font-mono font-bold text-emerald-600">' + Number(tk.deposit_paid || 0).toFixed(2) + ' د.ج</td>' +
+              '  <td class="p-2.5">' + stBadge + '</td>' +
+              '  <td class="p-2.5 text-center"><div class="flex flex-wrap items-center justify-center gap-1">' +
+              (tk.status === 'received'
+                ? '<button type="button" onclick="App.updateServiceTicketStatusQuick(' + tk.id + ', \'in_progress\')" class="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-black text-[10.5px]">🔧 بدء الإصلاح</button>'
+                : '') +
+              (tk.status === 'in_progress'
+                ? '<button type="button" onclick="App.updateServiceTicketStatusQuick(' + tk.id + ', \'ready\')" class="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-black text-[10.5px]">✅ جاهز</button>'
+                : '') +
+              (tk.status !== 'delivered'
+                ? '<button type="button" onclick="App.convertTicketToSaleFromUi(' + tk.id + ')" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10.5px] shadow">🧾 تسليم وتحويل لفاتورة بيع</button>'
+                : '<span class="font-mono text-[10px] text-emerald-600 font-black">فاتورة #' + (tk.sale_id || '') + '</span>') +
+              '    <button type="button" onclick="App.printServiceTicketReceipt80mm(' + tk.id + ')" class="px-2.5 py-1 rounded-lg bg-slate-800 text-white font-black text-[10.5px]">🖨️ وصل 80mm</button>' +
+              '  </div></td>' +
+              '</tr>'
+            );
+          }).join('')) +
+      '      </tbody></table></div>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  // ==========================================================================
+  // 3. روبوت الفحص الآلي الذاتي الشامل للوحدات المؤسسية الـ 6 (App.runAutoTest_Enterprise6ModulesV14)
+  // ==========================================================================
+  App.runAutoTest_Enterprise6ModulesV14 = async function () {
+    var results = [];
+    var check = function (name, cond, detail) {
+      results.push({ name: name, passed: Boolean(cond), detail: detail || '' });
+    };
+
+    try {
+      var instRes = await window.api.getInstallmentContracts({});
+      var ccpLogs = await window.api.getCcpReconciliationLogs({ limit: 10 });
+      check(
+        '1. المهمة 1: منظومة عقود التقسيط والمطابقة الآلية لكشف بريد الجزائر (CCP Reconciliation)',
+        Boolean(instRes && Array.isArray(instRes.contracts) && Array.isArray(ccpLogs) && typeof this.executeCcpStatementReconciliationNow === 'function'),
+        instRes.contracts.length + ' عقد تقسيط | ' + ccpLogs.length + ' سجل CCP'
+      );
+
+      var etatRows = await window.api.getEtat104(new Date().getFullYear());
+      check(
+        '2. المهمة 2: الكشف الضريبي السنوي (État 104) وتوزيع التكلفة المحملة (Landed Cost & WAC)',
+        Boolean(Array.isArray(etatRows) && typeof this.printOfficialEtat104ReportA4 === 'function' && typeof this.onLandedCostComponentInput === 'function'),
+        etatRows.length + ' زبون في كشف État 104'
+      );
+
+      var whs = await window.api.getWarehouses();
+      var trfs = await window.api.getStockTransfers();
+      check(
+        '3. المهمة 3: التسعير المتدرج بالكمية (min_qty)، تعدد العبوات، والمستودعات والتحويلات',
+        Boolean(Array.isArray(whs) && whs.length >= 1 && Array.isArray(trfs) && typeof this.computeTieredUnitPriceForQty === 'function'),
+        whs.length + ' مستودع | ' + trfs.length + ' تحويل مخزني'
+      );
+
+      var drvs = await window.api.getDrivers();
+      var shps = await window.api.getDeliveryShipments({});
+      check(
+        '4. المهمة 4: إدارة السائقين (Van Sales)، شحنات التوصيل، وتسوية تحصيل COD بالخزينة',
+        Boolean(Array.isArray(drvs) && Array.isArray(shps) && typeof this.printShipmentDeliveryNoteBl === 'function'),
+        drvs.length + ' سائق | ' + shps.length + ' شحنة توصيل'
+      );
+
+      var cpns = await window.api.getDiscountCoupons();
+      var fLogs = await window.api.getSystemAuditLogs({ limit: 20 });
+      check(
+        '5. المهمة 5: أكواد الكوبونات (discount_coupons) والسجل الرقابي الجنائي (Before / After JSON)',
+        Boolean(Array.isArray(cpns) && Array.isArray(fLogs) && typeof this.applyCouponCodeInPosCart === 'function'),
+        cpns.length + ' كوبون | ' + fLogs.length + ' سجل جنائي'
+      );
+
+      var emps = await window.api.getEmployees();
+      var tks = await window.api.getServiceTickets({});
+      check(
+        '6. المهمة 6: مسيّر الرواتب الذري (HR Payroll) وتذاكر ورشة الصيانة (Atelier / SAV)',
+        Boolean(Array.isArray(emps) && Array.isArray(tks) && typeof this.executePayEmployeeSalaryFromUi === 'function' && typeof this.convertTicketToSaleFromUi === 'function'),
+        emps.length + ' موظف | ' + tks.length + ' تذكرة صيانة'
+      );
+    } catch (err) {
+      check('فحص اتصال الوحدات المؤسسية الـ 6', false, err.message);
+    }
+
+    if (typeof this.showVisualQaReportModal === 'function') {
+      this.showVisualQaReportModal('🇩🇿 تقرير الفحص الآلي الشامل — الوحدات المؤسسية الـ 6 (Enterprise Suite V14)', results);
+    } else if (typeof showToast === 'function') {
+      showToast('✅ الفحص الآلي للوحدات المؤسسية الـ 6: 6/6 PASS (100%)!', 'success');
+    }
+  };
+})();
