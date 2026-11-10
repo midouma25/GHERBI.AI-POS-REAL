@@ -258,9 +258,9 @@
            1. شاشة المبيعات والكاشير المطورة (POS View with Resizer & Edit Mode)
            ================================================================= -->
       <section id="view-pos" class="view-section active">
-        <div id="posMainGridContainer" class="pos-layout" style="grid-template-columns: 1fr 6px 420px; gap: 0.5rem;">
+        <div id="posMainGridContainer" class="pos-layout" style="grid-template-columns: minmax(0, 1fr) 6px 410px; gap: 0.5rem;">
           <!-- يمين: الفئات، أزرار التحكم، وشبكة المنتجات مع الترقيم -->
-          <div class="flex flex-col gap-2.5 min-h-0 pl-1">
+          <div class="flex flex-col gap-2.5 min-h-0 min-w-0 overflow-hidden pl-1">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div id="posCategoryPills" class="flex flex-wrap items-center gap-1.5"></div>
               <div class="flex flex-wrap items-center gap-1.5">
@@ -1895,5 +1895,6 @@
   <script src="./stocktake/stocktake-ui.js"></script>
   <script src="./renderer.js"></script>
   <script src="./renderer-rc-100.js"></script>
+  <script src="./gherbi-retail-master-upgrade.js"></script>
 </body>
 </html>

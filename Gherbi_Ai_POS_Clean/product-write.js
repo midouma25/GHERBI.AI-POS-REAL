@@ -62,19 +62,21 @@ function createProductWriter(db) {
     for (const item of Array.isArray(extraBarcodes) ? extraBarcodes : []) {
       const bc = String((typeof item === 'object' ? item.barcode : item) || '').trim();
       const priceLabel = typeof item === 'object' && item.price_label ? String(item.price_label).trim() : null;
+      const unitMult = typeof item === 'object' && Number(item.unit_multiplier) > 0 ? Number(item.unit_multiplier) : 1;
+      const packName = typeof item === 'object' && item.pack_name ? String(item.pack_name).trim() : '';
       if (!bc) continue;
 
       await freeTombstonedProductBarcode(bc);
       const existing = await rawGet('SELECT id FROM product_barcodes WHERE barcode = ?', [bc]);
       if (existing) {
         await rawRun(
-          "UPDATE product_barcodes SET product_id = ?, price_label = ?, deleted_at = NULL, dirty = 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
-          [pid, priceLabel, existing.id]
+          "UPDATE product_barcodes SET product_id = ?, price_label = ?, unit_multiplier = ?, pack_name = ?, deleted_at = NULL, dirty = 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
+          [pid, priceLabel, unitMult, packName, existing.id]
         );
       } else {
         await db.dbRun(
-          'INSERT INTO product_barcodes (product_id, barcode, price_label) VALUES (?, ?, ?)',
-          [pid, bc, priceLabel]
+          'INSERT INTO product_barcodes (product_id, barcode, price_label, unit_multiplier, pack_name) VALUES (?, ?, ?, ?, ?)',
+          [pid, bc, priceLabel, unitMult, packName]
         );
       }
     }
@@ -85,10 +87,12 @@ function createProductWriter(db) {
       const price = Number(pr.price);
       if (!label || !Number.isFinite(price)) continue;
 
-      await db.dbRun('INSERT INTO product_prices (product_id, label, price) VALUES (?, ?, ?)', [
+      const minQty = Number(pr.min_qty) > 0 ? Number(pr.min_qty) : 1;
+      await db.dbRun('INSERT INTO product_prices (product_id, label, price, min_qty) VALUES (?, ?, ?, ?)', [
         pid,
         label,
-        price
+        price,
+        minQty
       ]);
     }
   }

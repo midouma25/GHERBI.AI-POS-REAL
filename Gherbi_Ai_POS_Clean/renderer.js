@@ -216,40 +216,58 @@ const App = {
   },
 
   applyCartWidthLayout(widthPx) {
-    const w = Math.min(620, Math.max(320, Number(widthPx) || 420));
-    AppState.posCartWidth = w;
     const grid = document.getElementById('posMainGridContainer');
-    if (grid) {
-      grid.style.gridTemplateColumns = `1fr 6px ${w}px`;
-    }
+    if (!grid) return;
+    const rect = grid.getBoundingClientRect();
+    const availW = rect.width > 500 ? rect.width : (window.innerWidth - 270);
+    // ضمان بقاء 420px على الأقل لقسم المنتجات على اليمين حتى لا تخرج السلة أبداً خارج يسار الشاشة
+    const maxSafeCartW = Math.min(520, Math.max(350, Math.floor(availW - 420)));
+    const w = Math.min(maxSafeCartW, Math.max(330, Math.round(Number(widthPx) || 410)));
+    AppState.posCartWidth = w;
+    grid.style.gridTemplateColumns = `minmax(0, 1fr) 6px ${w}px`;
   },
 
   initCartResizer() {
     const resizer = document.getElementById('posCartResizer');
-    if (!resizer) return;
+    if (!resizer || resizer.dataset.boundDirect === '1') return;
+    resizer.dataset.boundDirect = '1';
     let dragging = false;
 
     resizer.addEventListener('mousedown', (e) => {
       e.preventDefault();
       dragging = true;
       document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+
+    resizer.addEventListener('dblclick', () => {
+      this.applyCartWidthLayout(410);
+      if (window.api) window.api.updateSettings({ pos_cart_width: '410' });
     });
 
     window.addEventListener('mousemove', (e) => {
       if (!dragging) return;
+      const grid = document.getElementById('posMainGridContainer');
+      if (!grid) return;
+      const rect = grid.getBoundingClientRect();
       const isRtl = document.documentElement.dir !== 'ltr';
-      const newWidth = isRtl ? e.clientX - 20 : window.innerWidth - e.clientX - 20;
-      if (newWidth >= 320 && newWidth <= 620) {
-        this.applyCartWidthLayout(newWidth);
-      }
+      const newWidth = isRtl ? (e.clientX - rect.left) : (rect.right - e.clientX);
+      this.applyCartWidthLayout(newWidth);
     });
 
     window.addEventListener('mouseup', () => {
       if (!dragging) return;
       dragging = false;
       document.body.style.cursor = '';
+      document.body.style.userSelect = '';
       if (window.api) {
-        window.api.updateSettings({ pos_cart_width: String(AppState.posCartWidth) });
+        window.api.updateSettings({ pos_cart_width: String(AppState.posCartWidth || 410) });
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      if (AppState.currentView === 'pos') {
+        this.applyCartWidthLayout(AppState.posCartWidth || 410);
       }
     });
   },

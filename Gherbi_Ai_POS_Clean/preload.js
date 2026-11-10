@@ -93,6 +93,7 @@ const api = {
   getCustomerSales: (customerId) => invoke('get-customer-sales', customerId),
   addCustomerPayment: (customerId, amount, date, meta) =>
     invoke('add-customer-payment', customerId, amount, date, meta),
+  redeemCustomerLoyaltyPoints: (payload) => invoke('redeem-customer-loyalty-points', payload),
   getCustomerSalesAggregated: (payload) => invoke('get-customer-sales-aggregated', payload),
   getSalesSummary: (payload) => invoke('get-sales-summary', payload),
   getPaymentDetails: (paymentId, type) => invoke('get-payment-details', paymentId, type),
@@ -332,7 +333,12 @@ const api = {
   payEmployeeSalary: (payload) => invoke('pay-employee-salary', payload),
   getServiceTickets: (filters) => invoke('get-service-tickets', filters),
   saveServiceTicket: (payload) => invoke('save-service-ticket', payload),
-  convertServiceTicketToSale: (payload) => invoke('convert-service-ticket-to-sale', payload)
+  convertServiceTicketToSale: (payload) => invoke('convert-service-ticket-to-sale', payload),
+  getCustomerLastPrices: (payload) => invoke('get-customer-last-prices', payload),
+  getReturnableContainers: (filters) => invoke('get-returnable-containers', filters),
+  saveReturnableContainer: (payload) => invoke('save-returnable-container', payload),
+  settleReturnableContainer: (payload) => invoke('settle-returnable-container', payload),
+  generateTruckLoadingSheet: (payload) => invoke('generate-truck-loading-sheet', payload)
 };
 
 contextBridge.exposeInMainWorld('api', api);

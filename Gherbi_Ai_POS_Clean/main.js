@@ -655,8 +655,10 @@ function registerIpcHandlers() {
         `INSERT INTO products (
           barcode, name, category, family, supplier, description, min_stock,
           image, unit, color, weight_volume, wholesale_unit, wholesale_qty,
-          plu_code, has_variants, is_featured, material_role, track_serial, warranty_months, hide_from_pos
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          plu_code, has_variants, is_featured, material_role, track_serial, warranty_months, hide_from_pos,
+          semi_wholesale_price, super_wholesale_price, area_m2_per_box, linear_meters_per_roll,
+          weight_kg_per_unit, oem_reference, compatible_models, bogo_buy_qty, bogo_free_qty, series_pack_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           barcode,
           String(p.name || 'منتج جديد').trim(),
@@ -677,7 +679,17 @@ function registerIpcHandlers() {
           p.material_role || null,
           p.track_serial ? 1 : 0,
           Number(p.warranty_months ?? 0),
-          p.hide_from_pos ? 1 : 0
+          p.hide_from_pos ? 1 : 0,
+          Number(p.semi_wholesale_price ?? 0),
+          Number(p.super_wholesale_price ?? 0),
+          Number(p.area_m2_per_box ?? 0),
+          Number(p.linear_meters_per_roll ?? 0),
+          Number(p.weight_kg_per_unit ?? 0),
+          p.oem_reference || '',
+          p.compatible_models || '',
+          Number(p.bogo_buy_qty ?? 0),
+          Number(p.bogo_free_qty ?? 0),
+          p.series_pack_json || ''
         ]
       );
       const productId = ins.lastID;
@@ -737,7 +749,17 @@ function registerIpcHandlers() {
              unit = ?, color = ?, weight_volume = ?, wholesale_unit = ?,
              wholesale_qty = ?, plu_code = ?, is_featured = COALESCE(?, is_featured),
              material_role = COALESCE(?, material_role), track_serial = COALESCE(?, track_serial),
-             warranty_months = COALESCE(?, warranty_months), hide_from_pos = COALESCE(?, hide_from_pos)
+             warranty_months = COALESCE(?, warranty_months), hide_from_pos = COALESCE(?, hide_from_pos),
+             semi_wholesale_price = COALESCE(?, semi_wholesale_price),
+             super_wholesale_price = COALESCE(?, super_wholesale_price),
+             area_m2_per_box = COALESCE(?, area_m2_per_box),
+             linear_meters_per_roll = COALESCE(?, linear_meters_per_roll),
+             weight_kg_per_unit = COALESCE(?, weight_kg_per_unit),
+             oem_reference = COALESCE(?, oem_reference),
+             compatible_models = COALESCE(?, compatible_models),
+             bogo_buy_qty = COALESCE(?, bogo_buy_qty),
+             bogo_free_qty = COALESCE(?, bogo_free_qty),
+             series_pack_json = COALESCE(?, series_pack_json)
          WHERE id = ?`,
         [
           barcode,
@@ -759,6 +781,16 @@ function registerIpcHandlers() {
           p.track_serial !== undefined ? (p.track_serial ? 1 : 0) : null,
           p.warranty_months !== undefined ? Number(p.warranty_months) : null,
           p.hide_from_pos !== undefined ? (p.hide_from_pos ? 1 : 0) : null,
+          p.semi_wholesale_price !== undefined ? Number(p.semi_wholesale_price) : null,
+          p.super_wholesale_price !== undefined ? Number(p.super_wholesale_price) : null,
+          p.area_m2_per_box !== undefined ? Number(p.area_m2_per_box) : null,
+          p.linear_meters_per_roll !== undefined ? Number(p.linear_meters_per_roll) : null,
+          p.weight_kg_per_unit !== undefined ? Number(p.weight_kg_per_unit) : null,
+          p.oem_reference !== undefined ? String(p.oem_reference) : null,
+          p.compatible_models !== undefined ? String(p.compatible_models) : null,
+          p.bogo_buy_qty !== undefined ? Number(p.bogo_buy_qty) : null,
+          p.bogo_free_qty !== undefined ? Number(p.bogo_free_qty) : null,
+          p.series_pack_json !== undefined ? String(p.series_pack_json) : null,
           productId
         ]
       );
@@ -1018,10 +1050,23 @@ function registerIpcHandlers() {
   ipcMain.handle('delete-sale', async (_e, saleId) => {
     if (await isLanClientMode()) return lanClient.deleteSale(saleId);
     const sid = Number(saleId);
+    const oldSale = await dbGet('SELECT * FROM sales WHERE id = ?', [sid]);
     const items = await dbAll(
       'SELECT * FROM sale_items WHERE sale_id = ? AND deleted_at IS NULL',
       [sid]
     );
+    if (oldSale && db.enterprise && db.enterprise.logForensicAudit) {
+      await db.enterprise.logForensicAudit({
+        userId: oldSale.user_id || 1,
+        userName: 'Admin / Cashier',
+        actionCode: 'DELETE_SALE_FORENSIC',
+        entityTable: 'sales',
+        entityId: sid,
+        beforeObj: { sale: oldSale, items_count: items.length, total: oldSale.total },
+        afterObj: { deleted: true, deleted_at: new Date().toISOString() },
+        details: `حذف فاتورة مبيعات رقم (${oldSale.doc_number || '#' + sid}) بقيمة ${Number(oldSale.total || 0).toFixed(2)} د.ج`
+      }).catch(() => {});
+    }
 
     return await db.withTransaction(async () => {
       for (const it of items) {
@@ -1076,8 +1121,8 @@ function registerIpcHandlers() {
   ipcMain.handle('add-customer', async (_e, c = {}) => {
     if (await isLanClientMode()) return lanClient.addCustomer(c);
     const ins = await dbRun(
-      `INSERT INTO customers (name, phone, address, nif, rc, ai, nis, initial_debt, credit_limit, price_tier)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO customers (name, phone, address, nif, rc, ai, nis, initial_debt, credit_limit, price_tier, loyalty_points, ccp_account, ccp_key, bank_rip, wilaya, commune)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         String(c.name || '').trim(),
         c.phone || null,
@@ -1088,7 +1133,13 @@ function registerIpcHandlers() {
         c.nis || null,
         Number(c.initial_debt ?? 0),
         Number(c.credit_limit ?? 0),
-        c.price_tier || null
+        c.price_tier || null,
+        Number(c.loyalty_points ?? 0),
+        c.ccp_account || '',
+        c.ccp_key || '',
+        c.bank_rip || '',
+        c.wilaya || '',
+        c.commune || ''
       ]
     );
     return { success: true, id: ins.lastID };
@@ -1102,7 +1153,13 @@ function registerIpcHandlers() {
     await dbRun(
       `UPDATE customers
        SET name = ?, phone = ?, address = ?, nif = ?, rc = ?, ai = ?, nis = ?,
-           initial_debt = ?, credit_limit = ?, price_tier = ?
+           initial_debt = ?, credit_limit = ?, price_tier = ?,
+           loyalty_points = COALESCE(?, loyalty_points),
+           ccp_account = COALESCE(?, ccp_account),
+           ccp_key = COALESCE(?, ccp_key),
+           bank_rip = COALESCE(?, bank_rip),
+           wilaya = COALESCE(?, wilaya),
+           commune = COALESCE(?, commune)
        WHERE id = ?`,
       [
         String(c.name || '').trim(),
@@ -1115,6 +1172,12 @@ function registerIpcHandlers() {
         Number(c.initial_debt ?? 0),
         Number(c.credit_limit ?? 0),
         c.price_tier || null,
+        c.loyalty_points !== undefined ? Number(c.loyalty_points) : null,
+        c.ccp_account !== undefined ? String(c.ccp_account) : null,
+        c.ccp_key !== undefined ? String(c.ccp_key) : null,
+        c.bank_rip !== undefined ? String(c.bank_rip) : null,
+        c.wilaya !== undefined ? String(c.wilaya) : null,
+        c.commune !== undefined ? String(c.commune) : null,
         id
       ]
     );
@@ -3443,7 +3506,7 @@ function registerIpcHandlers() {
       if (Number(custCount.c || 0) === 0) {
         await dbRun(
           'INSERT INTO customers (name, phone, address, initial_debt, credit_limit, loyalty_points, price_tier) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          ['سوبرماركت النور (زبون جملة)', '0550112233', 'قسنطينة', 4500, 50000, 45, 'wholesale']
+          ['أمين بن يحيى (زبون وفي VIP)', '0550112233', 'قسنطينة', 4500, 50000, 45, 'wholesale']
         );
         await dbRun(
           'INSERT INTO customers (name, phone, address, initial_debt, credit_limit, loyalty_points, price_tier) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -3875,6 +3938,7 @@ function registerIpcHandlers() {
   ipcMain.handle('send-purchase-request', async () => ({ ok: true }));
   ipcMain.handle('send-support-message', async () => ({ ok: true }));
   ipcMain.handle('get-performance-metrics', () => db._writeQueue.getStats());
+  enterpriseBridge.registerEnterpriseIpcHandlers(ipcMain, db, isLanClientMode, lanClient);
 }
 
 

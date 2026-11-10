@@ -345,7 +345,24 @@ async function getPaymentDetailsFull(paymentId, type = 'sale') {
  * المعاملة الذرية الشاملة لإتمام أو تعديل فاتورة بيع (executeSaleTransaction)
  * تدعم: التصنيع الفوري، FIFO، ديون المخزون، الدفع المختلط (Split Payment)، البيع بالتقسيط، والضمان
  */
+let _saleItemsSchemaChecked = false;
+async function ensureSaleItemsColumnsExist() {
+  if (_saleItemsSchemaChecked) return;
+  _saleItemsSchemaChecked = true;
+  const cols = [
+    ['sale_items', 'bonus_qty REAL DEFAULT 0'],
+    ['sale_items', 'pack_count REAL DEFAULT 0'],
+    ['sale_items', 'pack_multiplier REAL DEFAULT 1'],
+    ['sale_items', 'sold_m2 REAL DEFAULT 0'],
+    ['sale_items', 'warranty_months INTEGER DEFAULT 0']
+  ];
+  for (const [t, c] of cols) {
+    try { await db.dbRun(`ALTER TABLE ${t} ADD COLUMN ${c}`); } catch (_) {}
+  }
+}
+
 async function executeSaleTransaction(saleData = {}) {
+  await ensureSaleItemsColumnsExist();
   const items = Array.isArray(saleData.items) ? saleData.items : [];
   if (items.length === 0) {
     throw new Error('لا يمكن حفظ فاتورة بيع فارغة بدون منتجات');
@@ -397,7 +414,7 @@ async function executeSaleTransaction(saleData = {}) {
         if (oldIt.batch_id && Number(oldIt.sold_without_stock || 0) === 0) {
           await batchAlloc.restoreBatch(db, {
             batchId: oldIt.batch_id,
-            quantity: oldIt.quantity,
+            quantity: Number(oldIt.quantity || 0) + Number(oldIt.bonus_qty || 0),
             soldWithoutStock: oldIt.sold_without_stock
           });
         }
@@ -560,6 +577,11 @@ async function executeSaleTransaction(saleData = {}) {
         continue;
       }
 
+      const bonusQty = Math.max(0, Number(item.bonus_qty || item.bonusQty || 0));
+      const packCount = Math.max(0, Number(item.pack_count || item.packCount || 0));
+      const packMultiplier = Math.max(1, Number(item.pack_multiplier || item.packMultiplier || 1));
+      const soldM2 = Math.max(0, Number(item.sold_m2 || item.soldM2 || 0));
+
       const alloc = await batchAlloc.deductFromBatch(db, {
         productId,
         variantId,
@@ -567,14 +589,25 @@ async function executeSaleTransaction(saleData = {}) {
         quantity: qty
       });
 
+      if (bonusQty > 0) {
+        await batchAlloc.deductFromBatch(db, {
+          productId,
+          variantId,
+          batchId: preferredBatchId,
+          quantity: bonusQty
+        });
+      }
+
       if (alloc.allocations && alloc.allocations.length > 0) {
+        let isFirstSlice = true;
         for (const slice of alloc.allocations) {
           const sliceSub = Number((slice.quantity * price).toFixed(2));
           await db.dbRun(
             `INSERT INTO sale_items (
               sale_id, product_id, batch_id, variant_id, quantity, price,
-              subtotal, cost_price, applied_promotion_id, serial_number, warranty_months, sold_without_stock
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              subtotal, cost_price, applied_promotion_id, serial_number, warranty_months, sold_without_stock,
+              bonus_qty, pack_count, pack_multiplier, sold_m2
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               saleId,
               productId,
@@ -589,9 +622,14 @@ async function executeSaleTransaction(saleData = {}) {
               promoId,
               item.serial_number || null,
               warrantyMonths,
-              slice.soldWithoutStock ? 1 : 0
+              slice.soldWithoutStock ? 1 : 0,
+              isFirstSlice ? bonusQty : 0,
+              isFirstSlice ? packCount : 0,
+              packMultiplier,
+              isFirstSlice ? soldM2 : 0
             ]
           );
+          isFirstSlice = false;
 
           if (slice.soldWithoutStock && slice.quantity > 0) {
             await db.dbRun(
@@ -665,11 +703,23 @@ async function executeSaleTransaction(saleData = {}) {
       });
     }
 
-    if (customerId && total > 0 && !editSaleId) {
+    const redeemedPtsInSale = Math.max(0, Number(saleData.redeemed_loyalty_points || 0));
+    if (customerId && redeemedPtsInSale > 0 && !editSaleId) {
+      await db.dbRun(
+        'UPDATE customers SET loyalty_points = MAX(0, COALESCE(loyalty_points, 0) - ?) WHERE id = ?',
+        [redeemedPtsInSale, customerId]
+      );
+      await db.dbRun(
+        'INSERT INTO loyalty_transactions (customer_id, sale_id, points_delta, reason) VALUES (?, ?, ?, ?)',
+        [customerId, saleId, -redeemedPtsInSale, `استعمال نقاط ولاء للخصم في فاتورة #${docNumber || saleId}`]
+      );
+    } else if (customerId && total > 0 && !editSaleId) {
       const loyaltyEnabled = (await db.getSetting('loyalty_enabled', 'true')) === 'true';
       if (loyaltyEnabled) {
-        const ptsPer100 = Number(await db.getSetting('loyalty_points_per_100_dzd', '1')) || 1;
-        const earnedPoints = Math.floor((total / 100) * ptsPer100);
+        const ptsPer100 = Number(saleData.loyalty_points_per_100_dzd ?? (await db.getSetting('loyalty_points_per_100_dzd', '1'))) || 1;
+        const earnedPoints = saleData.earned_loyalty_points !== undefined
+          ? Math.max(0, Number(saleData.earned_loyalty_points))
+          : Math.floor((total / 100) * ptsPer100);
         if (earnedPoints > 0) {
           await db.dbRun(
             'UPDATE customers SET loyalty_points = COALESCE(loyalty_points, 0) + ? WHERE id = ?',

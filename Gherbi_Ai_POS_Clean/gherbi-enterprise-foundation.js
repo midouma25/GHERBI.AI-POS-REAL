@@ -94,6 +94,41 @@ function initEnterpriseFoundation(db) {
     db.safeAddColumn('sales', "coupon_code TEXT DEFAULT ''");
     db.safeAddColumn('sales', 'coupon_discount REAL DEFAULT 0');
     db.safeAddColumn('sales', 'warehouse_id INTEGER DEFAULT 1');
+    db.safeAddColumn('sale_items', "bonus_qty REAL DEFAULT 0");
+    db.safeAddColumn('sale_items', "pack_count REAL DEFAULT 0");
+    db.safeAddColumn('sale_items', "pack_multiplier REAL DEFAULT 1");
+    db.safeAddColumn('sale_items', "sold_m2 REAL DEFAULT 0");
+    db.safeAddColumn('sale_items', "warranty_months INTEGER DEFAULT 0");
+    db.safeAddColumn('products', "warranty_months INTEGER DEFAULT 0");
+    db.safeAddColumn('products', "semi_wholesale_price REAL DEFAULT 0");
+    db.safeAddColumn('products', "super_wholesale_price REAL DEFAULT 0");
+    db.safeAddColumn('products', "area_m2_per_box REAL DEFAULT 0");
+    db.safeAddColumn('products', "linear_meters_per_roll REAL DEFAULT 0");
+    db.safeAddColumn('products', "weight_kg_per_unit REAL DEFAULT 0");
+    db.safeAddColumn('products', "oem_reference TEXT DEFAULT ''");
+    db.safeAddColumn('products', "compatible_models TEXT DEFAULT ''");
+    db.safeAddColumn('products', "bogo_buy_qty INTEGER DEFAULT 0");
+    db.safeAddColumn('products', "bogo_free_qty INTEGER DEFAULT 0");
+    db.safeAddColumn('products', "series_pack_json TEXT DEFAULT ''");
+    db.safeAddColumn('customers', "ccp_account TEXT DEFAULT ''");
+    db.safeAddColumn('customers', "ccp_key TEXT DEFAULT ''");
+    db.safeAddColumn('customers', "bank_rip TEXT DEFAULT ''");
+    db.safeAddColumn('customers', "wilaya TEXT DEFAULT ''");
+    db.safeAddColumn('customers', "commune TEXT DEFAULT ''");
+    db.safeAddColumn('product_prices', "min_qty REAL DEFAULT 1");
+    db.safeAddColumn('product_barcodes', "unit_multiplier REAL DEFAULT 1");
+    db.safeAddColumn('product_barcodes', "pack_name TEXT DEFAULT ''");
+    db.safeAddColumn('inventory_batches', "warehouse_id INTEGER DEFAULT 1");
+    db.safeAddColumn('inventory_batches', "shelf_etage TEXT DEFAULT ''");
+    db.safeAddColumn('inventory_batches', "shelf_place TEXT DEFAULT ''");
+    db.safeAddColumn('inventory_batches', "wac_cost REAL DEFAULT 0");
+    db.safeAddColumn('purchase_invoices', "freight_cost REAL DEFAULT 0");
+    db.safeAddColumn('purchase_invoices', "customs_cost REAL DEFAULT 0");
+    db.safeAddColumn('purchase_invoices', "handling_cost REAL DEFAULT 0");
+    db.safeAddColumn('sales', "coupon_code TEXT DEFAULT ''");
+    db.safeAddColumn('sales', "coupon_discount REAL DEFAULT 0");
+    db.safeAddColumn('sales', "warehouse_id INTEGER DEFAULT 1");
+    db.safeAddColumn('sales', "split_payments_json TEXT");
 
     // 2. جدول المستودعات والتحويلات المخزنية
     db._rawRun(`
@@ -451,7 +486,6 @@ function initEnterpriseFoundation(db) {
           COALESCE(NULLIF(TRIM(c.ai), ''), '---') AS ai,
           COALESCE(NULLIF(TRIM(c.nis), ''), '---') AS nis,
           COALESCE(c.address, '') AS address,
-          COALESCE(c.wilaya, '') AS wilaya,
           COUNT(s.id) AS invoices_count,
           ROUND(SUM(
             CASE

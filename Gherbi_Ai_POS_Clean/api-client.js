@@ -316,6 +316,14 @@ class LanApiClient {
   getServiceTickets(filters = {}) { return this._req('GET', '/api/enterprise/service-tickets', undefined, filters); }
   saveServiceTicket(payload) { return this._req('POST', '/api/enterprise/service-tickets', payload); }
   convertServiceTicketToSale(payload) { return this._req('POST', '/api/enterprise/service-tickets/convert', payload); }
+  getCustomerLastPrices(payload) {
+    const cid = typeof payload === 'object' && payload !== null ? (payload.customer_id || payload.customerId) : payload;
+    return this._req('GET', `/api/enterprise/customer-last-prices/${cid || 0}`);
+  }
+  getReturnableContainers(filters = {}) { return this._req('GET', '/api/enterprise/returnable-containers', undefined, filters); }
+  saveReturnableContainer(payload) { return this._req('POST', '/api/enterprise/returnable-containers', payload); }
+  settleReturnableContainer(payload) { return this._req('POST', '/api/enterprise/returnable-containers/settle', payload); }
+  generateTruckLoadingSheet(payload) { return this._req('POST', '/api/enterprise/truck-loading-sheet', payload); }
 
   getSettings() { return this._req('GET', '/api/settings'); }
   updateSettings(data) { return this._req('PUT', '/api/settings', data); }

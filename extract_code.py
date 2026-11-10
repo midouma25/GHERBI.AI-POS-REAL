@@ -4,7 +4,7 @@ import os
 # الإعدادات
 # ==============================
 
-OUTPUT_FILE = "project_structuregherbiaiposCLEANnew2.md"
+OUTPUT_FILE = "project_structuregherbiaiposCLEANnew4.md"
 MAX_DEPTH = 3                 # أقصى عمق للشجرة
 MAX_FILE_SIZE = 5000 * 1024    # 200KB
 

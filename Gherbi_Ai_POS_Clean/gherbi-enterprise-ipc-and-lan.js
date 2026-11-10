@@ -706,7 +706,340 @@ function createEnterpriseOperations(db) {
     });
   }
 
+
+  // --- 7. عمليات الجملة والقطاعات: آخر أسعار الزبون، الصناديق المسترجعة (Consignes)، وورقة شحن الشاحنة ---
+  async function getCustomerLastPrices(payload = {}) {
+    const customerId = Number(typeof payload === 'object' ? (payload.customer_id || payload.customerId) : payload);
+    if (!customerId) return { prices: {}, customer: null };
+
+    const customer = await db.dbGet(
+      `SELECT c.*,
+              (COALESCE((SELECT SUM(s.total - s.paid_amount) FROM sales s WHERE s.customer_id = c.id AND s.deleted_at IS NULL), 0) +
+               (COALESCE(c.initial_debt, 0) - COALESCE(c.initial_debt_paid, 0))) AS current_debt
+       FROM customers c
+       WHERE c.id = ? AND c.deleted_at IS NULL`,
+      [customerId]
+    );
+
+    const rows = await db.dbAll(
+      `SELECT si.product_id, si.price, si.quantity, COALESCE(si.bonus_qty, 0) AS bonus_qty,
+              s.sale_date, s.doc_number
+       FROM sale_items si
+       INNER JOIN sales s ON s.id = si.sale_id AND s.deleted_at IS NULL
+       WHERE s.customer_id = ? AND si.product_id IS NOT NULL AND si.deleted_at IS NULL AND si.price > 0
+       ORDER BY s.id DESC
+       LIMIT 600`,
+      [customerId]
+    );
+
+    const prices = {};
+    for (const r of rows) {
+      const pid = Number(r.product_id);
+      if (!prices[pid]) {
+        prices[pid] = {
+          price: Number(r.price || 0),
+          last_qty: Number(r.quantity || 1),
+          last_bonus: Number(r.bonus_qty || 0),
+          sale_date: r.sale_date,
+          doc_number: r.doc_number
+        };
+      }
+    }
+
+    return { customer: customer || null, prices };
+  }
+
+  async function getReturnableContainers(filters = {}) {
+    const conds = ['rc.deleted_at IS NULL'];
+    const params = [];
+    if (filters.customer_id || filters.customerId) {
+      conds.push('rc.customer_id = ?');
+      params.push(Number(filters.customer_id || filters.customerId));
+    }
+    if (filters.status && filters.status !== 'all') {
+      conds.push('rc.status = ?');
+      params.push(String(filters.status));
+    }
+    return await db.dbAll(
+      `SELECT rc.*, COALESCE(c.name, rc.customer_name, 'زبون') AS resolved_customer_name, c.phone AS customer_phone
+       FROM returnable_containers rc
+       LEFT JOIN customers c ON c.id = rc.customer_id
+       WHERE ${conds.join(' AND ')}
+       ORDER BY rc.id DESC LIMIT 300`,
+      params
+    );
+  }
+
+  async function saveReturnableContainer(payload = {}) {
+    return await db.withTransaction(async (tx) => {
+      const id = payload.id ? Number(payload.id) : null;
+      const customerId = payload.customer_id ? Number(payload.customer_id) : null;
+      let customerName = String(payload.customer_name || '').trim();
+      if (customerId && !customerName) {
+        const cRow = await tx.dbGet('SELECT name FROM customers WHERE id = ?', [customerId]);
+        if (cRow) customerName = cRow.name;
+      }
+      const containerName = String(payload.container_name || 'صندوق بلاستيكي (Caisse)').trim();
+      const qtyOut = Math.max(0, Number(payload.qty_out || 0));
+      const qtyReturned = Math.max(0, Number(payload.qty_returned || 0));
+      const depositAmt = Math.max(0, Number(payload.deposit_amount || 0));
+      const outDate = payload.out_date || new Date().toISOString().slice(0, 10);
+      const docNo = payload.doc_number || `CSG-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
+      const status = qtyReturned >= qtyOut && qtyOut > 0 ? 'returned' : qtyReturned > 0 ? 'partial' : 'out';
+
+      if (id) {
+        await tx.dbRun(
+          `UPDATE returnable_containers
+           SET customer_id = ?, customer_name = ?, container_name = ?, qty_out = ?, qty_returned = ?,
+               deposit_amount = ?, status = ?, notes = ?
+           WHERE id = ?`,
+          [customerId, customerName || 'زبون', containerName, qtyOut, qtyReturned, depositAmt, status, payload.notes || '', id]
+        );
+        return { id, doc_number: docNo, success: true };
+      }
+
+      const ins = await tx.dbRun(
+        `INSERT INTO returnable_containers (
+          doc_number, customer_id, customer_name, container_name, qty_out, qty_returned,
+          deposit_amount, refunded_amount, status, out_date, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+        [docNo, customerId, customerName || 'زبون', containerName, qtyOut, qtyReturned, depositAmt, status, outDate, payload.notes || '']
+      );
+
+      if (depositAmt > 0 && payload.record_in_caisse !== false) {
+        const openSess = await tx.dbGet(
+          "SELECT id FROM caisse_sessions WHERE status = 'open' AND deleted_at IS NULL ORDER BY id DESC LIMIT 1"
+        );
+        if (openSess && openSess.id) {
+          await tx.dbRun(
+            `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
+             VALUES (?, 'cash_in', ?, 'أمانات صناديق Consignes', ?, ?)`,
+            [openSess.id, depositAmt, `تأمين صناديق/طبلات (${docNo}) — ${customerName || 'زبون'} (${qtyOut} ${containerName})`, ins.lastID]
+          );
+        }
+      }
+
+      return { id: ins.lastID, doc_number: docNo, success: true };
+    });
+  }
+
+  async function settleReturnableContainer(payload = {}) {
+    return await db.withTransaction(async (tx) => {
+      const id = Number(payload.id || payload.container_id);
+      const rec = await tx.dbGet('SELECT * FROM returnable_containers WHERE id = ? AND deleted_at IS NULL', [id]);
+      if (!rec) throw new Error('سجل الأمانات غير موجود');
+
+      const addReturnQty = payload.add_returned_qty !== undefined
+        ? Number(payload.add_returned_qty)
+        : Math.max(0, Number(rec.qty_out || 0) - Number(rec.qty_returned || 0));
+      const newReturned = Math.min(Number(rec.qty_out || 0), Number(rec.qty_returned || 0) + addReturnQty);
+      const refundAmt = payload.refund_amount !== undefined
+        ? Number(payload.refund_amount)
+        : (newReturned >= Number(rec.qty_out || 0) ? Math.max(0, Number(rec.deposit_amount || 0) - Number(rec.refunded_amount || 0)) : 0);
+
+      const newRefunded = Number(rec.refunded_amount || 0) + refundAmt;
+      const newStatus = newReturned >= Number(rec.qty_out || 0) ? 'returned' : newReturned > 0 ? 'partial' : 'out';
+      const retDate = new Date().toISOString().slice(0, 10);
+
+      await tx.dbRun(
+        `UPDATE returnable_containers
+         SET qty_returned = ?, refunded_amount = ?, status = ?, return_date = ?
+         WHERE id = ?`,
+        [newReturned, newRefunded, newStatus, retDate, id]
+      );
+
+      if (refundAmt > 0 && payload.record_in_caisse !== false) {
+        const openSess = await tx.dbGet(
+          "SELECT id FROM caisse_sessions WHERE status = 'open' AND deleted_at IS NULL ORDER BY id DESC LIMIT 1"
+        );
+        if (openSess && openSess.id) {
+          await tx.dbRun(
+            `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
+             VALUES (?, 'cash_out', ?, 'إرجاع أمانات صناديق', ?, ?)`,
+            [openSess.id, refundAmt, `استرجاع أمانة صناديق (${rec.doc_number || '#' + rec.id}) — ${rec.customer_name}`, rec.id]
+          );
+        }
+      }
+
+      return { success: true, id, qty_returned: newReturned, status: newStatus, refunded_amount: newRefunded };
+    });
+  }
+
+  async function generateTruckLoadingSheet(payload = {}) {
+    const saleIds = Array.isArray(payload.sale_ids) ? payload.sale_ids.map(Number).filter(Boolean) : [];
+    const orderIds = Array.isArray(payload.order_ids) ? payload.order_ids.map(Number).filter(Boolean) : [];
+    const shipmentIds = Array.isArray(payload.shipment_ids) ? payload.shipment_ids.map(Number).filter(Boolean) : [];
+    const driverId = payload.driver_id ? Number(payload.driver_id) : null;
+    const targetDate = payload.date ? String(payload.date).slice(0, 10) : null;
+
+    // إذا تم تمرير شحنات توصيل أو سائق، نجمع الفواتير والطلبيات المرتبطة بها تلقائياً
+    if (shipmentIds.length > 0 || driverId) {
+      const shConds = ['deleted_at IS NULL'];
+      const shParams = [];
+      if (shipmentIds.length > 0) {
+        shConds.push(`id IN (${shipmentIds.map(() => '?').join(',')})`);
+        shParams.push(...shipmentIds);
+      }
+      if (driverId) {
+        shConds.push('driver_id = ?');
+        shParams.push(driverId);
+      }
+      if (targetDate) {
+        shConds.push('date(delivery_date) = date(?)');
+        shParams.push(targetDate);
+      }
+      const shipRows = await db.dbAll(`SELECT sale_id, order_id FROM delivery_shipments WHERE ${shConds.join(' AND ')}`, shParams);
+      shipRows.forEach((sr) => {
+        if (sr.sale_id && !saleIds.includes(Number(sr.sale_id))) saleIds.push(Number(sr.sale_id));
+        if (sr.order_id && !orderIds.includes(Number(sr.order_id))) orderIds.push(Number(sr.order_id));
+      });
+    }
+
+    // إذا لم يُحدد شيء، نأخذ فواتير وطلبيات اليوم
+    if (saleIds.length === 0 && orderIds.length === 0) {
+      const todayStr = targetDate || new Date().toISOString().slice(0, 10);
+      const todaySales = await db.dbAll(
+        'SELECT id FROM sales WHERE date(sale_date) = date(?) AND deleted_at IS NULL AND total > 0 LIMIT 100',
+        [todayStr]
+      );
+      todaySales.forEach((s) => saleIds.push(Number(s.id)));
+    }
+
+    const aggregatedMap = {};
+    let invoicesCount = saleIds.length + orderIds.length;
+    let grandTotalValue = 0;
+    let grandTotalWeightKg = 0;
+
+    if (saleIds.length > 0) {
+      const ph = saleIds.map(() => '?').join(',');
+      const sItems = await db.dbAll(
+        `SELECT si.*, p.name AS prod_name, p.barcode, p.oem_reference, p.unit,
+                p.wholesale_unit, p.wholesale_qty, p.weight_kg_per_unit
+         FROM sale_items si
+         LEFT JOIN products p ON p.id = si.product_id
+         WHERE si.sale_id IN (${ph}) AND si.deleted_at IS NULL`,
+        saleIds
+      );
+
+      for (const it of sItems) {
+        const key = it.product_id ? `P_${it.product_id}` : `C_${it.custom_product_name || 'item'}`;
+        const paidQty = Number(it.quantity || 0);
+        const bonusQty = Number(it.bonus_qty || 0);
+        const totalUnits = Number((paidQty + bonusQty).toFixed(3));
+        const sub = Number(it.subtotal || 0);
+        const packMult = Math.max(1, Number(it.pack_multiplier || it.wholesale_qty || 1));
+        const unitWeight = Math.max(0, Number(it.weight_kg_per_unit || 0));
+
+        if (!aggregatedMap[key]) {
+          aggregatedMap[key] = {
+            product_id: it.product_id || null,
+            barcode: it.barcode || '',
+            oem_reference: it.oem_reference || '',
+            name: it.prod_name || it.custom_product_name || 'منتج',
+            unit: it.unit || 'قطعة',
+            pack_unit: it.wholesale_unit || 'كرتون',
+            pack_multiplier: packMult,
+            paid_qty: 0,
+            bonus_qty: 0,
+            total_units: 0,
+            full_cartons: 0,
+            loose_units: 0,
+            total_weight_kg: 0,
+            total_value: 0
+          };
+        }
+        const rec = aggregatedMap[key];
+        rec.paid_qty = Number((rec.paid_qty + paidQty).toFixed(3));
+        rec.bonus_qty = Number((rec.bonus_qty + bonusQty).toFixed(3));
+        rec.total_units = Number((rec.total_units + totalUnits).toFixed(3));
+        rec.total_value = Number((rec.total_value + sub).toFixed(2));
+        rec.total_weight_kg = Number((rec.total_weight_kg + totalUnits * unitWeight).toFixed(2));
+        grandTotalValue = Number((grandTotalValue + sub).toFixed(2));
+        grandTotalWeightKg = Number((grandTotalWeightKg + totalUnits * unitWeight).toFixed(2));
+      }
+    }
+
+    if (orderIds.length > 0) {
+      const phO = orderIds.map(() => '?').join(',');
+      const oItems = await db.dbAll(
+        `SELECT oi.*, p.name AS prod_name, p.barcode, p.oem_reference, p.unit,
+                p.wholesale_unit, p.wholesale_qty, p.weight_kg_per_unit
+         FROM customer_order_items oi
+         LEFT JOIN products p ON p.id = oi.product_id
+         WHERE oi.order_id IN (${phO}) AND oi.deleted_at IS NULL`,
+        orderIds
+      );
+
+      for (const it of oItems) {
+        const key = it.product_id ? `P_${it.product_id}` : `C_${it.custom_product_name || 'item'}`;
+        const totalUnits = Number(it.quantity || 0);
+        const sub = Number(it.subtotal || 0);
+        const packMult = Math.max(1, Number(it.wholesale_qty || 1));
+        const unitWeight = Math.max(0, Number(it.weight_kg_per_unit || 0));
+
+        if (!aggregatedMap[key]) {
+          aggregatedMap[key] = {
+            product_id: it.product_id || null,
+            barcode: it.barcode || '',
+            oem_reference: it.oem_reference || '',
+            name: it.prod_name || it.custom_product_name || 'منتج',
+            unit: it.unit || 'قطعة',
+            pack_unit: it.wholesale_unit || 'كرتون',
+            pack_multiplier: packMult,
+            paid_qty: 0,
+            bonus_qty: 0,
+            total_units: 0,
+            full_cartons: 0,
+            loose_units: 0,
+            total_weight_kg: 0,
+            total_value: 0
+          };
+        }
+        const rec = aggregatedMap[key];
+        rec.paid_qty = Number((rec.paid_qty + totalUnits).toFixed(3));
+        rec.total_units = Number((rec.total_units + totalUnits).toFixed(3));
+        rec.total_value = Number((rec.total_value + sub).toFixed(2));
+        rec.total_weight_kg = Number((rec.total_weight_kg + totalUnits * unitWeight).toFixed(2));
+        grandTotalValue = Number((grandTotalValue + sub).toFixed(2));
+        grandTotalWeightKg = Number((grandTotalWeightKg + totalUnits * unitWeight).toFixed(2));
+      }
+    }
+
+    const itemsList = Object.values(aggregatedMap).map((r) => {
+      if (r.pack_multiplier > 1) {
+        r.full_cartons = Math.floor(r.total_units / r.pack_multiplier);
+        r.loose_units = Number((r.total_units % r.pack_multiplier).toFixed(3));
+      } else {
+        r.full_cartons = 0;
+        r.loose_units = r.total_units;
+      }
+      return r;
+    });
+
+    let driverInfo = null;
+    if (driverId) {
+      driverInfo = await db.dbGet('SELECT * FROM drivers WHERE id = ?', [driverId]);
+    }
+
+    return {
+      manifest_number: `CHG-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
+      date: targetDate || new Date().toISOString().slice(0, 10),
+      driver: driverInfo,
+      documents_count: invoicesCount,
+      items: itemsList,
+      total_cartons: itemsList.reduce((s, x) => s + Number(x.full_cartons || 0), 0),
+      total_units: itemsList.reduce((s, x) => s + Number(x.total_units || 0), 0),
+      total_weight_kg: grandTotalWeightKg,
+      total_value: grandTotalValue
+    };
+  }
+
   return {
+    getCustomerLastPrices,
+    getReturnableContainers,
+    saveReturnableContainer,
+    settleReturnableContainer,
+    generateTruckLoadingSheet,
     getInstallmentContracts,
     createInstallmentContract,
     payInstallmentSchedule,
@@ -781,7 +1114,12 @@ function registerEnterpriseIpcHandlers(ipcMain, db, isLanClientMode, lanClient) 
     ['pay-employee-salary', (p) => ops.payEmployeeSalary(p), (p) => lanClient.payEmployeeSalary(p)],
     ['get-service-tickets', (f) => ops.getServiceTickets(f), (f) => lanClient.getServiceTickets(f)],
     ['save-service-ticket', (p) => ops.saveServiceTicket(p), (p) => lanClient.saveServiceTicket(p)],
-    ['convert-service-ticket-to-sale', (p) => ops.convertServiceTicketToSale(p), (p) => lanClient.convertServiceTicketToSale(p)]
+    ['convert-service-ticket-to-sale', (p) => ops.convertServiceTicketToSale(p), (p) => lanClient.convertServiceTicketToSale(p)],
+    ['get-customer-last-prices', (p) => ops.getCustomerLastPrices(p), (p) => lanClient.getCustomerLastPrices(p)],
+    ['get-returnable-containers', (f) => ops.getReturnableContainers(f), (f) => lanClient.getReturnableContainers(f)],
+    ['save-returnable-container', (p) => ops.saveReturnableContainer(p), (p) => lanClient.saveReturnableContainer(p)],
+    ['settle-returnable-container', (p) => ops.settleReturnableContainer(p), (p) => lanClient.settleReturnableContainer(p)],
+    ['generate-truck-loading-sheet', (p) => ops.generateTruckLoadingSheet(p), (p) => lanClient.generateTruckLoadingSheet(p)]
   ];
 
   for (const [ch, localFn, lanFn] of channels) {
@@ -843,6 +1181,11 @@ function registerEnterpriseExpressRoutes(app, db) {
   app.get('/api/enterprise/service-tickets', wrap((req) => ops.getServiceTickets(req.query)));
   app.post('/api/enterprise/service-tickets', wrap((req) => ops.saveServiceTicket(req.body)));
   app.post('/api/enterprise/service-tickets/convert', wrap((req) => ops.convertServiceTicketToSale(req.body)));
+  app.get('/api/enterprise/customer-last-prices/:customerId', wrap((req) => ops.getCustomerLastPrices({ customer_id: req.params.customerId })));
+  app.get('/api/enterprise/returnable-containers', wrap((req) => ops.getReturnableContainers(req.query)));
+  app.post('/api/enterprise/returnable-containers', wrap((req) => ops.saveReturnableContainer(req.body)));
+  app.post('/api/enterprise/returnable-containers/settle', wrap((req) => ops.settleReturnableContainer(req.body)));
+  app.post('/api/enterprise/truck-loading-sheet', wrap((req) => ops.generateTruckLoadingSheet(req.body)));
 }
 
 module.exports = {

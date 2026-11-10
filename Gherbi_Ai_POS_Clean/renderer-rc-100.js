@@ -2110,7 +2110,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
         masterBar.insertAdjacentHTML(
           'beforeend',
           `
-          <button type="button" onclick="App.openAlgerianFiscalModal()" class="px-2 py-1 rounded-lg bg-emerald-600 text-white">🇩🇿 État 104 & G50</button>
+          
           <button type="button" onclick="App.openRecapInvoiceModal()" class="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-purple-600">📑 فاتورة مجمعة</button>
           <button type="button" onclick="App.openPriceListModal()" class="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">🖨️ كتالوج الأسعار</button>
           `
@@ -2557,7 +2557,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
       masterBar.innerHTML =
         '<button type="button" onclick="App.openPosRecentSalesModal()" class="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-blue-500 text-blue-600"><span data-i18n-pos="recent_sales">🧾 آخر المبيعات</span></button>' +
         '<button type="button" onclick="App.openChequesPortfolioModal()" class="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-500 text-indigo-600"><span data-i18n-pos="cheques">🏦 الشيكات</span></button>' +
-        '<button type="button" onclick="App.openAlgerianFiscalModal()" class="px-2 py-1 rounded-lg bg-emerald-600 text-white">🇩🇿 État 104 & G50</button>' +
+        '' +
         '<button type="button" onclick="App.openRecapInvoiceModal()" class="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-purple-600"><span data-i18n-pos="recap_inv">📑 فاتورة مجمعة</span></button>' +
         '<button type="button" onclick="App.openPriceListModal()" class="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"><span data-i18n-pos="price_catalog">🖨️ كتالوج الأسعار</span></button>' +
         '<button type="button" onclick="App.openMobileCompanionModal()" class="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 text-emerald-600"><span data-i18n-pos="mobile_pair">📱 ربط الهاتف</span></button>' +
@@ -25377,7 +25377,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
       '      <button type="button" onclick="App.setAnalyticsQuickRange(0)" class="px-2.5 py-1.5 bg-slate-200 dark:bg-slate-700 rounded-xl font-bold">اليوم</button>' +
       '      <button type="button" onclick="App.setAnalyticsQuickRange(30)" class="px-2.5 py-1.5 bg-slate-200 dark:bg-slate-700 rounded-xl font-bold">30 يوماً</button>' +
       '      <button type="button" onclick="AppState.analyticsDateFrom=\'\'; AppState.analyticsDateTo=\'\'; App.renderAnalyticsView()" class="px-2.5 py-1.5 bg-slate-200 dark:bg-slate-700 rounded-xl font-bold">الكل</button>' +
-      '      <button type="button" onclick="App.openAlgerianFiscalModal()" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black shadow">🇩🇿 تصريح G50 & IFU & État 104</button>' +
+      '      ' +
       '      <button type="button" onclick="App.printAnalyticsSalesSummary()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black shadow">🖨️ طباعة التقرير الشامل (F9)</button>' +
       '    </div>' +
       '  </div>' +
@@ -26846,7 +26846,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
     { id: 'simulator', label: '8. 🎛️ محاكي القرارات والأهداف' },
     { id: 'audit', label: '9. 🛡️ رقابة البائعين والمناوبات' },
     { id: 'charts', label: '10. 📊 الاستوديو البياني' },
-    { id: 'fiscal', label: '11. 🇩🇿 الجباية (IFU / G50 / 104)' },
+    { id: 'fiscal', label: '11. 👑 نادي الولاء ومكافآت الزبائن (VIP Loyalty)' },
     { id: 'zakat', label: '12. 🕌 حاسبة وأرشيف الزكاة' }
   ];
 
@@ -26892,7 +26892,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
       '        <button type="button" onclick="App.setAnalyticsQuickRange(7)" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold">7 أيام</button>' +
       '        <button type="button" onclick="App.setAnalyticsQuickRange(30)" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold">30 يوماً</button>' +
       '        <button type="button" onclick="AppState.analyticsDateFrom=\'\'; AppState.analyticsDateTo=\'\'; App.renderAnalyticsView()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-xl font-black">الكل</button>' +
-      '        <button type="button" onclick="App.openAlgerianFiscalModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black shadow">🇩🇿 تصريح G50/IFU</button>' +
+      '        ' +
       '        <button type="button" onclick="App.printAnalyticsSalesSummary()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black shadow">🖨️ طباعة (F9)</button>' +
       '      </div>' +
       '    </div>' +
@@ -40857,7 +40857,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
   if (Array.isArray(App.ERP_TABS_CONFIG)) {
     var fiscalTab = App.ERP_TABS_CONFIG.find(function (t) { return t.id === 'fiscal'; });
     if (fiscalTab) {
-      fiscalTab.label = '11. 🇩🇿 التصريح الضريبي (État 104 & G50)';
+      fiscalTab.label = '11. 👑 نادي الولاء ومكافآت الزبائن (VIP Loyalty)';
     }
   }
 
@@ -43339,4 +43339,2442 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
       showToast('✅ الفحص الآلي للوحدات المؤسسية الـ 6: 6/6 PASS (100%)!', 'success');
     }
   };
+})();
+
+// [UNIFIED ALGERIAN ETAT 104 & G50 ENGINE V16 FIX]
+(function installUnifiedAlgerianEtat104AndG50EngineV16() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.etat104SelectedYear = AppState.etat104SelectedYear || String(new Date().getFullYear());
+  AppState.etat104IncludeWalkinRow = AppState.etat104IncludeWalkinRow !== false;
+
+  App.buildUnifiedAlgerianFiscalData = async function (yearOrFilterObj) {
+    var year = String(
+      (typeof yearOrFilterObj === 'object' && yearOrFilterObj !== null ? yearOrFilterObj.year : yearOrFilterObj) ||
+      AppState.etat104SelectedYear ||
+      new Date().getFullYear()
+    ).trim();
+
+    var dateFrom = year + '-01-01';
+    var dateTo = year + '-12-31';
+
+    var results = await Promise.all([
+      window.api.getAlgerianFiscalReport
+        ? window.api.getAlgerianFiscalReport({ dateFrom: dateFrom, dateTo: dateTo }).catch(function () { return null; })
+        : Promise.resolve(null),
+      window.api.getEtat104
+        ? window.api.getEtat104(year).catch(function () { return []; })
+        : Promise.resolve([]),
+      window.api.getSales
+        ? window.api.getSales({ dateFrom: dateFrom, dateTo: dateTo }).catch(function () { return []; })
+        : Promise.resolve([]),
+      window.api.getCustomers
+        ? window.api.getCustomers().catch(function () { return []; })
+        : Promise.resolve([]),
+      window.api.getPurchases
+        ? window.api.getPurchases().catch(function () { return []; })
+        : Promise.resolve([])
+    ]);
+
+    var fiscalRep = results[0] || {};
+    var etatDirect = Array.isArray(results[1]) ? results[1] : [];
+    var allSales = Array.isArray(results[2]) ? results[2] : [];
+    var customers = Array.isArray(results[3]) ? results[3] : (AppState.customers || []);
+    var purchases = Array.isArray(results[4]) ? results[4] : [];
+
+    if (allSales.length === 0 && window.api.getSales) {
+      var rawAllSales = (await window.api.getSales({}).catch(function () { return []; })) || [];
+      allSales = rawAllSales.filter(function (s) {
+        var sd = String(s.sale_date || s.created_at || '').slice(0, 4);
+        return !sd || sd === year;
+      });
+    }
+
+    var custMap = {};
+    customers.forEach(function (c) { custMap[Number(c.id)] = c; });
+
+    var byCustomer = {};
+    var walkinCount = 0, walkinHt = 0, walkinTva = 0, walkinStamp = 0, walkinTtc = 0;
+    var globalHt = 0, globalTva = 0, globalStamp = 0, globalTtc = 0;
+
+    allSales.forEach(function (s) {
+      var ttc = Number(s.total || 0);
+      if (ttc <= 0) return;
+      var stamp = Number(s.stamp_amount || 0);
+      var taxPct = Number(s.tax_percentage || 0);
+      var baseWithoutStamp = Math.max(0, ttc - stamp);
+      var ht = taxPct > 0 ? Number((baseWithoutStamp / (1 + taxPct / 100)).toFixed(2)) : baseWithoutStamp;
+      var tva = Number((baseWithoutStamp - ht).toFixed(2));
+
+      globalHt = Number((globalHt + ht).toFixed(2));
+      globalTva = Number((globalTva + tva).toFixed(2));
+      globalStamp = Number((globalStamp + stamp).toFixed(2));
+      globalTtc = Number((globalTtc + ttc).toFixed(2));
+
+      var cid = Number(s.customer_id || 0);
+      if (cid > 0 && (custMap[cid] || s.customer_name)) {
+        var cObj = custMap[cid] || {};
+        if (!byCustomer[cid]) {
+          byCustomer[cid] = {
+            id: cid,
+            customer_id: cid,
+            name: cObj.name || s.customer_name || ('زبون #' + cid),
+            customer_name: cObj.name || s.customer_name || ('زبون #' + cid),
+            nif: cObj.nif || '---',
+            rc: cObj.rc || '---',
+            ai: cObj.ai || '---',
+            nis: cObj.nis || '---',
+            address: cObj.address || '',
+            wilaya: cObj.wilaya || '',
+            invoices_count: 0,
+            total_ht: 0,
+            ca_ht: 0,
+            total_tva: 0,
+            tva: 0,
+            total_stamp: 0,
+            timbre: 0,
+            total_ttc: 0,
+            is_walkin: false
+          };
+        }
+        byCustomer[cid].invoices_count += 1;
+        byCustomer[cid].total_ht = Number((byCustomer[cid].total_ht + ht).toFixed(2));
+        byCustomer[cid].ca_ht = byCustomer[cid].total_ht;
+        byCustomer[cid].total_tva = Number((byCustomer[cid].total_tva + tva).toFixed(2));
+        byCustomer[cid].tva = byCustomer[cid].total_tva;
+        byCustomer[cid].total_stamp = Number((byCustomer[cid].total_stamp + stamp).toFixed(2));
+        byCustomer[cid].timbre = byCustomer[cid].total_stamp;
+        byCustomer[cid].total_ttc = Number((byCustomer[cid].total_ttc + ttc).toFixed(2));
+      } else {
+        walkinCount += 1;
+        walkinHt = Number((walkinHt + ht).toFixed(2));
+        walkinTva = Number((walkinTva + tva).toFixed(2));
+        walkinStamp = Number((walkinStamp + stamp).toFixed(2));
+        walkinTtc = Number((walkinTtc + ttc).toFixed(2));
+      }
+    });
+
+    var rawRows = Object.values(byCustomer);
+    if (rawRows.length === 0) {
+      var fallbackSource = etatDirect.length > 0 ? etatDirect : (Array.isArray(fiscalRep.etat104) ? fiscalRep.etat104 : []);
+      rawRows = fallbackSource.map(function (r) {
+        var cid = Number(r.customer_id || r.id || 0);
+        var cObj = custMap[cid] || {};
+        var ttc = Number(r.total_ttc || 0);
+        var stp = Number(r.total_stamp ?? r.timbre ?? 0);
+        var tva = Number(r.total_tva ?? r.tva ?? 0);
+        var ht = Number(r.total_ht ?? r.ca_ht ?? Math.max(0, ttc - stp - tva));
+        return {
+          id: cid,
+          customer_id: cid,
+          name: r.customer_name || r.name || cObj.name || 'زبون',
+          customer_name: r.customer_name || r.name || cObj.name || 'زبون',
+          nif: r.nif || cObj.nif || '---',
+          rc: r.rc || cObj.rc || '---',
+          ai: r.ai || cObj.ai || '---',
+          nis: r.nis || cObj.nis || '---',
+          address: r.address || cObj.address || '',
+          wilaya: r.wilaya || cObj.wilaya || '',
+          invoices_count: Number(r.invoices_count || 1),
+          total_ht: ht,
+          ca_ht: ht,
+          total_tva: tva,
+          tva: tva,
+          total_stamp: stp,
+          timbre: stp,
+          total_ttc: ttc,
+          is_walkin: false
+        };
+      });
+    }
+
+    rawRows.sort(function (a, b) { return Number(b.total_ttc || 0) - Number(a.total_ttc || 0); });
+
+    var g50 = fiscalRep.g50 || {};
+    var finalCaHt = globalHt > 0 ? globalHt : Number(g50.ca_ht || 0);
+    var finalTvaCollectee = globalTva > 0 ? globalTva : Number(g50.tva_collectee || 0);
+    var finalStamp = globalStamp > 0 ? globalStamp : Number(g50.droit_timbre || 0);
+    var finalCaTtc = globalTtc > 0 ? globalTtc : Number(g50.ca_ttc || finalCaHt);
+
+    var tvaDeductible = Number(g50.tva_deductible || 0);
+    if (tvaDeductible === 0 && purchases.length > 0) {
+      purchases.forEach(function (pi) {
+        var pYear = String(pi.date || pi.created_at || '').slice(0, 4);
+        if (!pYear || pYear === year) {
+          tvaDeductible += Number(pi.subtotal || 0) * (Number(pi.tax_percentage || 0) / 100);
+        }
+      });
+      tvaDeductible = Number(tvaDeductible.toFixed(2));
+    }
+
+    var netTva = Math.max(0, Number((finalTvaCollectee - tvaDeductible).toFixed(2)));
+    var totalAPayer = Number((netTva + finalStamp).toFixed(2));
+
+    var namedSumHt = rawRows.reduce(function (s, r) { return s + Number(r.total_ht || 0); }, 0);
+    var namedSumTtc = rawRows.reduce(function (s, r) { return s + Number(r.total_ttc || 0); }, 0);
+
+    if (walkinTtc === 0 && finalCaTtc > namedSumTtc + 0.01) {
+      walkinTtc = Number((finalCaTtc - namedSumTtc).toFixed(2));
+      walkinHt = Number((finalCaHt - namedSumHt).toFixed(2));
+      walkinCount = Math.max(1, allSales.length - rawRows.reduce(function (s, r) { return s + Number(r.invoices_count || 0); }, 0));
+    }
+
+    var walkinSummaryRow = {
+      id: 0,
+      customer_id: 0,
+      name: '👥 مجموع مبيعات الزبائن العابرين (مبيعات التجزئة Comptoir بدون ملف جبائي)',
+      customer_name: '👥 مجموع مبيعات الزبائن العابرين (مبيعات التجزئة Comptoir بدون ملف جبائي)',
+      nif: 'مستهلك نهائي (B2C)',
+      rc: 'بدون سجل',
+      ai: '---',
+      nis: '---',
+      address: 'مبيعات الكاشير المباشرة',
+      wilaya: '',
+      invoices_count: walkinCount,
+      total_ht: walkinHt,
+      ca_ht: walkinHt,
+      total_tva: walkinTva,
+      tva: walkinTva,
+      total_stamp: walkinStamp,
+      timbre: walkinStamp,
+      total_ttc: walkinTtc,
+      is_walkin: true
+    };
+
+    var output = {
+      year: year,
+      namedRows: rawRows,
+      walkinRow: walkinSummaryRow,
+      etat104: AppState.etat104IncludeWalkinRow && walkinTtc > 0 ? rawRows.concat([walkinSummaryRow]) : rawRows.slice(),
+      g50: {
+        ca_ht: finalCaHt,
+        tva_collectee: finalTvaCollectee,
+        tva_deductible: tvaDeductible,
+        droit_timbre: finalStamp,
+        ca_ttc: finalCaTtc,
+        total_a_payer: totalAPayer
+      },
+      ifu: {
+        ca_ht: finalCaHt,
+        ifu_5_commerce: Math.max(10000, Number((finalCaHt * 0.05).toFixed(2))),
+        ifu_12_service: Math.max(10000, Number((finalCaHt * 0.12).toFixed(2))),
+        raw_5: Number((finalCaHt * 0.05).toFixed(2)),
+        raw_12: Number((finalCaHt * 0.12).toFixed(2))
+      }
+    };
+
+    AppState._lastFiscalReport = output;
+    AppState.etat104CachedRows = output.etat104;
+    return output;
+  };
+
+  App.toggleIncludeWalkinInEtat104 = async function () {
+    AppState.etat104IncludeWalkinRow = !AppState.etat104IncludeWalkinRow;
+    if (document.getElementById('algerianFiscalModal')?.classList.contains('active')) {
+      await this.openAlgerianFiscalModal();
+    }
+    if (AppState.currentView === 'analytics' && AppState.analyticsTab === 'fiscal') {
+      await this.renderAnalyticsView();
+    }
+  };
+
+  App.openAlgerianFiscalModal = async function () {
+    var unified = await this.buildUnifiedAlgerianFiscalData(AppState.etat104SelectedYear);
+    var data = AppState.analyticsData || (await this.fetchMasterExecutiveAnalytics().catch(function () { return { net_profit: 0 }; }));
+
+    var g = unified.g50;
+    var rows = unified.etat104;
+    var caHt = g.ca_ht;
+    var ifu5Pct = unified.ifu.raw_5;
+
+    var body = document.getElementById('algerianFiscalModalBody');
+    if (body) {
+      body.innerHTML =
+        '<div class="space-y-4 text-xs">' +
+        '  <div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-2">' +
+        '    <div class="font-black text-sm text-emerald-700 dark:text-emerald-300">🇩🇿 1. نظام الضريبة الجزافية الوحيدة (IFU - التصريح السنوي G12 / G12 bis):</div>' +
+        '    <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-center">' +
+        '      <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">رقم الأعمال المحقق الكلي (CA)</div><div class="font-mono font-black text-sm text-blue-600 mt-0.5">' + caHt.toFixed(2) + ' د.ج</div></div>' +
+        '      <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-emerald-500/30"><div class="text-[10px] text-emerald-700 dark:text-emerald-300 font-bold">ضريبة IFU تجارة وإنتاج (5%)</div><div class="font-mono font-black text-sm text-emerald-600 mt-0.5">' + unified.ifu.ifu_5_commerce.toFixed(2) + ' د.ج</div><div class="text-[9px] text-slate-400">الحد الأدنى القانوني: 10,000 د.ج</div></div>' +
+        '      <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-amber-500/30"><div class="text-[10px] text-amber-700 dark:text-amber-300 font-bold">ضريبة IFU خدمات (12%)</div><div class="font-mono font-black text-sm text-amber-600 mt-0.5">' + unified.ifu.ifu_12_service.toFixed(2) + ' د.ج</div></div>' +
+        '      <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-500/30"><div class="text-[10px] text-indigo-600 font-bold">صافي الربح بعد IFU (5%)</div><div class="font-mono font-black text-sm text-indigo-600 mt-0.5">' + (Number(data.net_profit || 0) - ifu5Pct).toFixed(2) + ' د.ج</div></div>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2">' +
+        '    <div class="font-black text-sm text-blue-600">2. ملخص التصريح الشهري للضرائب — النظام الحقيقي (Déclaration G50):</div>' +
+        '    <div class="grid grid-cols-2 md:grid-cols-5 gap-2.5 text-center">' +
+        '      <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">رقم الأعمال خارج الرسم (CA HT)</div><div class="text-sm font-black font-mono mt-0.5">' + caHt.toFixed(2) + ' د.ج</div></div>' +
+        '      <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">TVA المحصلة من المبيعات (+)</div><div class="text-sm font-black font-mono text-rose-600 mt-0.5">' + g.tva_collectee.toFixed(2) + ' د.ج</div></div>' +
+        '      <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">TVA المشتريات المسترجعة (-)</div><div class="text-sm font-black font-mono text-emerald-600 mt-0.5">' + g.tva_deductible.toFixed(2) + ' د.ج</div></div>' +
+        '      <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">حقوق الطابع الجبائي (Timbre)</div><div class="text-sm font-black font-mono text-amber-600 mt-0.5">' + g.droit_timbre.toFixed(2) + ' د.ج</div></div>' +
+        '      <div class="p-2.5 rounded-xl bg-blue-600 text-white"><div class="text-[10px] opacity-80">صافي G50 المستحق للدفع</div><div class="text-sm font-black font-mono mt-0.5">' + g.total_a_payer.toFixed(2) + ' د.ج</div></div>' +
+        '    </div>' +
+        '  </div>' +
+
+        '  <div class="space-y-2">' +
+        '    <div class="flex flex-wrap items-center justify-between gap-2">' +
+        '      <div class="flex items-center gap-2">' +
+        '        <span class="font-black text-sm text-emerald-600">3. كشف الزبائن السنوي (État 104 — الرقم الجبائي NIF والسجل التجاري RC):</span>' +
+        '        <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300 font-black text-[11px] cursor-pointer">' +
+        '          <input type="checkbox" ' + (AppState.etat104IncludeWalkinRow ? 'checked' : '') + ' onchange="App.toggleIncludeWalkinInEtat104()">' +
+        '          <span>إظهار سطر مجموع الزبائن العابرين للمطابقة</span>' +
+        '        </label>' +
+        '      </div>' +
+        '      <div class="flex gap-2">' +
+        '        <button type="button" onclick="App.exportEtat104ToCsv()" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 text-white font-black">📥 تصدير كشف État 104 إلى Excel</button>' +
+        '        <button type="button" onclick="App.printAlgerianFiscalReportA4()" class="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white font-black">🖨️ طباعة تصريح G50 & État 104 (A4)</button>' +
+        '      </div>' +
+        '    </div>' +
+        '    <div class="max-h-56 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl">' +
+        '      <table class="w-full text-xs text-right">' +
+        '        <thead><tr class="bg-slate-100 dark:bg-slate-800 text-slate-500"><th class="p-2">الزبون</th><th class="p-2">الفواتير</th><th class="p-2">NIF</th><th class="p-2">RC</th><th class="p-2">AI</th><th class="p-2">CA HT</th><th class="p-2">TVA</th><th class="p-2">Timbre</th><th class="p-2">Total TTC</th></tr></thead>' +
+        '        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">' +
+        (rows.length > 0
+          ? rows.map(function (r) {
+              var htVal = Number(r.total_ht ?? r.ca_ht ?? 0);
+              var tvaVal = Number(r.total_tva ?? r.tva ?? 0);
+              var stpVal = Number(r.total_stamp ?? r.timbre ?? 0);
+              var ttcVal = Number(r.total_ttc ?? 0);
+              return (
+                '<tr class="' + (r.is_walkin ? 'bg-amber-500/10 font-black' : '') + '">' +
+                '  <td class="p-2 font-bold">' + (r.customer_name || r.name || '') + '</td>' +
+                '  <td class="p-2 font-mono font-bold">' + Number(r.invoices_count || 1) + '</td>' +
+                '  <td class="p-2 font-mono">' + (r.nif || '—') + '</td>' +
+                '  <td class="p-2 font-mono">' + (r.rc || '—') + '</td>' +
+                '  <td class="p-2 font-mono">' + (r.ai || '—') + '</td>' +
+                '  <td class="p-2 font-mono font-bold text-emerald-600">' + htVal.toFixed(2) + '</td>' +
+                '  <td class="p-2 font-mono">' + tvaVal.toFixed(2) + '</td>' +
+                '  <td class="p-2 font-mono">' + stpVal.toFixed(2) + '</td>' +
+                '  <td class="p-2 font-mono font-black text-blue-600">' + ttcVal.toFixed(2) + ' د.ج</td>' +
+                '</tr>'
+              );
+            }).join('')
+          : '<tr><td colspan="9" class="p-4 text-center text-slate-400 font-bold">لا توجد مبيعات مسجلة</td></tr>') +
+        '        </tbody>' +
+        '      </table>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+    }
+    this.openModal('algerianFiscalModal');
+  };
+
+  App.renderErpTab11_AlgerianFiscalStudio = async function (body, data) {
+    var year = AppState.etat104SelectedYear || String(new Date().getFullYear());
+    var unified = await this.buildUnifiedAlgerianFiscalData(year);
+
+    var etatRows = unified.etat104;
+    var namedRows = unified.namedRows;
+    var walkinRow = unified.walkinRow;
+    var g = unified.g50;
+
+    var missingFiscalCount = 0;
+    namedRows.forEach(function (r) {
+      if (!r.nif || r.nif === '---' || !r.rc || r.rc === '---') missingFiscalCount++;
+    });
+
+    var namedTotalTtc = namedRows.reduce(function (s, r) { return s + Number(r.total_ttc || 0); }, 0);
+
+    body.innerHTML =
+      '<div class="space-y-5 text-xs">' +
+      '  <div class="p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border border-slate-800 shadow-xl space-y-4">' +
+      '    <div class="flex flex-wrap items-center justify-between gap-3">' +
+      '      <div>' +
+      '        <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-black text-[10.5px]">🇩🇿 مطابق لمعايير المديرية العامة للضرائب (DGI — Jibaya\'tic)</span>' +
+      '        <h3 class="text-lg font-black mt-1 text-amber-400">الكشف التفصيلي السنوي لمعاملات الزبائن (État 104) والتصريح الجبائي (G50 / IFU G12)</h3>' +
+      '        <p class="text-[11px] text-slate-300">يعرض إجمالي رقم الأعمال العام للمتجر، مع تفصيل الزبائن المسجلين بالاسم (B2B) ومبيعات الزبائن العابرين (Comptoir)</p>' +
+      '      </div>' +
+      '      <div class="flex flex-wrap items-center gap-2">' +
+      '        <label class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-amber-300 font-black cursor-pointer">' +
+      '          <input type="checkbox" ' + (AppState.etat104IncludeWalkinRow ? 'checked' : '') + ' onchange="App.toggleIncludeWalkinInEtat104()">' +
+      '          <span>إظهار سطر الزبائن العابرين في الجدول</span>' +
+      '        </label>' +
+      '        <div class="flex items-center gap-1.5 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">' +
+      '          <span class="font-bold text-slate-300">📅 السنة:</span>' +
+      '          <select onchange="App.loadEtat104ByYear(this.value)" class="bg-slate-950 text-amber-400 font-mono font-black px-2.5 py-1 rounded-lg border border-slate-700">' +
+      ['2024', '2025', '2026', '2027'].map(function (yr) {
+        return '<option value="' + yr + '" ' + (String(year) === yr ? 'selected' : '') + '>' + yr + '</option>';
+      }).join('') +
+      '          </select>' +
+      '        </div>' +
+      '        <button type="button" onclick="App.printOfficialEtat104ReportA4()" class="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black shadow-lg">🖨️ طباعة كشف État 104 الرسمي (A4)</button>' +
+      '        <button type="button" onclick="App.exportEtat104ToCsv()" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-lg">📊 تصدير Excel / CSV</button>' +
+      '      </div>' +
+      '    </div>' +
+
+      '    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 pt-2">' +
+      '      <div class="p-3 rounded-2xl bg-slate-950/80 border border-slate-800">' +
+      '        <div class="text-slate-400 text-[10.5px]">الزبائن المسجلون بالاسم (État 104)</div>' +
+      '        <div class="text-xl font-black font-mono text-sky-400 mt-0.5">' + namedRows.length + ' زبون (' + namedTotalTtc.toFixed(2) + ' د.ج)</div>' +
+      '        <div class="text-[10px] text-amber-300 mt-0.5">+ ' + walkinRow.invoices_count + ' فاتورة زبون عابر (' + walkinRow.total_ttc.toFixed(2) + ' د.ج)</div>' +
+      '      </div>' +
+      '      <div class="p-3 rounded-2xl bg-slate-950/80 border border-slate-800">' +
+      '        <div class="text-slate-400 text-[10.5px]">إجمالي المبيعات خارج الرسم (CA HT)</div>' +
+      '        <div class="text-xl font-black font-mono text-white mt-0.5">' + g.ca_ht.toFixed(2) + ' د.ج</div>' +
+      '      </div>' +
+      '      <div class="p-3 rounded-2xl bg-slate-950/80 border border-slate-800">' +
+      '        <div class="text-slate-400 text-[10.5px]">إجمالي ضريبة TVA المحصلة</div>' +
+      '        <div class="text-xl font-black font-mono text-amber-400 mt-0.5">' + g.tva_collectee.toFixed(2) + ' د.ج</div>' +
+      '      </div>' +
+      '      <div class="p-3 rounded-2xl bg-slate-950/80 border border-slate-800">' +
+      '        <div class="text-slate-400 text-[10.5px]">إجمالي الطابع الجبائي (Timbre)</div>' +
+      '        <div class="text-xl font-black font-mono text-indigo-300 mt-0.5">' + g.droit_timbre.toFixed(2) + ' د.ج</div>' +
+      '      </div>' +
+      '      <div class="p-3 rounded-2xl bg-emerald-600/20 border border-emerald-500/40">' +
+      '        <div class="text-emerald-300 text-[10.5px] font-bold">الإجمالي السنوي العام للمبيعات (TTC)</div>' +
+      '        <div class="text-xl font-black font-mono text-emerald-400 mt-0.5">' + g.ca_ttc.toFixed(2) + ' د.ج</div>' +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="p-5 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">' +
+      '    <div class="flex flex-wrap items-center justify-between gap-2">' +
+      '      <div class="flex items-center gap-2">' +
+      '        <h4 class="font-black text-sm text-indigo-600">📋 جدول الكشف الضريبي السنوي للزبائن (État 104 — سنة ' + year + ')</h4>' +
+      (missingFiscalCount > 0
+        ? '<span class="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-black text-[10.5px]">⚠️ ' + missingFiscalCount + ' زبائن مسجلين تنقصهم بيانات NIF/RC (انقر على اسم الزبون لإضافتها)</span>'
+        : '<span class="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-black text-[10.5px]">✅ جميع الملفات الجبائية للزبائن مكتملة</span>') +
+      '      </div>' +
+      '      <input type="text" oninput="App.filterEtat104TableLive(this.value)" placeholder="🔍 ابحث باسم الزبون، رقم NIF، أو RC..." class="w-72 px-3.5 py-1.5 rounded-xl font-bold">' +
+      '    </div>' +
+
+      '    <div class="overflow-x-auto"><table class="w-full text-right border-collapse">' +
+      '      <thead><tr class="bg-slate-900 text-white text-[11px]">' +
+      '        <th class="p-2.5 text-center">#</th>' +
+      '        <th class="p-2.5">الزبون / المؤسسة</th>' +
+      '        <th class="p-2.5 text-center">الرقم الجبائي (NIF)</th>' +
+      '        <th class="p-2.5 text-center">السجل التجاري (RC)</th>' +
+      '        <th class="p-2.5 text-center">المادة (AI)</th>' +
+      '        <th class="p-2.5 text-center">الإحصائي (NIS)</th>' +
+      '        <th class="p-2.5">العنوان والولاية</th>' +
+      '        <th class="p-2.5 text-center">الفواتير</th>' +
+      '        <th class="p-2.5 text-center">المبلغ HT</th>' +
+      '        <th class="p-2.5 text-center">TVA</th>' +
+      '        <th class="p-2.5 text-center">الطابع</th>' +
+      '        <th class="p-2.5 text-center">الإجمالي TTC</th>' +
+      '      </tr></thead>' +
+      '      <tbody id="etat104TableBody" class="divide-y divide-slate-100 dark:divide-slate-700/60">' +
+      (etatRows.length === 0
+        ? '<tr><td colspan="12" class="p-8 text-center text-slate-400 font-bold">لا توجد فواتير مبيعات مسجلة في سنة ' + year + '</td></tr>'
+        : etatRows.map(function (r, idx) {
+            var isW = Boolean(r.is_walkin);
+            var missingNif = !isW && (!r.nif || r.nif === '---');
+            var searchKey = [r.customer_name, r.nif, r.rc, r.ai, r.nis, r.address, r.wilaya].join(' ');
+            return (
+              '<tr data-search="' + String(searchKey).replace(/"/g, '') + '" class="' + (isW ? 'bg-amber-500/10 font-black' : 'hover:bg-slate-50 dark:hover:bg-slate-900/50') + '">' +
+              '  <td class="p-2.5 text-center font-mono font-bold">' + (isW ? '★' : (idx + 1)) + '</td>' +
+              '  <td class="p-2.5 font-black ' + (isW ? 'text-amber-700 dark:text-amber-300' : 'text-blue-600 cursor-pointer hover:underline') + '" ' + (!isW && r.customer_id ? 'onclick="App.openCustomerModal(' + r.customer_id + ')" title="انقر لاستكمال رقم NIF و RC للزبون"' : '') + '>' + (r.customer_name || r.name || '') + (!isW ? ' ✏️' : '') + '</td>' +
+              '  <td class="p-2.5 text-center font-mono font-bold ' + (missingNif ? 'text-rose-500' : '') + '">' + (r.nif || '---') + '</td>' +
+              '  <td class="p-2.5 text-center font-mono">' + (r.rc || '---') + '</td>' +
+              '  <td class="p-2.5 text-center font-mono">' + (r.ai || '---') + '</td>' +
+              '  <td class="p-2.5 text-center font-mono">' + (r.nis || '---') + '</td>' +
+              '  <td class="p-2.5 text-[11px]">' + ((r.wilaya ? r.wilaya + ' - ' : '') + (r.address || '---')) + '</td>' +
+              '  <td class="p-2.5 text-center font-mono font-black">' + Number(r.invoices_count || 0) + '</td>' +
+              '  <td class="p-2.5 text-center font-mono font-bold text-emerald-600">' + Number(r.total_ht ?? r.ca_ht ?? 0).toFixed(2) + '</td>' +
+              '  <td class="p-2.5 text-center font-mono text-amber-600 font-bold">' + Number(r.total_tva ?? r.tva ?? 0).toFixed(2) + '</td>' +
+              '  <td class="p-2.5 text-center font-mono text-indigo-600 font-bold">' + Number(r.total_stamp ?? r.timbre ?? 0).toFixed(2) + '</td>' +
+              '  <td class="p-2.5 text-center font-mono font-black text-blue-600">' + Number(r.total_ttc || 0).toFixed(2) + ' د.ج</td>' +
+              '</tr>'
+            );
+          }).join('')) +
+      '      </tbody>' +
+      '    </table></div>' +
+      '  </div>' +
+
+      (walkinRow.total_ttc > 0
+        ? '<div class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-3">' +
+          '  <div>' +
+          '    <div class="font-black text-amber-800 dark:text-amber-300">🔗 هل تريد تحويل مبيعات الزبائن العابرين (' + walkinRow.total_ttc.toFixed(2) + ' د.ج) إلى اسم زبون محدد؟</div>' +
+          '    <div class="text-[11px] text-slate-500">في حال بعت فواتير سابقة دون تحديد اسم الزبون من القائمة، اختر الزبون هنا واضغط إسناد لربطها به رسمياً</div>' +
+          '  </div>' +
+          '  <div class="flex items-center gap-2">' +
+          '    <select id="etat104BulkAssignCustSelect" class="px-3 py-1.5 rounded-xl font-bold">' +
+          (AppState.customers || []).map(function (c) {
+            return '<option value="' + c.id + '">' + c.name + (c.nif ? ' (NIF: ' + c.nif + ')' : '') + '</option>';
+          }).join('') +
+          '    </select>' +
+          '    <button type="button" onclick="App.bulkAssignAllWalkinSalesToCustomer(\'etat104BulkAssignCustSelect\')" class="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black shadow">🔗 إسناد الفواتير العابرة لهذا الزبون</button>' +
+          '  </div>' +
+          '</div>'
+        : '') +
+
+      '  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">' +
+      '    <div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-2">' +
+      '      <div class="font-black text-sm text-emerald-700 dark:text-emerald-300">🏛️ محاكاة الضريبة الجزافية الوحيدة (IFU — G12 على رقم الأعمال ' + g.ca_ht.toFixed(2) + ' د.ج):</div>' +
+      '      <div class="grid grid-cols-2 gap-2.5 text-center">' +
+      '        <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">ضريبة IFU تجارة وإنتاج (5%)</div><div class="font-mono font-black text-base text-emerald-600 mt-1">' + unified.ifu.ifu_5_commerce.toFixed(2) + ' د.ج</div><div class="text-[9.5px] text-slate-400">النسبة الفعلية 5%: ' + unified.ifu.raw_5.toFixed(2) + ' د.ج</div></div>' +
+      '        <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">ضريبة IFU خدمات وحرف (12%)</div><div class="font-mono font-black text-base text-indigo-600 mt-1">' + unified.ifu.ifu_12_service.toFixed(2) + ' د.ج</div><div class="text-[9.5px] text-slate-400">النسبة الفعلية 12%: ' + unified.ifu.raw_12.toFixed(2) + ' د.ج</div></div>' +
+      '      </div>' +
+      '    </div>' +
+      '    <div class="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/30 space-y-2">' +
+      '      <div class="font-black text-sm text-blue-700 dark:text-blue-300">📑 ملخص التصريح الشهري للضرائب (G50 - النظام الحقيقي):</div>' +
+      '      <div class="grid grid-cols-2 gap-2.5 text-center">' +
+      '        <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">TVA المحصلة على المبيعات (+)</div><div class="font-mono font-black text-base text-rose-600 mt-1">' + g.tva_collectee.toFixed(2) + ' د.ج</div></div>' +
+      '        <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"><div class="text-[10px] text-slate-400">TVA القابلة للاسترجاع على المشتريات (-)</div><div class="font-mono font-black text-base text-emerald-600 mt-1">' + g.tva_deductible.toFixed(2) + ' د.ج</div></div>' +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  var _prevPrintOfficialEtat104 = App.printOfficialEtat104ReportA4.bind(App);
+  App.printOfficialEtat104ReportA4 = async function () {
+    await this.buildUnifiedAlgerianFiscalData(AppState.etat104SelectedYear);
+    return await _prevPrintOfficialEtat104();
+  };
+})();
+
+// [PURE RETAIL & SUPERMARKET POS - PART 1/3 V19]
+(function installPureRetailSupermarketPosPart1V19() {
+  if (!window.App || !window.AppState) return;
+
+  // ==========================================================================
+  // 1. التنقية الشاملة للواجهة (Pure Retail & Supermarket Mode Lock)
+  // ==========================================================================
+  AppState.appEditionMode = 'retail_pos';
+  AppState.posWorkspaceMode = 'retail_touch';
+  localStorage.setItem('gherbi_app_edition_mode', 'retail_pos');
+  localStorage.setItem('gherbi_pos_workspace_mode', 'retail_touch');
+
+  App.purifyRetailDomElements = function () {
+    [
+      'headerEditionSectorBtn',
+      'editionSectorCockpitModal',
+      'posModeDualSwitcher',
+      'posSectorDynamicToolbar',
+      'btnQuickPosM2Calc',
+      'btnQuickPosFashionSeries',
+      'btnQuickPosAtelierSav',
+      'hardwareM2CalcModal',
+      'fashionSeriesModal',
+      'truckLoadingSheetModal',
+      'sidebarAdaptiveToggleBox'
+    ].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.remove();
+    });
+
+    // ضمان ظهور جميع أزرار القائمة الجانبية بشكل طبيعي ونظيف
+    document.querySelectorAll('#sidebar-nav button[data-view]').forEach(function (btn) {
+      btn.style.display = '';
+      btn.classList.remove('opacity-75');
+    });
+  };
+
+  // ==========================================================================
+  // 2. لوحة الأزرار السريعة القابلة للتخصيص للسلع والخدمات اليومية (Quick-Touch PLU & Services Pad — F7)
+  // ==========================================================================
+  var QUICK_TOUCH_PRESET_GROUPS = {
+    supermarket: [
+      { icon: '🥖', name: 'خبز عادي (Baguette)', price: 15, category: 'مخبزة' },
+      { icon: '🥐', name: 'خبز محسن / سميد', price: 25, category: 'مخبزة' },
+      { icon: '🥛', name: 'حليب كيس مقنن 1ل', price: 25, category: 'ألبان' },
+      { icon: '🍶', name: 'لبن / رايب كيس 1ل', price: 90, category: 'ألبان' },
+      { icon: '🥚', name: 'بيض (بالحبة)', price: 25, category: 'مواد غذائية' },
+      { icon: '📦', name: 'بلاطو بيض (30 حبة)', price: 650, category: 'مواد غذائية' },
+      { icon: '🛍️', name: 'كيس بلاستيكي / قفة', price: 10, category: 'خدمات' },
+      { icon: '💧', name: 'ماء معدني صغير 0.5ل', price: 30, category: 'مشروبات' },
+      { icon: '🥔', name: 'بطاطا (1 كغ)', price: 90, category: 'خضر وفواكه' },
+      { icon: '🍅', name: 'طماطم (1 كغ)', price: 120, category: 'خضر وفواكه' },
+      { icon: '🧅', name: 'بصل (1 كغ)', price: 80, category: 'خضر وفواكه' },
+      { icon: '☕', name: 'قهوة / شاي سريع', price: 50, category: 'مشروبات' }
+    ],
+    bookstore: [
+      { icon: '📄', name: 'نسخ ورق (Photocopie N/B)', price: 5, category: 'خدمات مكتبة' },
+      { icon: '🌈', name: 'نسخ بالألوان (Couleur)', price: 20, category: 'خدمات مكتبة' },
+      { icon: '🖨️', name: 'طباعة صفحة (Impression)', price: 15, category: 'خدمات مكتبة' },
+      { icon: '📘', name: 'تغليف حلزوني (Reliure)', price: 100, category: 'خدمات مكتبة' },
+      { icon: '🪪', name: 'تغليف حراري (Plastification)', price: 80, category: 'خدمات مكتبة' },
+      { icon: '📠', name: 'مسح ضوئي (Scanner PDF)', price: 30, category: 'خدمات مكتبة' },
+      { icon: '📕', name: 'غلاف كراس بلاستيكي', price: 25, category: 'قرطاسية' },
+      { icon: '✉️', name: 'ظرف بريدي (Enveloppe)', price: 10, category: 'قرطاسية' },
+      { icon: '🖊️', name: 'قلم جاف أزرق/أسود', price: 30, category: 'قرطاسية' },
+      { icon: '📝', name: 'أوراق مزدوجة (حزمة)', price: 60, category: 'قرطاسية' },
+      { icon: '📂', name: 'حافظة أوراق (Chemise)', price: 20, category: 'قرطاسية' },
+      { icon: '🎓', name: 'بحث مدرسي مطبوع جاهز', price: 150, category: 'خدمات مكتبة' }
+    ],
+    cosmetics_gifts: [
+      { icon: '🌸', name: 'تعبئة عطر 10 مل', price: 300, category: 'عطور' },
+      { icon: '🌺', name: 'تعبئة عطر 30 مل', price: 800, category: 'عطور' },
+      { icon: '👑', name: 'تعبئة عطر مركز 50 مل', price: 1300, category: 'عطور' },
+      { icon: '🎁', name: 'تغليف هدية فاخر', price: 250, category: 'هدايا' },
+      { icon: '🎀', name: 'علبة هدايا مزينة', price: 350, category: 'هدايا' },
+      { icon: '🛍️', name: 'كيس هدايا كرتوني', price: 100, category: 'هدايا' },
+      { icon: '💌', name: 'بطاقة تهنئة / إهداء', price: 50, category: 'هدايا' },
+      { icon: '💄', name: 'عينة تجميل / إكسسوار', price: 150, category: 'تجميل' }
+    ]
+  };
+
+  App.getCustomQuickTouchItems = function () {
+    try {
+      var raw = localStorage.getItem('gherbi_custom_quick_touch_items_v19');
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return QUICK_TOUCH_PRESET_GROUPS.supermarket.slice();
+  };
+
+  App.saveCustomQuickTouchItems = function (list) {
+    AppState.customQuickTouchItems = Array.isArray(list) ? list : [];
+    try {
+      localStorage.setItem('gherbi_custom_quick_touch_items_v19', JSON.stringify(AppState.customQuickTouchItems));
+    } catch (_) {}
+  };
+
+  AppState.customQuickTouchItems = App.getCustomQuickTouchItems();
+
+  App.loadQuickTouchPresetGroup = function (groupKey) {
+    var preset = QUICK_TOUCH_PRESET_GROUPS[groupKey] || QUICK_TOUCH_PRESET_GROUPS.supermarket;
+    this.saveCustomQuickTouchItems(preset.slice());
+    this.renderQuickTouchPadModalContent();
+    this.renderPosQuickTouchInlineBar();
+    if (typeof showToast === 'function') {
+      showToast('⚡ تم تفعيل مجموعة الأزرار السريعة بنجاح!', 'success');
+    }
+  };
+
+  App.addNewQuickTouchItemFromUi = function () {
+    var icon = String(document.getElementById('qtNewIconInp')?.value || '⚡').trim() || '⚡';
+    var name = String(document.getElementById('qtNewNameInp')?.value || '').trim();
+    var price = Math.max(0, parseFloat(document.getElementById('qtNewPriceInp')?.value) || 0);
+    var category = String(document.getElementById('qtNewCatInp')?.value || 'سلع وخدمات سريعة').trim();
+
+    if (!name || price <= 0) {
+      if (typeof showToast === 'function') showToast('يرجى إدخال اسم العنصر وسعر أكبر من الصفر', 'warning');
+      return;
+    }
+
+    var list = this.getCustomQuickTouchItems();
+    list.push({ icon: icon, name: name, price: price, category: category });
+    this.saveCustomQuickTouchItems(list);
+    if (document.getElementById('qtNewNameInp')) document.getElementById('qtNewNameInp').value = '';
+    this.renderQuickTouchPadModalContent();
+    this.renderPosQuickTouchInlineBar();
+    if (typeof showToast === 'function') {
+      showToast('✅ تمت إضافة الزر السريع (' + name + ' — ' + price.toFixed(2) + ' د.ج)!', 'success');
+    }
+  };
+
+  App.deleteQuickTouchItem = function (idx) {
+    var list = this.getCustomQuickTouchItems();
+    list.splice(idx, 1);
+    this.saveCustomQuickTouchItems(list);
+    this.renderQuickTouchPadModalContent();
+    this.renderPosQuickTouchInlineBar();
+  };
+
+  App.addQuickPluItemToCart = function (idx) {
+    var list = this.getCustomQuickTouchItems();
+    var item = list[idx];
+    if (!item) return;
+
+    var mult = AppState._quickMultiplier || 1;
+    if (mult !== 1 && typeof this.setQuickMultiplier === 'function') this.setQuickMultiplier(1);
+
+    var signedQty = (AppState.returnMode || AppState.isReturnMode) ? -Math.abs(mult) : mult;
+    var cart = this.currentCart;
+    if (!cart) return;
+
+    var fullName = (item.icon ? item.icon + ' ' : '') + item.name;
+    var existing = cart.items.find(function (x) { return !x.product_id && x.name === fullName && Math.abs(Number(x.price) - Number(item.price)) < 0.01; });
+    if (existing) {
+      existing.quantity = Number((Number(existing.quantity || 0) + signedQty).toFixed(2));
+      existing.subtotal = Number((existing.quantity * existing.price).toFixed(2));
+    } else {
+      cart.items.push({
+        product_id: null,
+        name: fullName,
+        custom_product_name: fullName,
+        unit: 'وحدة',
+        quantity: signedQty,
+        price: Number(item.price),
+        cost_price: Number((Number(item.price) * 0.78).toFixed(2)),
+        subtotal: Number((signedQty * Number(item.price)).toFixed(2))
+      });
+    }
+    this.renderCartItems();
+    this.recalcCart();
+    if (typeof playBeep === 'function') playBeep(true);
+    this.focusBarcodeMagnet(false);
+  };
+
+  App.ensureQuickPluPadModalDom = function () {
+    var existing = document.getElementById('quickTouchPluPadModal');
+    if (existing) existing.remove();
+
+    var modal = document.createElement('div');
+    modal.id = 'quickTouchPluPadModal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML =
+      '<div class="modal-content w-full max-w-3xl p-6 space-y-4 overflow-y-auto">' +
+      '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+      '    <div>' +
+      '      <h3 class="text-lg font-black text-emerald-600">⚡ لوحة الأزرار السريعة للسلع اليومية والخدمات بدون باركود (F7)</h3>' +
+      '      <p class="text-xs text-slate-400">اضغط على أي زر لإدراجه في السلة فوراً — أو خصص الأزرار لتناسب (سوبرماركت / مكتبة ونسخ / تجميل وهدايا)</p>' +
+      '    </div>' +
+      '    <button type="button" onclick="App.closeModal(\'quickTouchPluPadModal\')" class="text-slate-400 hover:text-rose-500">✕</button>' +
+      '  </div>' +
+      '  <div id="quickTouchPluModalBody" class="space-y-4 text-xs"></div>' +
+      '</div>';
+    document.body.appendChild(modal);
+  };
+
+  App.renderQuickTouchPadModalContent = function () {
+    var body = document.getElementById('quickTouchPluModalBody');
+    if (!body) return;
+    var list = this.getCustomQuickTouchItems();
+
+    body.innerHTML =
+      '<div class="p-3 rounded-2xl bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2">' +
+      '  <span class="font-black text-amber-400">🎯 تحميل مجموعة أزرار جاهزة بضغطة زر:</span>' +
+      '  <div class="flex flex-wrap gap-1.5">' +
+      '    <button type="button" onclick="App.loadQuickTouchPresetGroup(\'supermarket\')" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black">🛒 السوبرماركت والمخبزة والخضر</button>' +
+      '    <button type="button" onclick="App.loadQuickTouchPresetGroup(\'bookstore\')" class="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black">📚 المكتبة والقرطاسية والفوتوكوبي</button>' +
+      '    <button type="button" onclick="App.loadQuickTouchPresetGroup(\'cosmetics_gifts\')" class="px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-black">✨ التجميل والعطور والهدايا</button>' +
+      '  </div>' +
+      '</div>' +
+
+      '<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">' +
+      list.map(function (it, idx) {
+        return (
+          '<div class="relative group p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 hover:bg-emerald-600 hover:text-white border border-slate-200 dark:border-slate-700 transition shadow-sm flex flex-col justify-between">' +
+          '  <button type="button" onclick="App.deleteQuickTouchItem(' + idx + ')" title="حذف هذا الزر" class="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-rose-500/15 text-rose-500 hover:bg-rose-600 hover:text-white text-[10px] font-black">✕</button>' +
+          '  <div onclick="App.addQuickPluItemToCart(' + idx + ')" class="cursor-pointer space-y-1">' +
+          '    <div class="font-black text-xs pr-1 pl-5">' + (it.icon || '⚡') + ' ' + it.name + '</div>' +
+          '    <div class="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400 group-hover:text-white">' + Number(it.price || 0).toFixed(2) + ' د.ج</div>' +
+          '  </div>' +
+          '</div>'
+        );
+      }).join('') +
+      '</div>' +
+
+      '<div class="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 grid grid-cols-1 md:grid-cols-12 gap-2 items-end">' +
+      '  <div class="md:col-span-2"><label class="block font-bold mb-1">الأيقونة</label><input id="qtNewIconInp" type="text" value="⚡" class="w-full px-2 py-1.5 rounded-xl text-center font-bold"></div>' +
+      '  <div class="md:col-span-4"><label class="block font-bold mb-1">اسم السلعة أو الخدمة السريعة *</label><input id="qtNewNameInp" type="text" placeholder="مثال: فوتوكوبي / خبز / كيس..." class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
+      '  <div class="md:col-span-2"><label class="block font-bold mb-1 text-emerald-600">السعر (د.ج) *</label><input id="qtNewPriceInp" type="number" step="any" min="1" value="20" class="w-full px-2.5 py-1.5 rounded-xl font-mono font-black text-center"></div>' +
+      '  <div class="md:col-span-2"><label class="block font-bold mb-1">الفئة</label><input id="qtNewCatInp" type="text" value="خدمات سريعة" class="w-full px-2.5 py-1.5 rounded-xl font-bold"></div>' +
+      '  <div class="md:col-span-2"><button type="button" onclick="App.addNewQuickTouchItemFromUi()" class="w-full py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow">+ إضافة زر</button></div>' +
+      '</div>';
+  };
+
+  App.openQuickTouchPluPadModal = function () {
+    this.ensureQuickPluPadModalDom();
+    this.renderQuickTouchPadModalContent();
+    this.openModal('quickTouchPluPadModal');
+  };
+
+  // شريط أزرار اللمس السريعة المدمج أعلى شبكة المنتجات في الكاشير
+  App.renderPosQuickTouchInlineBar = function () {
+    var grid = document.getElementById('posProductsGrid');
+    if (!grid || !grid.parentElement) return;
+
+    var bar = document.getElementById('posQuickTouchInlineRibbon');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'posQuickTouchInlineRibbon';
+      bar.className = 'flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] shrink-0';
+      grid.insertAdjacentElement('beforebegin', bar);
+    }
+
+    var list = this.getCustomQuickTouchItems().slice(0, 8);
+    bar.innerHTML =
+      '<button type="button" onclick="App.openQuickTouchPluPadModal()" class="px-2.5 py-1 rounded-xl bg-emerald-600 text-white font-black shrink-0 shadow-sm" title="تخصيص أزرار السلع والخدمات السريعة (F7)">⚡ لمس سريع (F7):</button>' +
+      list.map(function (it, idx) {
+        return (
+          '<button type="button" onclick="App.addQuickPluItemToCart(' + idx + ')" class="px-2.5 py-1 rounded-xl bg-white dark:bg-slate-800 hover:bg-emerald-600 hover:text-white border border-slate-200 dark:border-slate-700 font-bold shrink-0 transition shadow-sm">' +
+          '<span>' + (it.icon || '⚡') + ' ' + it.name + '</span> ' +
+          '<span class="font-mono font-black text-emerald-600 dark:text-emerald-400">(' + Number(it.price || 0).toFixed(0) + ' د.ج)</span>' +
+          '</button>'
+        );
+      }).join('');
+  };
+
+  // ==========================================================================
+  // 3. نافذة "🔍 فاحص الأسعار الفوري للزبون" (Customer Price Checker Mode — F10)
+  // ==========================================================================
+  App.ensurePriceCheckerModalDom = function () {
+    if (document.getElementById('posPriceCheckerModal')) return;
+    var modal = document.createElement('div');
+    modal.id = 'posPriceCheckerModal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML =
+      '<div class="modal-content w-full max-w-2xl p-6 space-y-4">' +
+      '  <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">' +
+      '    <div>' +
+      '      <h3 class="text-xl font-black text-blue-600 flex items-center gap-2"><span>🔍 فاحص الأسعار والصلاحية الفوري للزبون (Price Checker — F10)</span></h3>' +
+      '      <p class="text-xs text-slate-400">امسح باركود أي سلعة أو ابحث بالاسم لعرض سعرها بالدينار وبالسنتيم وسعر العلبة والعرض الترويجي دون إضافتها للسلة</p>' +
+      '    </div>' +
+      '    <button type="button" onclick="App.closeModal(\'posPriceCheckerModal\')" class="text-slate-400 hover:text-rose-500">✕</button>' +
+      '  </div>' +
+      '  <div class="flex gap-2">' +
+      '    <input id="priceCheckerBarcodeInput" type="text" oninput="App.onPriceCheckerInput(this.value)" onkeydown="if(event.key===\'Enter\') App.onPriceCheckerInput(this.value, true)" placeholder="🔫 امسح الباركود هنا أو اكتب اسم السلعة..." class="flex-1 px-4 py-3 rounded-2xl font-mono font-black text-base border-2 border-blue-500">' +
+      '  </div>' +
+      '  <div id="priceCheckerResultStage" class="p-6 rounded-3xl bg-slate-900 text-white text-center space-y-3 min-h-[220px] flex flex-col items-center justify-center"></div>' +
+      '</div>';
+    document.body.appendChild(modal);
+  };
+
+  App.openPriceCheckerModal = function () {
+    this.ensurePriceCheckerModalDom();
+    this.openModal('posPriceCheckerModal');
+    var stage = document.getElementById('priceCheckerResultStage');
+    if (stage) {
+      stage.innerHTML =
+        '<div class="text-4xl">🏷️</div>' +
+        '<div class="text-base font-black text-slate-300">مرّر السلعة أمام قارئ الباركود أو اكتب اسمها أعلاه</div>' +
+        '<div class="text-xs text-slate-400">سيظهر السعر فوراً بالدينار وبالسنتيم الجزائري مع سعر الباكي/العلبة</div>';
+    }
+    setTimeout(function () {
+      var inp = document.getElementById('priceCheckerBarcodeInput');
+      if (inp) {
+        inp.value = '';
+        inp.focus();
+      }
+    }, 60);
+  };
+
+  App.onPriceCheckerInput = function (rawVal, clearOnMatch) {
+    var q = String(rawVal || '').trim().toLowerCase();
+    var stage = document.getElementById('priceCheckerResultStage');
+    if (!stage || !q) return;
+
+    var prods = AppState.products || [];
+    var exact = prods.find(function (p) {
+      return (
+        String(p.barcode || '').toLowerCase() === q ||
+        String(p.plu_code || '').toLowerCase() === q ||
+        (Array.isArray(p.extra_barcodes) && p.extra_barcodes.some(function (eb) { return String(eb.barcode || '').toLowerCase() === q; }))
+      );
+    });
+
+    var matched = exact || prods.find(function (p) {
+      return String(p.name || '').toLowerCase().includes(q) || String(p.barcode || '').toLowerCase().includes(q);
+    });
+
+    if (!matched) {
+      stage.innerHTML = '<div class="text-rose-400 font-black text-base">⚠️ لم يتم العثور على منتج مطابق لـ (' + rawVal + ')</div>';
+      return;
+    }
+
+    if (exact && clearOnMatch) {
+      var inp = document.getElementById('priceCheckerBarcodeInput');
+      if (inp) inp.select();
+      if (typeof playBeep === 'function') playBeep(true);
+    }
+
+    var promoInfo = typeof this.getEffectiveProductPromoInfo === 'function'
+      ? this.getEffectiveProductPromoInfo(matched, 'retail')
+      : { finalPrice: Number(matched.selling_price || 0), originalPrice: Number(matched.selling_price || 0), hasPromo: false, badgeText: '' };
+
+    var unitPrice = Number(promoInfo.finalPrice || matched.selling_price || 0);
+    var centimesTxt = typeof this.formatAlgerianCentimes === 'function' ? this.formatAlgerianCentimes(unitPrice) : '';
+    var stock = Number(matched.total_stock ?? matched.stock ?? 0);
+    var packQty = Math.max(1, Number(matched.wholesale_qty || 1));
+    var packUnit = matched.wholesale_unit || 'باكي / علبة';
+    var packUnitPrice = Number(matched.wholesale_price || unitPrice);
+    var totalPackPrice = Number((packQty * packUnitPrice).toFixed(2));
+    var b0 = Array.isArray(matched.batches) && matched.batches[0] ? matched.batches[0] : {};
+    var shelfTxt = b0.location || [b0.shelf_etage, b0.shelf_place].filter(Boolean).join(' / ') || 'الرف العام';
+    var expTxt = b0.expiry_date ? String(b0.expiry_date).slice(0, 10) : '';
+
+    var bogoTxt = (Number(matched.bogo_buy_qty) > 0 && Number(matched.bogo_free_qty) > 0)
+      ? '🎁 عرض خاص: اشترِ ' + matched.bogo_buy_qty + ' واحصل على ' + matched.bogo_free_qty + ' مجاناً!'
+      : '';
+
+    stage.innerHTML =
+      '<div class="w-full space-y-3">' +
+      '  <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400 border-b border-slate-800 pb-2">' +
+      '    <span class="font-mono">الباركود: ' + (matched.barcode || '—') + '</span>' +
+      '    <span>الفئة: ' + (matched.category || 'عام') + ' | الرف: ' + shelfTxt + '</span>' +
+      '    <span class="font-black ' + (stock > 0 ? 'text-emerald-400' : 'text-rose-400') + '">الرصيد: ' + stock + ' ' + (matched.unit || 'قطعة') + '</span>' +
+      '  </div>' +
+      '  <div class="text-2xl font-black text-white">' + matched.name + '</div>' +
+      (promoInfo.hasPromo || bogoTxt
+        ? '<div class="inline-block px-4 py-1 rounded-full bg-rose-600 text-white font-black text-xs">' + (bogoTxt || ('🔥 عرض تخفيض: ' + promoInfo.badgeText)) + '</div>'
+        : '') +
+      '  <div class="p-4 rounded-2xl bg-slate-950 border-2 border-emerald-500/50 space-y-1">' +
+      '    <div class="text-xs text-slate-400 font-bold">سعر البيع للوحدة (' + (matched.unit || 'حبة') + '):</div>' +
+      '    <div class="text-4xl font-black font-mono text-emerald-400">' + unitPrice.toFixed(2) + ' د.ج</div>' +
+      '    <div class="text-sm font-black text-amber-400">🇩🇿 بالتداول الجزائري: ' + centimesTxt + '</div>' +
+      '  </div>' +
+      (packQty > 1
+        ? '<div class="p-2.5 rounded-xl bg-indigo-950/80 border border-indigo-500/40 text-xs font-bold text-indigo-200">' +
+          '📦 سعر ' + packUnit + ' (' + packQty + ' × ' + packUnitPrice.toFixed(2) + ' د.ج) = <strong class="font-mono text-white text-sm">' + totalPackPrice.toFixed(2) + ' د.ج</strong>' +
+          '</div>'
+        : '') +
+      (expTxt ? '<div class="text-xs text-slate-400 font-mono">📅 تاريخ الصلاحية: ' + expTxt + '</div>' : '') +
+      '  <div class="flex justify-center gap-2 pt-2">' +
+      '    <button type="button" onclick="App.addProductToCart(' + matched.id + ', 1);App.closeModal(\'posPriceCheckerModal\');" class="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-lg">🛒 إضافة حبة للسلة الآن</button>' +
+      (packQty > 1
+        ? '<button type="button" onclick="App.addProductToCart(' + matched.id + ', ' + packQty + ', {overridePrice:' + packUnitPrice + '});App.closeModal(\'posPriceCheckerModal\');" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-lg">📦 إضافة ' + packUnit + ' (' + packQty + '×) للسلة</button>'
+        : '') +
+      '  </div>' +
+      '</div>';
+  };
+
+  // ==========================================================================
+  // 4. مبدّل "حبة ⇄ باكي/علبة" السريع في السلة + معالج الفكة الجزائرية في نافذة التسديد (#checkoutModal)
+  // ==========================================================================
+  App.toggleCartItemWholesaleUnit = function (idx) {
+    var cart = this.currentCart;
+    if (!cart || !cart.items || !cart.items[idx]) return;
+    var item = cart.items[idx];
+    var prod = (AppState.products || []).find(function (p) { return Number(p.id) === Number(item.product_id || item.productId); });
+    if (!prod) return;
+
+    var packQty = Math.max(1, Number(prod.wholesale_qty || 1));
+    if (packQty <= 1 && Array.isArray(prod.extra_barcodes) && prod.extra_barcodes.length > 0) {
+      var ebPack = prod.extra_barcodes.find(function (b) { return Number(b.unit_multiplier || 1) > 1; });
+      if (ebPack) packQty = Number(ebPack.unit_multiplier);
+    }
+
+    var packUnit = prod.wholesale_unit || 'باكي/علبة';
+    var packUnitPrice = Number(prod.wholesale_price || prod.selling_price || item.price || 0);
+
+    if (!item._isWholesaleMode) {
+      item._isWholesaleMode = true;
+      item._origUnit = item.unit || prod.unit || 'حبة';
+      item._origPrice = Number(prod.selling_price || item.price || 0);
+      item.unit = packUnit + ' (' + packQty + '×)';
+      item.quantity = packQty > 1 ? packQty : Math.max(1, Number(item.quantity || 1));
+      item.price = packUnitPrice;
+      item.promo_badge = '📦 ' + packUnit + ' (' + packQty + '×)';
+      if (typeof showToast === 'function') {
+        showToast('📦 تم التبديل إلى بيع [' + packUnit + ' = ' + packQty + ' وحدات] بسعر ' + packUnitPrice.toFixed(2) + ' د.ج للوحدة', 'info');
+      }
+    } else {
+      item._isWholesaleMode = false;
+      item.unit = item._origUnit || prod.unit || 'حبة';
+      item.quantity = 1;
+      item.price = item._origPrice || Number(prod.selling_price || item.price || 0);
+      item.promo_badge = '';
+      if (typeof showToast === 'function') {
+        showToast('🔄 تمت العودة إلى البيع المفرد بالحبة (' + item.price.toFixed(2) + ' د.ج)', 'info');
+      }
+    }
+
+    item.subtotal = Number((Number(item.quantity || 1) * Number(item.price || 0)).toFixed(2));
+    this.renderCartItems();
+    this.recalcCart();
+  };
+
+  // معالج الفكة والباقي الذكي في نافذة التسديد (#checkoutModal)
+  App.roundDownCheckoutSmallChange = function (moduloVal) {
+    var mod = Number(moduloVal || 10);
+    var cart = this.currentCart;
+    if (!cart || !Array.isArray(cart.items) || cart.items.length === 0) return;
+
+    var sub = cart.items.reduce(function (s, it) { return s + Number(it.subtotal || 0); }, 0);
+    var curDisc = parseFloat(document.getElementById('cartDiscountInput')?.value) || 0;
+    var curNet = Math.max(0, sub - curDisc);
+    var remainder = Number((curNet % mod).toFixed(2));
+
+    if (remainder <= 0.01) {
+      if (typeof showToast === 'function') showToast('المبلغ الإجمالي مدوّر مسبقاً بدون فكة!', 'info');
+      return;
+    }
+
+    var newDisc = Number((curDisc + remainder).toFixed(2));
+    var discInp = document.getElementById('cartDiscountInput');
+    if (discInp) discInp.value = newDisc.toFixed(2);
+    this.recalcCart();
+
+    var newTotal = Math.max(0, Number((sub - newDisc).toFixed(2)));
+    var paidInp = document.getElementById('chkPaidAmount');
+    if (paidInp) paidInp.value = newTotal.toFixed(2);
+    this.recalcCheckoutModal();
+
+    if (typeof showToast === 'function') {
+      showToast('🪙 تم إسقاط الفكة (-' + remainder.toFixed(2) + ' د.ج) ليصبح الصافي: ' + newTotal.toFixed(2) + ' د.ج!', 'success');
+    }
+  };
+
+  App.convertCheckoutChangeToLoyaltyPoints = async function () {
+    var custId = Number((this.currentCart && this.currentCart.customerId) || document.getElementById('posCustomerSelect')?.value || 0);
+    if (!custId) {
+      if (typeof showToast === 'function') showToast('⚠️ اختر الزبون أولاً لتحويل باقي الصرف إلى نقاط في بطاقة وفائه!', 'warning');
+      return;
+    }
+
+    var dueTxt = document.getElementById('chkTotalDue')?.textContent || '0';
+    var totalDue = parseFloat(String(dueTxt).replace(/[^\d.-]/g, '')) || 0;
+    var paid = parseFloat(document.getElementById('chkPaidAmount')?.value) || 0;
+    var change = Math.max(0, Number((paid - totalDue).toFixed(2)));
+
+    if (change <= 0) {
+      if (typeof showToast === 'function') showToast('لا يوجد باقي صرف (Rendu) لتحويله إلى نقاط ولاء', 'info');
+      return;
+    }
+
+    var ptVal = Math.max(1, Number(AppState.loyaltyPointValueDzd || 5));
+    var ptsEarned = Math.max(1, Math.round(change / ptVal));
+
+    if (window.api && window.api.redeemCustomerLoyaltyPoints) {
+      await window.api.redeemCustomerLoyaltyPoints({
+        customerId: custId,
+        points: -ptsEarned, // سالب يعني إضافة نقاط للزبون
+        reason: 'تحويل فكة الصرف (' + change.toFixed(2) + ' د.ج) إلى نقاط ولاء'
+      }).catch(function () {});
+    }
+
+    var paidInp = document.getElementById('chkPaidAmount');
+    if (paidInp) paidInp.value = totalDue.toFixed(2);
+    this.recalcCheckoutModal();
+
+    if (typeof showToast === 'function') {
+      showToast('⭐ تم تحويل باقي الفكة (' + change.toFixed(2) + ' د.ج) إلى (+' + ptsEarned + ' نقطة ولاء) في رصيد الزبون!', 'success');
+    }
+  };
+
+  App.ensureSmartSmallChangeBarInCheckout = function () {
+    if (document.getElementById('checkoutSmallChangeHelperBar')) return;
+    var changeEl = document.getElementById('chkChangeAmount');
+    if (!changeEl || !changeEl.parentElement || !changeEl.parentElement.parentElement) return;
+
+    var bar = document.createElement('div');
+    bar.id = 'checkoutSmallChangeHelperBar';
+    bar.className = 'p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1.5 text-[11px]';
+    bar.innerHTML =
+      '<div class="font-black text-amber-800 dark:text-amber-300">🪙 معالج الفكة والباقي الذكي (كاشير السوبرماركت):</div>' +
+      '<div class="flex flex-wrap gap-1.5">' +
+      '  <button type="button" onclick="App.roundDownCheckoutSmallChange(10)" class="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black">🪙 إسقاط الفكة (تدوير لـ 10 د.ج)</button>' +
+      '  <button type="button" onclick="App.convertCheckoutChangeToLoyaltyPoints()" class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-black">⭐ تحويل الباقي لنقاط ولاء</button>' +
+      '</div>';
+
+    changeEl.parentElement.parentElement.insertAdjacentElement('afterend', bar);
+  };
+
+  var _prevOpenCheckoutV19 = App.openCheckoutModal.bind(App);
+  App.openCheckoutModal = async function () {
+    await _prevOpenCheckoutV19();
+    this.ensureSmartSmallChangeBarInCheckout();
+  };
+
+  // ربط شاشة الكاشير بلوحة اللمس السريعة وزر فاحص السعر (F10) وتنقية الواجهة
+  var _prevRenderPosViewV19 = App.renderPosView.bind(App);
+  App.renderPosView = function () {
+    this.purifyRetailDomElements();
+    _prevRenderPosViewV19();
+    this.purifyRetailDomElements();
+    this.renderPosQuickTouchInlineBar();
+
+    var returnBtn = document.getElementById('btnReturnMode');
+    if (returnBtn && returnBtn.parentElement && !document.getElementById('btnPosPriceCheckerF10')) {
+      returnBtn.insertAdjacentHTML(
+        'afterend',
+        '<button id="btnPosPriceCheckerF10" type="button" onclick="App.openPriceCheckerModal()" class="px-3 py-1.5 rounded-xl bg-indigo-600/15 text-indigo-600 dark:text-indigo-300 border border-indigo-500/30 text-xs font-black flex items-center gap-1" title="فاحص الأسعار الفوري للزبون (F10)"><span>🔍 فاحص السعر (F10)</span></button>'
+      );
+    }
+
+    var searchInp = document.getElementById('globalPosSearch');
+    if (searchInp) {
+      searchInp.placeholder = '🔍 ابحث بالاسم، الباركود، الفئة، أو كود الميزان PLU...';
+    }
+  };
+
+  // اختصارات لوحة المفاتيح: F7 للوحة اللمس السريعة و F10 لفاحص الأسعار الفوري
+  document.addEventListener('keydown', function (e) {
+    if (AppState.currentView !== 'pos') return;
+    if (e.key === 'F10') {
+      e.preventDefault();
+      App.openPriceCheckerModal();
+    } else if (e.key === 'F7') {
+      e.preventDefault();
+      App.openQuickTouchPluPadModal();
+    }
+  });
+
+  setTimeout(function () {
+    if (window.App && typeof window.App.purifyRetailDomElements === 'function') {
+      window.App.purifyRetailDomElements();
+      if (AppState.currentView === 'pos') App.renderPosView();
+    }
+  }, 250);
+})();
+
+// [PURE RETAIL & SUPERMARKET POS - PART 2/3 V19]
+(function installPureRetailInventoryProductBundlesStocktakePart2V19() {
+  if (!window.App || !window.AppState) return;
+
+  AppState.fefoAlertWarningDays = Number(localStorage.getItem('gherbi_fefo_warn_days') || 15);
+
+  // ==========================================================================
+  // 1. تبسيط وتركيز نافذة المنتج (#productModal) للسوبرماركت والتجزئة والمكتبات
+  // ==========================================================================
+  App.ensurePureRetailProductModalFieldsDom = function () {
+    // إزالة أي لوحات معقدة خاصة بالمستودعات المتعددة أو القطاعات الثقيلة
+    var oldMultiPanel = document.getElementById('prodMultiSectorConfigPanel');
+    if (oldMultiPanel) oldMultiPanel.remove();
+    var whSel = document.getElementById('prodWarehouseIdSelect');
+    if (whSel && whSel.parentElement && whSel.parentElement.parentElement) {
+      whSel.parentElement.parentElement.remove();
+    }
+
+    // تحسين تسميات حقول الباكي/العلبة في نافذة المنتج لتناسب السوبرماركت والمكتبة
+    var whlPriceInp = document.getElementById('prodWholesaleInput');
+    if (whlPriceInp && whlPriceInp.previousElementSibling) {
+      whlPriceInp.previousElementSibling.textContent = 'سعر البيع بالباكي / العلبة (للوحدة)';
+    }
+    var whlUnitInp = document.getElementById('prodWholesaleUnitInput');
+    if (whlUnitInp && whlUnitInp.previousElementSibling) {
+      whlUnitInp.previousElementSibling.textContent = 'اسم العبوة (باكي / علبة / فاردو)';
+    }
+    var whlQtyInp = document.getElementById('prodWholesaleQtyInput');
+    if (whlQtyInp && whlQtyInp.previousElementSibling) {
+      whlQtyInp.previousElementSibling.textContent = 'عدد الحبات داخل الباكي/العلبة (pack_qty)';
+    }
+
+    if (document.getElementById('pureRetailProductExtrasBox')) return;
+    var modalContent = document.querySelector('#productModal .modal-content');
+    if (!modalContent) return;
+
+    var footerRow = modalContent.querySelector('.flex.justify-end');
+    var box = document.createElement('div');
+    box.id = 'pureRetailProductExtrasBox';
+    box.className = 'p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-2.5 text-xs';
+    box.innerHTML =
+      '<div class="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-500/20 pb-2">' +
+      '  <span class="font-black text-emerald-700 dark:text-emerald-300">🛒 إعدادات السوبرماركت، الرفوف، وعروض المجاني التلقائية (BOGO):</span>' +
+      '  <span class="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-black text-[10px]">تجزئة وسوبرماركت ومكتبات</span>' +
+      '</div>' +
+      '<div class="grid grid-cols-1 md:grid-cols-4 gap-2.5 items-end">' +
+      '  <div>' +
+      '    <label class="block font-black text-indigo-600 dark:text-indigo-300 mb-1">🗄️ موقع السلعة في الرف (Rayon / Étagère)</label>' +
+      '    <input id="prodRetailShelfRayonInp" type="text" placeholder="مثال: رواق 2 - رف B4" oninput="var l=document.getElementById(\'prodLocationInput\');if(l)l.value=this.value;" class="w-full px-3 py-1.5 rounded-xl font-bold">' +
+      '  </div>' +
+      '  <div>' +
+      '    <label class="block font-black text-rose-600 dark:text-rose-400 mb-1">🎁 عرض BOGO: اشترِ كمية (X)</label>' +
+      '    <input id="prodBogoBuyQtyInput" type="number" min="0" placeholder="مثال: 2 أو 3" class="w-full px-3 py-1.5 rounded-xl font-mono font-black text-center border-rose-400">' +
+      '  </div>' +
+      '  <div>' +
+      '    <label class="block font-black text-rose-600 dark:text-rose-400 mb-1">🎁 واحصل مجاناً على (Y حبة)</label>' +
+      '    <input id="prodBogoFreeQtyInput" type="number" min="0" placeholder="مثال: 1" class="w-full px-3 py-1.5 rounded-xl font-mono font-black text-center border-rose-400">' +
+      '  </div>' +
+      '  <div>' +
+      '    <button type="button" onclick="document.getElementById(\'prodBogoBuyQtyInput\').value=\'2\';document.getElementById(\'prodBogoFreeQtyInput\').value=\'1\';" class="w-full py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black shadow-sm">⚡ ضبط سريع: اشترِ 2 + 1 مجاناً</button>' +
+      '  </div>' +
+      '</div>';
+
+    if (footerRow) {
+      footerRow.insertAdjacentElement('beforebegin', box);
+    } else {
+      modalContent.appendChild(box);
+    }
+  };
+
+  var _prevOpenProdModalV19 = App.openProductModal.bind(App);
+  App.openProductModal = async function (prodOrId) {
+    await _prevOpenProdModalV19(prodOrId);
+    this.ensurePureRetailProductModalFieldsDom();
+
+    var curId = document.getElementById('prodIdInput')?.value;
+    var prod = curId
+      ? (AppState.products || []).find(function (p) { return Number(p.id) === Number(curId); })
+      : (typeof prodOrId === 'object' ? prodOrId : null);
+
+    var b0 = prod && Array.isArray(prod.batches) && prod.batches[0] ? prod.batches[0] : {};
+    var locVal = (prod && prod.location) || b0.location || [b0.shelf_etage, b0.shelf_place].filter(Boolean).join(' - ') || '';
+
+    var rayonInp = document.getElementById('prodRetailShelfRayonInp');
+    if (rayonInp) rayonInp.value = locVal;
+    var locInp = document.getElementById('prodLocationInput');
+    if (locInp && locVal && !locInp.value) locInp.value = locVal;
+
+    var buyInp = document.getElementById('prodBogoBuyQtyInput');
+    var freeInp = document.getElementById('prodBogoFreeQtyInput');
+    if (buyInp) buyInp.value = prod && Number(prod.bogo_buy_qty) > 0 ? String(prod.bogo_buy_qty) : '';
+    if (freeInp) freeInp.value = prod && Number(prod.bogo_free_qty) > 0 ? String(prod.bogo_free_qty) : '';
+  };
+
+  var _prevSaveProdModalV19 = App.saveProductFromModal.bind(App);
+  App.saveProductFromModal = async function (keepModalOpen) {
+    var rayonVal = String(document.getElementById('prodRetailShelfRayonInp')?.value || '').trim();
+    var locInp = document.getElementById('prodLocationInput');
+    if (locInp && rayonVal) locInp.value = rayonVal;
+
+    await _prevSaveProdModalV19(keepModalOpen);
+
+    var pid = Number(document.getElementById('prodIdInput')?.value || AppState.currentEditingProductId || 0);
+    if (!pid && (AppState.products || []).length > 0) {
+      var nameVal = String(document.getElementById('prodNameInput')?.value || '').trim();
+      var matched = (AppState.products || []).find(function (p) { return p.name === nameVal; });
+      if (matched) pid = Number(matched.id);
+    }
+
+    var bogoBuy = parseInt(document.getElementById('prodBogoBuyQtyInput')?.value || '0', 10) || 0;
+    var bogoFree = parseInt(document.getElementById('prodBogoFreeQtyInput')?.value || '0', 10) || 0;
+
+    if (pid && window.api && window.api.updateProduct) {
+      var curProd = (AppState.products || []).find(function (p) { return Number(p.id) === pid; }) || {};
+      await window.api.updateProduct(pid, Object.assign({}, curProd, {
+        name: String(document.getElementById('prodNameInput')?.value || curProd.name || '').trim(),
+        bogo_buy_qty: bogoBuy,
+        bogo_free_qty: bogoFree,
+        location: rayonVal || curProd.location || null
+      })).catch(function () {});
+
+      if (rayonVal && window.api.updateBatchShelfLocation) {
+        await window.api.updateBatchShelfLocation({
+          product_id: pid,
+          warehouse_id: 1,
+          shelf_etage: '',
+          shelf_place: rayonVal
+        }).catch(function () {});
+      }
+      await this.refreshProducts();
+      if (AppState.currentView === 'inventory') await this.renderInventoryView();
+    }
+  };
+
+  // ==========================================================================
+  // 2. تفعيل محرك عروض السوبرماركت (BOGO) ورادار الصلاحية القريبة (FEFO) في سلة الكاشير
+  // ==========================================================================
+  App.applyAutoBogoPromotionsToCart = function () {
+    var cart = this.currentCart;
+    if (!cart || !Array.isArray(cart.items)) return;
+
+    cart.items.forEach(function (it) {
+      var prod = (AppState.products || []).find(function (p) {
+        return Number(p.id) === Number(it.product_id || it.productId);
+      });
+      if (!prod) return;
+
+      var buyX = parseInt(prod.bogo_buy_qty || 0, 10);
+      var freeY = parseInt(prod.bogo_free_qty || 0, 10);
+      if (buyX > 0 && freeY > 0 && Number(it.quantity || 0) >= buyX) {
+        var setsCount = Math.floor(Number(it.quantity || 0) / buyX);
+        var earnedFree = setsCount * freeY;
+        it.bonus_qty = earnedFree;
+        it.promo_badge = '🎁 عرض BOGO: اشترِ ' + buyX + ' + ' + earnedFree + ' مجاناً!';
+      } else if (it.promo_badge && String(it.promo_badge).includes('BOGO')) {
+        it.bonus_qty = 0;
+        it.promo_badge = '';
+      }
+    });
+  };
+
+  App.checkCartFefoNearExpiryAlerts = function () {
+    var cart = this.currentCart;
+    var items = (cart && cart.items) || [];
+    var nowMs = Date.now();
+    var warnDays = AppState.fefoAlertWarningDays || 15;
+    var alerts = [];
+
+    items.forEach(function (it, idx) {
+      var prod = (AppState.products || []).find(function (p) {
+        return Number(p.id) === Number(it.product_id || it.productId);
+      });
+      if (!prod || !Array.isArray(prod.batches)) return;
+
+      prod.batches.forEach(function (b) {
+        if (Number(b.stock || 0) > 0 && b.expiry_date) {
+          var expMs = new Date(b.expiry_date).getTime();
+          if (Number.isFinite(expMs)) {
+            var daysLeft = Math.ceil((expMs - nowMs) / 86400000);
+            if (daysLeft <= warnDays) {
+              alerts.push({
+                cartIdx: idx,
+                productName: prod.name,
+                expiryDate: String(b.expiry_date).slice(0, 10),
+                daysLeft: daysLeft
+              });
+            }
+          }
+        }
+      });
+    });
+
+    return alerts;
+  };
+
+  App.applyQuickFefoClearanceDiscount = function (cartIdx, discountPct) {
+    var cart = this.currentCart;
+    if (!cart || !cart.items || !cart.items[cartIdx]) return;
+    var it = cart.items[cartIdx];
+    var orig = Number(it.original_price || it.retail_price || it.price || 0);
+    it.original_price = orig;
+    it.price = Number((orig * (1 - Number(discountPct) / 100)).toFixed(2));
+    it.subtotal = Number((Number(it.quantity || 1) * it.price).toFixed(2));
+    it._manualPriceLocked = true;
+    it.promo_badge = '⏳ تخفيض تصريف صلاحية (-' + discountPct + '%)';
+    this.renderCartItems();
+    this.recalcCart();
+    if (typeof showToast === 'function') {
+      showToast('✅ تم تطبيق تخفيض تصريف الصلاحية (-' + discountPct + '%) على [' + it.name + ']!', 'success');
+    }
+  };
+
+  App.renderPosFefoRadarBanner = function () {
+    var cartContainer = document.getElementById('posCartItems');
+    if (!cartContainer || !cartContainer.parentElement) return;
+
+    var banner = document.getElementById('posFefoExpiryRadarBar');
+    var alerts = this.checkCartFefoNearExpiryAlerts();
+
+    if (alerts.length === 0) {
+      if (banner) banner.remove();
+      return;
+    }
+
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'posFefoExpiryRadarBar';
+      banner.className = 'mx-3 mt-2 p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-[11px] space-y-1.5';
+      cartContainer.insertAdjacentElement('beforebegin', banner);
+    }
+
+    var first = alerts[0];
+    var statusTxt = first.daysLeft <= 0
+      ? '⚠️ منتهي الصلاحية (' + first.expiryDate + ')'
+      : '⏳ ينتهي خلال ' + first.daysLeft + ' يوم (' + first.expiryDate + ')';
+
+    banner.innerHTML =
+      '<div class="flex items-center justify-between gap-2">' +
+      '  <div class="font-black text-amber-800 dark:text-amber-300 truncate">🚨 رادار الصلاحية (FEFO): [' + first.productName + '] ' + statusTxt + '</div>' +
+      '  <div class="flex items-center gap-1 shrink-0">' +
+      '    <span class="text-[10px] font-bold text-slate-500">تصريف فوري:</span>' +
+      '    <button type="button" onclick="App.applyQuickFefoClearanceDiscount(' + first.cartIdx + ', 10)" class="px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-black">-10%</button>' +
+      '    <button type="button" onclick="App.applyQuickFefoClearanceDiscount(' + first.cartIdx + ', 20)" class="px-2 py-0.5 rounded bg-rose-600 text-white font-black">-20%</button>' +
+      '    <button type="button" onclick="App.applyQuickFefoClearanceDiscount(' + first.cartIdx + ', 30)" class="px-2 py-0.5 rounded bg-purple-600 text-white font-black">-30%</button>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  var _prevAddProdToCartV19_2 = App.addProductToCart.bind(App);
+  App.addProductToCart = function (productId, qty, options) {
+    var res = _prevAddProdToCartV19_2(productId, qty, options);
+    this.applyAutoBogoPromotionsToCart();
+    this.renderCartItems();
+    this.recalcCart();
+    this.renderPosFefoRadarBanner();
+    return res;
+  };
+
+  // ==========================================================================
+  // 3. طباعة لافتة سعر الرف الصفراء للسوبرماركت (Shelf Price Tag 🟨) + جدول المخزون ذي الـ 9 أعمدة
+  // ==========================================================================
+  App.quickPrintShelfPriceTag = async function (productId) {
+    var p = (AppState.products || []).find(function (x) { return Number(x.id) === Number(productId); });
+    if (!p || !window.PrintEngine) return;
+
+    var s = AppState.settings || {};
+    var unitPrice = Number(p.selling_price || 0);
+    var centimeStr = typeof this.formatAlgerianCentimes === 'function' ? this.formatAlgerianCentimes(unitPrice) : '';
+    var packQty = Math.max(1, Number(p.wholesale_qty || 1));
+    var packUnit = p.wholesale_unit || 'باكي / علبة';
+    var packUnitPrice = Number(p.wholesale_price || unitPrice);
+    var b0 = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+    var shelfLoc = p.location || b0.location || [b0.shelf_etage, b0.shelf_place].filter(Boolean).join('/') || '';
+
+    var html =
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><style>' +
+      '@page { margin: 0; } body { font-family: "Cairo", Arial, sans-serif; width: 72mm; margin: 0 auto; padding: 3mm; text-align: center; border: 3px solid #000; border-radius: 8px; background: #fef9c3; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }' +
+      '.shop { font-size: 11px; font-weight: 900; border-bottom: 1.5px solid #000; padding-bottom: 2px; display: flex; justify-content: space-between; }' +
+      '.pname { font-size: 15px; font-weight: 900; margin: 5px 0 3px; line-height: 1.25; }' +
+      '.pbox { background: #fff; border: 2.5px solid #000; border-radius: 8px; padding: 4px; margin: 4px 0; }' +
+      '.p-dzd { font-family: monospace; font-size: 26px; font-weight: 900; line-height: 1.1; }' +
+      '.p-cnt { font-size: 11.5px; font-weight: 900; margin-top: 2px; }' +
+      '.pack-line { font-size: 10.5px; font-weight: 900; background: #000; color: #fff; padding: 2px 6px; border-radius: 5px; margin-top: 3px; }' +
+      '.bc { font-family: monospace; font-size: 11px; font-weight: 800; margin-top: 4px; letter-spacing: 1.5px; }' +
+      '</style></head><body>' +
+      '<div class="shop"><span>' + (s.shop_name || 'Gherbi.Ai Supermarket') + '</span><span>' + (shelfLoc ? 'الرف: ' + shelfLoc : (p.category || '')) + '</span></div>' +
+      '<div class="pname">' + p.name + '</div>' +
+      '<div class="pbox">' +
+      '  <div class="p-dzd">' + unitPrice.toFixed(2) + ' <span style="font-size:13px;">د.ج</span></div>' +
+      (centimeStr ? '  <div class="p-cnt">🇩🇿 ' + centimeStr + '</div>' : '') +
+      '</div>' +
+      (packQty > 1 ? '<div class="pack-line">📦 سعر ' + packUnit + ' (' + packQty + '×): ' + (packQty * packUnitPrice).toFixed(2) + ' د.ج</div>' : '') +
+      (Number(p.bogo_buy_qty) > 0 && Number(p.bogo_free_qty) > 0 ? '<div class="pack-line">🎁 عرض خاص: اشترِ ' + p.bogo_buy_qty + ' + ' + p.bogo_free_qty + ' مجاناً!</div>' : '') +
+      '<div class="bc">*' + (p.barcode || p.plu_code || p.id) + '*</div>' +
+      '</body></html>';
+
+    await window.PrintEngine.printHtmlDocument(html, { silent: false });
+  };
+
+  App.renderRetailProductFefoPluBogoCell = function (p) {
+    var badges = [];
+    var nowMs = Date.now();
+
+    if (Array.isArray(p.batches)) {
+      var expBatch = p.batches.find(function (b) { return Number(b.stock || 0) > 0 && b.expiry_date; });
+      if (expBatch && expBatch.expiry_date) {
+        var expStr = String(expBatch.expiry_date).slice(0, 10);
+        var daysLeft = Math.ceil((new Date(expBatch.expiry_date).getTime() - nowMs) / 86400000);
+        var cls = daysLeft <= 0
+          ? 'bg-rose-600 text-white'
+          : daysLeft <= 15
+            ? 'bg-amber-500 text-slate-950'
+            : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300';
+        badges.push('<span class="px-2 py-0.5 rounded font-mono font-bold text-[10px] ' + cls + '">📅 ' + expStr + '</span>');
+      }
+    }
+
+    if (p.plu_code) {
+      badges.push('<span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 font-mono font-black text-[10px]">⚖️ PLU: ' + p.plu_code + '</span>');
+    }
+
+    if (Number(p.bogo_buy_qty) > 0 && Number(p.bogo_free_qty) > 0) {
+      badges.push('<span class="px-2 py-0.5 rounded bg-rose-500/15 text-rose-600 font-black text-[10px]">🎁 ' + p.bogo_buy_qty + '+' + p.bogo_free_qty + ' مجاناً</span>');
+    }
+
+    if (Array.isArray(p.extra_prices) && p.extra_prices.some(function (ep) { return Number(ep.min_qty || 1) > 1; })) {
+      badges.push('<span class="px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-600 font-bold text-[10px]">🏷️ تخفيض كمية</span>');
+    }
+
+    return badges.length > 0 ? '<div class="flex flex-wrap gap-1">' + badges.join('') + '</div>' : '<span class="text-slate-300">—</span>';
+  };
+
+  var _prevRenderInventoryViewV19 = App.renderInventoryView.bind(App);
+  App.renderInventoryView = async function () {
+    AppState.inventoryMainTab = 'products_list';
+    await _prevRenderInventoryViewV19();
+
+    var root = document.getElementById('inventory-view-root');
+    if (!root) return;
+
+    // إزالة شريط المستودعات المتعددة والتحويلات الخاص بالجملة ليبقى جدول مخزون التجزئة صافياً
+    var entTabs = document.getElementById('inventoryEnterpriseTabsBar');
+    if (entTabs) entTabs.remove();
+
+    var theadRow = root.querySelector('table thead tr');
+    if (theadRow) {
+      theadRow.innerHTML =
+        '<th class="py-2.5 px-2">الباركود</th>' +
+        '<th class="py-2.5 px-2">المنتج وموقع الرف (Rayon)</th>' +
+        '<th class="py-2.5 px-2">الفئة</th>' +
+        '<th class="py-2.5 px-2 text-emerald-600 font-black">الصلاحية والعروض (FEFO / PLU / BOGO)</th>' +
+        '<th class="py-2.5 px-2">سعر الشراء</th>' +
+        '<th class="py-2.5 px-2">سعر البيع بالحبة</th>' +
+        '<th class="py-2.5 px-2">سعر العلبة/الباكي</th>' +
+        '<th class="py-2.5 px-2">الرصيد (بالحبة وبالعلبة)</th>' +
+        '<th class="py-2.5 px-2 text-center">إجراءات سريعة (باركود / رف / تعديل)</th>';
+    }
+
+    var tbodyRows = root.querySelectorAll('table tbody tr');
+    tbodyRows.forEach(function (tr) {
+      var rowId = String(tr.id || '');
+      if (!rowId.startsWith('inv-row-')) return;
+      var pid = Number(rowId.replace('inv-row-', ''));
+      var p = (AppState.products || []).find(function (x) { return Number(x.id) === pid; });
+      if (!p) return;
+
+      var b0 = Array.isArray(p.batches) && p.batches[0] ? p.batches[0] : {};
+      var shelfLoc = p.location || b0.location || [b0.shelf_etage, b0.shelf_place].filter(Boolean).join(' - ') || '';
+
+      // 1) تحديث خلية اسم المنتج لتضم موقع الرف (Rayon / Étagère)
+      var nameTd = tr.children[1];
+      if (nameTd && shelfLoc && !nameTd.innerHTML.includes('🗄️')) {
+        nameTd.innerHTML =
+          '<div>' + p.name + '</div>' +
+          '<div class="text-[10px] font-bold text-indigo-500 mt-0.5">🗄️ الرف: ' + shelfLoc + '</div>';
+      }
+
+      // 2) إدراج عمود الصلاحية والعروض (FEFO / PLU / BOGO) بعد عمود الفئة
+      var catTd = tr.children[2];
+      if (catTd && !tr.querySelector('.td-retail-fefo-bogo')) {
+        catTd.insertAdjacentHTML(
+          'afterend',
+          '<td class="td-retail-fefo-bogo py-2.5 px-2">' + App.renderRetailProductFefoPluBogoCell(p) + '</td>'
+        );
+      }
+
+      // 3) تحديث خلية الرصيد لتبين الرصيد بالحبة وبالعلبة/الباكي
+      var cellsNow = tr.querySelectorAll('td');
+      var stkTd = cellsNow[7];
+      var packQty = Math.max(1, Number(p.wholesale_qty || 1));
+      var stock = Number(p.total_stock ?? p.stock ?? 0);
+      if (stkTd && !AppState.inventoryInlineEditMode && packQty > 1) {
+        var packsCount = (stock / packQty).toFixed(1);
+        stkTd.innerHTML =
+          '<div>' + stock + ' ' + (p.unit || 'حبة') + '</div>' +
+          '<div class="text-[10px] font-mono text-indigo-500 font-bold">📦 ' + packsCount + ' ' + (p.wholesale_unit || 'باكي') + ' (×' + packQty + ')</div>';
+      }
+
+      // 4) إضافة زر طباعة لافتة سعر الرف الصفراء (🟨 ملصق رف) في عمود الإجراءات السريعة
+      var actTd = cellsNow[cellsNow.length - 1];
+      if (actTd && !actTd.innerHTML.includes('quickPrintShelfPriceTag')) {
+        var bcBtn = actTd.querySelector('button[onclick*="quickPrintLabel"]');
+        var shelfBtnHtml = '<button type="button" onclick="App.quickPrintShelfPriceTag(' + p.id + ')" class="px-2 py-1 bg-yellow-400/25 text-amber-800 dark:text-yellow-300 hover:bg-yellow-400 hover:text-slate-950 rounded-lg font-black text-[11px] transition" title="طباعة لافتة سعر الرف الصفراء للسوبرماركت">🟨 ملصق رف</button>';
+        if (bcBtn) {
+          bcBtn.insertAdjacentHTML('afterend', shelfBtnHtml);
+        } else {
+          actTd.insertAdjacentHTML('afterbegin', shelfBtnHtml);
+        }
+      }
+    });
+  };
+
+  // ==========================================================================
+  // 4. تخصيص الحزم والعروض (#view-bundles) للسوبرماركت، المكتبات (Pack Scolaire)، والتجميل
+  // ==========================================================================
+  var _prevApplySmartBundlePreset = typeof App.applySmartBundlePreset === 'function' ? App.applySmartBundlePreset.bind(App) : null;
+  App.applySmartBundlePreset = function (presetKey) {
+    if (presetKey === 'school_pack') {
+      document.getElementById('bundleNameInput').value = '🎒 حقيبة الدخول المدرسي الشاملة (Pack Scolaire)';
+      this.generateBundleBarcode();
+      var prods = this.getSortedPricedProducts().slice(0, 3);
+      AppState.tempBundleItems = prods.map(function (p, i) {
+        return { product_id: p.id, product_name: p.name, quantity: i === 0 ? 5 : 2 };
+      });
+      this.renderBundleItemsInModal();
+      this.applyQuickBundleDiscount(12);
+      return;
+    }
+    if (presetKey === 'cosmetics_gift') {
+      document.getElementById('bundleNameInput').value = '✨ باقة هدية وعطور فاخرة (Coffret Cadeau & Parfum)';
+      this.generateBundleBarcode();
+      var prodsC = this.getSortedPricedProducts().slice(0, 2);
+      AppState.tempBundleItems = prodsC.map(function (p) {
+        return { product_id: p.id, product_name: p.name, quantity: 1 };
+      });
+      this.renderBundleItemsInModal();
+      this.applyQuickBundleDiscount(15);
+      return;
+    }
+    if (_prevApplySmartBundlePreset) {
+      return _prevApplySmartBundlePreset(presetKey);
+    }
+  };
+
+  var _prevUpgradeBundlesModalsDom = App.upgradeBundlesAndPromosModalsDom.bind(App);
+  App.upgradeBundlesAndPromosModalsDom = function () {
+    _prevUpgradeBundlesModalsDom();
+    var bModal = document.getElementById('bundleModal');
+    if (bModal && !bModal.innerHTML.includes('school_pack')) {
+      var presetRow = bModal.querySelector('.bg-indigo-500\\/10');
+      if (presetRow) {
+        presetRow.insertAdjacentHTML(
+          'beforeend',
+          '<button type="button" onclick="App.applySmartBundlePreset(\'school_pack\')" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 font-bold hover:bg-indigo-600 hover:text-white transition">🎒 حقيبة الدخول المدرسي (Pack Scolaire)</button>' +
+          '<button type="button" onclick="App.applySmartBundlePreset(\'cosmetics_gift\')" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 font-bold hover:bg-pink-600 hover:text-white transition">✨ باقة هدية وعطور (Coffret)</button>'
+        );
+      }
+    }
+  };
+
+  // ==========================================================================
+  // 5. تحسين شاشة الجرد المخزني (#view-stocktake) لعرض الرصيد بالحبة وبالعلبة/الباكي
+  // ==========================================================================
+  if (window.StocktakeUI && typeof window.StocktakeUI.drawStocktakeInterface === 'function') {
+    var _prevDrawStocktakeV19 = window.StocktakeUI.drawStocktakeInterface.bind(window.StocktakeUI);
+    window.StocktakeUI.drawStocktakeInterface = function () {
+      var res = _prevDrawStocktakeV19();
+      var root = document.getElementById('stocktake-view-root');
+      if (root && !document.getElementById('retailStocktakeHelperBar')) {
+        root.insertAdjacentHTML(
+          'afterbegin',
+          '<div id="retailStocktakeHelperBar" class="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-wrap items-center justify-between gap-2 text-xs mb-3">' +
+          '  <span class="font-black text-emerald-800 dark:text-emerald-300">🛒 جرد السوبرماركت والمكتبات السريع: امسح باركود الحبة أو باركود الباكي/العلبة لزيادة العد آلياً، أو فعّل الجرد الأعمى لمطابقة الرفوف بدقة.</span>' +
+          '</div>'
+        );
+      }
+      return res;
+    };
+  }
+})();
+// [CLEAN RETAIL BASE REVERTED V24]
+(function () {
+  if (!window.App || !window.AppState) return;
+  AppState.appEditionMode = 'retail_pos';
+  AppState.posWorkspaceMode = 'retail_touch';
+  localStorage.setItem('gherbi_app_edition_mode', 'retail_pos');
+  localStorage.setItem('gherbi_pos_workspace_mode', 'retail_touch');
+
+  // إزالة أي أزرار جملة أو قطاعات من الواجهة
+  setTimeout(function () {
+    [
+      'headerEditionSectorBtn',
+      'editionSectorCockpitModal',
+      'posModeDualSwitcher',
+      'posSectorDynamicToolbar',
+      'btnQuickPosM2Calc',
+      'btnQuickPosFashionSeries',
+      'btnQuickPosAtelierSav'
+    ].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.remove();
+    });
+    console.log('✅ تم العودة إلى واجهة التجزئة والسوبرماركت الصافية بنجاح.');
+  }, 300);
+})();
+
+// [CLEAN RETAIL REVERT V25]
+(function installCleanRetailRevertV25() {
+  if (!window.App || !window.AppState) return;
+
+  // 1. إعادة ضبط التخطيط الكلاسيكي البسيط
+  AppState.posWorkspaceTheme = 'classic_pro';
+  AppState.posCardSize = 'medium';
+  AppState.posPageSize = 20;
+  AppState.posShowImages = true;
+  localStorage.setItem('gherbi_pos_workspace_theme_v24', 'classic_pro');
+
+  // إزالة ستايل الثيمات المعقدة إن وجد
+  var themesStyle = document.getElementById('gherbiPosWorkspaceThemesStyle');
+  if (themesStyle) themesStyle.remove();
+
+  // إزالة زر مبدّل الثيمات من شاشة المبيعات
+  var themeBtn = document.getElementById('btnOpenPosThemesModal');
+  if (themeBtn) themeBtn.remove();
+
+  // تنظيف شريط المبيعات العلوي واختيار الواجهة القياسية النظيفة
+  App.applyCleanPosCartFooterLayout = function () {
+    var masterBar = document.getElementById('posAlgerianMasterBar');
+    if (masterBar) {
+      masterBar.style.display = '';
+      masterBar.className = 'px-3 py-1.5 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs font-bold shrink-0';
+      masterBar.innerHTML =
+        '<div class="flex items-center gap-1.5">' +
+        '  <button type="button" onclick="App.openPosRecentSalesModal()" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-blue-600 hover:border-blue-500">🧾 آخر المبيعات</button>' +
+        '  <button type="button" onclick="App.openLoyaltyCardStudioModal(null)" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-amber-500/30 text-amber-600 dark:text-amber-400">💳 بطاقات الوفاء</button>' +
+        '  <button type="button" onclick="App.printCurrentCartExchangeTicket80mm()" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-pink-500/30 text-pink-600">🎁 وصل تبديل هدية</button>' +
+        '</div>' +
+        '<button type="button" onclick="App.openMobileCompanionModal()" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-emerald-600">📱 ربط الهاتف</button>';
+    }
+
+    var gridContainer = document.getElementById('posMainGridContainer');
+    if (gridContainer) {
+      gridContainer.style.gridTemplateColumns = '1fr 6px 430px';
+    }
+  };
+
+  var _prevRenderPosViewV25 = App.renderPosView.bind(App);
+  App.renderPosView = function () {
+    _prevRenderPosViewV25();
+    this.renderPosLoyaltySmartBar();
+    this.applyCleanPosCartFooterLayout();
+  };
+
+  var _prevRenderCartItemsV25 = App.renderCartItems.bind(App);
+  App.renderCartItems = function () {
+    _prevRenderCartItemsV25();
+    this.renderPosLoyaltySmartBar();
+    this.applyCleanPosCartFooterLayout();
+  };
+
+  setTimeout(function () {
+    if (window.App && typeof window.App.renderPosView === 'function') {
+      window.App.renderPosView();
+    }
+  }, 200);
+})();
+
+// [MASTER DIRECT FIX POS RESIZER & ANALYTICS V28]
+(function installMasterRetailPosAnalyticsAndLoyaltyV28() {
+  if (!window.App || !window.AppState) return;
+
+  var savedPtsPer100 = Number(localStorage.getItem('gherbi_loyalty_pts_per_100') || 1);
+  var savedPtValDzd = Number(localStorage.getItem('gherbi_loyalty_pt_val_dzd') || 2);
+  AppState.loyaltyPointsPer100Dzd = savedPtsPer100 > 0 ? savedPtsPer100 : 1;
+  AppState.loyaltyPointValueDzd = savedPtValDzd > 0 ? savedPtValDzd : 2;
+  AppState.priceTier = 'retail';
+  AppState.posCartWidth = 410;
+
+  function getRetailLoyaltyTierBadge(points) {
+    var pts = Number(points || 0);
+    if (pts >= 200) return { label: '💎 عضو ماسي VIP', cls: 'bg-sky-500 text-slate-950' };
+    if (pts >= 100) return { label: '🥇 عضو ذهبي Gold', cls: 'bg-amber-500 text-slate-950' };
+    if (pts >= 30) return { label: '🥈 عضو فضي Silver', cls: 'bg-slate-300 text-slate-900' };
+    return { label: '⭐ عضو نادي الوفاء', cls: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300' };
+  }
+
+  // --------------------------------------------------------------------------
+  // أ) إصلاح مباشر وحاسم لعرض السلة ومقبض السحب (#posCartResizer)
+  // --------------------------------------------------------------------------
+  App.applyCartWidthLayout = function (widthPx) {
+    var grid = document.getElementById('posMainGridContainer');
+    if (!grid) return;
+    Array.from(grid.children).forEach(function (ch) { ch.style.minWidth = '0'; });
+
+    var rect = grid.getBoundingClientRect();
+    var availW = rect.width > 500 ? rect.width : (window.innerWidth - 270);
+    var maxSafeCartW = Math.min(520, Math.max(350, Math.floor(availW - 420)));
+    var w = Math.min(maxSafeCartW, Math.max(330, Math.round(Number(widthPx) || 410)));
+
+    AppState.posCartWidth = w;
+    grid.style.gridTemplateColumns = 'minmax(0, 1fr) 6px ' + w + 'px';
+  };
+
+  // --------------------------------------------------------------------------
+  // ب) تطهير شاشة المبيعات وصفحة الإحصائيات من État 104 & G50 وبقايا الجملة
+  // --------------------------------------------------------------------------
+  App.sanitizeWholesaleCustomersInDb = async function () {
+    if (!window.api || !window.api.getCustomers) return;
+    var list = (await window.api.getCustomers().catch(function () { return []; })) || [];
+    var changed = false;
+    for (var i = 0; i < list.length; i++) {
+      var c = list[i];
+      var nameStr = String(c.name || '');
+      if (nameStr.includes('زبون جملة') || nameStr.includes('سوبرماركت النور') || c.price_tier === 'wholesale') {
+        var cleanName = nameStr
+          .replace('سوبرماركت النور (زبون جملة)', 'أمين بن يحيى (زبون وفي)')
+          .replace(/\(زبون جملة\)/g, '(زبون وفي)')
+          .replace(/زبون جملة/g, 'زبون وفي')
+          .trim();
+        await window.api.updateCustomer(c.id, Object.assign({}, c, {
+          name: cleanName || 'زبون وفي',
+          price_tier: 'retail'
+        })).catch(function () {});
+        changed = true;
+      }
+    }
+    AppState.customers = changed
+      ? ((await window.api.getCustomers().catch(function () { return []; })) || [])
+      : list;
+  };
+
+  App.purgeAllWholesaleAndEtat104Ui = function () {
+    // 1. إعادة شريط الأدوات أعلى السلة (#posAlgerianMasterBar) إلى تصميمه النظيف الخالي من État 104
+    var masterBar = document.getElementById('posAlgerianMasterBar');
+    if (masterBar) {
+      masterBar.className = 'px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-1.5 text-[11px] font-bold';
+      masterBar.innerHTML =
+        '<button type="button" onclick="App.openPosRecentSalesModal()" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-blue-500 text-blue-600 font-bold">🧾 آخر المبيعات</button>' +
+        '<button type="button" onclick="App.openPosVipLoyaltyDirectoryModal()" class="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-black shadow-sm">👑 الأوفياء وخصم النقاط</button>' +
+        '<button type="button" onclick="App.openLoyaltyCardStudioModal(null)" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold">💳 بطاقات الوفاء</button>' +
+        '<button type="button" onclick="App.printCurrentCartExchangeTicket80mm()" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-pink-500/30 text-pink-600 font-bold">🎁 وصل تبديل هدية</button>' +
+        '<button type="button" onclick="App.openMobileCompanionModal()" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-emerald-600 font-bold">📱 ربط الهاتف</button>';
+    }
+
+    // 2. إخفاء قائمة سعر الجملة في الكاشير
+    var tierSel = document.getElementById('posPriceTierSelect');
+    if (tierSel) {
+      tierSel.value = 'retail';
+      tierSel.style.display = 'none';
+    }
+
+    // 3. ضمان ظهور سطري الكوبون والتخفيض بشكل طبيعي (إلغاء أي طيّ سابق من V25)
+    var couponBar = document.getElementById('posCartCouponInputBar');
+    if (couponBar) couponBar.style.display = '';
+    var discInput = document.getElementById('cartDiscountInput');
+    if (discInput && discInput.parentElement) discInput.parentElement.style.display = '';
+    var oldDrawerBtn = document.getElementById('btnTogglePosDiscountDrawer');
+    if (oldDrawerBtn) oldDrawerBtn.remove();
+
+    // 4. تحديث عنوان التبويب 11 في الإحصائيات وإخفاء زر تصريح G50/IFU
+    if (Array.isArray(App.ERP_TABS_CONFIG)) {
+      var fiscalTab = App.ERP_TABS_CONFIG.find(function (t) { return t.id === 'fiscal'; });
+      if (fiscalTab) {
+        fiscalTab.label = '11. 👑 نادي الولاء ومكافآت الزبائن (VIP Loyalty)';
+      }
+    }
+    document.querySelectorAll('button[onclick*="openAlgerianFiscalModal"]').forEach(function (btn) {
+      btn.style.display = 'none';
+    });
+  };
+
+  // --------------------------------------------------------------------------
+  // ج) التبويب 11 في صفحة الإحصائيات (#view-analytics): تحليلات نادي الوفاء ومكافآت الزبائن
+  // --------------------------------------------------------------------------
+  App.renderErpTab11_AlgerianFiscalStudio = async function (body) {
+    await this.sanitizeWholesaleCustomersInDb();
+    var customers = (AppState.customers || []).slice().sort(function (a, b) {
+      return Number(b.loyalty_points || 0) - Number(a.loyalty_points || 0);
+    });
+    var ptValDzd = Math.max(0.5, Number(AppState.loyaltyPointValueDzd || 2));
+    var totalPts = customers.reduce(function (s, c) { return s + Math.max(0, Number(c.loyalty_points || 0)); }, 0);
+    var totalDiscValue = Number((totalPts * ptValDzd).toFixed(2));
+    var centVal = typeof this.formatAlgerianCentimes === 'function' ? this.formatAlgerianCentimes(totalDiscValue) : '';
+
+    body.innerHTML =
+      '<div class="space-y-4 text-xs">' +
+      '  <div class="p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white border border-slate-800 shadow-xl flex flex-wrap items-center justify-between gap-3">' +
+      '    <div>' +
+      '      <span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-black text-[10.5px]">👑 نادي الزبائن الأوفياء وبطاقات الوفاء (Retail Loyalty Club)</span>' +
+      '      <h3 class="text-lg font-black mt-1 text-amber-400">تحليلات نقاط الولاء، بطاقات الوفاء، وقيمة الخصومات المستحقة للزبائن الأوفياء</h3>' +
+      '      <p class="text-[11px] text-slate-300">متابعة أرصدة نقاط الزبائن الأوفياء وقيمتها المالية الجاهزة للإنقاص من فواتيرهم القادمة في الكاشير</p>' +
+      '    </div>' +
+      '    <div class="flex gap-2">' +
+      '      <button type="button" onclick="App.openLoyaltyCardStudioModal(null)" class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black shadow">💳 فتح استوديو بطاقات الوفاء</button>' +
+      '      <button type="button" onclick="App.switchView(\'customers\')" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black shadow">👑 إدارة الزبائن الأوفياء</button>' +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="grid grid-cols-1 md:grid-cols-3 gap-3.5">' +
+      '    <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"><div class="text-slate-400 font-bold">عدد الزبائن الأوفياء المسجلين</div><div class="text-2xl font-black font-mono text-blue-600 mt-1">' + customers.length + ' زبون وفي</div></div>' +
+      '    <div class="p-4 rounded-2xl bg-amber-500/15 border border-amber-500/30"><div class="text-amber-800 dark:text-amber-300 font-bold">إجمالي نقاط الولاء المتراكمة</div><div class="text-2xl font-black font-mono text-amber-600 mt-1">⭐ ' + totalPts + ' نقطة</div></div>' +
+      '    <div class="p-4 rounded-2xl bg-emerald-600 text-white shadow-lg"><div class="font-bold opacity-90">قيمة الخصومات المالية للنقاط</div><div class="text-2xl font-black font-mono mt-1">' + totalDiscValue.toFixed(2) + ' د.ج</div><div class="text-[11px] text-amber-200 mt-0.5">🇩🇿 ' + centVal + '</div></div>' +
+      '  </div>' +
+
+      '  <div class="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">' +
+      '    <h4 class="font-black text-sm text-indigo-600 mb-3">🏆 ترتيب الزبائن الأوفياء حسب رصيد النقاط والخصم المتاح:</h4>' +
+      '    <table class="w-full text-right border-collapse">' +
+      '      <thead><tr class="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700"><th class="p-2.5">#</th><th class="p-2.5">الزبون الوفي</th><th class="p-2.5">كود البطاقة</th><th class="p-2.5 text-center">نقاط الولاء</th><th class="p-2.5 text-center">قيمة الخصم المتاحة</th><th class="p-2.5 text-center">إجراء سريع</th></tr></thead>' +
+      '      <tbody>' +
+      customers.map(function (c, idx) {
+        var pts = Math.max(0, Number(c.loyalty_points || 0));
+        var dVal = Number((pts * ptValDzd).toFixed(2));
+        var fid = typeof App.getCustomerCardBarcode === 'function' ? App.getCustomerCardBarcode(c) : ('FID-' + String(c.id).padStart(5, '0'));
+        return (
+          '<tr class="border-b border-slate-100 dark:border-slate-800">' +
+          '  <td class="p-2.5 font-mono">' + (idx + 1) + '</td>' +
+          '  <td class="p-2.5 font-black">' + c.name + '</td>' +
+          '  <td class="p-2.5 font-mono text-indigo-600 font-bold">' + fid + '</td>' +
+          '  <td class="p-2.5 text-center font-mono font-black text-amber-600">⭐ ' + pts + '</td>' +
+          '  <td class="p-2.5 text-center font-mono font-black text-emerald-600">' + dVal.toFixed(2) + ' د.ج</td>' +
+          '  <td class="p-2.5 text-center">' +
+          '    <button type="button" onclick="App.openLoyaltyCardStudioModal(' + c.id + ')" class="px-3 py-1 rounded-xl bg-amber-500 text-slate-950 font-black">💳 بطاقة وفاء</button>' +
+          '  </td>' +
+          '</tr>'
+        );
+      }).join('') +
+      '      </tbody></table>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  App.openAlgerianFiscalModal = async function () {
+    AppState.analyticsTab = 'fiscal';
+    await this.switchView('analytics');
+  };
+
+  // --------------------------------------------------------------------------
+  // د) بطاقة الزبون الوفي في شاشة الكاشير (#posLoyaltySmartBar) + تصفير فوري للنقاط عند الخصم
+  // --------------------------------------------------------------------------
+  App.renderPosLoyaltySmartBar = function () {
+    var custSelect = document.getElementById('posCustomerSelect');
+    if (!custSelect) return;
+
+    var tierSel = document.getElementById('posPriceTierSelect');
+    if (tierSel) tierSel.style.display = 'none';
+
+    Array.from(custSelect.options).forEach(function (opt) {
+      if (!opt.value) {
+        opt.textContent = '👤 زبون عابر (بدون بطاقة وفاء)';
+      } else if (opt.textContent.includes('زبون جملة')) {
+        opt.textContent = opt.textContent.replace(/\(زبون جملة\)/g, '(زبون وفي)').replace(/زبون جملة/g, 'زبون وفي');
+      }
+    });
+
+    var parentBox = custSelect.closest('.p-3') || custSelect.parentElement.parentElement;
+    if (!parentBox) return;
+
+    var bar = document.getElementById('posLoyaltySmartBar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'posLoyaltySmartBar';
+      parentBox.appendChild(bar);
+    }
+
+    var rowFlex = custSelect.parentElement;
+    if (rowFlex && !document.getElementById('btnPosVipDirectory')) {
+      custSelect.setAttribute('onchange', 'App.syncPosSelectedCustomerToCart(this.value)');
+      var vipBtn = document.createElement('button');
+      vipBtn.id = 'btnPosVipDirectory';
+      vipBtn.type = 'button';
+      vipBtn.setAttribute('onclick', 'App.openPosVipLoyaltyDirectoryModal()');
+      vipBtn.className = 'px-3 py-2 rounded-xl bg-amber-500 text-slate-950 hover:bg-amber-400 text-xs font-black flex items-center gap-1 transition shrink-0 shadow-sm';
+      vipBtn.title = 'اختيار زبون وفي واستعمال نقاطه كخصم في الفاتورة';
+      vipBtn.innerHTML = '<span>👑 الأوفياء</span>';
+      rowFlex.insertBefore(vipBtn, custSelect.nextSibling);
+    }
+
+    var cid = this.currentCart && this.currentCart.customerId
+      ? Number(this.currentCart.customerId)
+      : (custSelect.value ? Number(custSelect.value) : null);
+    var cust = cid ? (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); }) : null;
+
+    if (!cust) {
+      bar.innerHTML =
+        '<div class="mt-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2 text-[11px]">' +
+        '  <span class="text-slate-600 dark:text-slate-300 font-bold">👤 البيع الحالي: <strong>زبون عابر</strong> — امسح بطاقة الوفاء (<code class="font-mono text-indigo-600">FID-...</code>) أو اختر زبوناً وفياً لجمع النقاط وخصمها</span>' +
+        '  <button type="button" onclick="App.openPosVipLoyaltyDirectoryModal()" class="px-2.5 py-0.5 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 font-black hover:bg-amber-500 hover:text-slate-950 transition">👑 اختيار زبون وفي</button>' +
+        '</div>';
+      return;
+    }
+
+    var cartItems = (this.currentCart && this.currentCart.items) || [];
+    var rawSubtotal = cartItems.reduce(function (s, it) { return s + Number(it.subtotal || 0); }, 0);
+    var curDiscount = Number((this.currentCart && this.currentCart.discount) || 0);
+    var netTotal = Math.max(0, rawSubtotal - curDiscount);
+
+    var originalPts = Math.max(0, Number(cust.loyalty_points || 0));
+    var alreadyRedeemedPts = Math.min(originalPts, Math.max(0, Number((this.currentCart && this.currentCart.redeemedLoyaltyPoints) || 0)));
+    var alreadyRedeemedDzd = Number((this.currentCart && this.currentCart.redeemedLoyaltyDiscountDzd) || 0);
+
+    var remainingPts = Math.max(0, originalPts - alreadyRedeemedPts);
+    var ptValueDzd = Math.max(0.5, Number(AppState.loyaltyPointValueDzd || 2));
+    var remainingPtsValueDzd = Number((remainingPts * ptValueDzd).toFixed(2));
+    var centimeVal = typeof this.formatAlgerianCentimes === 'function' ? this.formatAlgerianCentimes(remainingPtsValueDzd) : '';
+
+    var ptsToEarn = alreadyRedeemedPts > 0
+      ? 0
+      : Math.floor((netTotal / 100) * Math.max(0.1, Number(AppState.loyaltyPointsPer100Dzd || 1)));
+
+    var tierInfo = getRetailLoyaltyTierBadge(originalPts);
+    var fidCode = typeof this.getCustomerCardBarcode === 'function' ? this.getCustomerCardBarcode(cust) : ('FID-' + String(cust.id).padStart(5, '0'));
+    var possibleDiscountNow = Math.min(rawSubtotal, Number((originalPts * ptValueDzd).toFixed(2)));
+
+    bar.innerHTML =
+      '<div class="mt-1.5 p-2.5 rounded-xl bg-amber-500/10 border-2 border-amber-500/40 space-y-2 text-[11px]">' +
+      '  <div class="flex flex-wrap items-center justify-between gap-1">' +
+      '    <div class="flex items-center gap-1.5">' +
+      '      <span class="px-2 py-0.5 rounded-lg text-[10px] font-black ' + tierInfo.cls + '">' + tierInfo.label + '</span>' +
+      '      <strong class="font-black text-slate-900 dark:text-white text-xs">' + cust.name + '</strong>' +
+      '      <span class="font-mono text-[10px] text-slate-400">(' + fidCode + ')</span>' +
+      '    </div>' +
+      '    <button type="button" onclick="App.openLoyaltyCardStudioModal(' + cust.id + ')" class="px-2 py-0.5 rounded bg-slate-900 text-amber-400 font-black text-[10px]" title="طباعة بطاقة الوفاء لهذا الزبون">💳 بطاقة الوفاء</button>' +
+      '  </div>' +
+
+      '  <div class="grid grid-cols-2 gap-2 p-2 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-500/20">' +
+      '    <div>' +
+      '      <div class="text-[10px] text-slate-400 font-bold">' + (alreadyRedeemedPts > 0 ? 'رصيد النقاط المتبقي بعد الخصم:' : 'رصيد نقاط الولاء الحالي:') + '</div>' +
+      '      <div class="font-mono font-black text-sm ' + (remainingPts === 0 && alreadyRedeemedPts > 0 ? 'text-rose-600' : 'text-amber-600') + '">' +
+      '        ⭐ ' + remainingPts + ' نقطة ' +
+      (alreadyRedeemedPts > 0
+        ? '<span class="text-[10px] text-rose-500 font-bold">(تم خصم ' + alreadyRedeemedPts + ' نقطة)</span>'
+        : ptsToEarn > 0
+          ? '<span class="text-[10px] text-emerald-600">(+' + ptsToEarn + ' بهذه الفاتورة)</span>'
+          : '') +
+      '      </div>' +
+      '    </div>' +
+      '    <div class="text-left">' +
+      '      <div class="text-[10px] text-slate-400 font-bold">' + (alreadyRedeemedPts > 0 ? 'قيمة الخصم المتبقية:' : 'قيمة الخصم المالي للنقاط:') + '</div>' +
+      '      <div class="font-mono font-black text-sm text-emerald-600">💰 ' + remainingPtsValueDzd.toFixed(2) + ' د.ج</div>' +
+      (remainingPts > 0 && centimeVal ? '<div class="text-[9.5px] font-bold text-amber-700 dark:text-amber-300">' + centimeVal + '</div>' : '<div class="text-[9.5px] font-bold text-slate-400">0 سنتيم</div>') +
+      '    </div>' +
+      '  </div>' +
+
+      '  <div class="flex flex-wrap items-center justify-between gap-1.5 pt-1">' +
+      (alreadyRedeemedPts > 0
+        ? '<div class="flex-1 font-black text-emerald-700 dark:text-emerald-300">✅ تم إنقاص (-' + alreadyRedeemedDzd.toFixed(2) + ' د.ج) من الفاتورة باستعمال (' + alreadyRedeemedPts + ' نقطة)!</div>' +
+          '<button type="button" onclick="App.cancelLoyaltyRedemptionInCart()" class="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-black">✕ إلغاء خصم النقاط</button>'
+        : originalPts > 0 && rawSubtotal > 0
+          ? '<span class="text-slate-700 dark:text-slate-200 font-bold">استعمال النقاط لإنقاص الفاتورة:</span>' +
+            '<div class="flex items-center gap-1">' +
+            '  <button type="button" onclick="App.redeemLoyaltyPointsInPosCart()" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow">🎁 خصم كل النقاط (-' + possibleDiscountNow.toFixed(2) + ' د.ج)</button>' +
+            '  <button type="button" onclick="App.promptCustomLoyaltyPointsRedeem()" class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-black" title="تحديد عدد النقاط المراد استعمالها">🔢 تحديد نقاط</button>' +
+            '</div>'
+          : originalPts > 0
+            ? '<span class="text-emerald-600 font-bold">💡 أضف مشتريات للسلة لإنقاص (' + (originalPts * ptValueDzd).toFixed(2) + ' د.ج) من مجموع الفاتورة!</span>'
+            : '<span class="text-slate-500 font-bold">الرصيد الحالي 0 نقطة — يكسب الزبون ' + (AppState.loyaltyPointsPer100Dzd || 1) + ' نقطة عن كل 100 د.ج (كل نقطة = ' + ptValueDzd + ' د.ج خصم)</span>') +
+      '  </div>' +
+      '</div>';
+  };
+
+  App.redeemLoyaltyPointsInPosCart = function () {
+    var cid = this.syncPosSelectedCustomerToCart();
+    if (!cid) return;
+    var cust = (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); });
+    if (!cust) return;
+
+    var availPts = Math.max(0, Number(cust.loyalty_points || 0));
+    if (availPts <= 0) {
+      if (typeof showToast === 'function') showToast('لا توجد نقاط ولاء متاحة لهذا الزبون حالياً', 'warning');
+      return;
+    }
+
+    var cart = this.currentCart;
+    var rawSubtotal = (cart.items || []).reduce(function (s, it) { return s + Number(it.subtotal || 0); }, 0);
+    if (rawSubtotal <= 0) {
+      if (typeof showToast === 'function') showToast('أضف منتجات إلى السلة أولاً قبل خصم النقاط!', 'warning');
+      return;
+    }
+
+    var ptVal = Math.max(0.5, Number(AppState.loyaltyPointValueDzd || 2));
+    var neededPtsForFullCart = Math.ceil(rawSubtotal / ptVal);
+    var pointsToRedeem = Math.min(availPts, neededPtsForFullCart);
+    if (pointsToRedeem <= 0) pointsToRedeem = availPts;
+
+    var discountDzd = Math.min(rawSubtotal, Number((pointsToRedeem * ptVal).toFixed(2)));
+
+    var baseDisc = Math.max(0, Number(cart.discount || 0) - Number(cart.redeemedLoyaltyDiscountDzd || 0));
+    cart.redeemedLoyaltyPoints = pointsToRedeem;
+    cart.redeemedLoyaltyDiscountDzd = discountDzd;
+    cart.discount = Number((baseDisc + discountDzd).toFixed(2));
+
+    var discInp = document.getElementById('cartDiscountInput');
+    if (discInp) discInp.value = String(cart.discount);
+
+    this.recalcCart();
+    this.renderCartItems();
+    this.renderPosLoyaltySmartBar();
+    if (typeof showToast === 'function') {
+      showToast('🎁 تم خصم (' + pointsToRedeem + ' نقطة) وإنقاص (-' + discountDzd.toFixed(2) + ' د.ج) من مجموع الفاتورة!', 'success');
+    }
+  };
+
+  App.commitCustomerPointsAfterSale = async function (customerId, origPtsBeforeSale, redeemedPts, saleTotalDzd) {
+    var cid = Number(customerId || 0);
+    if (!cid || !window.api || !window.api.updateCustomer) return;
+
+    var cust = (AppState.customers || []).find(function (c) { return Number(c.id) === cid; });
+    if (!cust && window.api.getCustomers) {
+      var list = (await window.api.getCustomers().catch(function () { return []; })) || [];
+      cust = list.find(function (c) { return Number(c.id) === cid; });
+    }
+    if (!cust) return;
+
+    var basePts = Math.max(0, Number(origPtsBeforeSale ?? cust.loyalty_points ?? 0));
+    var ptsRate = Math.max(0.1, Number(AppState.loyaltyPointsPer100Dzd || 1));
+    var earnedPts = redeemedPts > 0 ? 0 : Math.floor((Math.max(0, Number(saleTotalDzd || 0)) / 100) * ptsRate);
+
+    var targetFinalPts = redeemedPts > 0
+      ? Math.max(0, basePts - redeemedPts)
+      : (basePts + earnedPts);
+
+    cust.loyalty_points = targetFinalPts;
+    await window.api.updateCustomer(cid, Object.assign({}, cust, {
+      loyalty_points: targetFinalPts
+    })).catch(function () {});
+
+    if (window.api.getCustomers) {
+      AppState.customers = (await window.api.getCustomers().catch(function () { return []; })) || AppState.customers;
+    }
+  };
+
+  if (!AppState._loyaltyRedeemCommittedHookedV28) {
+    AppState._loyaltyRedeemCommittedHookedV28 = true;
+
+    var _baseSubmitSale = App.submitSale.bind(App);
+    App.submitSale = async function (printMode) {
+      var cid = this.syncPosSelectedCustomerToCart();
+      var cart = this.currentCart || {};
+      var redeemedPts = Math.max(0, Number(cart.redeemedLoyaltyPoints || 0));
+      var totals = this.recalcCart();
+      var saleTotal = Number(totals.total || 0);
+
+      var custObj = cid ? (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); }) : null;
+      var origPtsBeforeSale = custObj ? Math.max(0, Number(custObj.loyalty_points || 0)) : 0;
+
+      cart.redeemedLoyaltyPoints = 0;
+      cart.redeemedLoyaltyDiscountDzd = 0;
+
+      await _baseSubmitSale(printMode);
+
+      if (cid) {
+        await this.commitCustomerPointsAfterSale(cid, origPtsBeforeSale, redeemedPts, saleTotal);
+      }
+      this.renderPosView();
+    };
+
+    if (typeof App.instantConfirmAndCheckout === 'function') {
+      var _baseInstantCheckout = App.instantConfirmAndCheckout.bind(App);
+      App.instantConfirmAndCheckout = async function (mode) {
+        var cid = this.syncPosSelectedCustomerToCart();
+        var cart = this.currentCart || {};
+        var redeemedPts = Math.max(0, Number(cart.redeemedLoyaltyPoints || 0));
+        var totals = this.recalcCart();
+        var saleTotal = Number(totals.total || 0);
+
+        var custObj = cid ? (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); }) : null;
+        var origPtsBeforeSale = custObj ? Math.max(0, Number(custObj.loyalty_points || 0)) : 0;
+
+        cart.redeemedLoyaltyPoints = 0;
+        cart.redeemedLoyaltyDiscountDzd = 0;
+
+        await _baseInstantCheckout(mode);
+
+        if (cid) {
+          await this.commitCustomerPointsAfterSale(cid, origPtsBeforeSale, redeemedPts, saleTotal);
+        }
+        this.renderPosView();
+      };
+    }
+  }
+
+  var _prevRenderAnalyticsV28 = App.renderAnalyticsView.bind(App);
+  App.renderAnalyticsView = async function () {
+    this.purgeAllWholesaleAndEtat104Ui();
+    await _prevRenderAnalyticsV28();
+    this.purgeAllWholesaleAndEtat104Ui();
+  };
+
+  var _prevRenderPosViewV28 = App.renderPosView.bind(App);
+  App.renderPosView = function () {
+    _prevRenderPosViewV28();
+    this.purgeAllWholesaleAndEtat104Ui();
+    this.renderPosLoyaltySmartBar();
+    this.applyCartWidthLayout(AppState.posCartWidth || 410);
+  };
+
+  setTimeout(async function () {
+    if (window.App) {
+      await window.App.sanitizeWholesaleCustomersInDb();
+      window.App.purgeAllWholesaleAndEtat104Ui();
+      window.App.applyCartWidthLayout(410);
+      if (AppState.currentView === 'pos') window.App.renderPosView();
+      else if (AppState.currentView === 'analytics') window.App.renderAnalyticsView();
+      else if (AppState.currentView === 'customers') window.App.renderCustomersView();
+    }
+  }, 200);
+})();
+
+// [PART 1/2: RESTORE PAGES, FIX EXTENSIBLE & CLEAN POS UX V25]
+(function installPart1RestorePagesFixExtensibleAndCleanPosV25() {
+  if (!window.App || !window.AppState) return;
+
+  var savedPtsPer100 = Number(localStorage.getItem('gherbi_loyalty_pts_per_100') || 1);
+  var savedPtValDzd = Number(localStorage.getItem('gherbi_loyalty_pt_val_dzd') || 2);
+  AppState.loyaltyPointsPer100Dzd = savedPtsPer100 > 0 ? savedPtsPer100 : 1;
+  AppState.loyaltyPointValueDzd = savedPtValDzd > 0 ? savedPtValDzd : 2;
+  AppState.posDiscountDrawerOpen = false;
+  AppState.posMoreToolsOpen = false;
+
+  // إظهار جميع أقسام القائمة الجانبية بشكل طبيعي وسليم
+  document.querySelectorAll('#sidebar-nav button[data-view]').forEach(function (btn) {
+    btn.style.display = '';
+    btn.classList.remove('opacity-75');
+  });
+
+  function getCleanLoyaltyTierBadge(points) {
+    var pts = Number(points || 0);
+    if (pts >= 200) return { label: '💎 VIP', cls: 'bg-sky-500 text-slate-950' };
+    if (pts >= 100) return { label: '🥇 Gold', cls: 'bg-amber-500 text-slate-950' };
+    if (pts >= 30) return { label: '🥈 Silver', cls: 'bg-slate-300 text-slate-900' };
+    return { label: '⭐ وفي', cls: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300' };
+  }
+
+  // --------------------------------------------------------------------------
+  // أ) مزامنة قاعدة نقاط الولاء مع جدول settings في قاعدة البيانات
+  // --------------------------------------------------------------------------
+  App.syncLoyaltyRulesToBackendSettings = async function () {
+    if (AppState.settings) {
+      AppState.settings.loyalty_points_per_100_dzd = String(AppState.loyaltyPointsPer100Dzd);
+      AppState.settings.loyalty_point_value_dzd = String(AppState.loyaltyPointValueDzd);
+    }
+    if (window.api && typeof window.api.updateSettings === 'function') {
+      await window.api.updateSettings({
+        loyalty_points_per_100_dzd: String(AppState.loyaltyPointsPer100Dzd),
+        loyalty_point_value_dzd: String(AppState.loyaltyPointValueDzd)
+      }).catch(function () {});
+    }
+  };
+
+  App.saveLoyaltyRuleSettingsFromCustomersPage = async function () {
+    var ptsPer100 = Math.max(0.1, parseFloat(document.getElementById('cfgLoyaltyPtsPer100Inp')?.value) || 1);
+    var dzdPerPt = Math.max(0.5, parseFloat(document.getElementById('cfgLoyaltyDzdPerPtInp')?.value) || 2);
+
+    AppState.loyaltyPointsPer100Dzd = ptsPer100;
+    AppState.loyaltyPointValueDzd = dzdPerPt;
+    localStorage.setItem('gherbi_loyalty_pts_per_100', String(ptsPer100));
+    localStorage.setItem('gherbi_loyalty_pt_val_dzd', String(dzdPerPt));
+
+    await this.syncLoyaltyRulesToBackendSettings();
+    if (AppState.currentView === 'customers' && typeof this.renderCustomersView === 'function') {
+      await this.renderCustomersView();
+    }
+    if (typeof showToast === 'function') {
+      showToast('✅ تم حفظ القاعدة: كل 100 د.ج = ' + ptsPer100 + ' نقطة | كل 1 نقطة = ' + dzdPerPt + ' د.ج خصم!', 'success');
+    }
+  };
+
+  // السماح بتحديد عدد مخصص من النقاط لإنقاص الفاتورة
+  App.promptCustomLoyaltyPointsRedeem = function () {
+    var cid = this.syncPosSelectedCustomerToCart();
+    if (!cid) return;
+    var cust = (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); });
+    if (!cust) return;
+
+    var availPts = Math.max(0, Number(cust.loyalty_points || 0));
+    var ptVal = Math.max(0.5, Number(AppState.loyaltyPointValueDzd || 2));
+    var cart = this.currentCart;
+    var rawSubtotal = (cart && cart.items ? cart.items : []).reduce(function (s, it) { return s + Number(it.subtotal || 0); }, 0);
+    if (rawSubtotal <= 0 || availPts <= 0) return;
+
+    var maxUsefulPts = Math.min(availPts, Math.ceil(rawSubtotal / ptVal));
+    var inputStr = window.prompt(
+      '🎁 استعمال نقاط الولاء لإنقاص فاتورة الزبون (' + cust.name + '):\n' +
+      '• رصيد النقاط المتاح: ' + availPts + ' نقطة (تساوي ' + (availPts * ptVal).toFixed(2) + ' د.ج)\n' +
+      '• قيمة كل 1 نقطة = ' + ptVal + ' د.ج خصم\n\n' +
+      'أدخل عدد النقاط المراد استعمالها:',
+      String(maxUsefulPts)
+    );
+    if (inputStr === null) return;
+
+    var chosenPts = Math.min(availPts, Math.max(1, parseInt(inputStr, 10) || 0));
+    var discountDzd = Math.min(rawSubtotal, Number((chosenPts * ptVal).toFixed(2)));
+
+    var baseDisc = Math.max(0, Number(cart.discount || 0) - Number(cart.redeemedLoyaltyDiscountDzd || 0));
+    cart.redeemedLoyaltyPoints = chosenPts;
+    cart.redeemedLoyaltyDiscountDzd = discountDzd;
+    cart.discount = Number((baseDisc + discountDzd).toFixed(2));
+
+    var discInp = document.getElementById('cartDiscountInput');
+    if (discInp) discInp.value = String(cart.discount);
+
+    this.recalcCart();
+    this.renderCartItems();
+    this.renderPosLoyaltySmartBar();
+    if (typeof showToast === 'function') {
+      showToast('🎁 تم إنقاص (-' + discountDzd.toFixed(2) + ' د.ج) باستعمال (' + chosenPts + ' نقطة ولاء)!', 'success');
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // ب) شريط الولاء المدمج الأنيق في السلة (#posLoyaltySmartBar)
+  //    يعرض النقاط المتبقية (0 نقطة فور الخصم) في سطر واحد مدمج بدون تكدس!
+  // --------------------------------------------------------------------------
+  App.renderPosLoyaltySmartBar = function () {
+    var custSelect = document.getElementById('posCustomerSelect');
+    if (!custSelect) return;
+
+    var tierSel = document.getElementById('posPriceTierSelect');
+    if (tierSel) {
+      tierSel.value = 'retail';
+      tierSel.style.display = 'none';
+    }
+
+    var parentBox = custSelect.closest('.p-3') || custSelect.parentElement.parentElement;
+    if (!parentBox) return;
+
+    var bar = document.getElementById('posLoyaltySmartBar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'posLoyaltySmartBar';
+      parentBox.appendChild(bar);
+    }
+
+    var cid = this.currentCart && this.currentCart.customerId
+      ? Number(this.currentCart.customerId)
+      : (custSelect.value ? Number(custSelect.value) : null);
+    var cust = cid ? (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); }) : null;
+
+    if (!cust) {
+      bar.innerHTML =
+        '<div class="mt-1 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 flex items-center justify-between text-[10.5px]">' +
+        '  <span class="text-slate-500 font-bold truncate">👤 زبون عابر — امسح بطاقة الوفاء (<code class="font-mono text-indigo-500">FID-...</code>) أو اختر زبوناً وفياً</span>' +
+        '  <button type="button" onclick="App.openPosVipLoyaltyDirectoryModal()" class="text-amber-600 dark:text-amber-400 font-black hover:underline shrink-0 mr-1">👑 الأوفياء</button>' +
+        '</div>';
+      return;
+    }
+
+    var cartItems = (this.currentCart && this.currentCart.items) || [];
+    var rawSubtotal = cartItems.reduce(function (s, it) { return s + Number(it.subtotal || 0); }, 0);
+    var curDiscount = Number((this.currentCart && this.currentCart.discount) || 0);
+    var netTotal = Math.max(0, rawSubtotal - curDiscount);
+
+    var originalPts = Math.max(0, Number(cust.loyalty_points || 0));
+    var alreadyRedeemedPts = Math.min(originalPts, Math.max(0, Number((this.currentCart && this.currentCart.redeemedLoyaltyPoints) || 0)));
+    var alreadyRedeemedDzd = Number((this.currentCart && this.currentCart.redeemedLoyaltyDiscountDzd) || 0);
+
+    // الرصيد المتبقي الفعلي بعد طرح النقاط المستعملة في السلة الحالية (يظهر 0 نقطة فوراً عند خصم كل النقاط!)
+    var remainingPts = Math.max(0, originalPts - alreadyRedeemedPts);
+    var ptValueDzd = Math.max(0.5, Number(AppState.loyaltyPointValueDzd || 2));
+    var remainingValueDzd = Number((remainingPts * ptValueDzd).toFixed(2));
+    var possibleDiscountNow = Math.min(rawSubtotal, Number((originalPts * ptValueDzd).toFixed(2)));
+
+    var ptsToEarn = alreadyRedeemedPts > 0
+      ? 0
+      : Math.floor((netTotal / 100) * Math.max(0.1, Number(AppState.loyaltyPointsPer100Dzd || 1)));
+
+    var tierInfo = getCleanLoyaltyTierBadge(originalPts);
+
+    bar.innerHTML =
+      '<div class="mt-1 px-2.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-1.5 text-[11px]">' +
+      '  <div class="flex items-center gap-1.5 min-w-0">' +
+      '    <span class="px-1.5 py-0.5 rounded text-[9.5px] font-black ' + tierInfo.cls + '">' + tierInfo.label + '</span>' +
+      '    <span class="font-mono font-black ' + (remainingPts === 0 && alreadyRedeemedPts > 0 ? 'text-rose-600' : 'text-amber-600 dark:text-amber-400') + '">⭐ ' + remainingPts + ' ن</span>' +
+      '    <span class="text-slate-400">|</span>' +
+      '    <span class="font-mono font-black text-emerald-600">' + remainingValueDzd.toFixed(0) + ' د.ج</span>' +
+      (alreadyRedeemedPts > 0
+        ? '<span class="px-1.5 py-0.5 rounded bg-emerald-600 text-white font-black text-[9.5px]">✅ خُصم -' + alreadyRedeemedDzd.toFixed(0) + ' د.ج (' + alreadyRedeemedPts + 'ن)</span>'
+        : ptsToEarn > 0
+          ? '<span class="text-[10px] font-mono font-bold text-emerald-600">(+' + ptsToEarn + 'ن بهذه الفاتورة)</span>'
+          : '') +
+      '  </div>' +
+      '  <div class="flex items-center gap-1 shrink-0">' +
+      (alreadyRedeemedPts > 0
+        ? '<button type="button" onclick="App.cancelLoyaltyRedemptionInCart()" class="px-2 py-0.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black text-[10px]">✕ إلغاء الخصم</button>'
+        : originalPts > 0 && rawSubtotal > 0
+          ? '<button type="button" onclick="App.redeemLoyaltyPointsInPosCart()" class="px-2.5 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] shadow-sm">🎁 خصم النقاط (-' + possibleDiscountNow.toFixed(0) + ' د.ج)</button>' +
+            '<button type="button" onclick="App.promptCustomLoyaltyPointsRedeem()" class="px-1.5 py-0.5 rounded-lg bg-indigo-600 text-white font-black text-[10px]" title="تحديد عدد النقاط">🔢</button>'
+          : '') +
+      '    <button type="button" onclick="App.openLoyaltyCardStudioModal(' + cust.id + ')" class="px-1.5 py-0.5 rounded-lg bg-slate-900 text-amber-400 font-black text-[10px]" title="بطاقة الوفاء">💳</button>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  // --------------------------------------------------------------------------
+  // ج) تثبيت خصم النقاط وتصفيرها في قاعدة البيانات بعد البيع (بدون لمس window.api!)
+  // --------------------------------------------------------------------------
+  App.finalizeCustomerLoyaltyAfterSale = async function (customerId, origPtsBeforeSale, redeemedPts, saleTotalDzd) {
+    var cid = Number(customerId || 0);
+    if (!cid || !window.api || !window.api.updateCustomer) return;
+
+    var cust = (AppState.customers || []).find(function (c) { return Number(c.id) === cid; });
+    if (!cust && window.api.getCustomers) {
+      var list = (await window.api.getCustomers().catch(function () { return []; })) || [];
+      cust = list.find(function (c) { return Number(c.id) === cid; });
+    }
+    if (!cust) return;
+
+    var basePts = Math.max(0, Number(origPtsBeforeSale ?? cust.loyalty_points ?? 0));
+    var ptsRate = Math.max(0.1, Number(AppState.loyaltyPointsPer100Dzd || 1));
+    var earnedPts = redeemedPts > 0 ? 0 : Math.floor((Math.max(0, Number(saleTotalDzd || 0)) / 100) * ptsRate);
+
+    var targetFinalPts = redeemedPts > 0
+      ? Math.max(0, basePts - redeemedPts)
+      : (basePts + earnedPts);
+
+    cust.loyalty_points = targetFinalPts;
+    await window.api.updateCustomer(cid, Object.assign({}, cust, {
+      loyalty_points: targetFinalPts
+    })).catch(function () {});
+
+    if (window.api.getCustomers) {
+      AppState.customers = (await window.api.getCustomers().catch(function () { return []; })) || AppState.customers;
+    }
+  };
+
+  if (!AppState._safeLoyaltyHookV25) {
+    AppState._safeLoyaltyHookV25 = true;
+
+    var _origSubmitSaleV25 = App.submitSale.bind(App);
+    App.submitSale = async function (printMode) {
+      var cid = this.syncPosSelectedCustomerToCart();
+      var cart = this.currentCart || {};
+      var redeemedPts = Math.max(0, Number(cart.redeemedLoyaltyPoints || 0));
+      var totals = this.recalcCart();
+      var saleTotal = Number(totals.total || 0);
+
+      var custObj = cid ? (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); }) : null;
+      var origPtsBeforeSale = custObj ? Math.max(0, Number(custObj.loyalty_points || 0)) : 0;
+
+      // تصفير عداد السلة قبل الاستدعاء الداخلي لمنع الخصم المزدوج
+      cart.redeemedLoyaltyPoints = 0;
+      cart.redeemedLoyaltyDiscountDzd = 0;
+
+      await _origSubmitSaleV25(printMode);
+
+      if (cid) {
+        await this.finalizeCustomerLoyaltyAfterSale(cid, origPtsBeforeSale, redeemedPts, saleTotal);
+      }
+      this.renderPosView();
+    };
+
+    if (typeof App.instantConfirmAndCheckout === 'function') {
+      var _origInstantCheckoutV25 = App.instantConfirmAndCheckout.bind(App);
+      App.instantConfirmAndCheckout = async function (mode) {
+        var cid = this.syncPosSelectedCustomerToCart();
+        var cart = this.currentCart || {};
+        var redeemedPts = Math.max(0, Number(cart.redeemedLoyaltyPoints || 0));
+        var totals = this.recalcCart();
+        var saleTotal = Number(totals.total || 0);
+
+        var custObj = cid ? (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); }) : null;
+        var origPtsBeforeSale = custObj ? Math.max(0, Number(custObj.loyalty_points || 0)) : 0;
+
+        cart.redeemedLoyaltyPoints = 0;
+        cart.redeemedLoyaltyDiscountDzd = 0;
+
+        await _origInstantCheckoutV25(mode);
+
+        if (cid) {
+          await this.finalizeCustomerLoyaltyAfterSale(cid, origPtsBeforeSale, redeemedPts, saleTotal);
+        }
+        this.renderPosView();
+      };
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // د) إعادة ترتيب وتنظيف شاشة المبيعات (#view-pos) لمنح الكاشير سلاسة ومساحة قصوى
+  // --------------------------------------------------------------------------
+  App.togglePosDiscountDrawer = function () {
+    AppState.posDiscountDrawerOpen = !AppState.posDiscountDrawerOpen;
+    this.organizePosWorkspaceErgonomics();
+  };
+
+  App.togglePosSecondaryToolsMenu = function () {
+    var menu = document.getElementById('posSecondaryToolsDropdown');
+    if (!menu) return;
+    menu.classList.toggle('hidden');
+  };
+
+  App.organizePosWorkspaceErgonomics = function () {
+    // 1. إخفاء أزرار QA المكررة من شاشة المبيعات
+    var dupQa1 = document.getElementById('btnPosHeaderQaBot');
+    if (dupQa1) dupQa1.style.display = 'none';
+    var dupQa2 = document.getElementById('btnRunPosAutoTest');
+    if (dupQa2) dupQa2.style.display = 'none';
+
+    // 2. تنظيم شريط أعلى السلة (#posAlgerianMasterBar) في سطر واحد نظيف بدون ازدحام
+    var masterBar = document.getElementById('posAlgerianMasterBar');
+    if (masterBar) {
+      masterBar.className = 'px-2.5 py-1 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-1 text-[10.5px] font-bold shrink-0 overflow-x-auto';
+      masterBar.innerHTML =
+        '<div class="flex items-center gap-1">' +
+        '  <button type="button" onclick="App.openPosRecentSalesModal()" class="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-blue-600 hover:border-blue-500 whitespace-nowrap">🧾 آخر المبيعات</button>' +
+        '  <button type="button" onclick="App.openLoyaltyCardStudioModal(null)" class="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 border border-amber-500/30 text-amber-600 dark:text-amber-400 whitespace-nowrap">💳 بطاقات الوفاء</button>' +
+        '  <button type="button" onclick="App.printCurrentCartExchangeTicket80mm()" class="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 border border-pink-500/30 text-pink-600 whitespace-nowrap">🎁 وصل تبديل</button>' +
+        '</div>' +
+        '<button type="button" onclick="App.openMobileCompanionModal()" class="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-emerald-600 whitespace-nowrap">📱 ربط الهاتف</button>';
+    }
+
+    // 3. جعل الفئات (#posCategoryPills) في شريط أفقي انسيابي لا يلتف إلى عدة أسطر مزدحمة
+    var pillsBox = document.getElementById('posCategoryPills');
+    if (pillsBox) {
+      pillsBox.className = 'flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar max-w-full';
+    }
+
+    // 4. طيّ الكوبون والتخفيض داخل درج ذكي لتوفير المساحة العمودية لقائمة السلع (#posCartItems)
+    var couponBar = document.getElementById('posCartCouponInputBar');
+    var discInput = document.getElementById('cartDiscountInput');
+    var discRow = discInput ? discInput.parentElement : null;
+    var subText = document.getElementById('cartSubtotalText');
+    var subRow = subText ? subText.parentElement : null;
+
+    var curDiscVal = parseFloat(discInput ? discInput.value : '0') || 0;
+    var shouldShowDrawer = Boolean(AppState.posDiscountDrawerOpen || curDiscVal > 0);
+
+    if (subRow && !document.getElementById('btnTogglePosDiscountDrawer')) {
+      subRow.insertAdjacentHTML(
+        'beforeend',
+        '<button id="btnTogglePosDiscountDrawer" type="button" onclick="App.togglePosDiscountDrawer()" class="px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 font-black text-[10.5px] hover:bg-indigo-600 hover:text-white transition">🎟️ تخفيض / كوبون ▾</button>'
+      );
+    }
+
+    var toggleBtn = document.getElementById('btnTogglePosDiscountDrawer');
+    if (toggleBtn) {
+      toggleBtn.textContent = shouldShowDrawer
+        ? (curDiscVal > 0 ? '🏷️ الخصم: -' + curDiscVal.toFixed(0) + ' د.ج ▴' : '🔼 إخفاء الكوبون والتخفيض')
+        : '🎟️ تخفيض / كوبون ▾';
+    }
+
+    if (couponBar) couponBar.style.display = shouldShowDrawer ? 'flex' : 'none';
+    if (discRow) discRow.style.display = shouldShowDrawer ? 'flex' : 'none';
+
+    if (subRow && subRow.parentElement) {
+      subRow.parentElement.className = 'p-2.5 bg-slate-50 dark:bg-slate-900/70 border-t border-slate-200 dark:border-slate-700 space-y-1.5 shrink-0';
+    }
+
+    // إخفاء زر "كمبدئية" من أسفل السلة في وضع التجزئة لتوسيع أزرار السلة
+    document.querySelectorAll('#posCartContainer button[onclick*="saveCartAsProforma"]').forEach(function (b) {
+      b.style.display = 'none';
+    });
+    var draftsGrid = document.querySelector('#posCartContainer .grid.grid-cols-5');
+    if (draftsGrid) {
+      draftsGrid.className = 'grid grid-cols-4 gap-1 text-[11px] font-bold';
+    }
+  };
+
+  var _prevRenderPosViewV25 = App.renderPosView.bind(App);
+  App.renderPosView = function () {
+    _prevRenderPosViewV25();
+    this.renderPosLoyaltySmartBar();
+    this.organizePosWorkspaceErgonomics();
+  };
+
+  var _prevRenderCartItemsV25 = App.renderCartItems.bind(App);
+  App.renderCartItems = function () {
+    _prevRenderCartItemsV25();
+    this.renderPosLoyaltySmartBar();
+    this.organizePosWorkspaceErgonomics();
+  };
+
+  setTimeout(async function () {
+    if (window.App) {
+      await window.App.syncLoyaltyRulesToBackendSettings();
+      if (window.api && window.api.getCustomers) {
+        AppState.customers = (await window.api.getCustomers().catch(function () { return []; })) || [];
+      }
+      if (AppState.currentView === 'pos') window.App.renderPosView();
+      else if (AppState.currentView === 'analytics') window.App.renderAnalyticsView();
+      else if (AppState.currentView === 'customers') window.App.renderCustomersView();
+    }
+  }, 200);
 })();

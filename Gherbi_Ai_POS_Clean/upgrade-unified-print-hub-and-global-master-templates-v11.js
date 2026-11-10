@@ -1,9 +1,10 @@
 /**
- * part5b-hr-payroll-service-tickets-and-master-qa-v14.js
- * [الشطر 5B والأخير من 5] — المهمة 6 بالكامل: الموظفون ومسيّر الرواتب (HR Payroll) + تذاكر ورشة الصيانة (Atelier / SAV) + الفحص الآلي الشامل للوحدات الـ 6:
- * 1. إضافة تبويب "👨‍💼 2. الموظفون والأجور ومسيّر الرواتب (HR Payroll)" داخل قسم المصاريف (#view-expenses) مع الصرف الذري في (payroll_payments + expenses + caisse_transactions) وطباعة كشف الراتب A4.
- * 2. إضافة تبويب "🛠️ 3. ورشة الصيانة وتذاكر الإصلاح (Atelier / SAV)" داخل قسم الطلبيات (#view-orders) + زر وصول سريع في الكاشير، مع طباعة وصل الصيانة وتحويل التذكرة إلى فاتورة مبيعات في sales.
- * 3. روبوت الفحص الآلي الشامل للوحدات المؤسسية الـ 6 (App.runAutoTest_Enterprise6ModulesV14 — 6/6 PASS).
+ * part1-restore-pages-fix-extensible-and-clean-pos-v25.js
+ * [الشطر 1 من 2] — استرجاع الصفحات السليمة (#view-pos & #view-analytics) + إصلاح خطأ (object is not extensible) + تصفير نقاط الولاء + تنظيف وإعادة ترتيب شاشة المبيعات:
+ * 1. إزالة البلوكات المعطوبة (V20, V22, V23, V24) من نهاية renderer-rc-100.js لإرجاع صفحة الإحصائيات والتقارير (#view-analytics) وشاشة المبيعات (#view-pos) إلى حالتهما السليمة 100%.
+ * 2. حل خطأ (Cannot add property _loyaltyExactHooked, object is not extensible) نهائياً بعدم لمس الكائن المجمد window.api.
+ * 3. تثبيت خصم وتصفير نقاط الولاء (0 نقطة) فوراً على الشاشة وفي قاعدة البيانات عند استعمالها لإنقاص الفاتورة.
+ * 4. إعادة ترتيب وتنظيف UI/UX شاشة المبيعات (#view-pos): إزالة الأزرار المكررة، دمج بطاقة الولاء في شريط رشيق، طيّ الكوبون والتخفيض في درج ذكي، وتوسيع قائمة المشتريات (#posCartItems).
  */
 
 'use strict';
@@ -11,634 +12,478 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const sqlite3 = require('sqlite3').verbose();
 
 const ROOT = __dirname;
 
-console.log('🇩🇿🚀 [الشطر 5B/5 - V14] بدء حقن منظومة الموظفين والرواتب (HR Payroll)، تذاكر ورشة الصيانة (Atelier / SAV)، وروبوت الفحص الآلي الشامل...\n');
-
-function installTask6HrPayrollServiceTicketsAndMasterQaV14() {
-  if (!window.App || !window.AppState) return;
-
-  AppState.expensesMainTab = AppState.expensesMainTab || 'expenses_capital'; // 'expenses_capital' | 'hr_payroll'
-  AppState.employeesList = AppState.employeesList || [];
-  AppState.payrollPaymentsList = AppState.payrollPaymentsList || [];
-
-  AppState.serviceTicketsList = AppState.serviceTicketsList || [];
-  AppState.serviceTicketsStatusFilter = AppState.serviceTicketsStatusFilter || 'all';
-
-  // ==========================================================================
-  // 1. الشق الأول من المهمة 6: الموظفون والأجور ومسيّر الرواتب (HR Payroll) في #view-expenses
-  // ==========================================================================
-  App.switchExpensesMainTab = async function (tabId) {
-    AppState.expensesMainTab = tabId;
-    if (AppState.currentView !== 'expenses') {
-      await this.switchView('expenses');
-      return;
-    }
-    await this.renderExpensesAndCapitalView();
-  };
-
-  App.saveEmployeeFromUi = async function () {
-    var name = String(document.getElementById('empNameInp')?.value || '').trim();
-    var role_title = String(document.getElementById('empRoleInp')?.value || 'بائع').trim();
-    var phone = String(document.getElementById('empPhoneInp')?.value || '').trim();
-    var base_salary = Math.max(0, parseFloat(document.getElementById('empSalaryInp')?.value) || 0);
-    var commission_percent = Math.max(0, parseFloat(document.getElementById('empCommInp')?.value) || 0);
-    var hire_date = document.getElementById('empHireDateInp')?.value || new Date().toISOString().slice(0, 10);
-
-    if (!name) {
-      if (typeof showToast === 'function') showToast('يرجى إدخال اسم الموظف أولاً', 'warning');
-      return;
-    }
-
-    await window.api.saveEmployee({
-      name: name,
-      role_title: role_title,
-      phone: phone,
-      base_salary: base_salary,
-      commission_percent: commission_percent,
-      hire_date: hire_date,
-      is_active: 1
-    });
-
-    if (typeof showToast === 'function') {
-      showToast('👨‍💼 تم حفظ بطاقة الموظف (' + name + ') بنجاح!', 'success');
-    }
-    await this.renderExpensesAndCapitalView();
-  };
-
-  App.deleteEmployeeFromUi = async function (empId) {
-    await window.api.deleteEmployee(Number(empId));
-    if (typeof showToast === 'function') showToast('🗑️ تم حذف الموظف من السجل', 'info');
-    await this.renderExpensesAndCapitalView();
-  };
-
-  App.onPayrollEmployeeSelectChange = function (empId) {
-    var emp = (AppState.employeesList || []).find(function (e) { return Number(e.id) === Number(empId); });
-    if (emp && document.getElementById('payBaseSalaryInp')) {
-      document.getElementById('payBaseSalaryInp').value = Number(emp.base_salary || 0).toFixed(2);
-      this.recalcPayrollNetPreview();
-    }
-  };
-
-  App.recalcPayrollNetPreview = function () {
-    var base = Math.max(0, parseFloat(document.getElementById('payBaseSalaryInp')?.value) || 0);
-    var bonus = Math.max(0, parseFloat(document.getElementById('payBonusInp')?.value) || 0);
-    var deduct = Math.max(0, parseFloat(document.getElementById('payDeductInp')?.value) || 0);
-    var net = Math.max(0, Number((base + bonus - deduct).toFixed(2)));
-    var badge = document.getElementById('payNetPreviewBadge');
-    if (badge) {
-      badge.textContent = 'الصافي للدفع: ' + net.toFixed(2) + ' د.ج';
-    }
-    return { base: base, bonus: bonus, deduct: deduct, net: net };
-  };
-
-  App.executePayEmployeeSalaryFromUi = async function (andPrintSlipA4) {
-    var employee_id = Number(document.getElementById('payEmployeeSel')?.value || 0);
-    if (!employee_id) {
-      if (typeof showToast === 'function') showToast('يرجى اختيار الموظف أولاً لصرف الراتب', 'warning');
-      return;
-    }
-
-    var calc = this.recalcPayrollNetPreview();
-    var period_month = document.getElementById('payPeriodMonthInp')?.value || new Date().toISOString().slice(0, 7);
-    var payment_date = new Date().toISOString().slice(0, 10);
-    var notes = String(document.getElementById('payNotesInp')?.value || '').trim();
-
-    var res = await window.api.payEmployeeSalary({
-      employee_id: employee_id,
-      period_month: period_month,
-      base_amount: calc.base,
-      bonus_amount: calc.bonus,
-      deduction_amount: calc.deduct,
-      payment_date: payment_date,
-      notes: notes
-    });
-
-    if (typeof showToast === 'function') {
-      showToast('💳 تم صرف راتب الموظف (' + calc.net.toFixed(2) + ' د.ج) وتقييده آلياً في المصاريف وحركات الصندوق!', 'success');
-    }
-
-    await this.renderExpensesAndCapitalView();
-
-    if (andPrintSlipA4 && res && res.id) {
-      await this.printPayrollSlipA4(res.id);
-    }
-  };
-
-  App.printPayrollSlipA4 = async function (paymentId) {
-    var list = AppState.payrollPaymentsList || [];
-    if (list.length === 0 && window.api.getPayrollPayments) {
-      list = (await window.api.getPayrollPayments().catch(function () { return []; })) || [];
-    }
-    var rec = list.find(function (p) { return Number(p.id) === Number(paymentId); });
-    if (!rec || !window.PrintEngine) return;
-    var s = AppState.settings || {};
-
-    var html =
-      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>كشف راتب - ' + (rec.employee_name || '') + '</title>' +
-      '<style>@page{size:A5 landscape;margin:10mm;}body{font-family:Cairo,Arial,sans-serif;color:#0f172a;font-size:12px;margin:0;padding:12px;border:2px solid #1e3a8a;border-radius:12px;}' +
-      '.hdr{display:flex;justify-content:space-between;border-bottom:2px solid #cbd5e1;padding-bottom:8px;margin-bottom:12px;}' +
-      'table{width:100%;border-collapse:collapse;margin:10px 0;}th,td{border:1px solid #cbd5e1;padding:7px;text-align:center;}th{background:#1e3a8a;color:#fff;}' +
-      '</style></head><body>' +
-      '<div class="hdr">' +
-      '  <div><h2 style="margin:0;color:#1e3a8a;font-weight:900;">' + (s.shop_name || 'Gherbi.Ai POS') + '</h2><div>' + (s.shop_address || 'الجزائر') + '</div></div>' +
-      '  <div style="text-align:left;"><div style="font-size:17px;font-weight:900;color:#1e3a8a;">قسيمة وكشف راتب شهري (BULLETIN DE PAIE)</div><div style="font-family:monospace;font-weight:900;">الشهر: ' + (rec.period_month || '') + ' | التاريخ: ' + String(rec.payment_date || '').slice(0, 10) + '</div></div>' +
-      '</div>' +
-      '<div style="background:#f8fafc;padding:8px 12px;border-radius:8px;font-weight:900;display:flex;justify-content:space-between;">' +
-      '  <span>👨‍💼 اسم الموظف: ' + (rec.employee_name || '') + '</span><span>المنصب: ' + (rec.role_title || 'عامل') + '</span><span>رقم السند: #PAY-' + rec.id + '</span>' +
-      '</div>' +
-      '<table><thead><tr><th>الراتب الأساسي</th><th>المكافآت والعمولات (+)</th><th>الخصومات والسلفيات (-)</th><th>الصافي المدفوع (NET À PAYER)</th></tr></thead>' +
-      '<tbody><tr>' +
-      '  <td style="font-family:monospace;font-weight:800;">' + Number(rec.base_amount || 0).toFixed(2) + ' د.ج</td>' +
-      '  <td style="font-family:monospace;color:#059669;font-weight:800;">+' + Number(rec.bonus_amount || 0).toFixed(2) + ' د.ج</td>' +
-      '  <td style="font-family:monospace;color:#e11d48;font-weight:800;">-' + Number(rec.deduction_amount || 0).toFixed(2) + ' د.ج</td>' +
-      '  <td style="font-family:monospace;font-size:15px;font-weight:900;background:#ecfdf5;color:#047857;">' + Number(rec.net_paid || 0).toFixed(2) + ' د.ج</td>' +
-      '</tr></tbody></table>' +
-      (rec.notes ? '<div style="font-size:11px;"><strong>ملاحظات:</strong> ' + rec.notes + '</div>' : '') +
-      '<div style="display:flex;justify-content:space-between;margin-top:26px;font-weight:900;padding:0 20px;"><div>ختم وإمضاء الإدارة</div><div>إمضاء الموظف بالاستلام</div></div>' +
-      '</body></html>';
-
-    await window.PrintEngine.printHtmlDocument(html, { silent: false });
-  };
-
-  var _prevRenderExpensesV14 = App.renderExpensesAndCapitalView.bind(App);
-  App.renderExpensesAndCapitalView = async function () {
-    await _prevRenderExpensesV14();
-    var root = document.getElementById('expenses-view-root');
-    if (!root) return;
-
-    var activeTab = AppState.expensesMainTab || 'expenses_capital';
-    var pair = await Promise.all([
-      window.api.getEmployees ? window.api.getEmployees().catch(function () { return []; }) : Promise.resolve([]),
-      window.api.getPayrollPayments ? window.api.getPayrollPayments().catch(function () { return []; }) : Promise.resolve([])
-    ]);
-
-    var employees = Array.isArray(pair[0]) ? pair[0] : [];
-    var payrolls = Array.isArray(pair[1]) ? pair[1] : [];
-    AppState.employeesList = employees;
-    AppState.payrollPaymentsList = payrolls;
-
-    var totalPayrollPaid = payrolls.reduce(function (s, p) { return s + Number(p.net_paid || 0); }, 0);
-
-    var tabsBarHtml =
-      '<div id="expensesEnterpriseTabsBar" class="p-2 rounded-2xl bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2 mb-4 shadow-lg text-xs">' +
-      '  <div class="flex flex-wrap items-center gap-1.5">' +
-      '    <button type="button" onclick="App.switchExpensesMainTab(\'expenses_capital\')" class="px-4 py-2 rounded-xl font-black transition ' + (activeTab === 'expenses_capital' ? 'bg-rose-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">💸 1. المصاريف التشغيلية، الأعباء الدورية، وحركات رأس المال (' + (AppState._cachedExpenses || []).length + ' مصروف)</button>' +
-      '    <button type="button" onclick="App.switchExpensesMainTab(\'hr_payroll\')" class="px-4 py-2 rounded-xl font-black transition ' + (activeTab === 'hr_payroll' ? 'bg-indigo-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700') + '">👨‍💼 2. الموظفون والأجور ومسيّر الرواتب (HR Payroll — ' + employees.length + ' موظف / ' + payrolls.length + ' عملية صرف)</button>' +
-      '  </div>' +
-      '  <span class="px-3 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 font-black">💳 إجمالي الرواتب المصروفة: ' + totalPayrollPaid.toFixed(2) + ' د.ج</span>' +
-      '</div>';
-
-    if (activeTab === 'expenses_capital') {
-      root.insertAdjacentHTML('afterbegin', tabsBarHtml);
-      return;
-    }
-
-    var curMonth = new Date().toISOString().slice(0, 7);
-    var firstEmpSalary = employees[0] ? Number(employees[0].base_salary || 0) : 35000;
-
-    root.innerHTML =
-      tabsBarHtml +
-      '<div class="space-y-5 text-xs">' +
-      '  <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">' +
-      '    <!-- يمين (5 أعمدة): إضافة موظف جديد + قائمة الموظفين -->' +
-      '    <div class="lg:col-span-5 p-5 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3.5">' +
-      '      <h3 class="font-black text-sm text-indigo-600">👨‍💼 1. تسجيل موظف / عامل جديد في المؤسسة (Employees Directory)</h3>' +
-      '      <div class="grid grid-cols-2 gap-2.5">' +
-      '        <div><label class="block font-bold mb-1">اسم الموظف الكامل *</label><input id="empNameInp" type="text" placeholder="مثال: كريم بوزيد" class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
-      '        <div><label class="block font-bold mb-1">المنصب الوظيفي</label><input id="empRoleInp" type="text" value="بائع / كاشير" class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
-      '        <div><label class="block font-bold mb-1">رقم الهاتف</label><input id="empPhoneInp" type="text" placeholder="0550..." class="w-full px-3 py-1.5 rounded-xl font-mono"></div>' +
-      '        <div><label class="block font-bold mb-1 text-emerald-600">الراتب الأساسي الشهري (د.ج)</label><input id="empSalaryInp" type="number" step="any" min="0" value="35000" class="w-full px-3 py-1.5 rounded-xl font-mono font-black text-emerald-600 text-center"></div>' +
-      '        <div><label class="block font-bold mb-1 text-blue-600">نسبة العمولة (%)</label><input id="empCommInp" type="number" step="any" min="0" value="1" class="w-full px-3 py-1.5 rounded-xl font-mono font-bold text-center"></div>' +
-      '        <div><label class="block font-bold mb-1">تاريخ التوظيف</label><input id="empHireDateInp" type="date" value="' + new Date().toISOString().slice(0, 10) + '" class="w-full px-2.5 py-1.5 rounded-xl font-mono"></div>' +
-      '      </div>' +
-      '      <button type="button" onclick="App.saveEmployeeFromUi()" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow-lg">+ حفظ الموظف في السجل</button>' +
-      '      <div class="space-y-1.5 max-h-56 overflow-y-auto pt-2 border-t border-slate-100 dark:border-slate-700">' +
-      (employees.length === 0
-        ? '<div class="text-center py-6 text-slate-400 font-bold">لا يوجد موظفون مسجلون في جدول employees بعد — أضف أول موظف أعلاه</div>'
-        : employees.map(function (e) {
-            return (
-              '<div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">' +
-              '  <div><div class="font-black text-slate-900 dark:text-white">' + e.name + ' <span class="px-2 py-0.2 rounded bg-indigo-500/10 text-indigo-600 text-[10px]">' + (e.role_title || 'بائع') + '</span></div>' +
-              '  <div class="text-[10.5px] font-mono text-slate-500">الراتب الأساسي: <strong class="text-emerald-600">' + Number(e.base_salary || 0).toFixed(2) + ' د.ج</strong> | العمولة: ' + Number(e.commission_percent || 0) + '%</div></div>' +
-              '  <button type="button" onclick="App.deleteEmployeeFromUi(' + e.id + ')" class="text-rose-500 font-black px-2">✕</button>' +
-              '</div>'
-            );
-          }).join('')) +
-      '      </div>' +
-      '    </div>' +
-
-      '    <!-- يسار (7 أعمدة): محرك صرف الرواتب والأجور + سجل المسيّرات -->' +
-      '    <div class="lg:col-span-7 space-y-4">' +
-      '      <div class="p-5 rounded-3xl bg-slate-900 text-white border border-slate-800 shadow-xl space-y-3.5">' +
-      '        <div class="flex flex-wrap items-center justify-between gap-2">' +
-      '          <div>' +
-      '            <h3 class="font-black text-sm text-amber-400">💳 2. صرف راتب شهري ومكافآت (يربط آلياً بـ expenses و caisse_transactions)</h3>' +
-      '            <p class="text-[11px] text-slate-400">يخصم المبلغ الصافي من الصندوق المفتوح ويقيده كمصروف تشغيلي بفئة (رواتب) في معاملة ذرية</p>' +
-      '          </div>' +
-      '          <span id="payNetPreviewBadge" class="px-3.5 py-1 rounded-full bg-emerald-500 text-slate-950 font-mono font-black text-xs">الصافي للدفع: ' + firstEmpSalary.toFixed(2) + ' د.ج</span>' +
-      '        </div>' +
-      '        <div class="grid grid-cols-2 md:grid-cols-5 gap-2.5">' +
-      '          <div class="md:col-span-2"><label class="block text-slate-400 font-bold mb-1">اختر الموظف *</label><select id="payEmployeeSel" onchange="App.onPayrollEmployeeSelectChange(this.value)" class="w-full px-3 py-2 rounded-xl bg-slate-950 text-white border border-slate-700 font-bold">' +
-      (employees.length === 0
-        ? '<option value="">— أضف موظفاً أولاً على اليمين —</option>'
-        : employees.map(function (e) { return '<option value="' + e.id + '">' + e.name + ' (' + (e.role_title || 'بائع') + ')</option>'; }).join('')) +
-      '          </select></div>' +
-      '          <div><label class="block text-slate-400 font-bold mb-1">شهر الراتب</label><input id="payPeriodMonthInp" type="month" value="' + curMonth + '" class="w-full px-2.5 py-2 rounded-xl bg-slate-950 text-white border border-slate-700 font-mono font-bold"></div>' +
-      '          <div><label class="block text-slate-400 font-bold mb-1">الراتب الأساسي</label><input id="payBaseSalaryInp" type="number" step="any" value="' + firstEmpSalary + '" oninput="App.recalcPayrollNetPreview()" class="w-full px-2.5 py-2 rounded-xl bg-slate-950 text-white border border-slate-700 font-mono font-black text-center"></div>' +
-      '          <div><label class="block text-emerald-400 font-bold mb-1">مكافأة / عمولة (+)</label><input id="payBonusInp" type="number" step="any" value="0" oninput="App.recalcPayrollNetPreview()" class="w-full px-2.5 py-2 rounded-xl bg-slate-950 text-emerald-400 border border-slate-700 font-mono font-bold text-center"></div>' +
-      '          <div><label class="block text-rose-400 font-bold mb-1">خصم / سلفة (-)</label><input id="payDeductInp" type="number" step="any" value="0" oninput="App.recalcPayrollNetPreview()" class="w-full px-2.5 py-2 rounded-xl bg-slate-950 text-rose-400 border border-slate-700 font-mono font-bold text-center"></div>' +
-      '          <div class="md:col-span-4"><label class="block text-slate-400 font-bold mb-1">ملاحظات الصرف</label><input id="payNotesInp" type="text" placeholder="راتب شهري كامل نقداً من الصندوق..." class="w-full px-3 py-2 rounded-xl bg-slate-950 text-white border border-slate-700"></div>' +
-      '        </div>' +
-      '        <div class="flex flex-wrap gap-2 pt-1">' +
-      '          <button type="button" onclick="App.executePayEmployeeSalaryFromUi(false)" class="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-lg">✅ صرف الراتب وتقييده في المصاريف والصندوق</button>' +
-      '          <button type="button" onclick="App.executePayEmployeeSalaryFromUi(true)" class="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black shadow-lg">🖨️ صرف وطباعة قسيمة الراتب (A4)</button>' +
-      '        </div>' +
-      '      </div>' +
-
-      '      <!-- سجل الرواتب المصروفة -->' +
-      '      <div class="p-4 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">' +
-      '        <h3 class="font-black text-sm text-emerald-600">📑 3. سجل مسيّر الرواتب والأجور المنفذة (' + payrolls.length + ')</h3>' +
-      '        <div class="overflow-x-auto max-h-64"><table class="w-full text-right border-collapse">' +
-      '          <thead><tr class="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700"><th class="p-2">#</th><th class="p-2">الموظف</th><th class="p-2">الشهر</th><th class="p-2">الأساسي</th><th class="p-2">المكافأة (+)</th><th class="p-2">الخصم (-)</th><th class="p-2">الصافي المدفوع</th><th class="p-2 text-center">قسيمة الراتب</th></tr></thead>' +
-      '          <tbody>' +
-      (payrolls.length === 0
-        ? '<tr><td colspan="8" class="p-6 text-center text-slate-400 font-bold">لا توجد رواتب مصروفة بعد</td></tr>'
-        : payrolls.map(function (p) {
-            return (
-              '<tr class="border-b border-slate-100 dark:border-slate-700/60">' +
-              '  <td class="p-2 font-mono">' + p.id + '</td>' +
-              '  <td class="p-2 font-black">' + (p.employee_name || '') + '</td>' +
-              '  <td class="p-2 font-mono font-bold">' + (p.period_month || '') + '</td>' +
-              '  <td class="p-2 font-mono">' + Number(p.base_amount || 0).toFixed(2) + '</td>' +
-              '  <td class="p-2 font-mono text-emerald-600">+' + Number(p.bonus_amount || 0).toFixed(2) + '</td>' +
-              '  <td class="p-2 font-mono text-rose-600">-' + Number(p.deduction_amount || 0).toFixed(2) + '</td>' +
-              '  <td class="p-2 font-mono font-black text-emerald-600">' + Number(p.net_paid || 0).toFixed(2) + ' د.ج</td>' +
-              '  <td class="p-2 text-center"><button type="button" onclick="App.printPayrollSlipA4(' + p.id + ')" class="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-black">🖨️ قسيمة A4</button></td>' +
-              '</tr>'
-            );
-          }).join('')) +
-      '          </tbody></table></div>' +
-      '      </div>' +
-      '    </div>' +
-      '  </div>' +
-      '</div>';
-  };
-
-  // ==========================================================================
-  // 2. الشق الثاني من المهمة 6: تذاكر ورشة الصيانة وخدمات ما بعد البيع (service_tickets — Atelier / SAV)
-  // ==========================================================================
-  App.openAtelierServiceTicketsHub = async function () {
-    AppState.ordersMainTab = 'atelier_sav';
-    if (AppState.currentView !== 'orders') {
-      await this.switchView('orders');
-    } else {
-      await this.renderOrdersView();
-    }
-  };
-
-  // إضافة زر (🛠️ تذكرة صيانة SAV) في شاشة الكاشير لسهولة الوصول الفوري
-  var _prevRenderPosViewV14 = typeof App.renderPosView === 'function' ? App.renderPosView.bind(App) : null;
-  if (_prevRenderPosViewV14) {
-    App.renderPosView = function () {
-      _prevRenderPosViewV14();
-      var returnBtn = document.getElementById('btnReturnMode');
-      if (returnBtn && returnBtn.parentElement && !document.getElementById('btnQuickPosAtelierSav')) {
-        returnBtn.insertAdjacentHTML(
-          'afterend',
-          '<button id="btnQuickPosAtelierSav" type="button" onclick="App.openAtelierServiceTicketsHub()" class="px-3 py-1.5 rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-300 border border-teal-500/30 text-xs font-black flex items-center gap-1" title="فتح ورشة الصيانة وتذاكر الإصلاح (SAV)"><span>🛠️ صيانة (SAV)</span></button>'
-        );
-      }
-    };
-  }
-
-  App.saveServiceTicketFromUi = async function () {
-    var customer_name = String(document.getElementById('savCustNameInp')?.value || '').trim() || 'زبون ورشة صيانة';
-    var customer_phone = String(document.getElementById('savCustPhoneInp')?.value || '').trim();
-    var item_model = String(document.getElementById('savItemModelInp')?.value || '').trim();
-    var serial_or_plate = String(document.getElementById('savSerialInp')?.value || '').trim();
-    var problem_desc = String(document.getElementById('savProblemInp')?.value || '').trim();
-    var diagnosis_notes = String(document.getElementById('savDiagnosisInp')?.value || '').trim();
-    var technician_name = String(document.getElementById('savTechInp')?.value || '').trim();
-    var estimated_cost = Math.max(0, parseFloat(document.getElementById('savEstCostInp')?.value) || 0);
-    var deposit_paid = Math.max(0, parseFloat(document.getElementById('savDepositInp')?.value) || 0);
-    var promised_date = document.getElementById('savPromisedDateInp')?.value || new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
-
-    if (!item_model) {
-      if (typeof showToast === 'function') showToast('يرجى إدخال نوع وموديل الجهاز أو المركبة المستلمة للصيانة', 'warning');
-      return;
-    }
-
-    var res = await window.api.saveServiceTicket({
-      customer_name: customer_name,
-      customer_phone: customer_phone,
-      item_model: item_model,
-      serial_or_plate: serial_or_plate,
-      problem_desc: problem_desc,
-      diagnosis_notes: diagnosis_notes,
-      technician_name: technician_name,
-      estimated_cost: estimated_cost,
-      deposit_paid: deposit_paid,
-      final_total: estimated_cost,
-      status: 'received',
-      promised_date: promised_date
-    });
-
-    if (typeof showToast === 'function') {
-      showToast('🛠️ تم فتح تذكرة الصيانة (' + (res.ticket_number || '') + ') بنجاح!', 'success');
-    }
-    await this.renderOrdersView();
-  };
-
-  App.updateServiceTicketStatusQuick = async function (ticketId, newStatus) {
-    var tk = (AppState.serviceTicketsList || []).find(function (t) { return Number(t.id) === Number(ticketId); });
-    if (!tk) return;
-
-    await window.api.saveServiceTicket(Object.assign({}, tk, { status: newStatus }));
-    if (typeof showToast === 'function') {
-      showToast('🔧 تم تحديث حالة تذكرة الصيانة (' + tk.ticket_number + ') بنجاح', 'info');
-    }
-    await this.renderOrdersView();
-  };
-
-  App.convertTicketToSaleFromUi = async function (ticketId) {
-    var tk = (AppState.serviceTicketsList || []).find(function (t) { return Number(t.id) === Number(ticketId); });
-    if (!tk) return;
-
-    var defTotal = Number(tk.final_total || tk.estimated_cost || 0);
-    var val = window.prompt(
-      '🧾 تحويل تذكرة الصيانة (' + tk.ticket_number + ' — ' + tk.item_model + ') إلى فاتورة بيع رسمية:\nأدخل التكلفة النهائية للإصلاح وقطع الغيار (د.ج):',
-      defTotal.toFixed(2)
-    );
-    if (val === null) return;
-    var finalTotal = Math.max(0, parseFloat(val) || 0);
-
-    var res = await window.api.convertServiceTicketToSale({
-      ticket_id: tk.id,
-      final_total: finalTotal,
-      paid_amount: finalTotal
-    });
-
-    if (typeof showToast === 'function') {
-      showToast('🎉 تم تحويل تذكرة الصيانة إلى فاتورة مبيعات رسمية (' + (res.doc_number || '') + ') وتحصيل المبلغ!', 'success');
-    }
-    await this.renderOrdersView();
-  };
-
-  App.printServiceTicketReceipt80mm = async function (ticketId) {
-    var tk = (AppState.serviceTicketsList || []).find(function (t) { return Number(t.id) === Number(ticketId); });
-    if (!tk || !window.PrintEngine) return;
-    var s = AppState.settings || {};
-    var rem = Math.max(0, Number(tk.estimated_cost || 0) - Number(tk.deposit_paid || 0));
-
-    var html =
-      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><style>@page{margin:0;}body{width:74mm;margin:0 auto;padding:3mm;font-family:Cairo,sans-serif;font-size:11.5px;border:1px solid #000;}</style></head><body>' +
-      '<div style="text-align:center;border-bottom:2px solid #000;padding-bottom:5px;">' +
-      '  <div style="font-size:16px;font-weight:900;">' + (s.shop_name || 'Gherbi.Ai POS') + '</div>' +
-      '  <div style="font-weight:900;">🛠️ وصل استلام جهاز للصيانة (ATELIER SAV)</div>' +
-      '  <div style="font-family:monospace;font-size:14px;font-weight:900;margin-top:2px;">' + (tk.ticket_number || ('SAV-' + tk.id)) + '</div>' +
-      '</div>' +
-      '<div style="padding:6px 0;line-height:1.6;">' +
-      '  <div><strong>الزبون:</strong> ' + (tk.customer_name || '') + ' (' + (tk.customer_phone || '-') + ')</div>' +
-      '  <div><strong>الجهاز / المركبة:</strong> ' + (tk.item_model || '') + '</div>' +
-      (tk.serial_or_plate ? '<div><strong>S/N أو اللوحة:</strong> <span style="font-family:monospace;">' + tk.serial_or_plate + '</span></div>' : '') +
-      '  <div><strong>العطل المصرّح به:</strong> ' + (tk.problem_desc || '-') + '</div>' +
-      (tk.diagnosis_notes ? '<div><strong>التشخيص الفني:</strong> ' + tk.diagnosis_notes + '</div>' : '') +
-      '  <div><strong>موعد التسليم المتوقع:</strong> ' + (tk.promised_date || '-') + '</div>' +
-      '</div>' +
-      '<div style="border-top:1px dashed #000;border-bottom:1px dashed #000;padding:5px 0;font-family:monospace;font-weight:900;">' +
-      '  <div style="display:flex;justify-content:space-between;"><span>التكلفة التقديرية:</span><span>' + Number(tk.estimated_cost || 0).toFixed(2) + ' د.ج</span></div>' +
-      '  <div style="display:flex;justify-content:space-between;"><span>التسبيق المدفوع:</span><span>' + Number(tk.deposit_paid || 0).toFixed(2) + ' د.ج</span></div>' +
-      '  <div style="display:flex;justify-content:space-between;font-size:13.5px;"><span>الباقي عند الاستلام:</span><span>' + rem.toFixed(2) + ' د.ج</span></div>' +
-      '</div>' +
-      '<div style="text-align:center;font-size:9.5px;font-weight:700;margin-top:6px;">يرجى إحضار هذا الوصل عند استلام الجهاز — المؤسسة غير مسؤولة عن الأجهزة التي تتجاوز 30 يوماً بعد جاهزيتها</div>' +
-      '</body></html>';
-
-    await window.PrintEngine.printHtmlDocument(html, { silent: false });
-  };
-
-  // دمج التبويب الثالث (🛠️ 3. ورشة الصيانة وتذاكر الإصلاح Atelier / SAV) داخل #view-orders
-  var _prevRenderOrdersV14_6 = App.renderOrdersView.bind(App);
-  App.renderOrdersView = async function () {
-    await _prevRenderOrdersV14_6();
-    var root = document.getElementById('orders-view-root');
-    if (!root) return;
-
-    var tickets = (window.api.getServiceTickets ? await window.api.getServiceTickets({}).catch(function () { return []; }) : []) || [];
-    AppState.serviceTicketsList = tickets;
-
-    var activeTab = AppState.ordersMainTab || 'orders_list';
-    var bar = document.getElementById('ordersEnterpriseTabsBar');
-    if (bar && !bar.innerHTML.includes('atelier_sav')) {
-      var btnGroup = bar.querySelector('.flex.flex-wrap.items-center.gap-1\\.5');
-      if (btnGroup) {
-        btnGroup.insertAdjacentHTML(
-          'beforeend',
-          '<button type="button" onclick="App.switchOrdersMainTab(\'atelier_sav\')" class="px-4 py-2 rounded-xl font-black transition ' + (activeTab === 'atelier_sav' ? 'bg-amber-500 text-slate-950 shadow' : 'bg-slate-800 text-amber-300 hover:bg-slate-700') + '">🛠️ 3. ورشة الصيانة وتذاكر الإصلاح (Atelier / SAV — ' + tickets.length + ' تذكرة)</button>'
-        );
-      }
-    }
-
-    if (activeTab !== 'atelier_sav') return;
-
-    var fStatus = AppState.serviceTicketsStatusFilter || 'all';
-    var filteredTickets = tickets.filter(function (t) {
-      if (fStatus === 'all') return true;
-      return t.status === fStatus;
-    });
-
-    var barHtml = bar ? bar.outerHTML : '';
-    var promisedDef = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
-
-    root.innerHTML =
-      barHtml +
-      '<div class="space-y-5 text-xs">' +
-      '  <!-- نموذج استلام جهاز / مركبة وإنشاء تذكرة صيانة جديدة -->' +
-      '  <div class="p-5 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">' +
-      '    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 pb-2.5">' +
-      '      <div>' +
-      '        <h3 class="font-black text-base text-teal-600">🛠️ 1. استلام جهاز / معدة / مركبة وفتح تذكرة صيانة جديدة (Atelier / SAV Reception)</h3>' +
-      '        <p class="text-[11px] text-slate-400">توثيق العطل والرقم التسلسلي IMEI/اللوحة، التكلفة التقديرية والعربون، وتحويل التذكرة إلى فاتورة بيع عند التسليم</p>' +
-      '      </div>' +
-      '      <span class="px-3 py-1 rounded-full bg-teal-500/10 text-teal-600 font-black">مربوط مباشرة بفواتير المبيعات</span>' +
-      '    </div>' +
-
-      '    <div class="grid grid-cols-1 md:grid-cols-4 gap-3">' +
-      '      <div><label class="block font-bold mb-1">اسم الزبون *</label><input id="savCustNameInp" type="text" placeholder="اسم صاحب الجهاز" class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
-      '      <div><label class="block font-bold mb-1">رقم الهاتف *</label><input id="savCustPhoneInp" type="text" placeholder="0550..." class="w-full px-3 py-1.5 rounded-xl font-mono font-bold"></div>' +
-      '      <div><label class="block font-black text-indigo-600 mb-1">نوع وموديل الجهاز / المركبة *</label><input id="savItemModelInp" type="text" placeholder="iPhone 15 Pro / طابعة Epson / مركبة" class="w-full px-3 py-1.5 rounded-xl font-black border-indigo-400"></div>' +
-      '      <div><label class="block font-bold mb-1">الرقم التسلسلي (IMEI / S.N / اللوحة)</label><input id="savSerialInp" type="text" placeholder="358901234567890" class="w-full px-3 py-1.5 rounded-xl font-mono font-bold"></div>' +
-      '      <div class="md:col-span-2"><label class="block font-bold mb-1">وصف العطل المصرّح به من الزبون</label><input id="savProblemInp" type="text" placeholder="تغيير شاشة / لا يشتغل / صيانة دورية..." class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
-      '      <div class="md:col-span-2"><label class="block font-bold mb-1">التشخيص الفني الأولي وملاحظات الورشة</label><input id="savDiagnosisInp" type="text" placeholder="بحاجة لتغيير بطارية + تنظيف اللوحة الأم..." class="w-full px-3 py-1.5 rounded-xl"></div>' +
-      '      <div><label class="block font-bold mb-1">اسم المهندس / الفني المختص</label><input id="savTechInp" type="text" value="فني الورشة الرئيسي" class="w-full px-3 py-1.5 rounded-xl font-bold"></div>' +
-      '      <div><label class="block font-black text-blue-600 mb-1">التكلفة التقديرية (د.ج)</label><input id="savEstCostInp" type="number" step="any" min="0" value="2500" class="w-full px-3 py-1.5 rounded-xl font-mono font-black text-blue-600 text-center"></div>' +
-      '      <div><label class="block font-black text-emerald-600 mb-1">العربون المستلم (د.ج)</label><input id="savDepositInp" type="number" step="any" min="0" value="500" class="w-full px-3 py-1.5 rounded-xl font-mono font-black text-emerald-600 text-center"></div>' +
-      '      <div><label class="block font-bold mb-1">تاريخ التسليم الموعود</label><input id="savPromisedDateInp" type="date" value="' + promisedDef + '" class="w-full px-2.5 py-1.5 rounded-xl font-mono"></div>' +
-      '    </div>' +
-      '    <button type="button" onclick="App.saveServiceTicketFromUi()" class="w-full py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-black shadow-lg">+ حفظ تذكرة الصيانة وإصدار وصل الاستلام</button>' +
-      '  </div>' +
-
-      '  <!-- جدول تذاكر الصيانة ومتابعة الحالات الـ 5 -->' +
-      '  <div class="p-5 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">' +
-      '    <div class="flex flex-wrap items-center justify-between gap-2">' +
-      '      <h3 class="font-black text-sm text-indigo-600">📋 2. لوحة تتبع تذاكر الصيانة والإصلاح وتحويلها لفواتير بيع (' + filteredTickets.length + ')</h3>' +
-      '      <div class="flex flex-wrap gap-1.5">' +
-      [
-        { id: 'all', label: 'الكل (' + tickets.length + ')' },
-        { id: 'received', label: '📥 مستلم' },
-        { id: 'in_progress', label: '🔧 قيد الإصلاح' },
-        { id: 'ready', label: '✅ جاهز للتسليم' },
-        { id: 'delivered', label: '🧾 تم التسليم والفوترة' }
-      ].map(function (st) {
-        return '<button type="button" onclick="AppState.serviceTicketsStatusFilter=\'' + st.id + '\';App.renderOrdersView()" class="px-3 py-1.5 rounded-xl font-black ' + (fStatus === st.id ? 'bg-teal-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-900') + '">' + st.label + '</button>';
-      }).join('') +
-      '      </div>' +
-      '    </div>' +
-      '    <div class="overflow-x-auto"><table class="w-full text-right border-collapse">' +
-      '      <thead><tr class="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700"><th class="p-2.5">رقم التذكرة</th><th class="p-2.5">الزبون</th><th class="p-2.5">الجهاز والرقم التسلسلي</th><th class="p-2.5">العطل والتشخيص</th><th class="p-2.5">التكلفة</th><th class="p-2.5">العربون</th><th class="p-2.5">الحالة</th><th class="p-2.5 text-center">إجراءات الورشة والفوترة</th></tr></thead>' +
-      '      <tbody>' +
-      (filteredTickets.length === 0
-        ? '<tr><td colspan="8" class="p-8 text-center text-slate-400 font-bold">لا توجد تذاكر صيانة مسجلة بعد</td></tr>'
-        : filteredTickets.map(function (tk) {
-            var stBadge =
-              tk.status === 'delivered'
-                ? '<span class="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-black">🧾 تم التسليم والفوترة</span>'
-                : tk.status === 'ready'
-                  ? '<span class="px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-600 font-black">✅ جاهز للتسليم</span>'
-                  : tk.status === 'in_progress'
-                    ? '<span class="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-black">🔧 قيد الإصلاح</span>'
-                    : '<span class="px-2.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 font-black">📥 مستلم بالورشة</span>';
-
-            return (
-              '<tr class="border-b border-slate-100 dark:border-slate-700/60">' +
-              '  <td class="p-2.5 font-mono font-black text-teal-600">' + (tk.ticket_number || ('SAV-' + tk.id)) + '</td>' +
-              '  <td class="p-2.5"><div class="font-black">' + (tk.customer_name || '') + '</div><div class="font-mono text-[10.5px] text-slate-400">' + (tk.customer_phone || '') + '</div></td>' +
-              '  <td class="p-2.5"><div class="font-black text-indigo-600">' + (tk.item_model || '') + '</div><div class="font-mono text-[10px] text-slate-400">' + (tk.serial_or_plate || '-') + '</div></td>' +
-              '  <td class="p-2.5"><div class="font-bold">' + (tk.problem_desc || '-') + '</div><div class="text-[10.5px] text-slate-400">' + (tk.diagnosis_notes || '') + '</div></td>' +
-              '  <td class="p-2.5 font-mono font-black text-blue-600">' + Number(tk.final_total || tk.estimated_cost || 0).toFixed(2) + ' د.ج</td>' +
-              '  <td class="p-2.5 font-mono font-bold text-emerald-600">' + Number(tk.deposit_paid || 0).toFixed(2) + ' د.ج</td>' +
-              '  <td class="p-2.5">' + stBadge + '</td>' +
-              '  <td class="p-2.5 text-center"><div class="flex flex-wrap items-center justify-center gap-1">' +
-              (tk.status === 'received'
-                ? '<button type="button" onclick="App.updateServiceTicketStatusQuick(' + tk.id + ', \'in_progress\')" class="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-black text-[10.5px]">🔧 بدء الإصلاح</button>'
-                : '') +
-              (tk.status === 'in_progress'
-                ? '<button type="button" onclick="App.updateServiceTicketStatusQuick(' + tk.id + ', \'ready\')" class="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-black text-[10.5px]">✅ جاهز</button>'
-                : '') +
-              (tk.status !== 'delivered'
-                ? '<button type="button" onclick="App.convertTicketToSaleFromUi(' + tk.id + ')" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10.5px] shadow">🧾 تسليم وتحويل لفاتورة بيع</button>'
-                : '<span class="font-mono text-[10px] text-emerald-600 font-black">فاتورة #' + (tk.sale_id || '') + '</span>') +
-              '    <button type="button" onclick="App.printServiceTicketReceipt80mm(' + tk.id + ')" class="px-2.5 py-1 rounded-lg bg-slate-800 text-white font-black text-[10.5px]">🖨️ وصل 80mm</button>' +
-              '  </div></td>' +
-              '</tr>'
-            );
-          }).join('')) +
-      '      </tbody></table></div>' +
-      '  </div>' +
-      '</div>';
-  };
-
-  // ==========================================================================
-  // 3. روبوت الفحص الآلي الذاتي الشامل للوحدات المؤسسية الـ 6 (App.runAutoTest_Enterprise6ModulesV14)
-  // ==========================================================================
-  App.runAutoTest_Enterprise6ModulesV14 = async function () {
-    var results = [];
-    var check = function (name, cond, detail) {
-      results.push({ name: name, passed: Boolean(cond), detail: detail || '' });
-    };
-
-    try {
-      var instRes = await window.api.getInstallmentContracts({});
-      var ccpLogs = await window.api.getCcpReconciliationLogs({ limit: 10 });
-      check(
-        '1. المهمة 1: منظومة عقود التقسيط والمطابقة الآلية لكشف بريد الجزائر (CCP Reconciliation)',
-        Boolean(instRes && Array.isArray(instRes.contracts) && Array.isArray(ccpLogs) && typeof this.executeCcpStatementReconciliationNow === 'function'),
-        instRes.contracts.length + ' عقد تقسيط | ' + ccpLogs.length + ' سجل CCP'
-      );
-
-      var etatRows = await window.api.getEtat104(new Date().getFullYear());
-      check(
-        '2. المهمة 2: الكشف الضريبي السنوي (État 104) وتوزيع التكلفة المحملة (Landed Cost & WAC)',
-        Boolean(Array.isArray(etatRows) && typeof this.printOfficialEtat104ReportA4 === 'function' && typeof this.onLandedCostComponentInput === 'function'),
-        etatRows.length + ' زبون في كشف État 104'
-      );
-
-      var whs = await window.api.getWarehouses();
-      var trfs = await window.api.getStockTransfers();
-      check(
-        '3. المهمة 3: التسعير المتدرج بالكمية (min_qty)، تعدد العبوات، والمستودعات والتحويلات',
-        Boolean(Array.isArray(whs) && whs.length >= 1 && Array.isArray(trfs) && typeof this.computeTieredUnitPriceForQty === 'function'),
-        whs.length + ' مستودع | ' + trfs.length + ' تحويل مخزني'
-      );
-
-      var drvs = await window.api.getDrivers();
-      var shps = await window.api.getDeliveryShipments({});
-      check(
-        '4. المهمة 4: إدارة السائقين (Van Sales)، شحنات التوصيل، وتسوية تحصيل COD بالخزينة',
-        Boolean(Array.isArray(drvs) && Array.isArray(shps) && typeof this.printShipmentDeliveryNoteBl === 'function'),
-        drvs.length + ' سائق | ' + shps.length + ' شحنة توصيل'
-      );
-
-      var cpns = await window.api.getDiscountCoupons();
-      var fLogs = await window.api.getSystemAuditLogs({ limit: 20 });
-      check(
-        '5. المهمة 5: أكواد الكوبونات (discount_coupons) والسجل الرقابي الجنائي (Before / After JSON)',
-        Boolean(Array.isArray(cpns) && Array.isArray(fLogs) && typeof this.applyCouponCodeInPosCart === 'function'),
-        cpns.length + ' كوبون | ' + fLogs.length + ' سجل جنائي'
-      );
-
-      var emps = await window.api.getEmployees();
-      var tks = await window.api.getServiceTickets({});
-      check(
-        '6. المهمة 6: مسيّر الرواتب الذري (HR Payroll) وتذاكر ورشة الصيانة (Atelier / SAV)',
-        Boolean(Array.isArray(emps) && Array.isArray(tks) && typeof this.executePayEmployeeSalaryFromUi === 'function' && typeof this.convertTicketToSaleFromUi === 'function'),
-        emps.length + ' موظف | ' + tks.length + ' تذكرة صيانة'
-      );
-    } catch (err) {
-      check('فحص اتصال الوحدات المؤسسية الـ 6', false, err.message);
-    }
-
-    if (typeof this.showVisualQaReportModal === 'function') {
-      this.showVisualQaReportModal('🇩🇿 تقرير الفحص الآلي الشامل — الوحدات المؤسسية الـ 6 (Enterprise Suite V14)', results);
-    } else if (typeof showToast === 'function') {
-      showToast('✅ الفحص الآلي للوحدات المؤسسية الـ 6: 6/6 PASS (100%)!', 'success');
-    }
-  };
-}
+console.log('🇩🇿🚀 [الشطر 1/2 - V25] بدء استرجاع الصفحات السليمة، إصلاح خطأ contextBridge، وتنظيف واجهة شاشة المبيعات...\n');
 
 // ============================================================================
-// حقن الشطر 5B في renderer-rc-100.js وفحص القواعد النحوية
+// 1. تنظيف الأرشيف ومزامنة إعدادات الولاء في قاعدة البيانات الحية
 // ============================================================================
-const rcPath = path.join(ROOT, 'renderer-rc-100.js');
-if (fs.existsSync(rcPath)) {
-  let rc = fs.readFileSync(rcPath, 'utf8');
-
-  const marker = '// [PART 5B/5: HR PAYROLL, SERVICE TICKETS ATELIER SAV & MASTER QA V14]';
-  const oldIdx = rc.indexOf(marker);
-  if (oldIdx !== -1) {
-    rc = rc.slice(0, oldIdx).trimEnd();
-  }
-
-  const block =
-    '\n\n' +
-    marker +
-    '\n(' +
-    installTask6HrPayrollServiceTicketsAndMasterQaV14.toString() +
-    ')();\n';
-
-  const finalRc = rc.trimEnd() + block;
-  new vm.Script(finalRc, { filename: 'renderer-rc-100.js' });
-  fs.writeFileSync(rcPath, finalRc, 'utf8');
-  console.log('✅ اكتمل حقن وفحص [الشطر 5B/5: الموظفون ومسيّر الرواتب + ورشة الصيانة SAV + الفحص الآلي الشامل] في renderer-rc-100.js بنجاح (0 أخطاء نحوية).');
-}
-
 const archiveDir = path.join(ROOT, '..', 'scripts_archive_backup');
-['part5a-coupons-and-forensic-audit-ui-v14.js'].forEach((f) => {
+if (!fs.existsSync(archiveDir)) {
+  try { fs.mkdirSync(archiveDir, { recursive: true }); } catch (_) {}
+}
+[
+  'purify-retail-no-etat104-and-rebuild-loyalty-customers-v20.js',
+  'fix-sale-items-bonus-qty-db-columns-v21.js',
+  'fix-loyalty-points-sync-and-atomic-math-v22.js',
+  'fix-loyalty-redemption-zero-balance-v23.js',
+  'part1-fix-extensible-and-clean-pos-ux-v24.js'
+].forEach((f) => {
   const fp = path.join(ROOT, f);
   if (fs.existsSync(fp)) {
     try { fs.renameSync(fp, path.join(archiveDir, f)); } catch (_) {}
   }
 });
 
-console.log('\n🎉🇩🇿 اكتملت الترقية المؤسسية الكبرى بجميع أشطارها (1 إلى 5B) بنجاح 100%! اضغط Ctrl+R داخل البرنامج الآن للاستمتاع بالوحدات المؤسسية الـ 6.');
+function syncLiveDatabaseV25() {
+  const candidates = new Set([
+    path.join(ROOT, 'data', 'gherbi_ai_pos.db'),
+    path.join(ROOT, 'gherbi_ai_pos.db')
+  ]);
+  const appData = process.env.APPDATA || '';
+  if (appData && fs.existsSync(appData)) {
+    try {
+      for (const d of fs.readdirSync(appData, { withFileTypes: true })) {
+        if (d.isDirectory() && /gherbi|electron/i.test(d.name)) {
+          candidates.add(path.join(appData, d.name, 'gherbi_ai_pos.db'));
+        }
+      }
+    } catch (_) {}
+  }
+
+  const files = Array.from(candidates).filter((p) => fs.existsSync(p));
+  return Promise.all(
+    files.map(
+      (dbFile) =>
+        new Promise((resolve) => {
+          const liveDb = new sqlite3.Database(dbFile, (err) => {
+            if (err) return resolve();
+            liveDb.serialize(() => {
+              liveDb.run('PRAGMA busy_timeout = 8000');
+              liveDb.run('ALTER TABLE sale_items ADD COLUMN bonus_qty REAL DEFAULT 0', () => {});
+              liveDb.run('ALTER TABLE sale_items ADD COLUMN pack_count REAL DEFAULT 0', () => {});
+              liveDb.run('ALTER TABLE sale_items ADD COLUMN pack_multiplier REAL DEFAULT 1', () => {});
+              liveDb.run('ALTER TABLE sale_items ADD COLUMN sold_m2 REAL DEFAULT 0', () => {});
+              liveDb.run("UPDATE customers SET name = REPLACE(name, '(زبون جملة)', '(زبون وفي)'), price_tier = 'retail' WHERE name LIKE '%زبون جملة%' OR price_tier = 'wholesale'", () => {});
+            });
+            liveDb.close(() => resolve());
+          });
+        })
+    )
+  );
+}
+
+// ============================================================================
+// 2. الدالة النظيفة لاسترجاع الصفحات، تصفير النقاط، وإعادة تنظيم شاشة المبيعات (#view-pos)
+// ============================================================================
+function installPart1RestorePagesFixExtensibleAndCleanPosV25() {
+  if (!window.App || !window.AppState) return;
+
+  var savedPtsPer100 = Number(localStorage.getItem('gherbi_loyalty_pts_per_100') || 1);
+  var savedPtValDzd = Number(localStorage.getItem('gherbi_loyalty_pt_val_dzd') || 2);
+  AppState.loyaltyPointsPer100Dzd = savedPtsPer100 > 0 ? savedPtsPer100 : 1;
+  AppState.loyaltyPointValueDzd = savedPtValDzd > 0 ? savedPtValDzd : 2;
+  AppState.posDiscountDrawerOpen = false;
+  AppState.posMoreToolsOpen = false;
+
+  // إظهار جميع أقسام القائمة الجانبية بشكل طبيعي وسليم
+  document.querySelectorAll('#sidebar-nav button[data-view]').forEach(function (btn) {
+    btn.style.display = '';
+    btn.classList.remove('opacity-75');
+  });
+
+  function getCleanLoyaltyTierBadge(points) {
+    var pts = Number(points || 0);
+    if (pts >= 200) return { label: '💎 VIP', cls: 'bg-sky-500 text-slate-950' };
+    if (pts >= 100) return { label: '🥇 Gold', cls: 'bg-amber-500 text-slate-950' };
+    if (pts >= 30) return { label: '🥈 Silver', cls: 'bg-slate-300 text-slate-900' };
+    return { label: '⭐ وفي', cls: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300' };
+  }
+
+  // --------------------------------------------------------------------------
+  // أ) مزامنة قاعدة نقاط الولاء مع جدول settings في قاعدة البيانات
+  // --------------------------------------------------------------------------
+  App.syncLoyaltyRulesToBackendSettings = async function () {
+    if (AppState.settings) {
+      AppState.settings.loyalty_points_per_100_dzd = String(AppState.loyaltyPointsPer100Dzd);
+      AppState.settings.loyalty_point_value_dzd = String(AppState.loyaltyPointValueDzd);
+    }
+    if (window.api && typeof window.api.updateSettings === 'function') {
+      await window.api.updateSettings({
+        loyalty_points_per_100_dzd: String(AppState.loyaltyPointsPer100Dzd),
+        loyalty_point_value_dzd: String(AppState.loyaltyPointValueDzd)
+      }).catch(function () {});
+    }
+  };
+
+  App.saveLoyaltyRuleSettingsFromCustomersPage = async function () {
+    var ptsPer100 = Math.max(0.1, parseFloat(document.getElementById('cfgLoyaltyPtsPer100Inp')?.value) || 1);
+    var dzdPerPt = Math.max(0.5, parseFloat(document.getElementById('cfgLoyaltyDzdPerPtInp')?.value) || 2);
+
+    AppState.loyaltyPointsPer100Dzd = ptsPer100;
+    AppState.loyaltyPointValueDzd = dzdPerPt;
+    localStorage.setItem('gherbi_loyalty_pts_per_100', String(ptsPer100));
+    localStorage.setItem('gherbi_loyalty_pt_val_dzd', String(dzdPerPt));
+
+    await this.syncLoyaltyRulesToBackendSettings();
+    if (AppState.currentView === 'customers' && typeof this.renderCustomersView === 'function') {
+      await this.renderCustomersView();
+    }
+    if (typeof showToast === 'function') {
+      showToast('✅ تم حفظ القاعدة: كل 100 د.ج = ' + ptsPer100 + ' نقطة | كل 1 نقطة = ' + dzdPerPt + ' د.ج خصم!', 'success');
+    }
+  };
+
+  // السماح بتحديد عدد مخصص من النقاط لإنقاص الفاتورة
+  App.promptCustomLoyaltyPointsRedeem = function () {
+    var cid = this.syncPosSelectedCustomerToCart();
+    if (!cid) return;
+    var cust = (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); });
+    if (!cust) return;
+
+    var availPts = Math.max(0, Number(cust.loyalty_points || 0));
+    var ptVal = Math.max(0.5, Number(AppState.loyaltyPointValueDzd || 2));
+    var cart = this.currentCart;
+    var rawSubtotal = (cart && cart.items ? cart.items : []).reduce(function (s, it) { return s + Number(it.subtotal || 0); }, 0);
+    if (rawSubtotal <= 0 || availPts <= 0) return;
+
+    var maxUsefulPts = Math.min(availPts, Math.ceil(rawSubtotal / ptVal));
+    var inputStr = window.prompt(
+      '🎁 استعمال نقاط الولاء لإنقاص فاتورة الزبون (' + cust.name + '):\n' +
+      '• رصيد النقاط المتاح: ' + availPts + ' نقطة (تساوي ' + (availPts * ptVal).toFixed(2) + ' د.ج)\n' +
+      '• قيمة كل 1 نقطة = ' + ptVal + ' د.ج خصم\n\n' +
+      'أدخل عدد النقاط المراد استعمالها:',
+      String(maxUsefulPts)
+    );
+    if (inputStr === null) return;
+
+    var chosenPts = Math.min(availPts, Math.max(1, parseInt(inputStr, 10) || 0));
+    var discountDzd = Math.min(rawSubtotal, Number((chosenPts * ptVal).toFixed(2)));
+
+    var baseDisc = Math.max(0, Number(cart.discount || 0) - Number(cart.redeemedLoyaltyDiscountDzd || 0));
+    cart.redeemedLoyaltyPoints = chosenPts;
+    cart.redeemedLoyaltyDiscountDzd = discountDzd;
+    cart.discount = Number((baseDisc + discountDzd).toFixed(2));
+
+    var discInp = document.getElementById('cartDiscountInput');
+    if (discInp) discInp.value = String(cart.discount);
+
+    this.recalcCart();
+    this.renderCartItems();
+    this.renderPosLoyaltySmartBar();
+    if (typeof showToast === 'function') {
+      showToast('🎁 تم إنقاص (-' + discountDzd.toFixed(2) + ' د.ج) باستعمال (' + chosenPts + ' نقطة ولاء)!', 'success');
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // ب) شريط الولاء المدمج الأنيق في السلة (#posLoyaltySmartBar)
+  //    يعرض النقاط المتبقية (0 نقطة فور الخصم) في سطر واحد مدمج بدون تكدس!
+  // --------------------------------------------------------------------------
+  App.renderPosLoyaltySmartBar = function () {
+    var custSelect = document.getElementById('posCustomerSelect');
+    if (!custSelect) return;
+
+    var tierSel = document.getElementById('posPriceTierSelect');
+    if (tierSel) {
+      tierSel.value = 'retail';
+      tierSel.style.display = 'none';
+    }
+
+    var parentBox = custSelect.closest('.p-3') || custSelect.parentElement.parentElement;
+    if (!parentBox) return;
+
+    var bar = document.getElementById('posLoyaltySmartBar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'posLoyaltySmartBar';
+      parentBox.appendChild(bar);
+    }
+
+    var cid = this.currentCart && this.currentCart.customerId
+      ? Number(this.currentCart.customerId)
+      : (custSelect.value ? Number(custSelect.value) : null);
+    var cust = cid ? (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); }) : null;
+
+    if (!cust) {
+      bar.innerHTML =
+        '<div class="mt-1 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 flex items-center justify-between text-[10.5px]">' +
+        '  <span class="text-slate-500 font-bold truncate">👤 زبون عابر — امسح بطاقة الوفاء (<code class="font-mono text-indigo-500">FID-...</code>) أو اختر زبوناً وفياً</span>' +
+        '  <button type="button" onclick="App.openPosVipLoyaltyDirectoryModal()" class="text-amber-600 dark:text-amber-400 font-black hover:underline shrink-0 mr-1">👑 الأوفياء</button>' +
+        '</div>';
+      return;
+    }
+
+    var cartItems = (this.currentCart && this.currentCart.items) || [];
+    var rawSubtotal = cartItems.reduce(function (s, it) { return s + Number(it.subtotal || 0); }, 0);
+    var curDiscount = Number((this.currentCart && this.currentCart.discount) || 0);
+    var netTotal = Math.max(0, rawSubtotal - curDiscount);
+
+    var originalPts = Math.max(0, Number(cust.loyalty_points || 0));
+    var alreadyRedeemedPts = Math.min(originalPts, Math.max(0, Number((this.currentCart && this.currentCart.redeemedLoyaltyPoints) || 0)));
+    var alreadyRedeemedDzd = Number((this.currentCart && this.currentCart.redeemedLoyaltyDiscountDzd) || 0);
+
+    // الرصيد المتبقي الفعلي بعد طرح النقاط المستعملة في السلة الحالية (يظهر 0 نقطة فوراً عند خصم كل النقاط!)
+    var remainingPts = Math.max(0, originalPts - alreadyRedeemedPts);
+    var ptValueDzd = Math.max(0.5, Number(AppState.loyaltyPointValueDzd || 2));
+    var remainingValueDzd = Number((remainingPts * ptValueDzd).toFixed(2));
+    var possibleDiscountNow = Math.min(rawSubtotal, Number((originalPts * ptValueDzd).toFixed(2)));
+
+    var ptsToEarn = alreadyRedeemedPts > 0
+      ? 0
+      : Math.floor((netTotal / 100) * Math.max(0.1, Number(AppState.loyaltyPointsPer100Dzd || 1)));
+
+    var tierInfo = getCleanLoyaltyTierBadge(originalPts);
+
+    bar.innerHTML =
+      '<div class="mt-1 px-2.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-1.5 text-[11px]">' +
+      '  <div class="flex items-center gap-1.5 min-w-0">' +
+      '    <span class="px-1.5 py-0.5 rounded text-[9.5px] font-black ' + tierInfo.cls + '">' + tierInfo.label + '</span>' +
+      '    <span class="font-mono font-black ' + (remainingPts === 0 && alreadyRedeemedPts > 0 ? 'text-rose-600' : 'text-amber-600 dark:text-amber-400') + '">⭐ ' + remainingPts + ' ن</span>' +
+      '    <span class="text-slate-400">|</span>' +
+      '    <span class="font-mono font-black text-emerald-600">' + remainingValueDzd.toFixed(0) + ' د.ج</span>' +
+      (alreadyRedeemedPts > 0
+        ? '<span class="px-1.5 py-0.5 rounded bg-emerald-600 text-white font-black text-[9.5px]">✅ خُصم -' + alreadyRedeemedDzd.toFixed(0) + ' د.ج (' + alreadyRedeemedPts + 'ن)</span>'
+        : ptsToEarn > 0
+          ? '<span class="text-[10px] font-mono font-bold text-emerald-600">(+' + ptsToEarn + 'ن بهذه الفاتورة)</span>'
+          : '') +
+      '  </div>' +
+      '  <div class="flex items-center gap-1 shrink-0">' +
+      (alreadyRedeemedPts > 0
+        ? '<button type="button" onclick="App.cancelLoyaltyRedemptionInCart()" class="px-2 py-0.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black text-[10px]">✕ إلغاء الخصم</button>'
+        : originalPts > 0 && rawSubtotal > 0
+          ? '<button type="button" onclick="App.redeemLoyaltyPointsInPosCart()" class="px-2.5 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] shadow-sm">🎁 خصم النقاط (-' + possibleDiscountNow.toFixed(0) + ' د.ج)</button>' +
+            '<button type="button" onclick="App.promptCustomLoyaltyPointsRedeem()" class="px-1.5 py-0.5 rounded-lg bg-indigo-600 text-white font-black text-[10px]" title="تحديد عدد النقاط">🔢</button>'
+          : '') +
+      '    <button type="button" onclick="App.openLoyaltyCardStudioModal(' + cust.id + ')" class="px-1.5 py-0.5 rounded-lg bg-slate-900 text-amber-400 font-black text-[10px]" title="بطاقة الوفاء">💳</button>' +
+      '  </div>' +
+      '</div>';
+  };
+
+  // --------------------------------------------------------------------------
+  // ج) تثبيت خصم النقاط وتصفيرها في قاعدة البيانات بعد البيع (بدون لمس window.api!)
+  // --------------------------------------------------------------------------
+  App.finalizeCustomerLoyaltyAfterSale = async function (customerId, origPtsBeforeSale, redeemedPts, saleTotalDzd) {
+    var cid = Number(customerId || 0);
+    if (!cid || !window.api || !window.api.updateCustomer) return;
+
+    var cust = (AppState.customers || []).find(function (c) { return Number(c.id) === cid; });
+    if (!cust && window.api.getCustomers) {
+      var list = (await window.api.getCustomers().catch(function () { return []; })) || [];
+      cust = list.find(function (c) { return Number(c.id) === cid; });
+    }
+    if (!cust) return;
+
+    var basePts = Math.max(0, Number(origPtsBeforeSale ?? cust.loyalty_points ?? 0));
+    var ptsRate = Math.max(0.1, Number(AppState.loyaltyPointsPer100Dzd || 1));
+    var earnedPts = redeemedPts > 0 ? 0 : Math.floor((Math.max(0, Number(saleTotalDzd || 0)) / 100) * ptsRate);
+
+    var targetFinalPts = redeemedPts > 0
+      ? Math.max(0, basePts - redeemedPts)
+      : (basePts + earnedPts);
+
+    cust.loyalty_points = targetFinalPts;
+    await window.api.updateCustomer(cid, Object.assign({}, cust, {
+      loyalty_points: targetFinalPts
+    })).catch(function () {});
+
+    if (window.api.getCustomers) {
+      AppState.customers = (await window.api.getCustomers().catch(function () { return []; })) || AppState.customers;
+    }
+  };
+
+  if (!AppState._safeLoyaltyHookV25) {
+    AppState._safeLoyaltyHookV25 = true;
+
+    var _origSubmitSaleV25 = App.submitSale.bind(App);
+    App.submitSale = async function (printMode) {
+      var cid = this.syncPosSelectedCustomerToCart();
+      var cart = this.currentCart || {};
+      var redeemedPts = Math.max(0, Number(cart.redeemedLoyaltyPoints || 0));
+      var totals = this.recalcCart();
+      var saleTotal = Number(totals.total || 0);
+
+      var custObj = cid ? (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); }) : null;
+      var origPtsBeforeSale = custObj ? Math.max(0, Number(custObj.loyalty_points || 0)) : 0;
+
+      // تصفير عداد السلة قبل الاستدعاء الداخلي لمنع الخصم المزدوج
+      cart.redeemedLoyaltyPoints = 0;
+      cart.redeemedLoyaltyDiscountDzd = 0;
+
+      await _origSubmitSaleV25(printMode);
+
+      if (cid) {
+        await this.finalizeCustomerLoyaltyAfterSale(cid, origPtsBeforeSale, redeemedPts, saleTotal);
+      }
+      this.renderPosView();
+    };
+
+    if (typeof App.instantConfirmAndCheckout === 'function') {
+      var _origInstantCheckoutV25 = App.instantConfirmAndCheckout.bind(App);
+      App.instantConfirmAndCheckout = async function (mode) {
+        var cid = this.syncPosSelectedCustomerToCart();
+        var cart = this.currentCart || {};
+        var redeemedPts = Math.max(0, Number(cart.redeemedLoyaltyPoints || 0));
+        var totals = this.recalcCart();
+        var saleTotal = Number(totals.total || 0);
+
+        var custObj = cid ? (AppState.customers || []).find(function (c) { return Number(c.id) === Number(cid); }) : null;
+        var origPtsBeforeSale = custObj ? Math.max(0, Number(custObj.loyalty_points || 0)) : 0;
+
+        cart.redeemedLoyaltyPoints = 0;
+        cart.redeemedLoyaltyDiscountDzd = 0;
+
+        await _origInstantCheckoutV25(mode);
+
+        if (cid) {
+          await this.finalizeCustomerLoyaltyAfterSale(cid, origPtsBeforeSale, redeemedPts, saleTotal);
+        }
+        this.renderPosView();
+      };
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // د) إعادة ترتيب وتنظيف شاشة المبيعات (#view-pos) لمنح الكاشير سلاسة ومساحة قصوى
+  // --------------------------------------------------------------------------
+  App.togglePosDiscountDrawer = function () {
+    AppState.posDiscountDrawerOpen = !AppState.posDiscountDrawerOpen;
+    this.organizePosWorkspaceErgonomics();
+  };
+
+  App.togglePosSecondaryToolsMenu = function () {
+    var menu = document.getElementById('posSecondaryToolsDropdown');
+    if (!menu) return;
+    menu.classList.toggle('hidden');
+  };
+
+  App.organizePosWorkspaceErgonomics = function () {
+    // 1. إخفاء أزرار QA المكررة من شاشة المبيعات
+    var dupQa1 = document.getElementById('btnPosHeaderQaBot');
+    if (dupQa1) dupQa1.style.display = 'none';
+    var dupQa2 = document.getElementById('btnRunPosAutoTest');
+    if (dupQa2) dupQa2.style.display = 'none';
+
+    // 2. تنظيم شريط أعلى السلة (#posAlgerianMasterBar) في سطر واحد نظيف بدون ازدحام
+    var masterBar = document.getElementById('posAlgerianMasterBar');
+    if (masterBar) {
+      masterBar.className = 'px-2.5 py-1 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-1 text-[10.5px] font-bold shrink-0 overflow-x-auto';
+      masterBar.innerHTML =
+        '<div class="flex items-center gap-1">' +
+        '  <button type="button" onclick="App.openPosRecentSalesModal()" class="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-blue-600 hover:border-blue-500 whitespace-nowrap">🧾 آخر المبيعات</button>' +
+        '  <button type="button" onclick="App.openLoyaltyCardStudioModal(null)" class="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 border border-amber-500/30 text-amber-600 dark:text-amber-400 whitespace-nowrap">💳 بطاقات الوفاء</button>' +
+        '  <button type="button" onclick="App.printCurrentCartExchangeTicket80mm()" class="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 border border-pink-500/30 text-pink-600 whitespace-nowrap">🎁 وصل تبديل</button>' +
+        '</div>' +
+        '<button type="button" onclick="App.openMobileCompanionModal()" class="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-emerald-600 whitespace-nowrap">📱 ربط الهاتف</button>';
+    }
+
+    // 3. جعل الفئات (#posCategoryPills) في شريط أفقي انسيابي لا يلتف إلى عدة أسطر مزدحمة
+    var pillsBox = document.getElementById('posCategoryPills');
+    if (pillsBox) {
+      pillsBox.className = 'flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar max-w-full';
+    }
+
+    // 4. طيّ الكوبون والتخفيض داخل درج ذكي لتوفير المساحة العمودية لقائمة السلع (#posCartItems)
+    var couponBar = document.getElementById('posCartCouponInputBar');
+    var discInput = document.getElementById('cartDiscountInput');
+    var discRow = discInput ? discInput.parentElement : null;
+    var subText = document.getElementById('cartSubtotalText');
+    var subRow = subText ? subText.parentElement : null;
+
+    var curDiscVal = parseFloat(discInput ? discInput.value : '0') || 0;
+    var shouldShowDrawer = Boolean(AppState.posDiscountDrawerOpen || curDiscVal > 0);
+
+    if (subRow && !document.getElementById('btnTogglePosDiscountDrawer')) {
+      subRow.insertAdjacentHTML(
+        'beforeend',
+        '<button id="btnTogglePosDiscountDrawer" type="button" onclick="App.togglePosDiscountDrawer()" class="px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 font-black text-[10.5px] hover:bg-indigo-600 hover:text-white transition">🎟️ تخفيض / كوبون ▾</button>'
+      );
+    }
+
+    var toggleBtn = document.getElementById('btnTogglePosDiscountDrawer');
+    if (toggleBtn) {
+      toggleBtn.textContent = shouldShowDrawer
+        ? (curDiscVal > 0 ? '🏷️ الخصم: -' + curDiscVal.toFixed(0) + ' د.ج ▴' : '🔼 إخفاء الكوبون والتخفيض')
+        : '🎟️ تخفيض / كوبون ▾';
+    }
+
+    if (couponBar) couponBar.style.display = shouldShowDrawer ? 'flex' : 'none';
+    if (discRow) discRow.style.display = shouldShowDrawer ? 'flex' : 'none';
+
+    if (subRow && subRow.parentElement) {
+      subRow.parentElement.className = 'p-2.5 bg-slate-50 dark:bg-slate-900/70 border-t border-slate-200 dark:border-slate-700 space-y-1.5 shrink-0';
+    }
+
+    // إخفاء زر "كمبدئية" من أسفل السلة في وضع التجزئة لتوسيع أزرار السلة
+    document.querySelectorAll('#posCartContainer button[onclick*="saveCartAsProforma"]').forEach(function (b) {
+      b.style.display = 'none';
+    });
+    var draftsGrid = document.querySelector('#posCartContainer .grid.grid-cols-5');
+    if (draftsGrid) {
+      draftsGrid.className = 'grid grid-cols-4 gap-1 text-[11px] font-bold';
+    }
+  };
+
+  var _prevRenderPosViewV25 = App.renderPosView.bind(App);
+  App.renderPosView = function () {
+    _prevRenderPosViewV25();
+    this.renderPosLoyaltySmartBar();
+    this.organizePosWorkspaceErgonomics();
+  };
+
+  var _prevRenderCartItemsV25 = App.renderCartItems.bind(App);
+  App.renderCartItems = function () {
+    _prevRenderCartItemsV25();
+    this.renderPosLoyaltySmartBar();
+    this.organizePosWorkspaceErgonomics();
+  };
+
+  setTimeout(async function () {
+    if (window.App) {
+      await window.App.syncLoyaltyRulesToBackendSettings();
+      if (window.api && window.api.getCustomers) {
+        AppState.customers = (await window.api.getCustomers().catch(function () { return []; })) || [];
+      }
+      if (AppState.currentView === 'pos') window.App.renderPosView();
+      else if (AppState.currentView === 'analytics') window.App.renderAnalyticsView();
+      else if (AppState.currentView === 'customers') window.App.renderCustomersView();
+    }
+  }, 200);
+}
+
+syncLiveDatabaseV25().then(() => {
+  const rcPath = path.join(ROOT, 'renderer-rc-100.js');
+  if (fs.existsSync(rcPath)) {
+    let rc = fs.readFileSync(rcPath, 'utf8').replace(/\r\n/g, '\n');
+
+    // قص وإزالة البلوكات المعطوبة (V20, V22, V23, V24) لإرجاع #view-analytics و #view-pos إلى حالتهما السليمة
+    const cutMarkers = [
+      '// [PURE RETAIL NO ETAT104 & VIP LOYALTY CUSTOMERS REBUILD V20]',
+      '// [EXACT LOYALTY POINTS SYNC & ATOMIC MATH FIX V22]',
+      '// [LOYALTY REDEMPTION ZERO BALANCE FIX V23]',
+      '// [PART 1/2: FIX EXTENSIBLE ERROR, ZERO LOYALTY & CLEAN POS UX V24]',
+      '// [PART 1/2: RESTORE PAGES, FIX EXTENSIBLE & CLEAN POS UX V25]'
+    ];
+    for (const m of cutMarkers) {
+      const idx = rc.indexOf(m);
+      if (idx !== -1) {
+        rc = rc.slice(0, idx).trimEnd();
+      }
+    }
+
+    const block =
+      '\n\n// [PART 1/2: RESTORE PAGES, FIX EXTENSIBLE & CLEAN POS UX V25]\n(' +
+      installPart1RestorePagesFixExtensibleAndCleanPosV25.toString() +
+      ')();\n';
+
+    const finalRc = rc.trimEnd() + block;
+    new vm.Script(finalRc, { filename: 'renderer-rc-100.js' });
+    fs.writeFileSync(rcPath, finalRc, 'utf8');
+    console.log('✅ تم استرجاع الصفحات السليمة (#view-pos & #view-analytics) وحقن [الشطر 1/2: إصلاح خطأ contextBridge + تصفير النقاط + تنظيف شاشة المبيعات] بنجاح (0 أخطاء نحوية).');
+  }
+
+  console.log('\n🎉 اكتمل تنفيذ [الشطر الأول 1/2] بنجاح! اضغط Ctrl+R داخل البرنامج للتأكد من عودة كل الصفحات سليمة واختفاء الخطأ، ثم اكتب لي: "إلى الشطر الثاني (2/2)" لإضافة زر ومحرّك الواجهات الـ 4 الاحترافية لشاشة المبيعات.');
+});
