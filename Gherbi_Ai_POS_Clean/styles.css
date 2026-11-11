@@ -652,59 +652,6 @@ body.gherbi-resizing-active .gherbi-splitter-handle::after {
   box-shadow: 0 0 12px rgba(37, 99, 235, 0.45) !important;
 }
 
-/* 2. خيار تحويل القائمة الجانبية إلى شريط علوي أفقي (Top Horizontal Navbar Mode) */
-body.gherbi-top-nav-mode #app-container {
-  flex-direction: column !important;
-}
-body.gherbi-top-nav-mode #sidebar {
-  width: 100vw !important;
-  height: 50px !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  padding: 0 0.75rem !important;
-  border-bottom: 1px solid #334155 !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-}
-body.gherbi-top-nav-mode #sidebar > div:first-child {
-  padding: 0.25rem 0.5rem !important;
-  border-bottom: none !important;
-  flex-shrink: 0 !important;
-}
-body.gherbi-top-nav-mode #sidebar > div:first-child p,
-body.gherbi-top-nav-mode #sidebar > div:last-child {
-  display: none !important;
-}
-body.gherbi-top-nav-mode #sidebar-nav {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  gap: 0.25rem !important;
-  overflow-x: auto !important;
-  padding: 0.25rem !important;
-  flex: 1 !important;
-  scrollbar-width: none !important;
-}
-body.gherbi-top-nav-mode #sidebar-nav::-webkit-scrollbar {
-  display: none !important;
-}
-body.gherbi-top-nav-mode #sidebar-nav > div.text-\[10px\],
-body.gherbi-top-nav-mode #sidebar-nav .uppercase {
-  display: none !important;
-}
-body.gherbi-top-nav-mode #sidebar-nav .nav-btn {
-  width: auto !important;
-  white-space: nowrap !important;
-  padding: 0.35rem 0.65rem !important;
-  font-size: 11.5px !important;
-  border-radius: 0.6rem !important;
-  flex-shrink: 0 !important;
-}
-body.gherbi-top-nav-mode #view-pos .pos-layout,
-body.gherbi-top-nav-mode #posMainGridContainer.pos-layout {
-  height: calc(100vh - var(--header-height) - 50px - 1rem) !important;
-}
-
 /* 3. تعظيم مساحة مستطيل المشتريات (#posCartItems) وتقليص الهوامش الزائدة */
 #posCartContainer,
 #view-pos .cart-container {
@@ -826,4 +773,500 @@ body.gherbi-top-nav-mode #posMainGridContainer.pos-layout {
 .cart-row-below-cost {
   border: 1.5px solid #e11d48 !important;
   background: rgba(244, 63, 94, 0.08) !important;
+}
+
+
+/* ==========================================================================
+   [GHERBI.AI RETAIL V2 — SCROLL FIX, TOP RIBBON, CHANGE CALC & RETAIL CLIENT]
+   ========================================================================== */
+
+/* 1. إصلاح جذري للتمرير الرأسي (Scroll) في جميع الصفحات غير شاشة الكاشير */
+#app-container {
+  height: 100vh !important;
+  overflow: hidden !important;
+}
+
+#main-content {
+  flex: 1 1 0% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: 100vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.view-section.active:not(#view-pos) {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  max-height: calc(100vh - var(--header-height)) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-bottom: 3.5rem !important;
+}
+
+/* 2. شريط التنقل العلوي الاحترافي (Enterprise Top Ribbon Mode) بدون تشويه القائمة */
+body.gherbi-top-nav-mode #sidebar {
+  display: none !important;
+}
+
+#gherbiEnterpriseTopNav {
+  display: none;
+  background: linear-gradient(90deg, #0f172a 0%, #1e293b 100%);
+  border-bottom: 1px solid #334155;
+  padding: 0.3rem 0.75rem;
+  align-items: center;
+  gap: 0.35rem;
+  overflow-x: auto;
+  flex-shrink: 0;
+  z-index: 35;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
+}
+
+body.gherbi-top-nav-mode #gherbiEnterpriseTopNav {
+  display: flex !important;
+}
+
+.gherbi-topnav-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.32rem 0.7rem;
+  border-radius: 0.55rem;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #cbd5e1;
+  white-space: nowrap;
+  transition: all 0.14s ease;
+  border: 1px solid transparent;
+}
+.gherbi-topnav-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+.gherbi-topnav-item.active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #3b82f6;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+}
+
+body.gherbi-top-nav-mode .view-section.active:not(#view-pos) {
+  max-height: calc(100vh - var(--header-height) - 44px) !important;
+}
+body.gherbi-top-nav-mode #view-pos .pos-layout,
+body.gherbi-top-nav-mode #posMainGridContainer.pos-layout {
+  height: calc(100vh - var(--header-height) - 44px - 0.8rem) !important;
+}
+
+/* 3. حاسبة الصرف الفورية المدمجة في السلة (Inline Cash & Change Calculator) */
+.gherbi-inline-change-box {
+  padding: 0.38rem 0.55rem;
+  border-radius: 0.65rem;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.09) 0%, rgba(37, 99, 235, 0.07) 100%);
+  border: 1.5px solid rgba(16, 185, 129, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  margin-bottom: 0.25rem;
+}
+
+.gherbi-banknote-pill {
+  padding: 0.12rem 0.42rem;
+  border-radius: 0.38rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  font-family: var(--font-numbers);
+  font-size: 10px;
+  font-weight: 900;
+  color: var(--text-main);
+  transition: all 0.12s ease;
+}
+.gherbi-banknote-pill:hover {
+  background: #10b981;
+  color: #ffffff;
+  border-color: #059669;
+}
+
+/* 4. نافذة الزبون الاحترافية للتجزئة (SDS Structured Retail Standard) */
+.sds-retail-fieldset {
+  border: 1.5px solid var(--border-color);
+  border-radius: 0.85rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--bg-surface);
+}
+.sds-retail-legend {
+  padding: 0 0.5rem;
+  font-size: 12px;
+  font-weight: 900;
+  color: #059669;
+}
+html.dark .sds-retail-legend {
+  color: #34d399;
+}
+.sds-retail-tab-btn {
+  padding: 0.4rem 0.85rem;
+  border-radius: 0.5rem 0.5rem 0 0;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  border-bottom: none;
+  transition: all 0.12s ease;
+}
+.sds-retail-tab-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+
+/* ==========================================================================
+   [GHERBI.AI RETAIL V3 — TOP NAV WHITE-SCREEN FIX, MODAL STACK & PACK SYSTEM]
+   ========================================================================== */
+
+/* 1. إصلاح جذري للشاشة البيضاء عند التبديل إلى القائمة العلوية */
+#app-container {
+  display: flex !important;
+  flex-direction: row !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  overflow: hidden !important;
+}
+
+body.gherbi-top-nav-mode #sidebar {
+  display: none !important;
+}
+
+#main-content {
+  flex: 1 1 0% !important;
+  width: 100% !important;
+  height: 100vh !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  background-color: var(--bg-main) !important;
+}
+
+#gherbiEnterpriseTopNav {
+  display: none;
+  width: 100% !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  background: linear-gradient(90deg, #0f172a 0%, #1e293b 100%) !important;
+  border-bottom: 1px solid #334155 !important;
+  padding: 0 0.75rem !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+  overflow-x: auto !important;
+  flex-shrink: 0 !important;
+  z-index: 40 !important;
+}
+
+body.gherbi-top-nav-mode #gherbiEnterpriseTopNav {
+  display: flex !important;
+}
+
+/* ضمان ظهور جميع الصفحات بكامل الارتفاع مع تمرير سلس دون شاشة بيضاء */
+.view-section {
+  display: none;
+}
+.view-section.active:not(#view-pos) {
+  display: block !important;
+  flex: 1 1 0% !important;
+  width: 100% !important;
+  height: calc(100vh - var(--header-height)) !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 1.25rem 1.5rem 4rem 1.5rem !important;
+}
+body.gherbi-top-nav-mode .view-section.active:not(#view-pos) {
+  height: calc(100vh - var(--header-height) - 44px) !important;
+}
+
+#view-pos.view-section.active {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 0% !important;
+  width: 100% !important;
+  height: calc(100vh - var(--header-height)) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+body.gherbi-top-nav-mode #view-pos.view-section.active {
+  height: calc(100vh - var(--header-height) - 44px) !important;
+}
+
+/* 2. إخفاء دائم ونهائي لأي صندوق CCP / BaridiMob أو جملة داخل نافذة الزبون */
+#customerModalCcpAlgerieSection,
+#customerModal [id*="Ccp"],
+#customerModal [id*="ccp"] {
+  display: none !important;
+}
+
+/* 3. تصميم أزرار التبديل بين (البيع بالقطعة / البيع بالكارطون أو الفاردو) في السلة */
+.gherbi-pack-switch-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 0.45rem;
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  border: 1px solid transparent;
+}
+.gherbi-pack-switch-pill.mode-unit {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4f46e5;
+  border-color: rgba(99, 102, 241, 0.3);
+}
+.gherbi-pack-switch-pill.mode-pack {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #ffffff;
+  border-color: #b45309;
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.3);
+}
+html.dark .gherbi-pack-switch-pill.mode-unit {
+  color: #818cf8;
+}
+
+/* شريط اللمس السريع المثبت أعلى المنتجات (F7 Pinned Strip) */
+.gherbi-pinned-f7-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding: 0.25rem 0.1rem;
+  scrollbar-width: none;
+}
+.gherbi-pinned-f7-strip::-webkit-scrollbar {
+  display: none;
+}
+.gherbi-f7-quick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  transition: all 0.14s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.gherbi-f7-quick-chip:hover {
+  background: #10b981;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+
+/* ==========================================================================
+   [GHERBI.AI RETAIL V3 MASTER — Z-INDEX STACK, TOP RIBBON, PINNED F7 & CARTON]
+   ========================================================================== */
+
+/* 1. ترتيب طبقات النوافذ المنبثقة (Dynamic Modal Z-Index Hierarchy) */
+#smartLoyaltyCustomerModal.modal-overlay {
+  z-index: 10040 !important;
+}
+#posPriceCheckerModal.modal-overlay,
+#quickTouchPadModal.modal-overlay,
+#productModal.modal-overlay {
+  z-index: 10075 !important;
+}
+#customerModal.modal-overlay {
+  z-index: 10095 !important;
+}
+#loyaltyPinVerifyModal.modal-overlay {
+  z-index: 10150 !important;
+}
+
+/* إخفاء قسري لأي مربع CCP / BaridiMob داخل نافذة الزبون */
+#customerModal [id*="Ccp"],
+#customerModal [id*="Rip"],
+#customerModal #customerCcpBaridimobSection,
+#customerModal .ccp-baridimob-box {
+  display: none !important;
+}
+
+/* 2. إصلاح جذري للشريط العلوي (Top Navigation Bar) ومنع الشاشة البيضاء */
+body.gherbi-top-nav-mode #sidebar {
+  display: none !important;
+}
+body.gherbi-top-nav-mode #app-container {
+  display: flex !important;
+  flex-direction: row !important;
+  height: 100vh !important;
+  width: 100vw !important;
+  overflow: hidden !important;
+}
+body.gherbi-top-nav-mode #main-content {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  height: 100vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+#gherbiEnterpriseTopNav {
+  display: none;
+  width: 100%;
+  min-height: 44px;
+  max-height: 44px;
+  background: linear-gradient(90deg, #0f172a 0%, #1e293b 100%);
+  border-bottom: 1px solid #334155;
+  padding: 0.25rem 0.65rem;
+  align-items: center;
+  gap: 0.35rem;
+  overflow-x: auto;
+  flex-shrink: 0;
+  z-index: 45;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.16);
+}
+body.gherbi-top-nav-mode #gherbiEnterpriseTopNav {
+  display: flex !important;
+}
+body.gherbi-top-nav-mode #view-pos.view-section.active {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 0% !important;
+  height: calc(100vh - var(--header-height) - 44px) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+body.gherbi-top-nav-mode .view-section.active:not(#view-pos) {
+  display: block !important;
+  flex: 1 1 0% !important;
+  height: calc(100vh - var(--header-height) - 44px) !important;
+  max-height: calc(100vh - var(--header-height) - 44px) !important;
+  overflow-y: auto !important;
+  padding: 1rem 1.25rem 4rem 1.25rem !important;
+}
+
+/* 3. شريط الأزرار السريعة المثبت في شاشة البيع (Pinned Quick-Tap Dock) */
+.gherbi-pinned-f7-dock {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding: 0.28rem 0.45rem;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.09) 0%, rgba(37, 99, 235, 0.06) 100%);
+  border: 1px dashed rgba(16, 185, 129, 0.42);
+  border-radius: 0.65rem;
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+.gherbi-pinned-f7-dock::-webkit-scrollbar {
+  display: none;
+}
+.gherbi-pinned-f7-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.22rem 0.6rem;
+  border-radius: 0.5rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.gherbi-pinned-f7-chip:hover {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  transform: translateY(-1px);
+}
+.gherbi-pinned-f7-chip:active {
+  transform: scale(0.96);
+}
+
+
+/* ==========================================================================
+   [GHERBI.AI RETAIL V4 ENTERPRISE — UNIFIED F7, CLEAN PRODUCT MODAL & DIALOGS]
+   ========================================================================== */
+
+/* 1. إخفاء قسري ونهائي لشريط اللمس القديم المكرر (#posQuickTouchStrip) */
+#posQuickTouchStrip,
+.pos-quick-touch-strip-legacy {
+  display: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+}
+
+/* 2. ترتيب طبقات النوافذ المنبثقة المخصصة (Custom Modals Z-Index Stack) */
+#changeManagerPinModal.modal-overlay,
+#gherbiAsyncPromptModal.modal-overlay,
+#quickBtnEditModal.modal-overlay {
+  z-index: 10250 !important;
+}
+
+/* 3. تنظيف نافذة إضافة/تعديل المنتج (#productModal) لبيئة التجزئة */
+#productModal:not(.show-advanced-manufacturing-tabs) #prodTabBtn4,
+#productModal:not(.show-advanced-manufacturing-tabs) #prodTabBtn5,
+#productModal:not(.show-advanced-manufacturing-tabs) #prodTab4,
+#productModal:not(.show-advanced-manufacturing-tabs) #prodTab5 {
+  display: none !important;
+}
+
+/* إخفاء شرائح أسعار نصف الجملة القديمة وحقل هامش الربح المكرر */
+#productModal #prodPriceTiersSection,
+#productModal [onclick*="addPriceTierRow"] {
+  display: none !important;
+}
+
+/* تصميم بطاقات مركز اللمس السريع (F7) المطورة */
+.v4-f7-tile {
+  position: relative;
+  border-radius: 0.9rem;
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-surface);
+  padding: 0.6rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.35rem;
+  transition: all 0.14s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  user-select: none;
+}
+.v4-f7-tile:hover {
+  border-color: #10b981;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px -6px rgba(16, 185, 129, 0.22);
+}
+.v4-f7-tile:active {
+  transform: scale(0.97);
+}
+.v4-f7-tile.tile-warehouse-linked {
+  border-right: 4px solid #2563eb;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.04) 0%, var(--bg-surface) 100%);
+}
+
+/* تمييز بصري لحقل الباقي للزبون عند التحديث اللحظي */
+#gherbiInlineChangeResult {
+  transition: color 0.1s ease, transform 0.1s ease;
+}
+#gherbiInlineChangeResult.change-pulse {
+  transform: scale(1.06);
+}
+
+
+/* === [GHERBI POS V4 — STAGE 1: PIN MODAL, NO DUPLICATE F7 & LIVE CHANGE] === */
+#posQuickTouchStrip {
+  display: none !important;
+}
+#changeManagerPinModal.modal-overlay,
+#gherbiCustomInputModal.modal-overlay {
+  z-index: 10250 !important;
 }

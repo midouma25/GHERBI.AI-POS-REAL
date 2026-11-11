@@ -1717,3 +1717,47 @@ try {
 }
 
 module.exports = db;
+
+/* [RETAIL_LOYALTY_SAVE_PATCH] */
+(function patchCustomerLoyaltySave() {
+  try {
+    const origUpdateCustomer = module.exports.updateCustomer;
+    if (typeof origUpdateCustomer === 'function') {
+      module.exports.updateCustomer = function (idOrObj, maybeData, callback) {
+        let id = idOrObj;
+        let data = maybeData || {};
+        if (typeof idOrObj === 'object' && idOrObj !== null) {
+          id = idOrObj.id;
+          data = idOrObj;
+          callback = maybeData;
+        }
+        const res = origUpdateCustomer.apply(this, arguments);
+        if (id && data && data.loyalty_points !== undefined && data.loyalty_points !== null) {
+          const pts = Math.max(0, parseInt(data.loyalty_points, 10) || 0);
+          if (typeof db !== 'undefined' && db && typeof db.run === 'function') {
+            db.run('UPDATE customers SET loyalty_points = ? WHERE id = ?', [pts, Number(id)], () => {});
+          }
+        }
+        return res;
+      };
+    }
+
+    const origAddCustomer = module.exports.addCustomer;
+    if (typeof origAddCustomer === 'function') {
+      module.exports.addCustomer = function (data, callback) {
+        const res = origAddCustomer.apply(this, arguments);
+        if (res && typeof res.then === 'function' && data && data.loyalty_points !== undefined) {
+          res.then((created) => {
+            const newId = created && (created.id || created.lastID);
+            if (newId && typeof db !== 'undefined' && db && typeof db.run === 'function') {
+              const pts = Math.max(0, parseInt(data.loyalty_points, 10) || 0);
+              db.run('UPDATE customers SET loyalty_points = ? WHERE id = ?', [pts, Number(newId)], () => {});
+            }
+          }).catch(() => {});
+        }
+        return res;
+      };
+    }
+  } catch (_) {}
+})();
+

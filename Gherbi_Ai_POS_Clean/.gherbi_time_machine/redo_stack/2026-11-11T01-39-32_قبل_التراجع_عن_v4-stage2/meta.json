@@ -1,0 +1,28 @@
+{
+  "label": "قبل_التراجع_عن_v4-stage2",
+  "createdAt": "11‏/11‏/2026، 2:39:32 ص",
+  "timestamp": 1794361172435,
+  "activeLayers": [
+    "الشطر 2 (تطوير لوحة اللمس F7 وربط المخزن + محرك فارق النقاط Delta)",
+    "الشطر 1 (نافذة كود المدير السري PIN + توحيد شريط F7 + الصرف اللحظي)",
+    "الإصدار 3 (طبقات النوافذ + قفل النقاط بالكود + الكارطون بالتجزئة)",
+    "الإصدار 2 (حاسبة الصرف + نافذة زبون التجزئة + شريط التنقل العلوي)",
+    "الإصدار 1 (التحجيم الحر بالسحب + زر الوفاء الذكي F8/F9 + تحذير التكلفة F12)"
+  ],
+  "files": [
+    "index.html",
+    "styles.css",
+    "main.js",
+    "database.js",
+    "db-write-queue.js",
+    "renderer.js",
+    "renderer-rc-100.js",
+    "gherbi-v4-stage2.js",
+    "gherbi-v4-stage1.js",
+    "gherbi-retail-v4-ultimate.js",
+    "gherbi-retail-v3-master.js",
+    "gherbi-retail-v3-masterpiece.js",
+    "gherbi-retail-v2-enhancements.js",
+    "gherbi-retail-master-upgrade.js"
+  ]
+}

@@ -257,79 +257,45 @@
       <!-- =================================================================
            1. شاشة المبيعات والكاشير المطورة (POS View with Resizer & Edit Mode)
            ================================================================= -->
-      <section id="view-pos" class="view-section active">
-        <div id="posMainGridContainer" class="pos-layout" style="grid-template-columns: minmax(0, 1fr) 6px 410px; gap: 0.5rem;">
-          <!-- يمين: الفئات، أزرار التحكم، وشبكة المنتجات مع الترقيم -->
-          <div class="flex flex-col gap-2.5 min-h-0 min-w-0 overflow-hidden pl-1">
+                  <section id="view-pos" class="view-section active">
+        <div class="pos-layout">
+          <!-- يمين: الفئات وشبكة المنتجات -->
+          <div class="flex flex-col gap-3 min-h-0">
+            <!-- شريط الأزرار السريعة والفئات -->
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div id="posCategoryPills" class="flex flex-wrap items-center gap-1.5"></div>
-              <div class="flex flex-wrap items-center gap-1.5">
-                <button onclick="App.openModal('posCustomizeModal')" class="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-1">
-                  <span class="material-symbols-rounded icon-sm">tune</span>
-                  <span>تخصيص</span>
-                </button>
-                <button onclick="App.openPosAdvancedFilterModal()" class="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-1">
-                  <span class="material-symbols-rounded icon-sm">filter_alt</span>
-                  <span>فلتر</span>
-                </button>
-                <button onclick="App.openPosQuickProduceModal()" class="px-2.5 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-xs font-bold flex items-center gap-1">
-                  <span class="material-symbols-rounded icon-sm">precision_manufacturing</span>
-                  <span>إنتاج فوري</span>
-                </button>
-                <button onclick="App.openFreeItemModal()" class="px-2.5 py-1.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-xs font-bold flex items-center gap-1">
+              <div class="flex items-center gap-1.5">
+                <button onclick="App.openFreeItemModal()" class="px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-xs font-bold flex items-center gap-1">
                   <span class="material-symbols-rounded icon-sm">add_shopping_cart</span>
                   <span>منتج حر (F8)</span>
                 </button>
-                <button onclick="App.toggleReturnMode()" id="btnReturnMode" class="px-2.5 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-xs font-bold flex items-center gap-1">
+                <button onclick="App.toggleReturnMode()" id="btnReturnMode" class="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-xs font-bold flex items-center gap-1">
                   <span class="material-symbols-rounded icon-sm">keyboard_return</span>
                   <span>إرجاع</span>
                 </button>
-                <button id="btnPosHeaderQaBot" onclick="App.runAutoTest_PosPage()" title="تشغيل الفحص الآلي الشامل للصفحة (Ctrl+Shift+T)" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black flex items-center gap-1 shadow-md">
-                  <span>🤖 فحص آلي (QA)</span>
-                </button>
-                <button onclick="App.openProductModal()" class="px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold flex items-center gap-1 shadow">
+                <button onclick="App.openProductModal()" class="px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold flex items-center gap-1">
                   <span class="material-symbols-rounded icon-sm">add</span>
                   <span>إضافة منتج</span>
                 </button>
               </div>
             </div>
 
+            <!-- شبكة بطاقات المنتجات -->
             <div id="posProductsGrid" class="products-grid flex-1 overflow-y-auto pr-1"></div>
-
-            <div id="posPaginationBar" class="flex items-center justify-between px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold">
-              <button onclick="App.changePosPage(-1)" class="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-blue-600 hover:text-white">السابق</button>
-              <span id="posPageInfoText" class="text-slate-500">صفحة 1 من 1</span>
-              <button onclick="App.changePosPage(1)" class="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-blue-600 hover:text-white">التالي</button>
-            </div>
           </div>
 
-          <!-- الفاصل القابل للسحب لتغيير عرض السلة (#posCartResizer) -->
-          <div id="posCartResizer" title="اسحب لتكبير أو تصغير عرض السلة"
-            class="w-1.5 rounded-full bg-slate-200 dark:bg-slate-700 hover:bg-blue-500 cursor-col-resize transition-colors"></div>
-
           <!-- يسار: سلة المشتريات والحسابات -->
-          <div id="posCartContainer" class="cart-container">
-            <!-- شريط تنبيه وضع تعديل فاتورة سابقة -->
-            <div id="posEditSaleBanner" class="hidden px-3 py-2 bg-amber-500 text-white text-xs font-black flex items-center justify-between">
-              <span id="posEditSaleBannerText">وضع تعديل الفاتورة #</span>
-              <button onclick="App.cancelEditSaleMode()" class="px-2 py-0.5 rounded bg-black/25 hover:bg-black/40 text-[11px]">إلغاء التعديل ✕</button>
-            </div>
-
+          <div class="cart-container">
+            <!-- تبويبات تعدد السلات واختيار الزبون ونوع السعر -->
             <div class="p-3 border-b border-slate-200 dark:border-slate-700 space-y-2.5">
               <div class="flex items-center justify-between gap-2">
                 <div id="multiCartTabs" class="flex items-center gap-1 overflow-x-auto"></div>
-                <div class="flex items-center gap-1">
-                  <button onclick="App.openRecentSalesModal()" class="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-bold flex items-center gap-1" title="آخر مبيعات الكاشير">
-                    <span class="material-symbols-rounded icon-sm">history</span>
-                    <span>سجل</span>
-                  </button>
-                  <button onclick="App.newCartTab()" class="px-2 py-1 rounded-lg bg-blue-600/10 text-blue-600 text-xs font-bold">+ سلة</button>
-                </div>
+                <button onclick="App.newCartTab()" class="px-2 py-1 rounded-lg bg-blue-600/10 text-blue-600 text-xs font-bold">+ سلة</button>
               </div>
 
-              <div class="flex gap-1.5">
-                <select id="posCustomerSelect" class="flex-1 px-2.5 py-2 rounded-xl text-xs font-bold"></select>
-                <button onclick="App.openCustomerModal()" class="p-2 rounded-xl bg-emerald-600/15 text-emerald-600" title="إضافة زبون جديد">
+              <div class="flex gap-2">
+                <select id="posCustomerSelect" class="flex-1 px-3 py-2 rounded-xl text-xs font-bold"></select>
+                <button onclick="App.openCustomerModal()" class="p-2 rounded-xl bg-emerald-600/15 text-emerald-600" title="زبون جديد">
                   <span class="material-symbols-rounded icon-sm">person_add</span>
                 </button>
                 <select id="posPriceTierSelect" onchange="App.setCartPriceTier(this.value)" class="w-28 px-2 py-2 rounded-xl text-xs font-bold">
@@ -339,42 +305,38 @@
               </div>
             </div>
 
+            <!-- قائمة عناصر السلة -->
             <div id="posCartItems" class="cart-items p-3 space-y-2"></div>
 
-            <div class="p-3 bg-slate-50 dark:bg-slate-900/70 border-t border-slate-200 dark:border-slate-700 space-y-2.5">
+            <!-- ملخص المجموع وأزرار الدفع -->
+            <div class="p-3.5 bg-slate-50 dark:bg-slate-900/70 border-t border-slate-200 dark:border-slate-700 space-y-3">
               <div class="flex items-center justify-between text-xs">
-                <span class="text-slate-500 font-bold">المجموع الفرعي (<span id="cartItemsCountText">0</span> صنف):</span>
+                <span class="text-slate-500 font-bold">المجموع الفرعي:</span>
                 <span id="cartSubtotalText" class="font-mono font-bold">0.00 د.ج</span>
               </div>
               <div class="flex items-center justify-between text-xs">
-                <button onclick="App.openCartModifierModal()" class="text-blue-600 hover:underline font-bold flex items-center gap-1">
-                  <span class="material-symbols-rounded icon-sm">calculate</span>
-                  <span>التخفيض (% أو مبلغ):</span>
-                </button>
+                <span class="text-slate-500 font-bold">التخفيض:</span>
                 <input id="cartDiscountInput" type="number" step="any" value="0"
                   oninput="App.recalcCart()"
                   class="w-28 px-2 py-1 rounded-lg text-center font-mono font-bold">
               </div>
               <div class="flex items-center justify-between pt-1 border-t border-slate-200 dark:border-slate-700">
                 <span class="font-black text-sm">الإجمالي المستحق:</span>
-                <div class="text-left">
-                  <span id="cartTotalText" class="text-2xl font-black font-mono text-blue-600 dark:text-blue-400 block">0.00 د.ج</span>
-                  <span id="cartTotalCentimeBadge" class="text-[11px] font-bold text-amber-600 dark:text-amber-400 block">🇩🇿 بالتداول الجزائري: 0 سنتيم</span>
-                </div>
+                <span id="cartTotalText" class="text-2xl font-black font-mono text-blue-600 dark:text-blue-400">0.00 د.ج</span>
               </div>
 
-              <div class="grid grid-cols-5 gap-1 text-[11px] font-bold">
-                <button onclick="App.clearCurrentCart()" class="py-2 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500/20">إلغاء (Shift+F4)</button>
+              <!-- أزرار التحكم السريعة في السلة -->
+              <div class="grid grid-cols-4 gap-1.5 text-[11px] font-bold">
+                <button onclick="App.clearCurrentCart()" class="py-2 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500/20">إلغاء (F4)</button>
                 <button onclick="App.holdCurrentCart()" class="py-2 rounded-xl bg-amber-500/10 text-amber-600 hover:bg-amber-500/20">تعليق (F2)</button>
                 <button onclick="App.openDraftsModal()" class="py-2 rounded-xl bg-slate-200 dark:bg-slate-800">مسودات (<span id="draftsCountBadge">0</span>)</button>
-                <button onclick="App.saveCartAsProforma()" class="py-2 rounded-xl bg-indigo-500/10 text-indigo-600 hover:bg-indigo-500/20">كمبدئية</button>
-                <button onclick="App.openOrderModalFromCart()" class="py-2 rounded-xl bg-teal-500/10 text-teal-600 hover:bg-teal-500/20">كطلبية</button>
+                <button onclick="App.saveCartAsProforma()" class="py-2 rounded-xl bg-indigo-500/10 text-indigo-600">كمبدئية</button>
               </div>
 
               <button onclick="App.openCheckoutModal()"
                 class="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black text-base flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25">
                 <span class="material-symbols-rounded">payments</span>
-                <span id="btnCheckoutMainText">تسديد الفاتورة (F1)</span>
+                <span>تسديد الفاتورة (F1)</span>
               </button>
             </div>
           </div>
@@ -1451,7 +1413,7 @@
     </div>
   </div>
 
-  <!-- 31. نافذة منتج حر (F8) + وصفة تصنيع + تسجيل الدخول -->
+  <!-- 31. نافذة منتج حر (Alt+F) + وصفة تصنيع + تسجيل الدخول -->
   <div id="freeItemModal" class="modal-overlay">
     <div class="modal-content w-full max-w-sm p-6 space-y-4">
       <h3 class="text-lg font-black">إضافة منتج حر للسلة (F8)</h3>
@@ -1896,5 +1858,9 @@
   <script src="./renderer.js"></script>
   <script src="./renderer-rc-100.js"></script>
   <script src="./gherbi-retail-master-upgrade.js"></script>
+  <script src="./gherbi-retail-v2-enhancements.js"></script>
+  <script src="./gherbi-retail-v3-master.js"></script>
+  <script src="./gherbi-retail-v4-enterprise.js"></script>
+  <script src="./gherbi-stage1-core.js"></script>
 </body>
 </html>

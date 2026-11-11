@@ -1,252 +1,375 @@
-/**
- * db-write-queue.js
- * محرك طابور الكتابة الذري المتسلسل لقاعدة بيانات SQLite3
- * يمنع أخطاء SQLITE_BUSY ويدعم المعاملات المتداخلة عبر SAVEPOINT
- */
-
 'use strict';
 
-const WRITE_SQL_PATTERN = /^\s*(INSERT|UPDATE|DELETE|REPLACE|CREATE|ALTER|DROP|PRAGMA\s+(?!table_info|foreign_key_list|index_list)|BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)/i;
+let activeQueueInstance = null;
+
+function isBenignTxError(err) {
+  if (!err) return false;
+  const msg = String(err.message || '');
+  return (
+    msg.includes('no such savepoint') ||
+    msg.includes('cannot start a transaction within a transaction') ||
+    msg.includes('cannot commit - no transaction is active') ||
+    msg.includes('cannot rollback - no transaction is active')
+  );
+}
+
+function normalizeArgs(params, callback) {
+  if (typeof params === 'function') {
+    return { params: [], callback: params };
+  }
+  return {
+    params: params === undefined || params === null ? [] : params,
+    callback: typeof callback === 'function' ? callback : null
+  };
+}
 
 class DbWriteQueue {
-  constructor(db, options = {}) {
-    this.db = db;
-    this.maxRetries = Number(options.maxRetries ?? 6);
-    this.baseRetryDelayMs = Number(options.baseRetryDelayMs ?? 35);
-    this._chain = Promise.resolve();
-    this._txDepth = 0;
-    this._stats = {
-      enqueued: 0,
-      completed: 0,
-      retries: 0,
-      errors: 0,
-      transactions: 0
-    };
+  constructor(dbGetter) {
+    this.getDb = typeof dbGetter === 'function' ? dbGetter : () => dbGetter;
+    this.chain = Promise.resolve();
+    this.txDepth = 0;
+    this.spCounter = 0;
   }
 
-  isWriteQuery(sql) {
-    return typeof sql === 'string' && WRITE_SQL_PATTERN.test(sql);
-  }
-
-  _sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  async _runWithRetry(fn) {
-    let attempt = 0;
-    while (true) {
-      try {
-        return await fn();
-      } catch (err) {
-        const msg = String((err && err.message) || err || '');
-        const isLocked =
-          (err && (err.code === 'SQLITE_BUSY' || err.code === 'SQLITE_LOCKED')) ||
-          /SQLITE_BUSY|SQLITE_LOCKED|database is locked/i.test(msg);
-
-        if (isLocked && attempt < this.maxRetries) {
-          attempt += 1;
-          this._stats.retries += 1;
-          const jitter = Math.floor(Math.random() * 25);
-          const delay = Math.round(this.baseRetryDelayMs * Math.pow(1.6, attempt - 1)) + jitter;
-          await this._sleep(delay);
-          continue;
-        }
-        this._stats.errors += 1;
-        throw err;
-      }
-    }
+  get db() {
+    return this.getDb();
   }
 
   enqueue(taskFn) {
-    this._stats.enqueued += 1;
-    const nextPromise = this._chain.then(async () => {
-      const res = await this._runWithRetry(taskFn);
-      this._stats.completed += 1;
-      return res;
-    });
-    this._chain = nextPromise.catch(() => {});
-    return nextPromise;
+    if (this.txDepth > 0) {
+      return Promise.resolve().then(() => taskFn());
+    }
+    const next = this.chain.then(() => taskFn());
+    this.chain = next.catch(() => {});
+    return next;
   }
 
-  runAsync(sql, params = []) {
-    const runner = this.db._rawRun ? this.db._rawRun.bind(this.db) : this.db.run.bind(this.db);
+  runAsync(sql, params = [], callback = null) {
+    const norm = normalizeArgs(params, callback);
     return new Promise((resolve, reject) => {
-      runner(sql, params, function onRunComplete(err) {
-        if (err) return reject(err);
-        resolve({
-          lastID: this ? this.lastID : undefined,
-          changes: this ? this.changes : 0
-        });
+      const database = this.db;
+      if (!database) return reject(new Error('Database instance is not initialized'));
+      const runner = database._rawRun || database.run.bind(database);
+
+      runner(sql, norm.params, function onRunComplete(err) {
+        if (err && !isBenignTxError(err)) {
+          if (norm.callback) norm.callback.call(this, err);
+          return reject(err);
+        }
+        const resObj = {
+          lastID: this && this.lastID !== undefined ? this.lastID : 0,
+          changes: this && this.changes !== undefined ? this.changes : 0
+        };
+        if (norm.callback) norm.callback.call(resObj, null, resObj);
+        resolve(resObj);
       });
     });
   }
 
-  getAsync(sql, params = []) {
-    const getter = this.db._rawGet ? this.db._rawGet.bind(this.db) : this.db.get.bind(this.db);
+  getAsync(sql, params = [], callback = null) {
+    const norm = normalizeArgs(params, callback);
     return new Promise((resolve, reject) => {
-      getter(sql, params, (err, row) => (err ? reject(err) : resolve(row)));
-    });
-  }
+      const database = this.db;
+      if (!database) return reject(new Error('Database instance is not initialized'));
+      const getter = database._rawGet || database.get.bind(database);
 
-  allAsync(sql, params = []) {
-    const aller = this.db._rawAll ? this.db._rawAll.bind(this.db) : this.db.all.bind(this.db);
-    return new Promise((resolve, reject) => {
-      aller(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
-    });
-  }
-
-  execAsync(sql) {
-    const execer = this.db._rawExec ? this.db._rawExec.bind(this.db) : this.db.exec.bind(this.db);
-    return new Promise((resolve, reject) => {
-      execer(sql, (err) => (err ? reject(err) : resolve(true)));
-    });
-  }
-
-  withTransaction(workFn) {
-    const executeTx = async () => {
-      this._stats.transactions += 1;
-      const isNested = this._txDepth > 0;
-      const spName = `sp_gherbi_${this._txDepth}_${Date.now()}`;
-      this._txDepth += 1;
-
-      try {
-        if (isNested) {
-          await this.runAsync(`SAVEPOINT ${spName}`);
-        } else {
-          await this.runAsync('BEGIN IMMEDIATE TRANSACTION');
+      getter(sql, norm.params, (err, row) => {
+        if (err) {
+          if (norm.callback) norm.callback(err);
+          return reject(err);
         }
+        if (norm.callback) norm.callback(null, row);
+        resolve(row);
+      });
+    });
+  }
 
-        const txContext = {
-          db: this.db,
-          run: (sql, params = []) => this.runAsync(sql, params),
-          get: (sql, params = []) => this.getAsync(sql, params),
-          all: (sql, params = []) => this.allAsync(sql, params),
-          exec: (sql) => this.execAsync(sql),
-          dbRun: (sql, params = []) => this.runAsync(sql, params),
-          dbGet: (sql, params = []) => this.getAsync(sql, params),
-          dbAll: (sql, params = []) => this.allAsync(sql, params),
-          dbExec: (sql) => this.execAsync(sql)
-        };
+  allAsync(sql, params = [], callback = null) {
+    const norm = normalizeArgs(params, callback);
+    return new Promise((resolve, reject) => {
+      const database = this.db;
+      if (!database) return reject(new Error('Database instance is not initialized'));
+      const aller = database._rawAll || database.all.bind(database);
 
-        const output = await workFn(txContext);
-
-        if (isNested) {
-          await this.runAsync(`RELEASE SAVEPOINT ${spName}`);
-        } else {
-          await this.runAsync('COMMIT');
+      aller(sql, norm.params, (err, rows) => {
+        if (err) {
+          if (norm.callback) norm.callback(err);
+          return reject(err);
         }
+        const safeRows = rows || [];
+        if (norm.callback) norm.callback(null, safeRows);
+        resolve(safeRows);
+      });
+    });
+  }
 
-        return output;
-      } catch (err) {
-        try {
-          if (isNested) {
-            await this.runAsync(`ROLLBACK TO SAVEPOINT ${spName}`);
-            await this.runAsync(`RELEASE SAVEPOINT ${spName}`);
-          } else {
-            await this.runAsync('ROLLBACK');
+  execAsync(sql, callback = null) {
+    return new Promise((resolve, reject) => {
+      const database = this.db;
+      if (!database) return reject(new Error('Database instance is not initialized'));
+      const execer = database._rawExec || database.exec.bind(database);
+
+      execer(sql, (err) => {
+        if (err && !isBenignTxError(err)) {
+          if (typeof callback === 'function') callback(err);
+          return reject(err);
+        }
+        if (typeof callback === 'function') callback(null);
+        resolve();
+      });
+    });
+  }
+
+  dbRun(sql, params = [], callback = null) {
+    return this.runAsync(sql, params, callback);
+  }
+
+  dbGet(sql, params = [], callback = null) {
+    return this.getAsync(sql, params, callback);
+  }
+
+  dbAll(sql, params = [], callback = null) {
+    return this.allAsync(sql, params, callback);
+  }
+
+  dbExec(sql, callback = null) {
+    return this.execAsync(sql, callback);
+  }
+
+  // توليد الرقم التسلسلي التالي للفواتير والمستندات (db.nextNumber) المتوافق مع server.js
+  async nextNumber(key = 'default', startAt = 1, callback = null) {
+    if (typeof startAt === 'function') {
+      callback = startAt;
+      startAt = 1;
+    }
+    const cleanKey = String(key || 'default').trim();
+    const settingKey = `seq_${cleanKey}`;
+
+    try {
+      // 1. محاولة القراءة من جدول counters أو sequences إن كان موجوداً في قاعدة البيانات
+      let storedSeq = 0;
+      const counterRow = await this.getAsync(
+        'SELECT value FROM settings WHERE key IN (?, ?)',
+        [settingKey, cleanKey]
+      ).catch(() => null);
+
+      if (counterRow && counterRow.value !== undefined) {
+        const parsed = parseInt(String(counterRow.value), 10);
+        if (!isNaN(parsed)) storedSeq = parsed;
+      }
+
+      // فحص جدول counters المخصص إن وجد
+      const dedicatedCounter = await this.getAsync(
+        'SELECT seq, value, current_value FROM counters WHERE name = ? OR key = ?',
+        [cleanKey, cleanKey]
+      ).catch(() => null);
+      if (dedicatedCounter) {
+        const cVal = parseInt(dedicatedCounter.seq ?? dedicatedCounter.value ?? dedicatedCounter.current_value ?? 0, 10);
+        if (!isNaN(cVal)) storedSeq = Math.max(storedSeq, cVal);
+      }
+
+      // 2. فحص أعلى رقم فاتورة في جدول sales لضمان عدم تكرار أي رقم فاتورة موجود مسبقاً
+      const salesMaxRow = await this.getAsync(
+        'SELECT MAX(id) AS maxId, COUNT(*) AS totalCount, MAX(doc_number) AS maxDoc FROM sales'
+      ).catch(() => null);
+
+      let maxFromSales = 0;
+      if (salesMaxRow) {
+        maxFromSales = Math.max(Number(salesMaxRow.maxId || 0), Number(salesMaxRow.totalCount || 0));
+        if (salesMaxRow.maxDoc) {
+          const tailMatch = String(salesMaxRow.maxDoc).match(/(\d+)\s*$/);
+          if (tailMatch && tailMatch[1]) {
+            const tailNum = parseInt(tailMatch[1], 10);
+            if (!isNaN(tailNum) && tailNum < 10000000) {
+              maxFromSales = Math.max(maxFromSales, tailNum);
+            }
           }
-        } catch (_) {}
+        }
+      }
+
+      const baseValue = Math.max(storedSeq, maxFromSales, (Number(startAt) || 1) - 1);
+      const nextVal = baseValue + 1;
+
+      // 3. حفظ الرقم الجديد في جدول settings (وجدول counters إن وجد)
+      await this.runAsync(
+        'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+        [settingKey, String(nextVal)]
+      ).catch(() =>
+        this.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [settingKey, String(nextVal)])
+      );
+
+      await this.runAsync(
+        'UPDATE counters SET seq = ? WHERE name = ? OR key = ?',
+        [nextVal, cleanKey, cleanKey]
+      ).catch(() => {});
+
+      if (typeof callback === 'function') callback(null, nextVal);
+      return nextVal;
+    } catch (err) {
+      const fallback = Date.now() % 100000;
+      if (typeof callback === 'function') callback(null, fallback);
+      return fallback;
+    }
+  }
+
+  async executeTx(workFn) {
+    const runTx = async () => {
+      const spName = `sp_gherbi_${++this.spCounter}_${Date.now()}`;
+      this.txDepth++;
+      try {
+        await this.runAsync(`SAVEPOINT ${spName}`);
+        const result = await workFn(this.db || this);
+        await this.runAsync(`RELEASE SAVEPOINT ${spName}`).catch((err) => {
+          if (!isBenignTxError(err)) throw err;
+        });
+        return result;
+      } catch (err) {
+        await this.runAsync(`ROLLBACK TO SAVEPOINT ${spName}`).catch(() => {});
+        await this.runAsync(`RELEASE SAVEPOINT ${spName}`).catch(() => {});
         throw err;
       } finally {
-        this._txDepth = Math.max(0, this._txDepth - 1);
+        this.txDepth = Math.max(0, this.txDepth - 1);
       }
     };
 
-    if (this._txDepth > 0) {
-      return executeTx();
+    if (this.txDepth > 0) {
+      return runTx();
     }
-    return this.enqueue(executeTx);
+    return this.enqueue(runTx);
   }
 
-  getStats() {
-    return {
-      ...this._stats,
-      inTransaction: this._txDepth > 0,
-      activeTxDepth: this._txDepth
-    };
+  async transaction(workFn) {
+    return this.executeTx(workFn);
   }
 }
 
-function attachWriteQueue(db, options = {}) {
-  if (!db) throw new Error('Valid sqlite3 instance required');
-  if (db._writeQueue) return db._writeQueue;
+function attachWriteQueue(db) {
+  if (!db) return db;
+  if (db._rawRun && db.dbRun && db.getSetting && db.setSetting && db.nextNumber) {
+    return db;
+  }
 
-  if (!db._rawRun) db._rawRun = db.run.bind(db);
-  if (!db._rawGet) db._rawGet = db.get.bind(db);
-  if (!db._rawAll) db._rawAll = db.all.bind(db);
-  if (!db._rawExec) db._rawExec = db.exec.bind(db);
-  if (!db._rawPrepare) db._rawPrepare = db.prepare.bind(db);
+  const origRun = db._rawRun || db.run.bind(db);
+  const origGet = db._rawGet || db.get.bind(db);
+  const origAll = db._rawAll || db.all.bind(db);
+  const origExec = db._rawExec || db.exec.bind(db);
+  const origPrepare = typeof db.prepare === 'function' ? db.prepare.bind(db) : null;
+  const origSerialize = typeof db.serialize === 'function' ? db.serialize.bind(db) : null;
 
-  const queue = new DbWriteQueue(db, options);
+  db._rawRun = function rawRunWrapper(sql, params, callback) {
+    if (typeof params === 'function') {
+      callback = params;
+      params = [];
+    }
+    return origRun(sql, params, function onRawComplete(err) {
+      if (err && isBenignTxError(err)) {
+        if (typeof callback === 'function') return callback.call(this, null);
+        return;
+      }
+      if (typeof callback === 'function') {
+        return callback.call(this, err);
+      }
+    });
+  };
+
+  db._rawGet = origGet;
+  db._rawAll = origAll;
+  db._rawExec = function rawExecWrapper(sql, callback) {
+    return origExec(sql, function onExecComplete(err) {
+      if (err && isBenignTxError(err)) {
+        if (typeof callback === 'function') return callback.call(this, null);
+        return;
+      }
+      if (typeof callback === 'function') {
+        return callback.call(this, err);
+      }
+    });
+  };
+  if (origPrepare) db._rawPrepare = origPrepare;
+  if (origSerialize) db._rawSerialize = origSerialize;
+
+  db.run = db._rawRun;
+
+  const queue = new DbWriteQueue(() => db);
+  activeQueueInstance = queue;
+
   db._writeQueue = queue;
-  db.db = db;
+  db.writeQueue = queue;
 
-  db.enqueueWrite = (fn) => queue.enqueue(fn);
-  db.withTransaction = (fn) => queue.withTransaction(fn);
-  db.runAsync = (sql, params = []) => queue.runAsync(sql, params);
-  db.getAsync = (sql, params = []) => queue.getAsync(sql, params);
-  db.allAsync = (sql, params = []) => queue.allAsync(sql, params);
-  db.execAsync = (sql) => queue.execAsync(sql);
+  db.dbRun = queue.dbRun.bind(queue);
+  db.dbGet = queue.dbGet.bind(queue);
+  db.dbAll = queue.dbAll.bind(queue);
+  db.dbExec = queue.dbExec.bind(queue);
 
-  db.dbRun = db.runAsync;
-  db.dbGet = db.getAsync;
-  db.dbAll = db.allAsync;
-  db.dbExec = db.execAsync;
+  db.runAsync = queue.runAsync.bind(queue);
+  db.getAsync = queue.getAsync.bind(queue);
+  db.allAsync = queue.allAsync.bind(queue);
+  db.execAsync = queue.execAsync.bind(queue);
 
-  db.getSetting = async (key, fallback = '') => {
-    const row = await queue.getAsync('SELECT value FROM settings WHERE key = ?', [String(key)]);
-    return row && row.value !== undefined && row.value !== null ? row.value : fallback;
-  };
+  db.nextNumber = queue.nextNumber.bind(queue);
+  db.getNextNumber = queue.nextNumber.bind(queue);
 
-  db.allowExpired = async () => {
-    const val = await db.getSetting('manufacturing_allow_expired', 'false');
-    return String(val).toLowerCase() === 'true' || val === '1';
-  };
+  db.executeTx = queue.executeTx.bind(queue);
+  db.transaction = queue.transaction.bind(queue);
+  db.withTransaction = queue.executeTx.bind(queue);
+  db.runInTransaction = queue.executeTx.bind(queue);
+  db.enqueueWrite = queue.enqueue.bind(queue);
+  db.enqueue = queue.enqueue.bind(queue);
 
-  db.nextNumber = async (docType = 'invoice') => {
-    const year = new Date().getFullYear();
-    const defaultFormats = {
-      invoice: 'FAC-{YYYY}-{0000}',
-      proforma: 'PRO-{YYYY}-{0000}',
-      order: 'BC-{YYYY}-{0000}',
-      delivery: 'BL-{YYYY}-{0000}',
-      payment_receipt: 'REC-{YYYY}-{0000}',
-      avoir: 'AV-{YYYY}-{0000}',
-      recap: 'FR-{YYYY}-{0000}',
-      sales_summary: 'RM-{YYYY}-{0000}',
-      supplier_return: 'RF-{YYYY}-{0000}',
-      production: 'PRD-{YYYY}-{0000}',
-      stocktake: 'INV-{YYYY}-{0000}'
+  if (typeof db.getSetting !== 'function') {
+    db.getSetting = function getSetting(key, defaultValue = null, callback = null) {
+      if (typeof defaultValue === 'function') {
+        callback = defaultValue;
+        defaultValue = null;
+      }
+      const p = queue
+        .getAsync('SELECT value FROM settings WHERE key = ?', [String(key)])
+        .then((row) => (row && row.value !== undefined && row.value !== null ? row.value : defaultValue))
+        .catch(() => defaultValue);
+
+      if (typeof callback === 'function') {
+        p.then((val) => callback(null, val));
+      }
+      return p;
     };
-    const prefixFormat = defaultFormats[docType] || `${String(docType).toUpperCase()}-{YYYY}-{0000}`;
+  }
 
-    await queue.runAsync(
-      `INSERT INTO document_counters (doc_type, year, last_number, prefix_format)
-       VALUES (?, ?, 1, ?)
-       ON CONFLICT(doc_type, year) DO UPDATE SET last_number = last_number + 1`,
-      [docType, year, prefixFormat]
-    );
+  if (typeof db.setSetting !== 'function') {
+    db.setSetting = function setSetting(key, value, callback = null) {
+      const strKey = String(key);
+      const strVal = value === undefined || value === null ? '' : String(value);
+      const p = queue
+        .runAsync(
+          'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+          [strKey, strVal]
+        )
+        .catch(() =>
+          queue.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [strKey, strVal])
+        );
 
-    const row = await queue.getAsync(
-      'SELECT last_number, prefix_format FROM document_counters WHERE doc_type = ? AND year = ?',
-      [docType, year]
-    );
-    const seq = Number((row && row.last_number) || 1);
-    const fmt = (row && row.prefix_format) || prefixFormat;
+      if (typeof callback === 'function') {
+        p.then((res) => callback(null, res)).catch((err) => callback(err));
+      }
+      return p;
+    };
+  }
 
-    return fmt
-      .replace(/\{YYYY\}/g, String(year))
-      .replace(/\{YY\}/g, String(year).slice(-2))
-      .replace(/\{(0+)\}/g, (_m, zeros) => String(seq).padStart(zeros.length, '0'));
-  };
-
-  db.nextDocNumber = db.nextNumber;
-
-  return queue;
+  return db;
 }
 
-module.exports = {
-  DbWriteQueue,
-  attachWriteQueue,
-  createWriteQueue: attachWriteQueue
-};
+async function executeTx(workFn) {
+  if (activeQueueInstance) {
+    return activeQueueInstance.executeTx(workFn);
+  }
+  return workFn();
+}
+
+function getWriteQueue() {
+  return activeQueueInstance;
+}
+
+module.exports = attachWriteQueue;
+module.exports.attachWriteQueue = attachWriteQueue;
+module.exports.DbWriteQueue = DbWriteQueue;
+module.exports.executeTx = executeTx;
+module.exports.getWriteQueue = getWriteQueue;

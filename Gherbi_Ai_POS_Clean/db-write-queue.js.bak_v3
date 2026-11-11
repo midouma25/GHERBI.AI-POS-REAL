@@ -1,0 +1,136 @@
+'use strict';
+
+/**
+ * Gherbi.Ai POS - Serialized SQLite Write & Transaction Queue (V3 Fixed Edition)
+ * يمنع تداخل المعاملات (Savepoints) المتزامنة ويعالج أخطاء SQLITE_ERROR: no such savepoint نهائياً.
+ */
+class DbWriteQueue {
+  constructor(dbInstance, options = {}) {
+    this.db = dbInstance;
+    this.maxRetries = options.maxRetries || 6;
+    this.baseDelayMs = options.baseDelayMs || 35;
+    this._queue = Promise.resolve();
+    this._txQueue = Promise.resolve();
+    this._txDepth = 0;
+    this._initialized = false;
+  }
+
+  initPragmas() {
+    if (this._initialized || !this.db) return;
+    this._initialized = true;
+    this.db.serialize(() => {
+      this.db.run('PRAGMA journal_mode = WAL;');
+      this.db.run('PRAGMA synchronous = NORMAL;');
+      this.db.run('PRAGMA busy_timeout = 8000;');
+      this.db.run('PRAGMA foreign_keys = ON;');
+      this.db.run('PRAGMA temp_store = MEMORY;');
+    });
+  }
+
+  _sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  _isBusyError(err) {
+    if (!err) return false;
+    const msg = String(err.message || err.code || '');
+    return (
+      err.code === 'SQLITE_BUSY' ||
+      err.code === 'SQLITE_LOCKED' ||
+      msg.includes('SQLITE_BUSY') ||
+      msg.includes('database is locked')
+    );
+  }
+
+  enqueue(taskFn) {
+    const next = this._queue.then(() => this._executeWithRetry(taskFn));
+    this._queue = next.catch(() => {});
+    return next;
+  }
+
+  async _executeWithRetry(taskFn, attempt = 1) {
+    try {
+      return await taskFn();
+    } catch (err) {
+      if (this._isBusyError(err) && attempt <= this.maxRetries) {
+        const jitter = Math.floor(Math.random() * 25);
+        await this._sleep(this.baseDelayMs * attempt + jitter);
+        return this._executeWithRetry(taskFn, attempt + 1);
+      }
+      throw err;
+    }
+  }
+
+  runAsync(sql, params = []) {
+    this.initPragmas();
+    return this.enqueue(
+      () =>
+        new Promise((resolve, reject) => {
+          this.db.run(sql, params, function onRunComplete(err) {
+            if (err) return reject(err);
+            resolve({ lastID: this.lastID, changes: this.changes });
+          });
+        })
+    );
+  }
+
+  getAsync(sql, params = []) {
+    this.initPragmas();
+    return new Promise((resolve, reject) => {
+      this.db.get(sql, params, (err, row) => {
+        if (err) return reject(err);
+        resolve(row);
+      });
+    });
+  }
+
+  allAsync(sql, params = []) {
+    this.initPragmas();
+    return new Promise((resolve, reject) => {
+      this.db.all(sql, params, (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
+      });
+    });
+  }
+
+  async transaction(workFn) {
+    this.initPragmas();
+    // تسلسل المعاملات بالكامل لمنع تداخل نقطتي حفظ (Savepoints) من نداءين متزامنين (مثل update-settings)
+    const runSerialTx = async () => {
+      this._txDepth += 1;
+      const spName = `sp_gherbi_${this._txDepth}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+
+      try {
+        await this.runAsync(`SAVEPOINT ${spName};`);
+        const result = await workFn({
+          run: (sql, params) => this.runAsync(sql, params),
+          get: (sql, params) => this.getAsync(sql, params),
+          all: (sql, params) => this.allAsync(sql, params)
+        });
+        try {
+          await this.runAsync(`RELEASE SAVEPOINT ${spName};`);
+        } catch (releaseErr) {
+          if (!String(releaseErr.message || '').includes('no such savepoint')) {
+            throw releaseErr;
+          }
+        }
+        return result;
+      } catch (err) {
+        try {
+          await this.runAsync(`ROLLBACK TO SAVEPOINT ${spName};`);
+          await this.runAsync(`RELEASE SAVEPOINT ${spName};`);
+        } catch (_) {}
+        throw err;
+      } finally {
+        this._txDepth = Math.max(0, this._txDepth - 1);
+      }
+    };
+
+    const nextTx = this._txQueue.then(() => runSerialTx());
+    this._txQueue = nextTx.catch(() => {});
+    return nextTx;
+  }
+}
+
+module.exports = { DbWriteQueue };

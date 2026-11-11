@@ -10,6 +10,9 @@
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 
 const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require('electron');
+
+// كتم رسائل DevTools Autofill غير الضرورية في الطرفية
+try { app.commandLine.appendSwitch('log-level', '3'); app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication'); } catch (_) {}
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -3995,6 +3998,8 @@ async function autoSeedDzCsvIfFound() {
   }
 }
 
+try { app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,AutofillEnableAccountWalletStorage'); } catch (_) {}
+try { app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,AutofillEnableAccountWalletStorage'); } catch (_) {}
 app.whenReady().then(async () => {
   await autoSeedDzCsvIfFound();
   await dbRun("DELETE FROM settings WHERE value IN ('undefined', 'null')");
