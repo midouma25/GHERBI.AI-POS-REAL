@@ -748,7 +748,200 @@ async function executeSaleTransaction(saleData = {}) {
 function startLocalServer(port = 8080, onStartedCallback = null) {
   const app = express();
   app.use(cors());
-  app.use(express.json({ limit: '50mb' }));
+  
+/* [GHERBI_AISLE_PRICE_KIOSK_ROUTE] */
+let _gherbiMemoryKioskCatalog = [];
+const _kioskCacheFilePath = require('path').join(__dirname, 'kiosk-catalog-cache.json');
+
+try {
+  if (require('fs').existsSync(_kioskCacheFilePath)) {
+    const cached = JSON.parse(require('fs').readFileSync(_kioskCacheFilePath, 'utf8'));
+    if (Array.isArray(cached) && cached.length > 0) {
+      _gherbiMemoryKioskCatalog = cached;
+    }
+  }
+} catch (_) {}
+
+function _normArKiosk(str) {
+  return String(str || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه');
+}
+
+async function _loadCatalogFromSqliteSafely() {
+  if (Array.isArray(_gherbiMemoryKioskCatalog) && _gherbiMemoryKioskCatalog.length > 0) {
+    return _gherbiMemoryKioskCatalog;
+  }
+
+  return await new Promise((resolve) => {
+    const timeoutId = setTimeout(() => resolve(_gherbiMemoryKioskCatalog || []), 1500);
+    try {
+      const dbMod = require('./database');
+      const queueMod = require('./db-write-queue');
+      const activeQ = queueMod && typeof queueMod.getWriteQueue === 'function' ? queueMod.getWriteQueue() : null;
+      const rawDb = (activeQ && activeQ.db) || (dbMod && dbMod.db) || dbMod;
+
+      const runAll = (sql, cb) => {
+        if (activeQ && typeof activeQ.allAsync === 'function') {
+          activeQ.allAsync(sql, []).then((rows) => cb(null, rows)).catch((e) => cb(e, []));
+        } else if (rawDb && typeof rawDb.all === 'function') {
+          rawDb.all(sql, [], cb);
+        } else if (rawDb && typeof rawDb.dbAll === 'function') {
+          rawDb.dbAll(sql, []).then((rows) => cb(null, rows)).catch((e) => cb(e, []));
+        } else {
+          cb(new Error('No db'), []);
+        }
+      };
+
+      runAll('SELECT * FROM products WHERE deleted_at IS NULL', (errP, prodRows) => {
+        if (errP || !Array.isArray(prodRows)) {
+          clearTimeout(timeoutId);
+          return resolve(_gherbiMemoryKioskCatalog || []);
+        }
+        runAll('SELECT * FROM inventory_batches WHERE deleted_at IS NULL', (_errB, batchRows) => {
+          clearTimeout(timeoutId);
+          const batches = Array.isArray(batchRows) ? batchRows : [];
+          const batchByProd = {};
+
+          batches.forEach((b) => {
+            const pid = Number(b.product_id);
+            if (!pid) return;
+            if (!batchByProd[pid]) {
+              batchByProd[pid] = { stock: 0, selling_price: 0, wholesale_price: 0 };
+            }
+            batchByProd[pid].stock += Number(b.stock || 0);
+            if (Number(b.selling_price || 0) > 0) {
+              batchByProd[pid].selling_price = Number(b.selling_price);
+            }
+            if (Number(b.wholesale_price || 0) > 0) {
+              batchByProd[pid].wholesale_price = Number(b.wholesale_price);
+            }
+          });
+
+          const merged = prodRows
+            .filter((p) => !p.hide_from_pos)
+            .map((p) => {
+              const bInfo = batchByProd[Number(p.id)] || {};
+              const sellPrice = Number(p.selling_price ?? p.price ?? bInfo.selling_price ?? 0);
+              const packPrice = Number(p.wholesale_price ?? bInfo.wholesale_price ?? 0);
+              const totalStock = Number(p.total_stock ?? (bInfo.stock !== undefined ? bInfo.stock : p.stock) ?? 0);
+              return {
+                id: p.id,
+                name: p.name || '',
+                barcode: p.barcode || '',
+                plu_code: p.plu_code || '',
+                category: p.category || '',
+                unit: p.unit || 'قطعة',
+                selling_price: sellPrice,
+                effective_price: sellPrice,
+                wholesale_price: packPrice,
+                effective_pack_price: packPrice,
+                wholesale_qty: Number(p.wholesale_qty || p.wholesale_min_qty || 0),
+                total_stock: totalStock
+              };
+            });
+
+          if (merged.length > 0) {
+            _gherbiMemoryKioskCatalog = merged;
+          }
+          resolve(_gherbiMemoryKioskCatalog);
+        });
+      });
+    } catch (_) {
+      clearTimeout(timeoutId);
+      resolve(_gherbiMemoryKioskCatalog || []);
+    }
+  });
+}
+
+try {
+  if (typeof app !== 'undefined' && app && typeof app.get === 'function') {
+    // 1. استقبال المزامنة من Electron بدون حظر CORS (Simple Request text/plain)
+    app.options('/api/kiosk/sync-catalog', (_req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', '*');
+      res.sendStatus(200);
+    });
+
+    app.post('/api/kiosk/sync-catalog', express.text({ type: '*/*', limit: '25mb' }), (req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      try {
+        const parsed = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+        const arr = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.products) ? parsed.products : []);
+        if (arr.length > 0) {
+          _gherbiMemoryKioskCatalog = arr.map((p) => ({
+            id: p.id,
+            name: p.name || '',
+            barcode: p.barcode || '',
+            plu_code: p.plu_code || '',
+            category: p.category || '',
+            unit: p.unit || 'قطعة',
+            selling_price: Number(p.selling_price ?? p.price ?? 0),
+            effective_price: Number(p.selling_price ?? p.price ?? 0),
+            wholesale_price: Number(p.wholesale_price ?? 0),
+            effective_pack_price: Number(p.wholesale_price ?? 0),
+            wholesale_qty: Number(p.wholesale_qty || p.wholesale_min_qty || 0),
+            total_stock: Number(p.total_stock ?? p.stock ?? 0)
+          }));
+          try {
+            require('fs').writeFileSync(_kioskCacheFilePath, JSON.stringify(_gherbiMemoryKioskCatalog), 'utf8');
+          } catch (_) {}
+        }
+        res.json({ ok: true, count: _gherbiMemoryKioskCatalog.length });
+      } catch (e) {
+        res.json({ ok: false, error: e.message });
+      }
+    });
+
+    // 2. تزويد المتصفح الخارجي بالكتالوج الكامل للبحث اللحظي (0ms)
+    app.get('/api/kiosk/catalog', async (_req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      const products = await _loadCatalogFromSqliteSafely();
+      res.json({ ok: true, count: products.length, products });
+    });
+
+    // 3. مسار البحث الفردي المباشر
+    app.get('/api/kiosk/lookup', async (req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      const rawQ = String(req.query.q || '').trim();
+      if (!rawQ) return res.json({ found: false, matches: [] });
+
+      const qLower = rawQ.toLowerCase();
+      const qNorm = _normArKiosk(rawQ);
+      const catalog = await _loadCatalogFromSqliteSafely();
+
+      const matches = catalog.filter((p) => {
+        const bCode = String(p.barcode || '').toLowerCase();
+        const plu = String(p.plu_code || '').toLowerCase();
+        const nNorm = _normArKiosk(p.name || '');
+        const cNorm = _normArKiosk(p.category || '');
+        return bCode === qLower || plu === qLower || nNorm.includes(qNorm) || cNorm.includes(qNorm) || bCode.includes(qLower);
+      });
+
+      if (matches.length === 0) {
+        return res.json({ found: false, matches: [] });
+      }
+      return res.json({ found: true, product: matches[0], matches: matches.slice(0, 12) });
+    });
+
+    // 4. تقديم صفحة الكشك من الملف المستقل kiosk-client.html
+    app.get('/kiosk', (_req, res) => {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      const htmlPath = require('path').join(__dirname, 'kiosk-client.html');
+      if (require('fs').existsSync(htmlPath)) {
+        res.send(require('fs').readFileSync(htmlPath, 'utf8'));
+      } else {
+        res.send('<h1>Kiosk Ready</h1>');
+      }
+    });
+  }
+} catch (_) {}
+
+app.use(express.json({ limit: '50mb' }));
 
   const connectedClients = new Map();
 

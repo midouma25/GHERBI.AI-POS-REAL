@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>شاشة فاحص الأسعار الذاتي للزبائن — Gherbi.Ai POS</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; user-select: none; }
+    body {
+      background: radial-gradient(circle at center, #0f172a 0%, #020617 100%);
+      color: #ffffff;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+    }
+    header {
+      padding: 1rem 2rem;
+      background: rgba(15, 23, 42, 0.92);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .brand {
+      font-size: 1.3rem;
+      font-weight: 900;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .search-bar {
+      display: flex;
+      gap: 0.5rem;
+      width: 520px;
+      max-width: 92vw;
+    }
+    .search-bar input {
+      flex: 1;
+      padding: 0.75rem 1.2rem;
+      border-radius: 1rem;
+      border: 2px solid #10b981;
+      background: #020617;
+      color: #ffffff;
+      font-size: 1.05rem;
+      font-weight: 800;
+      text-align: center;
+      outline: none;
+      transition: box-shadow 0.15s ease;
+    }
+    .search-bar input:focus {
+      box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.28);
+    }
+    .search-bar button {
+      padding: 0 1.2rem;
+      border-radius: 1rem;
+      border: none;
+      background: #10b981;
+      color: #022c22;
+      font-weight: 900;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      text-align: center;
+      overflow-y: auto;
+    }
+    .standby-box {
+      animation: pulse 2.2s infinite ease-in-out;
+      max-width: 740px;
+    }
+    .standby-icon { font-size: 5rem; margin-bottom: 1rem; }
+    .standby-title { font-size: 2.3rem; font-weight: 900; color: #f8fafc; margin-bottom: 0.8rem; line-height: 1.3; }
+    .standby-sub { font-size: 1.15rem; color: #94a3b8; font-weight: 700; }
+    .result-card {
+      background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+      border: 3px solid #10b981;
+      border-radius: 2rem;
+      padding: 2rem 2.8rem;
+      width: 95%;
+      max-width: 860px;
+      box-shadow: 0 25px 60px rgba(16, 185, 129, 0.25);
+    }
+    .prod-cat {
+      display: inline-block;
+      padding: 0.35rem 1.2rem;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+      font-weight: 800;
+      font-size: 0.95rem;
+      margin-bottom: 0.75rem;
+    }
+    .prod-name { font-size: 2.4rem; font-weight: 900; color: #ffffff; margin-bottom: 1rem; line-height: 1.25; }
+    .price-box {
+      background: #020617;
+      border: 1px solid rgba(16, 185, 129, 0.45);
+      border-radius: 1.5rem;
+      padding: 1.1rem 2.5rem;
+      display: inline-block;
+      min-width: 320px;
+    }
+    .price-dzd {
+      font-size: 4.6rem;
+      font-weight: 900;
+      color: #10b981;
+      font-family: Consolas, monospace;
+      line-height: 1.05;
+      text-shadow: 0 0 25px rgba(16, 185, 129, 0.38);
+    }
+    .price-centimes { font-size: 1.55rem; font-weight: 900; color: #fbbf24; margin-top: 0.45rem; }
+    .extra-row { display: flex; justify-content: center; gap: 1rem; margin-top: 1.35rem; flex-wrap: wrap; }
+    .extra-pill {
+      padding: 0.55rem 1.25rem;
+      border-radius: 1rem;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: #6ee7b7;
+      font-size: 1rem;
+      font-weight: 800;
+    }
+    .matches-bar {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 1rem;
+      max-width: 860px;
+    }
+    .match-chip {
+      padding: 0.5rem 1rem;
+      border-radius: 0.8rem;
+      background: #1e293b;
+      border: 1.5px solid #334155;
+      color: #f8fafc;
+      font-weight: 800;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.12s ease;
+    }
+    .match-chip:hover {
+      border-color: #10b981;
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+    }
+    footer {
+      padding: 0.85rem 2rem;
+      background: rgba(2, 6, 23, 0.85);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      color: #94a3b8;
+      font-weight: 700;
+      font-size: 0.88rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }
+  </style>
+</head>
+<body onclick="if(event.target.tagName !== 'BUTTON') document.getElementById('kioskScanInput').focus()">
+  <header>
+    <div class="brand">
+      <span>🏷️</span>
+      <span>فاحص الأسعار الذاتي — Gherbi.Ai POS</span>
+    </div>
+    <div class="search-bar">
+      <input id="kioskScanInput" type="text" autofocus autocomplete="off"
+        placeholder="مرر الباركود بالقارئ أو اكتب اسم السلعة هنا...">
+      <button type="button" onclick="triggerSearch(true)">🔍 فحص</button>
+    </div>
+  </header>
+
+  <main id="kioskMain">
+    <div class="standby-box">
+      <div class="standby-icon">🛒⬇️</div>
+      <div class="standby-title">مرحباً بكم! مرّر باركود السلعة أمام القارئ لمعرفة السعر فوراً</div>
+      <div class="standby-sub">يعرض السعر بالدينار الجزائري وبالسنتيم مع تسعيرة الكارطون والحزم العائلية</div>
+    </div>
+  </main>
+
+  <footer>
+    <span id="kioskCatalogStatus">🟢 القارئ الضوئي جاهز دائماً — جاري الاتصال بقاعدة البيانات...</span>
+    <span>تعود الشاشة تلقائياً لوضع الاستعداد بعد 12 ثانية</span>
+  </footer>
+
+  <script>
+    let localCatalog = [];
+    let currentMatches = [];
+    let resetTimer = null;
+    let typingTimer = null;
+    const inp = document.getElementById('kioskScanInput');
+    const main = document.getElementById('kioskMain');
+    const statusEl = document.getElementById('kioskCatalogStatus');
+
+    function normalizeAr(str) {
+      return String(str || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[أإآ]/g, 'ا')
+        .replace(/ى/g, 'ي')
+        .replace(/ة/g, 'ه');
+    }
+
+    async function loadCatalogIntoMemory() {
+      try {
+        const res = await fetch('/api/kiosk/catalog?t=' + Date.now());
+        const data = await res.json();
+        if (data && Array.isArray(data.products) && data.products.length > 0) {
+          localCatalog = data.products;
+          statusEl.textContent = '🟢 متصل بقاعدة البيانات — جاهز لفحص (' + localCatalog.length + ') سلعة فوراً';
+          statusEl.style.color = '#34d399';
+        }
+      } catch (err) {
+        statusEl.textContent = '⚠️ جاري إعادة محاولة الاتصال بالخادم...';
+      }
+    }
+
+    // تحميل الكتالوج فور فتح الصفحة وتحديثه دورياً في الخلفية
+    loadCatalogIntoMemory();
+    setInterval(loadCatalogIntoMemory, 6000);
+
+    // الحفاظ على التركيز في خانة البحث/الباركود
+    setInterval(() => {
+      if (document.activeElement !== inp) inp.focus();
+    }, 1000);
+
+    inp.addEventListener('input', () => {
+      const val = inp.value.trim();
+      if (typingTimer) clearTimeout(typingTimer);
+      if (val.length >= 2) {
+        typingTimer = setTimeout(() => triggerSearch(false), 120);
+      } else if (val.length === 0) {
+        showStandby();
+      }
+    });
+
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (typingTimer) clearTimeout(typingTimer);
+        triggerSearch(true);
+      }
+    });
+
+    function showStandby() {
+      main.innerHTML =
+        '<div class="standby-box">' +
+          '<div class="standby-icon">🛒⬇️</div>' +
+          '<div class="standby-title">مرحباً بكم! مرّر باركود السلعة أمام القارئ لمعرفة السعر فوراً</div>' +
+          '<div class="standby-sub">يعرض السعر بالدينار الجزائري وبالسنتيم مع تسعيرة الكارطون والحزم العائلية</div>' +
+        '</div>';
+    }
+
+    function scheduleStandbyReset() {
+      if (resetTimer) clearTimeout(resetTimer);
+      resetTimer = setTimeout(() => {
+        inp.value = '';
+        showStandby();
+      }, 12000);
+    }
+
+    function searchInLocalCatalog(rawQuery) {
+      const q = String(rawQuery || '').trim();
+      if (!q || !localCatalog.length) return [];
+      const qLower = q.toLowerCase();
+      const qNorm = normalizeAr(q);
+
+      // 1. مطابقة تامة بالباركود أو كود الميزان
+      const exact = localCatalog.filter((p) => {
+        if (String(p.barcode || '').trim().toLowerCase() === qLower) return true;
+        if (String(p.plu_code || '').trim().toLowerCase() === qLower) return true;
+        if (Array.isArray(p.extra_barcodes) && p.extra_barcodes.some((b) => String(b).toLowerCase() === qLower)) {
+          return true;
+        }
+        return false;
+      });
+      if (exact.length > 0) return exact;
+
+      // 2. مطابقة جزئية بالاسم أو الفئة أو الباركود
+      return localCatalog.filter((p) => {
+        const nameNorm = normalizeAr(p.name || '');
+        const catNorm = normalizeAr(p.category || '');
+        const bCode = String(p.barcode || '').toLowerCase();
+        return nameNorm.includes(qNorm) || catNorm.includes(qNorm) || bCode.includes(qLower);
+      });
+    }
+
+    window.selectMatchByIndex = function (idx) {
+      if (currentMatches[idx]) {
+        renderProduct(currentMatches[idx], currentMatches);
+        scheduleStandbyReset();
+      }
+    };
+
+    function renderProduct(p, matchesList) {
+      const price = Number(p.effective_price ?? p.selling_price ?? p.price ?? 0);
+      const centimes = Math.round(price * 100).toLocaleString('fr-DZ');
+      const packPrice = Number(p.effective_pack_price ?? p.wholesale_price ?? 0);
+      const packQty = Number(p.wholesale_qty ?? p.wholesale_min_qty ?? 0);
+      const stock = Number(p.total_stock ?? p.stock ?? 0);
+      const unit = p.unit || 'قطعة';
+
+      let chipsHtml = '';
+      if (Array.isArray(matchesList) && matchesList.length > 1) {
+        chipsHtml = '<div class="matches-bar">' +
+          matchesList.slice(0, 8).map((m, i) => {
+            const mPrice = Number(m.effective_price ?? m.selling_price ?? m.price ?? 0).toFixed(0);
+            return '<button type="button" class="match-chip" onclick="selectMatchByIndex(' + i + ')">' +
+              m.name + ' (' + mPrice + ' د.ج)' +
+            '</button>';
+          }).join('') +
+        '</div>';
+      }
+
+      main.innerHTML =
+        '<div class="result-card">' +
+          '<div class="prod-cat">🏷️ ' + (p.category || 'سلعة متوفرة') + (p.barcode ? ' | ' + p.barcode : '') + '</div>' +
+          '<div class="prod-name">' + p.name + '</div>' +
+          '<div class="price-box">' +
+            '<div style="font-size:0.85rem;color:#94a3b8;font-weight:800;margin-bottom:0.3rem">سعر البيع للزبون</div>' +
+            '<div class="price-dzd">' + price.toFixed(2) + ' د.ج</div>' +
+            '<div class="price-centimes">🇩🇿 بالسنتيم: ' + centimes + ' سنتيم</div>' +
+          '</div>' +
+          '<div class="extra-row">' +
+            '<div class="extra-pill">📦 الحالة: ' + (stock > 0 ? 'متوفر في المحل (' + stock + ' ' + unit + ')' : 'متوفر') + '</div>' +
+            (packPrice > 0
+              ? '<div class="extra-pill" style="color:#c7d2fe;border-color:#6366f1;background:rgba(99,102,241,0.18)">🎁 سعر الكارطون/الحزمة' + (packQty > 1 ? ' (×' + packQty + ')' : '') + ': ' + packPrice.toFixed(2) + ' د.ج</div>'
+              : '') +
+          '</div>' +
+        '</div>' +
+        chipsHtml;
+    }
+
+    async function triggerSearch(clearInputAfter) {
+      const q = inp.value.trim();
+      if (!q) return;
+      if (clearInputAfter) inp.value = '';
+
+      // 1. بحث فوري في الكتالوج المحمّل في ذاكرة المتصفح (0ms)
+      const localHits = searchInLocalCatalog(q);
+      if (localHits.length > 0) {
+        currentMatches = localHits;
+        renderProduct(localHits[0], localHits);
+        scheduleStandbyReset();
+        return;
+      }
+
+      // 2. بحث احتياطي مباشر في الخادم إذا لم يكن الكتالوج قد تحمّل بعد
+      try {
+        const res = await fetch('/api/kiosk/lookup?q=' + encodeURIComponent(q));
+        const data = await res.json();
+        if (data && data.found && data.product) {
+          currentMatches = data.matches || [data.product];
+          renderProduct(data.product, currentMatches);
+        } else {
+          main.innerHTML =
+            '<div class="result-card" style="border-color:#f43f5e">' +
+              '<div class="prod-name" style="color:#f43f5e">⚠️ لم يتم العثور على سلعة مطابقة لـ (' + q + ')</div>' +
+              '<div class="standby-sub">يرجى تمرير الباركود أو كتابة جزء من اسم السلعة</div>' +
+            '</div>';
+        }
+        scheduleStandbyReset();
+      } catch (err) {}
+    }
+  </script>
+</body>
+</html>

@@ -1270,3 +1270,916 @@ body.gherbi-top-nav-mode .view-section.active:not(#view-pos) {
 #gherbiCustomInputModal.modal-overlay {
   z-index: 10250 !important;
 }
+
+
+/* ==========================================================================
+   [GHERBI.AI V4 CLEAN — STAGE 1: UNIFIED F7 & MANAGER PIN MODAL]
+   ========================================================================== */
+#posQuickTouchStrip,
+.pos-quick-touch-strip-legacy {
+  display: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+}
+
+#changeManagerPinModal.modal-overlay,
+#gherbiCustomPromptModal.modal-overlay {
+  z-index: 10300 !important;
+}
+
+
+/* === [GHERBI V4 CLEAN STAGE 1: NO DUPLICATE F7 & CUSTOM PIN MODAL] === */
+#posQuickTouchStrip,
+.pos-quick-touch-strip-legacy {
+  display: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+}
+
+#changeManagerPinModal.modal-overlay,
+#gherbiSafePromptModal.modal-overlay {
+  z-index: 10300 !important;
+}
+
+
+/* === [GHERBI V4 CLEAN STAGE 2: F7 WAREHOUSE CARDS & EDIT MODAL] === */
+#quickBtnEditModal.modal-overlay {
+  z-index: 10310 !important;
+}
+
+.v4-s2-f7-card {
+  position: relative;
+  border-radius: 0.95rem;
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-surface);
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.35rem;
+  transition: all 0.14s ease;
+  cursor: pointer;
+}
+.v4-s2-f7-card:hover {
+  border-color: #10b981;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px -6px rgba(16, 185, 129, 0.22);
+}
+.v4-s2-f7-card.card-from-inventory {
+  border-right: 4px solid #2563eb;
+}
+
+
+/* === [GHERBI V4 CLEAN STAGE 3: RETAIL PRODUCT MODAL & MULTI-BARCODES] === */
+#productModal #prodTabBtn-variants,
+#productModal #prodTabBtn-bom,
+#productModal #prodTabContent-variants,
+#productModal #prodTabContent-bom,
+#productModal #prodTabBtn4,
+#productModal #prodTabBtn5,
+#productModal #prodTab4,
+#productModal #prodTab5,
+#productModal button[onclick*="switchProductModalTab('variants')"],
+#productModal button[onclick*="switchProductModalTab('bom')"] {
+  display: none !important;
+}
+
+#productModal #prodExtraPricesContainer,
+#productModal button[onclick*="addExtraPriceRow"],
+#productModal button[onclick*="addPriceTierRow"] {
+  display: none !important;
+}
+
+
+/* === [GHERBI V4 STAGE 1 & 2 ENFORCER CSS] === */
+#posQuickTouchStrip,
+.pos-quick-touch-strip-legacy,
+.gherbi-legacy-f7-hidden {
+  display: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+}
+
+#changeManagerPinModal.modal-overlay,
+#quickBtnEditModal.modal-overlay,
+#gherbiV4QuickTouchModal.modal-overlay {
+  z-index: 10350 !important;
+}
+
+.v4-f7-card-item {
+  position: relative;
+  border-radius: 0.95rem;
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-surface);
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.35rem;
+  transition: all 0.14s ease;
+  cursor: pointer;
+}
+.v4-f7-card-item:hover {
+  border-color: #10b981;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px -6px rgba(16, 185, 129, 0.22);
+}
+.v4-f7-card-item.linked-to-warehouse {
+  border-right: 4px solid #2563eb;
+}
+
+
+/* === [GHERBI V4 WORLD-CLASS F7 TOUCH CENTER & DELTA LOYALTY BANNER] === */
+#gherbiV4QuickTouchModal .modal-content {
+  max-width: 1120px !important;
+  width: 96vw !important;
+  height: 88vh !important;
+  max-height: 88vh !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  border-radius: 1.35rem !important;
+}
+
+.f7-pro-card {
+  position: relative;
+  border-radius: 1rem;
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-surface);
+  padding: 0.7rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.4rem;
+  transition: all 0.14s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  user-select: none;
+  min-height: 112px;
+}
+.f7-pro-card:hover {
+  border-color: #10b981;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px -8px rgba(16, 185, 129, 0.25);
+}
+.f7-pro-card:active {
+  transform: scale(0.97);
+}
+.f7-pro-card.in-cart-active {
+  border: 2px solid #10b981 !important;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, var(--bg-surface) 100%) !important;
+}
+.f7-pro-card.warehouse-linked {
+  border-right: 4px solid #2563eb;
+}
+
+.f7-mult-btn {
+  padding: 0.25rem 0.65rem;
+  border-radius: 0.5rem;
+  font-family: var(--font-numbers);
+  font-size: 11.5px;
+  font-weight: 900;
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  transition: all 0.12s ease;
+}
+.f7-mult-btn.active {
+  background: #10b981;
+  color: #022c22;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+}
+
+.gherbi-delta-loyalty-banner {
+  padding: 0.35rem 0.65rem;
+  background: linear-gradient(90deg, #1e1b4b 0%, #312e81 100%);
+  color: #ffffff;
+  border-radius: 0.6rem;
+  font-size: 10.5px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border: 1px solid #6366f1;
+}
+
+
+/* === [GHERBI V5 STAGE 2: GIANT CUSTOMER TOTAL, SAVINGS BADGE & F3 DRAFTS] === */
+
+/* تكبير الإجمالي المستحق ليرى الزبون المبلغ بوضوح تام من بعيد */
+#cartTotalText {
+  font-size: 2.35rem !important;
+  line-height: 1.05 !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.5px !important;
+  color: #2563eb !important;
+  text-shadow: 0 2px 10px rgba(37, 99, 235, 0.15) !important;
+  transition: transform 0.12s ease !important;
+}
+html.dark #cartTotalText {
+  color: #60a5fa !important;
+  text-shadow: 0 0 14px rgba(96, 165, 250, 0.28) !important;
+}
+
+/* شارة المبلغ المختزل والنقاط المستعملة أمام الإجمالي مباشرة */
+.gherbi-live-redeemed-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0.22rem 0.6rem;
+  border-radius: 0.65rem;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.16) 0%, rgba(245, 158, 11, 0.14) 100%);
+  border: 1.5px solid rgba(16, 185, 129, 0.45);
+  line-height: 1.2;
+  animation: pulseSavings 2s infinite ease-in-out;
+}
+@keyframes pulseSavings {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+/* تمييز زر المسودات (F3) عندما يحتوي على فواتير معلقة (> 0) */
+.gherbi-drafts-btn-has-items {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(37, 99, 235, 0.15) 100%) !important;
+  border: 1.5px solid #f59e0b !important;
+  color: #b45309 !important;
+  font-weight: 900 !important;
+}
+html.dark .gherbi-drafts-btn-has-items {
+  color: #fbbf24 !important;
+}
+
+
+/* === [GHERBI V6 STAGE 1: PRO NON-BLOCKING CART DELETE MODAL & UNDO BAR] === */
+#gherbiProCartConfirmModal.modal-overlay {
+  z-index: 10450 !important;
+  backdrop-filter: blur(4px);
+}
+
+#gherbiProCartConfirmModal .modal-content {
+  animation: gherbiPopScale 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes gherbiPopScale {
+  0% { opacity: 0; transform: scale(0.92) translateY(8px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.gherbi-undo-cart-toast {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  z-index: 10500;
+  background: #0f172a;
+  color: #ffffff;
+  border: 2px solid #f59e0b;
+  border-radius: 1rem;
+  padding: 0.65rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.35);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+
+/* === [GHERBI V6 STAGE 2: INTERACTIVE KEYBOARD SHORTCUTS HUB] === */
+#shortcutsHelpModal.modal-overlay {
+  z-index: 10420 !important;
+  backdrop-filter: blur(4px);
+}
+
+#shortcutsHelpModal .modal-content {
+  max-width: 920px !important;
+  width: 95vw !important;
+  max-height: 88vh !important;
+  padding: 0 !important;
+  border-radius: 1.35rem !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.gherbi-shortcut-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.85rem;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+.gherbi-shortcut-card:hover {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.06);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12);
+}
+
+.gherbi-kbd-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.6rem;
+  border-radius: 0.5rem;
+  font-family: var(--font-numbers);
+  font-size: 11.5px;
+  font-weight: 900;
+  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+  color: #38bdf8;
+  border: 1px solid #334155;
+  box-shadow: 0 2px 0 #020617;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+
+/* === [GHERBI V7 STAGE 1: CRASH VAULT & INSTANT WALK-IN BUTTON] === */
+#gherbiCrashVaultModal.modal-overlay {
+  z-index: 10460 !important;
+  backdrop-filter: blur(4px);
+}
+
+.gherbi-vault-btn-alert {
+  background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%) !important;
+  color: #ffffff !important;
+  border-color: #d97706 !important;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.45) !important;
+  animation: pulseVaultBtn 1.8s infinite ease-in-out;
+}
+
+@keyframes pulseVaultBtn {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
+.gherbi-walkin-quick-pill {
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.5rem;
+  font-size: 10.5px;
+  font-weight: 900;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: all 0.14s ease;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.gherbi-walkin-quick-pill.is-walkin-active {
+  background: rgba(100, 116, 139, 0.14);
+  color: #475569;
+  border: 1px solid rgba(100, 116, 139, 0.3);
+}
+html.dark .gherbi-walkin-quick-pill.is-walkin-active {
+  color: #cbd5e1;
+}
+.gherbi-walkin-quick-pill.is-loyal-selected {
+  background: #f43f5e;
+  color: #ffffff;
+  border: 1px solid #e11d48;
+  box-shadow: 0 2px 8px rgba(244, 63, 94, 0.35);
+}
+.gherbi-walkin-quick-pill.is-loyal-selected:hover {
+  background: #e11d48;
+  transform: translateY(-1px);
+}
+
+
+/* === [GHERBI V7 STAGE 2: SELF-SERVICE AISLE PRICE KIOSK OVERLAY] === */
+#gherbiAisleKioskOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10800;
+  background: radial-gradient(circle at center, #0f172a 0%, #020617 100%);
+  color: #ffffff;
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  user-select: none;
+}
+#gherbiAisleKioskOverlay.active {
+  display: flex !important;
+}
+.kiosk-price-glow {
+  font-size: 4.8rem;
+  line-height: 1.05;
+  font-weight: 900;
+  font-family: var(--font-numbers);
+  color: #10b981;
+  text-shadow: 0 0 30px rgba(16, 185, 129, 0.4);
+}
+
+
+/* === [GHERBI V7 STAGE 3: PRO ELECTRONIC SCALE STATION] === */
+#posScaleModal.modal-overlay {
+  z-index: 10440 !important;
+  backdrop-filter: blur(4px);
+}
+#posScaleModal .modal-content {
+  max-width: 680px !important;
+  width: 95vw !important;
+  padding: 0 !important;
+  border-radius: 1.35rem !important;
+  overflow: hidden !important;
+}
+.scale-preset-pill {
+  padding: 0.45rem 0.5rem;
+  border-radius: 0.65rem;
+  font-size: 11px;
+  font-weight: 900;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-color);
+  transition: all 0.12s ease;
+  cursor: pointer;
+  text-align: center;
+}
+.scale-preset-pill:hover,
+.scale-preset-pill.active {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.14);
+  color: #059669;
+}
+html.dark .scale-preset-pill.active {
+  color: #34d399;
+}
+
+
+/* === [GHERBI V8 STAGE 2: SMART PACK & CARTON CART CONTROLS] === */
+.gherbi-v8-pack-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+.gherbi-v8-pack-toggle-btn {
+  padding: 0.2rem 0.6rem;
+  border-radius: 0.5rem;
+  font-size: 10.5px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+.gherbi-v8-pack-toggle-btn.is-unit-mode {
+  background: rgba(79, 70, 229, 0.12);
+  color: #4f46e5;
+  border: 1.5px solid rgba(79, 70, 229, 0.35);
+}
+.gherbi-v8-pack-toggle-btn.is-unit-mode:hover {
+  background: #4f46e5;
+  color: #ffffff;
+}
+html.dark .gherbi-v8-pack-toggle-btn.is-unit-mode {
+  color: #a5b4fc;
+}
+.gherbi-v8-pack-toggle-btn.is-pack-mode {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #ffffff;
+  border: 1.5px solid #b45309;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.35);
+}
+.gherbi-v8-pack-step-btn {
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.45rem;
+  font-size: 10.5px;
+  font-weight: 900;
+  background: #0f172a;
+  color: #fbbf24;
+  border: 1px solid #f59e0b;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.gherbi-v8-pack-step-btn:hover {
+  background: #f59e0b;
+  color: #0f172a;
+}
+
+
+/* === [GHERBI V9: EDITABLE LINE SUBTOTAL, PACK SYNC & OWNER PRICE RADAR] === */
+
+/* حقل إجمالي السطر القابل للتعديل (المشار إليه بالدائرة الحمراء) */
+.gherbi-line-subtotal-input {
+  width: 86px !important;
+  padding: 0.22rem 0.35rem !important;
+  border-radius: 0.55rem !important;
+  border: 1.5px dashed rgba(37, 99, 235, 0.45) !important;
+  background: rgba(37, 99, 235, 0.05) !important;
+  font-family: var(--font-numbers) !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+  color: #1e40af !important;
+  text-align: center !important;
+  transition: all 0.14s ease !important;
+}
+html.dark .gherbi-line-subtotal-input {
+  color: #93c5fd !important;
+  background: rgba(37, 99, 235, 0.12) !important;
+  border-color: rgba(96, 165, 250, 0.45) !important;
+}
+.gherbi-line-subtotal-input:hover,
+.gherbi-line-subtotal-input:focus {
+  border-style: solid !important;
+  border-color: #2563eb !important;
+  background: #ffffff !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2) !important;
+  outline: none !important;
+  transform: scale(1.03);
+}
+html.dark .gherbi-line-subtotal-input:focus {
+  background: #0f172a !important;
+}
+
+/* شارة أثر تعديل السعر والربح داخل سطر السلة */
+.gherbi-row-margin- feedback {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* إخفاء اللوحات القديمة المكررة لرقابة الأسعار في صفحة الإحصائيات */
+.gherbi-owner-audit-panel,
+.gherbi-manager-cost-audit-panel,
+#ownerPriceViolationReportCard {
+  display: none !important;
+}
+
+/* تصميم رادار رقابة الأسعار الشامل لصاحب المحل */
+.v9-owner-radar-card {
+  border-radius: 1.25rem;
+  border: 2px solid rgba(244, 63, 94, 0.35);
+  background: var(--bg-surface);
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 10px 25px -10px rgba(244, 63, 94, 0.15);
+}
+.v9-radar-filter-pill {
+  padding: 0.3rem 0.75rem;
+  border-radius: 0.65rem;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  border: 1px solid var(--border-color);
+  background: var(--bg-main);
+}
+.v9-radar-filter-pill.active {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+html.dark .v9-radar-filter-pill.active {
+  background: #2563eb;
+  border-color: #3b82f6;
+}
+
+
+/* === [GHERBI V10: SUBTOTAL QUANTITY (0.8) VS PRICE MODE SWITCHER] === */
+.gherbi-v10-mode-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.55rem;
+  font-size: 10.5px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  border: 1.5px solid transparent;
+  user-select: none;
+}
+.gherbi-v10-mode-switcher.mode-qty {
+  background: rgba(16, 185, 129, 0.14);
+  color: #047857;
+  border-color: rgba(16, 185, 129, 0.4);
+}
+html.dark .gherbi-v10-mode-switcher.mode-qty {
+  color: #34d399;
+}
+.gherbi-v10-mode-switcher.mode-price {
+  background: rgba(37, 99, 235, 0.14);
+  color: #1d4ed8;
+  border-color: rgba(37, 99, 235, 0.4);
+}
+html.dark .gherbi-v10-mode-switcher.mode-price {
+  color: #60a5fa;
+}
+
+.gherbi-v10-flip-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.4rem;
+  font-size: 9.5px;
+  font-weight: 900;
+  background: rgba(99, 102, 241, 0.12);
+  color: #4f46e5;
+  border: 1px dashed rgba(99, 102, 241, 0.45);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+.gherbi-v10-flip-chip:hover {
+  background: #4f46e5;
+  color: #ffffff;
+  border-style: solid;
+}
+html.dark .gherbi-v10-flip-chip {
+  color: #a5b4fc;
+}
+
+
+/* === [GHERBI V10: SMART SUBTOTAL MODE SWITCHER (QTY 0.8 VS PRICE) & GRAM BADGE] === */
+
+.gherbi-subtotal-mode-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.55rem;
+  font-size: 10.5px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  border: 1.5px solid transparent;
+  white-space: nowrap;
+}
+.gherbi-subtotal-mode-switcher.mode-qty {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.16) 0%, rgba(5, 150, 105, 0.12) 100%);
+  color: #047857;
+  border-color: rgba(16, 185, 129, 0.45);
+}
+html.dark .gherbi-subtotal-mode-switcher.mode-qty {
+  color: #34d399;
+}
+.gherbi-subtotal-mode-switcher.mode-price {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15) 0%, rgba(79, 70, 229, 0.12) 100%);
+  color: #1d4ed8;
+  border-color: rgba(37, 99, 235, 0.45);
+}
+html.dark .gherbi-subtotal-mode-switcher.mode-price {
+  color: #60a5fa;
+}
+.gherbi-subtotal-mode-switcher.mode-smart {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.16) 0%, rgba(217, 119, 6, 0.12) 100%);
+  color: #b45309;
+  border-color: rgba(245, 158, 11, 0.45);
+}
+html.dark .gherbi-subtotal-mode-switcher.mode-smart {
+  color: #fbbf24;
+}
+
+/* شارة المعادل بالغرام والكسر العشري (مثلاً 0.8 = 800 غرام) */
+.gherbi-fractional-qty-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 0.45rem;
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #065f46;
+  font-size: 10px;
+  font-weight: 900;
+  font-family: var(--font-numbers);
+}
+html.dark .gherbi-fractional-qty-badge {
+  color: #6ee7b7;
+}
+
+/* تلميح التبديل الفوري فوق حقل الإجمالي عند التركيز عليه */
+.gherbi-subtotal-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+}
+.gherbi-subtotal-micro-hint {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0f172a;
+  color: #ffffff;
+  border: 1px solid #38bdf8;
+  border-radius: 0.5rem;
+  padding: 0.2rem 0.45rem;
+  font-size: 9.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  z-index: 60;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+  display: none;
+  align-items: center;
+  gap: 0.35rem;
+}
+.gherbi-subtotal-wrap:focus-within .gherbi-subtotal-micro-hint {
+  display: inline-flex;
+}
+
+
+/* === [GHERBI V11: ZERO-FLICKER CART ROW & FULL DECIMAL DISPLAY (0.96)] === */
+
+/* توسيع خانة الكمية في السلة لتعرض 0.96 كاملة بوضوح دون قص الصفر اليساري */
+#posCartItems input[onclick*="openNumberModal"],
+#posCartItems input[onchange*="updateCartItemQty"],
+.gherbi-cart-qty-input-wide {
+  min-width: 62px !important;
+  width: auto !important;
+  max-width: 78px !important;
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+  font-family: var(--font-numbers) !important;
+  font-weight: 900 !important;
+  font-size: 13px !important;
+  text-align: center !important;
+  direction: ltr !important;
+}
+
+/* حقل إجمالي السطر القابل للتعديل (120.00 / 125.00) */
+.gherbi-line-subtotal-input {
+  width: 88px !important;
+  padding: 0.22rem 0.35rem !important;
+  border-radius: 0.55rem !important;
+  border: 1.5px dashed rgba(37, 99, 235, 0.55) !important;
+  background: rgba(37, 99, 235, 0.06) !important;
+  font-family: var(--font-numbers) !important;
+  font-size: 13.5px !important;
+  font-weight: 900 !important;
+  color: #1d4ed8 !important;
+  text-align: center !important;
+  direction: ltr !important;
+}
+html.dark .gherbi-line-subtotal-input {
+  color: #93c5fd !important;
+  background: rgba(37, 99, 235, 0.14) !important;
+}
+.gherbi-line-subtotal-input:focus {
+  border-style: solid !important;
+  border-color: #2563eb !important;
+  background: #ffffff !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.22) !important;
+  outline: none !important;
+}
+html.dark .gherbi-line-subtotal-input:focus {
+  background: #0f172a !important;
+}
+
+/* شريط الأدوات الموحد والثابت أسفل اسم المنتج داخل سطر السلة (بدون أي ارتعاش) */
+.gherbi-v11-row-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.28rem;
+}
+
+/* زر التبديل الفوري بين (كمية جزئية 0.96 = 960غ ⇄ تخفيض سعر كمية 1) */
+.gherbi-v11-mode-convert-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.18rem 0.6rem;
+  border-radius: 0.5rem;
+  font-size: 10.5px;
+  font-weight: 900;
+  background: rgba(79, 70, 229, 0.1);
+  color: #4338ca;
+  border: 1px dashed rgba(79, 70, 229, 0.45);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+  white-space: nowrap;
+}
+.gherbi-v11-mode-convert-pill:hover {
+  background: #4f46e5;
+  color: #ffffff;
+  border-style: solid;
+}
+html.dark .gherbi-v11-mode-convert-pill {
+  color: #a5b4fc;
+  background: rgba(79, 70, 229, 0.18);
+}
+
+
+/* === [GHERBI V12: F12 SUBTOTAL FOCUS, MIDDLE PRICE ALT+P & MODE BUTTONS] === */
+
+/* تمييز السطر المختار في السلة للتنقل السلس بالأسهم (↑ / ↓) */
+#posCartItems > div.gherbi-active-cart-row {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18) !important;
+}
+
+/* حاوية الحقل مع شارة الاختصار العلوية الصغيرة (F12 / Alt+P / Alt+Q) */
+.gherbi-field-kbd-box {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.gherbi-mini-kbd-tag {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0px 4px;
+  border-radius: 4px;
+  font-family: var(--font-numbers);
+  font-size: 8.5px;
+  font-weight: 900;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+.gherbi-mini-kbd-tag.tag-f12 {
+  background: #2563eb;
+  color: #ffffff;
+}
+.gherbi-mini-kbd-tag.tag-altp {
+  background: #0f172a;
+  color: #38bdf8;
+  border: 1px solid #334155;
+}
+.gherbi-mini-kbd-tag.tag-altq {
+  background: #475569;
+  color: #f8fafc;
+}
+
+/* حقل السعر الأوسط (سعر الوحدة) */
+.gherbi-middle-unit-price-input {
+  transition: all 0.14s ease !important;
+  direction: ltr !important;
+}
+.gherbi-middle-unit-price-input:focus {
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.22) !important;
+  background: #ffffff !important;
+  outline: none !important;
+}
+html.dark .gherbi-middle-unit-price-input:focus {
+  background: #0f172a !important;
+}
+
+/* شريط أزرار التحكم المباشر في وظيفة الإجمالي (كمية 0.8 | تخفيض سعر | ذكي) */
+.gherbi-v12-mode-segmented-bar {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.06);
+  border: 1px solid var(--border-color);
+  border-radius: 0.65rem;
+  padding: 2px;
+  gap: 2px;
+}
+html.dark .gherbi-v12-mode-segmented-bar {
+  background: rgba(15, 23, 42, 0.5);
+}
+.gherbi-v12-mode-btn {
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.5rem;
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.gherbi-v12-mode-btn:hover {
+  color: var(--text-main);
+}
+.gherbi-v12-mode-btn.active-qty {
+  background: #10b981;
+  color: #022c22 !important;
+  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.35);
+}
+.gherbi-v12-mode-btn.active-price {
+  background: #2563eb;
+  color: #ffffff !important;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.35);
+}
+.gherbi-v12-mode-btn.active-smart {
+  background: #f59e0b;
+  color: #0f172a !important;
+  box-shadow: 0 1px 4px rgba(245, 158, 11, 0.35);
+}

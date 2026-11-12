@@ -29,6 +29,37 @@ class DbWriteQueue {
     this.chain = Promise.resolve();
     this.txDepth = 0;
     this.spCounter = 0;
+    this.stats = {
+      enqueued: 0,
+      completed: 0,
+      failed: 0,
+      totalTimeMs: 0,
+      maxTimeMs: 0,
+      lastError: null
+    };
+  }
+
+
+  getStats() {
+    const s = this.stats || { enqueued: 0, completed: 0, failed: 0, totalTimeMs: 0, maxTimeMs: 0, lastError: null };
+    const avgMs = s.completed > 0 ? Number((s.totalTimeMs / s.completed).toFixed(2)) : 0;
+    return {
+      enqueued: s.enqueued,
+      completed: s.completed,
+      failed: s.failed,
+      pending: Math.max(0, s.enqueued - s.completed - s.failed),
+      queueDepth: Math.max(0, s.enqueued - s.completed - s.failed),
+      txDepth: this.txDepth || 0,
+      avgDurationMs: avgMs,
+      avgWriteMs: avgMs,
+      maxDurationMs: s.maxTimeMs || 0,
+      lastError: s.lastError || null
+    };
+  }
+
+  resetStats() {
+    this.stats = { enqueued: 0, completed: 0, failed: 0, totalTimeMs: 0, maxTimeMs: 0, lastError: null };
+    return this.getStats();
   }
 
   get db() {
@@ -294,6 +325,7 @@ function attachWriteQueue(db) {
   activeQueueInstance = queue;
 
   db._writeQueue = queue;
+  db.getWriteQueueStats = queue.getStats.bind(queue);
   db.writeQueue = queue;
 
   db.dbRun = queue.dbRun.bind(queue);

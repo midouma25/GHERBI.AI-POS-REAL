@@ -568,53 +568,7 @@
         window.App._v3SaveProdHooked = true;
       }
 
-      window.App.toggleCartItemWholesaleUnit = function (idx) {
-        const items = window.App.currentCart?.items || [];
-        const item = items[idx];
-        if (!item) return;
-
-        const prod = (window.AppState.products || []).find(
-          (p) => Number(p.id) === Number(item.product_id || item.productId) || p.name === item.name
-        );
-        if (!prod) return;
-
-        const packFactor = Math.max(2, Number(prod.wholesale_min_qty || prod.pack_factor || 6));
-        const unitRetailPrice = Number(prod.selling_price || item.price || 0);
-        const rawPackPrice = Number(prod.wholesale_price || 0);
-
-        if (!item._isCartonPackMode) {
-          item._isCartonPackMode = true;
-          item._isWholesaleMode = true;
-          item._savedUnitPrice = unitRetailPrice;
-          item.quantity = packFactor;
-
-          if (rawPackPrice > unitRetailPrice) {
-            item.price = Number((rawPackPrice / packFactor).toFixed(2));
-            item.subtotal = Number(rawPackPrice.toFixed(2));
-          } else if (rawPackPrice > 0) {
-            item.price = rawPackPrice;
-            item.subtotal = Number((packFactor * rawPackPrice).toFixed(2));
-          } else {
-            item.price = unitRetailPrice;
-            item.subtotal = Number((packFactor * unitRetailPrice).toFixed(2));
-          }
-
-          if (window.showToast) {
-            window.showToast(`📦 تم التحويل إلى بيع بالكارطون/الحزمة (×${packFactor} وحدات) بإجمالي ${item.subtotal.toFixed(2)} د.ج`, 'success');
-          }
-        } else {
-          item._isCartonPackMode = false;
-          item._isWholesaleMode = false;
-          item.quantity = 1;
-          item.price = item._savedUnitPrice || unitRetailPrice;
-          item.subtotal = Number(item.price.toFixed(2));
-          if (window.showToast) {
-            window.showToast('🏷️ تم العودة إلى البيع بالقطعة المفردة (1 وحدة)', 'info');
-          }
-        }
-
-        window.App.recalcAndRenderCart();
-      };
+      /* تم نقل إدارة الباكي والكرتونة بالكامل إلى المحرك الذكي V8PackEngine */
     },
 
     getProductLoyaltyMultiplier(productId) {

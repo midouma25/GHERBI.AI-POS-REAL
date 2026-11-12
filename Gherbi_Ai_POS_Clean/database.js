@@ -1761,3 +1761,40 @@ module.exports = db;
   } catch (_) {}
 })();
 
+/* [RETAIL_PACK_DB_SYNC_PATCH] */
+(function ensureProductPackColumnsSaved() {
+  try {
+    if (typeof db !== 'undefined' && db && typeof db.safeAddColumn === 'function') {
+      db.safeAddColumn('products', 'wholesale_price REAL DEFAULT 0');
+      db.safeAddColumn('products', 'wholesale_qty REAL DEFAULT 0');
+      db.safeAddColumn('products', "wholesale_unit TEXT DEFAULT 'كرتونة'");
+    }
+    const origUpdateProduct = module.exports.updateProduct;
+    if (typeof origUpdateProduct === 'function') {
+      module.exports.updateProduct = function (idOrObj, maybeData) {
+        const res = origUpdateProduct.apply(this, arguments);
+        try {
+          const data = typeof idOrObj === 'object' && idOrObj !== null ? idOrObj : (maybeData || {});
+          const pid = Number(data.id || idOrObj);
+          const wPrice = parseFloat(data.wholesale_price ?? data.pack_price ?? 0) || 0;
+          const wQty = parseFloat(data.wholesale_qty ?? data.pack_qty ?? data.wholesale_min_qty ?? 0) || 0;
+          const wUnit = String(data.wholesale_unit ?? data.pack_unit ?? 'كرتونة').trim();
+          if (pid > 0 && typeof db !== 'undefined' && db) {
+            db.run(
+              'UPDATE products SET wholesale_price = ?, wholesale_qty = ?, wholesale_unit = ? WHERE id = ?',
+              [wPrice, wQty, wUnit, pid],
+              () => {}
+            );
+            db.run(
+              'UPDATE inventory_batches SET wholesale_price = ? WHERE product_id = ? AND deleted_at IS NULL',
+              [wPrice, pid],
+              () => {}
+            );
+          }
+        } catch (_) {}
+        return res;
+      };
+    }
+  } catch (_) {}
+})();
+
