@@ -267,7 +267,7 @@
               <div class="flex items-center gap-1.5">
                 <button onclick="App.openFreeItemModal()" class="px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-xs font-bold flex items-center gap-1">
                   <span class="material-symbols-rounded icon-sm">add_shopping_cart</span>
-                  <span>منتج حر (F8)</span>
+                  <span>منتج حر (Alt+F)</span>
                 </button>
                 <button onclick="App.toggleReturnMode()" id="btnReturnMode" class="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-xs font-bold flex items-center gap-1">
                   <span class="material-symbols-rounded icon-sm">keyboard_return</span>
@@ -393,7 +393,7 @@
             <div id="chkCentimeHelperText" class="text-xs font-black text-amber-600 dark:text-amber-400 mt-1">🇩🇿 بالسنتيم: 0 سنتيم</div>
           </div>
 
-          <div class="grid grid-cols-2 gap-2 text-xs">
+          <div class="hidden grid-cols-2 gap-2 text-xs">
             <label class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer">
               <input id="chkApplyTva" type="checkbox" onchange="App.recalcCheckoutModal()">
               <span class="font-bold">تطبيق TVA (19%)</span>
@@ -1350,7 +1350,7 @@
         <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>تعليق الفاتورة الحالية في المسودات</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono">F2</kbd></div>
         <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>فتح قائمة الفواتير المعلقة (المسودات)</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono">F3</kbd></div>
         <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>إفراغ السلة الحالية</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono">F4</kbd></div>
-        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>إضافة منتج حر غير مسجل</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono">F8</kbd></div>
+        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>نافذة بطاقة الوفاء واختيار الزبون</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono">F8</kbd></div>
         <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>فتح درج النقود (Cash Drawer)</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono">F10</kbd></div>
       </div>
     </div>
@@ -1416,7 +1416,7 @@
   <!-- 31. نافذة منتج حر (Alt+F) + وصفة تصنيع + تسجيل الدخول -->
   <div id="freeItemModal" class="modal-overlay">
     <div class="modal-content w-full max-w-sm p-6 space-y-4">
-      <h3 class="text-lg font-black">إضافة منتج حر للسلة (F8)</h3>
+      <h3 class="text-lg font-black">إضافة منتج حر للسلة (Alt+F)</h3>
       <div class="space-y-3 text-xs">
         <div><label class="block font-bold mb-1">بيان / اسم العنصر</label><input id="freeItemName" type="text" value="منتج متنوع" class="w-full px-3 py-2 rounded-xl font-bold"></div>
         <div class="grid grid-cols-2 gap-2">
@@ -1857,22 +1857,9 @@
   <script src="./stocktake/stocktake-ui.js"></script>
   <script src="./renderer.js"></script>
   <script src="./renderer-rc-100.js"></script>
-  <script src="./gherbi-retail-master-upgrade.js"></script>
-  <script src="./gherbi-retail-v2-enhancements.js"></script>
-  <script src="./gherbi-retail-v3-master.js"></script>
-  <script src="./gherbi-v4-stage1-clean.js"></script>
-  <script src="./gherbi-v4-clean-stage3.js"></script>
-  <script src="./gherbi-v4-stage1-2-enforcer.js"></script>
-  <script src="./gherbi-v5-stage1-walkin-and-edit.js"></script>
-  <script src="./gherbi-v5-stage2-total-and-f3.js"></script>
-  <script src="./gherbi-v6-stage1-confirm-and-walkin.js"></script>
-  <script src="./gherbi-v6-stage2-shortcuts-hub.js"></script>
-  <script src="./gherbi-v7-stage1-vault-and-walkin.js"></script>
-  <script src="./gherbi-v7-stage2-price-kiosk.js"></script>
-  <script src="./gherbi-v7-stage3-pro-scale.js"></script>
-  <script src="./gherbi-v8-stage3-retail-checkout.js"></script>
-  <script src="./gherbi-v8-stage2-pack-engine.js"></script>
-  <script src="./gherbi-v10-subtotal-qty-price-switch.js"></script>
-  <script src="./gherbi-v9-dual-price-and-owner-radar.js"></script>
+  <!-- الحزم المعمارية الثلاث الموحدة للإصدار V13 (10/10 Clean Architecture) -->
+  <script src="./gherbi-core-pos-engine.js"></script>
+  <script src="./gherbi-core-loyalty-audit.js"></script>
+  <script src="./gherbi-core-devices-hub.js"></script>
 </body>
 </html>

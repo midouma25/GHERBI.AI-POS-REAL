@@ -38,8 +38,10 @@
     "productName": "Gherbi.Ai POS",
     "asar": true,
     "asarUnpack": [
-      "node_modules/sqlite3/**/*",
-      "node_modules/serialport/**/*"
+      "**/*.node",
+      "**/sqlite3/**",
+      "**/serialport/**",
+      "kiosk-client.html"
     ],
     "win": {
       "target": [
@@ -50,6 +52,18 @@
           ]
         }
       ]
-    }
+    },
+    "files": [
+      "**/*",
+      "!_legacy_archive{,/**}",
+      "!*.py",
+      "!full-project-context*.txt",
+      "!v4-ready-context.txt",
+      "!apply-*.js",
+      "!fix-*.js",
+      "!achieve-perfect-10.js",
+      "!kiosk-catalog-cache.json",
+      "!apply-v16-*.js"
+    ]
   }
 }

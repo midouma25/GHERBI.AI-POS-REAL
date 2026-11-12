@@ -1775,40 +1775,10 @@ html.dark .gherbi-v8-pack-toggle-btn.is-unit-mode {
 
 /* === [GHERBI V9: EDITABLE LINE SUBTOTAL, PACK SYNC & OWNER PRICE RADAR] === */
 
-/* حقل إجمالي السطر القابل للتعديل (المشار إليه بالدائرة الحمراء) */
-.gherbi-line-subtotal-input {
-  width: 86px !important;
-  padding: 0.22rem 0.35rem !important;
-  border-radius: 0.55rem !important;
-  border: 1.5px dashed rgba(37, 99, 235, 0.45) !important;
-  background: rgba(37, 99, 235, 0.05) !important;
-  font-family: var(--font-numbers) !important;
-  font-size: 13px !important;
-  font-weight: 900 !important;
-  color: #1e40af !important;
-  text-align: center !important;
-  transition: all 0.14s ease !important;
-}
-html.dark .gherbi-line-subtotal-input {
-  color: #93c5fd !important;
-  background: rgba(37, 99, 235, 0.12) !important;
-  border-color: rgba(96, 165, 250, 0.45) !important;
-}
-.gherbi-line-subtotal-input:hover,
-.gherbi-line-subtotal-input:focus {
-  border-style: solid !important;
-  border-color: #2563eb !important;
-  background: #ffffff !important;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2) !important;
-  outline: none !important;
-  transform: scale(1.03);
-}
-html.dark .gherbi-line-subtotal-input:focus {
-  background: #0f172a !important;
-}
+/* [تم توحيد تعريف .gherbi-line-subtotal-input في بلوك V11 أدناه لمنع التكرار] */
 
 /* شارة أثر تعديل السعر والربح داخل سطر السلة */
-.gherbi-row-margin- feedback {
+.gherbi-row-margin-feedback {
   font-size: 10px;
   font-weight: 800;
   padding: 0.1rem 0.45rem;
@@ -1852,151 +1822,6 @@ html.dark .gherbi-line-subtotal-input:focus {
 html.dark .v9-radar-filter-pill.active {
   background: #2563eb;
   border-color: #3b82f6;
-}
-
-
-/* === [GHERBI V10: SUBTOTAL QUANTITY (0.8) VS PRICE MODE SWITCHER] === */
-.gherbi-v10-mode-switcher {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.15rem 0.45rem;
-  border-radius: 0.55rem;
-  font-size: 10.5px;
-  font-weight: 900;
-  cursor: pointer;
-  transition: all 0.14s ease;
-  border: 1.5px solid transparent;
-  user-select: none;
-}
-.gherbi-v10-mode-switcher.mode-qty {
-  background: rgba(16, 185, 129, 0.14);
-  color: #047857;
-  border-color: rgba(16, 185, 129, 0.4);
-}
-html.dark .gherbi-v10-mode-switcher.mode-qty {
-  color: #34d399;
-}
-.gherbi-v10-mode-switcher.mode-price {
-  background: rgba(37, 99, 235, 0.14);
-  color: #1d4ed8;
-  border-color: rgba(37, 99, 235, 0.4);
-}
-html.dark .gherbi-v10-mode-switcher.mode-price {
-  color: #60a5fa;
-}
-
-.gherbi-v10-flip-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  padding: 0.1rem 0.45rem;
-  border-radius: 0.4rem;
-  font-size: 9.5px;
-  font-weight: 900;
-  background: rgba(99, 102, 241, 0.12);
-  color: #4f46e5;
-  border: 1px dashed rgba(99, 102, 241, 0.45);
-  cursor: pointer;
-  transition: all 0.12s ease;
-  white-space: nowrap;
-}
-.gherbi-v10-flip-chip:hover {
-  background: #4f46e5;
-  color: #ffffff;
-  border-style: solid;
-}
-html.dark .gherbi-v10-flip-chip {
-  color: #a5b4fc;
-}
-
-
-/* === [GHERBI V10: SMART SUBTOTAL MODE SWITCHER (QTY 0.8 VS PRICE) & GRAM BADGE] === */
-
-.gherbi-subtotal-mode-switcher {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.2rem 0.55rem;
-  border-radius: 0.55rem;
-  font-size: 10.5px;
-  font-weight: 900;
-  cursor: pointer;
-  transition: all 0.14s ease;
-  border: 1.5px solid transparent;
-  white-space: nowrap;
-}
-.gherbi-subtotal-mode-switcher.mode-qty {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.16) 0%, rgba(5, 150, 105, 0.12) 100%);
-  color: #047857;
-  border-color: rgba(16, 185, 129, 0.45);
-}
-html.dark .gherbi-subtotal-mode-switcher.mode-qty {
-  color: #34d399;
-}
-.gherbi-subtotal-mode-switcher.mode-price {
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15) 0%, rgba(79, 70, 229, 0.12) 100%);
-  color: #1d4ed8;
-  border-color: rgba(37, 99, 235, 0.45);
-}
-html.dark .gherbi-subtotal-mode-switcher.mode-price {
-  color: #60a5fa;
-}
-.gherbi-subtotal-mode-switcher.mode-smart {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.16) 0%, rgba(217, 119, 6, 0.12) 100%);
-  color: #b45309;
-  border-color: rgba(245, 158, 11, 0.45);
-}
-html.dark .gherbi-subtotal-mode-switcher.mode-smart {
-  color: #fbbf24;
-}
-
-/* شارة المعادل بالغرام والكسر العشري (مثلاً 0.8 = 800 غرام) */
-.gherbi-fractional-qty-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.12rem 0.5rem;
-  border-radius: 0.45rem;
-  background: rgba(16, 185, 129, 0.14);
-  border: 1px solid rgba(16, 185, 129, 0.4);
-  color: #065f46;
-  font-size: 10px;
-  font-weight: 900;
-  font-family: var(--font-numbers);
-}
-html.dark .gherbi-fractional-qty-badge {
-  color: #6ee7b7;
-}
-
-/* تلميح التبديل الفوري فوق حقل الإجمالي عند التركيز عليه */
-.gherbi-subtotal-wrap {
-  position: relative;
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-}
-.gherbi-subtotal-micro-hint {
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: #0f172a;
-  color: #ffffff;
-  border: 1px solid #38bdf8;
-  border-radius: 0.5rem;
-  padding: 0.2rem 0.45rem;
-  font-size: 9.5px;
-  font-weight: 800;
-  white-space: nowrap;
-  z-index: 60;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
-  display: none;
-  align-items: center;
-  gap: 0.35rem;
-}
-.gherbi-subtotal-wrap:focus-within .gherbi-subtotal-micro-hint {
-  display: inline-flex;
 }
 
 
@@ -2182,4 +2007,33 @@ html.dark .gherbi-v12-mode-segmented-bar {
   background: #f59e0b;
   color: #0f172a !important;
   box-shadow: 0 1px 4px rgba(245, 158, 11, 0.35);
+}
+
+
+/* === [GHERBI V13 STAGE 4: QUICK INVENTORY EDITOR & EXECUTIVE Z-REPORT RADAR] === */
+#v13QuickInventoryModal.modal-overlay {
+  z-index: 10520 !important;
+  backdrop-filter: blur(4px);
+}
+.v13-inv-quick-btn {
+  padding: 0.25rem 0.55rem;
+  border-radius: 0.5rem;
+  background: rgba(16, 185, 129, 0.14);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  font-size: 10.5px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  white-space: nowrap;
+}
+.v13-inv-quick-btn:hover {
+  background: #10b981;
+  color: #ffffff;
+}
+html.dark .v13-inv-quick-btn {
+  color: #34d399;
 }

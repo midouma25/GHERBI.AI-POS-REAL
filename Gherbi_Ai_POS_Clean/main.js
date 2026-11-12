@@ -214,69 +214,88 @@ async function openCustomerFacingWindow() {
   const rip = await getSetting('shop_baridimob_rip', '00799999000000000000');
   const ripQrImg = rip ? await QRCode.toDataURL(String(rip), { margin: 1, width: 130 }).catch(() => '') : '';
 
-  const html = `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="UTF-8">
-  <title>شاشة الزبون</title>
-  <style>
-    body { margin:0; padding:24px; font-family:'Cairo','Segoe UI',sans-serif; background:#020617; color:#f8fafc; display:flex; flex-direction:column; height:100vh; box-sizing:border-box; }
-    .hdr { display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #1e293b; padding-bottom:14px; }
-    .brand { font-size:26px; font-weight:900; color:#38bdf8; }
-    .main { flex:1; display:grid; grid-template-columns:1fr 320px; gap:20px; margin-top:18px; min-height:0; }
-    .items-box { background:#0f172a; border:1px solid #1e293b; border-radius:16px; padding:16px; overflow-y:auto; }
-    .item-row { display:flex; justify-content:space-between; padding:10px 12px; border-bottom:1px solid #1e293b; font-size:18px; font-weight:700; }
-    .total-card { background:linear-gradient(135deg,#1d4ed8,#0284c7); border-radius:20px; padding:24px; display:flex; flex-direction:column; justify-content:space-between; text-align:center; }
-    .total-val { font-size:44px; font-weight:900; font-family:monospace; color:#ffffff; margin:12px 0; }
-    .rip-box { background:rgba(255,255,255,0.12); padding:12px; border-radius:12px; font-size:13px; }
-  </style>
-</head>
-<body>
-  <div class="hdr">
-    <div class="brand">${shopName} — مرحباً بكم</div>
-    <div id="clock" style="font-family:monospace;font-size:18px;color:#94a3b8;"></div>
-  </div>
-  <div class="main">
-    <div class="items-box" id="itemsList">
-      <div style="text-align:center;color:#64748b;margin-top:120px;font-size:22px;font-weight:700;">مرحباً بكم في متجرنا</div>
-    </div>
-    <div class="total-card">
-      <div>
-        <div style="font-size:18px;opacity:0.9;font-weight:700;">الإجمالي المطلوب للدفع</div>
-        <div id="grandTotal" class="total-val">0.00 د.ج</div>
-        <div id="discountLine" style="font-size:15px;color:#fde047;font-weight:700;"></div>
-      </div>
-      <div class="rip-box">
-        <div style="font-weight:800;margin-bottom:4px;">الدفع الإلكتروني BaridiMob / CCP</div>
-        <div style="font-family:monospace;font-size:12px;word-break:break-all;">${rip}</div>
-        ${ripQrImg ? `<img src="${ripQrImg}" style="width:110px;height:110px;margin:8px auto 0;border-radius:10px;background:#fff;padding:4px;display:block;">` : ''}
-      </div>
-    </div>
-  </div>
-  <script>
-    const { ipcRenderer } = require('electron');
-    setInterval(() => { document.getElementById('clock').textContent = new Date().toLocaleTimeString('ar-DZ'); }, 1000);
-    ipcRenderer.on('customer-display:update', (_e, state) => {
-      const items = (state && state.items) || [];
-      const list = document.getElementById('itemsList');
-      if (items.length === 0) {
-        list.innerHTML = '<div style="text-align:center;color:#64748b;margin-top:120px;font-size:22px;font-weight:700;">شكراً لزيارتكم — مرحباً بكم</div>';
-      } else {
-        list.innerHTML = items.map((it) => \`
-          <div class="item-row">
-            <span>\${it.name} × \${it.quantity}</span>
-            <span style="font-family:monospace;color:#38bdf8;">\${Number(it.subtotal || 0).toFixed(2)} د.ج</span>
-          </div>\`).join('');
-      }
-      document.getElementById('grandTotal').textContent = Number((state && state.total) || 0).toFixed(2) + ' د.ج';
-      const disc = Number((state && state.discount) || 0);
-      document.getElementById('discountLine').textContent = disc > 0 ? ('التخفيض: -' + disc.toFixed(2) + ' د.ج') : '';
-    });
-  </script>
-</body>
-</html>`;
+  const html = [
+    '<!DOCTYPE html>',
+    '<html lang="ar" dir="rtl">',
+    '<head>',
+    '  <meta charset="UTF-8">',
+    '  <title>شاشة الزبون</title>',
+    '  <style>',
+    '    body { margin:0; padding:24px; font-family:"Cairo","Segoe UI",sans-serif; background:#020617; color:#f8fafc; display:flex; flex-direction:column; height:100vh; box-sizing:border-box; }',
+    '    .hdr { display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #1e293b; padding-bottom:14px; }',
+    '    .brand { font-size:26px; font-weight:900; color:#38bdf8; }',
+    '    .main { flex:1; display:grid; grid-template-columns:1fr 340px; gap:20px; margin-top:18px; min-height:0; }',
+    '    .items-box { background:#0f172a; border:1px solid #1e293b; border-radius:16px; padding:16px; overflow-y:auto; }',
+    '    .item-row { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #1e293b; font-size:18px; font-weight:700; }',
+    '    .total-card { background:linear-gradient(135deg,#1d4ed8,#0284c7); border-radius:20px; padding:24px; display:flex; flex-direction:column; justify-content:space-between; text-align:center; }',
+    '    .total-val { font-size:42px; font-weight:900; font-family:monospace; color:#ffffff; margin:10px 0; }',
+    '    .rip-box { background:rgba(255,255,255,0.12); padding:12px; border-radius:12px; font-size:13px; }',
+    '  </style>',
+    '</head>',
+    '<body>',
+    '  <div class="hdr">',
+    '    <div class="brand">' + shopName + ' — مرحباً بكم</div>',
+    '    <div id="clock" style="font-family:monospace;font-size:18px;color:#94a3b8;"></div>',
+    '  </div>',
+    '  <div class="main">',
+    '    <div class="items-box" id="itemsList">',
+    '      <div style="text-align:center;color:#64748b;margin-top:120px;font-size:22px;font-weight:700;">مرحباً بكم في متجرنا</div>',
+    '    </div>',
+    '    <div class="total-card">',
+    '      <div>',
+    '        <div style="font-size:18px;opacity:0.9;font-weight:700;">الإجمالي المطلوب للدفع</div>',
+    '        <div id="grandTotal" class="total-val">0.00 د.ج</div>',
+    '        <div id="discountLine" style="font-size:15px;color:#fde047;font-weight:700;"></div>',
+    '      </div>',
+    '      <div class="rip-box">',
+    '        <div style="font-weight:800;margin-bottom:4px;">الدفع الإلكتروني BaridiMob / CCP</div>',
+    '        <div style="font-family:monospace;font-size:12px;word-break:break-all;">' + rip + '</div>',
+    (ripQrImg ? '        <img src="' + ripQrImg + '" style="width:110px;height:110px;margin:8px auto 0;border-radius:10px;background:#fff;padding:4px;display:block;">' : ''),
+    '      </div>',
+    '    </div>',
+    '  </div>',
+    '  <script>',
+    '    const { ipcRenderer } = require("electron");',
+    '    function escCustHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); },',
+    '    setInterval(() => { document.getElementById("clock").textContent = new Date().toLocaleTimeString("ar-DZ"); }, 1000);',
+    '    ipcRenderer.on("customer-display:update", (_e, state) => {',
+    '      const items = (state && state.items) || [];',
+    '      const list = document.getElementById("itemsList");',
+    '      if (items.length === 0) {',
+    '        list.innerHTML = "<div style=\"text-align:center;color:#64748b;margin-top:110px;font-size:22px;font-weight:800;\">شكراً لزيارتكم — مرحباً بكم في متجرنا 🇩🇿</div>";',
+    '      } else {',
+    '        list.innerHTML = items.map((it) => {',
+    '          const packBadge = it._isCartonPackMode ? "<span style=\"background:#f59e0b;color:#0f172a;font-size:11px;padding:2px 6px;border-radius:6px;margin-right:6px;font-weight:900;\">📦 بالباكي/الكرتونة</span>" : "";',
+    '          return "<div class=\"item-row\"><div><span>" + escCustHtml(it.name) + "</span><span style=\"color:#94a3b8;font-size:15px;margin-right:8px;\">× " + it.quantity + "</span>" + packBadge + "</div><span style=\"font-family:monospace;color:#38bdf8;font-weight:900;\">" + Number(it.subtotal || 0).toFixed(2) + " د.ج</span></div>";',
+    '        }).join("");',
+    '      }',
+    '      const totalDzd = Number((state && state.total) || 0);',
+    '      const centimes = Math.round(totalDzd * 100).toLocaleString("fr-DZ");',
+    '      document.getElementById("grandTotal").innerHTML = "<div>" + totalDzd.toFixed(2) + " د.ج</div><div style=\"font-size:18px;color:#fde047;margin-top:4px;\">🇩🇿 بالسنتيم: " + centimes + " سنتيم</div>";',
+    '      const disc = Number((state && state.discount) || 0);',
+    '      const received = Number((state && state.receivedCash) || 0);',
+    '      const changeDzd = received > totalDzd ? Number((received - totalDzd).toFixed(2)) : 0;',
+    '      const custName = (state && state.customerName) || "";',
+    '      const custPts = Number((state && state.customerPoints) || 0);',
+    '      let extraHtml = "";',
+    '      if (disc > 0) {',
+    '        extraHtml += "<div style=\"background:rgba(16,185,129,0.25);border:1px solid #34d399;padding:6px 10px;border-radius:10px;margin-top:6px;color:#ecfdf5;font-size:15px;font-weight:900;\">🎁 وفّرتم في هذه الفاتورة: -" + disc.toFixed(2) + " د.ج</div>";',
+    '      }',
+    '      if (received > 0) {',
+    '        const chgCent = Math.round(changeDzd * 100).toLocaleString("fr-DZ");',
+    '        extraHtml += "<div style=\"background:rgba(15,23,42,0.55);padding:8px 10px;border-radius:10px;margin-top:6px;font-size:14px;font-weight:900;\">💵 المستلم: " + received.toFixed(2) + " د.ج | الباقي لكم: <span style=\"color:#4ade80;\">" + changeDzd.toFixed(2) + " د.ج (" + chgCent + " سنتيم)</span></div>";',
+    '      }',
+    '      if (custName) {',
+    '        extraHtml += "<div style=\"margin-top:6px;font-size:13px;color:#fef08a;font-weight:800;\">👑 مرحباً بزبوننا الوفي: " + escCustHtml(custName) + " (الرصيد: ⭐ " + custPts + " نقطة)</div>";',
+    '      }',
+    '      document.getElementById("discountLine").innerHTML = extraHtml;',
+    '    });',
+    '  </script>',
+    '</body>',
+    '</html>'
+  ].join('\n');
 
-  customerDisplayWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  customerDisplayWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
   customerDisplayWindow.on('closed', () => {
     customerDisplayWindow = null;
   });
@@ -696,7 +715,17 @@ function registerIpcHandlers() {
         ]
       );
       const productId = ins.lastID;
-
+      /* [V16_ADD_PRODUCT_PACK_SQL] */
+      if (p.wholesale_price !== undefined || p.loyalty_multiplier !== undefined) {
+        await dbRun(
+          'UPDATE products SET wholesale_price = COALESCE(?, wholesale_price), loyalty_multiplier = COALESCE(?, loyalty_multiplier) WHERE id = ?',
+          [
+            p.wholesale_price !== undefined && p.wholesale_price !== '' ? Number(p.wholesale_price) : 0,
+            p.loyalty_multiplier !== undefined ? Number(p.loyalty_multiplier) : 1,
+            productId
+          ]
+        ).catch(() => {});
+      }
       await productWriter.insertExtraBarcodesAndPrices(
         productId,
         p.extra_barcodes || p.barcodes || [],
@@ -806,6 +835,17 @@ function registerIpcHandlers() {
         );
       }
 
+      /* [V13_MAIN_PRODUCT_PACK_AND_LOYALTY_SQL] */
+      if (p.wholesale_price !== undefined || p.loyalty_multiplier !== undefined) {
+        await dbRun(
+          'UPDATE products SET wholesale_price = COALESCE(?, wholesale_price), loyalty_multiplier = COALESCE(?, loyalty_multiplier) WHERE id = ?',
+          [
+            p.wholesale_price !== undefined && p.wholesale_price !== '' ? Number(p.wholesale_price) : null,
+            p.loyalty_multiplier !== undefined ? Number(p.loyalty_multiplier) : null,
+            productId
+          ]
+        ).catch(() => {});
+      }
       return { success: true, id: productId };
     });
   });
@@ -1082,6 +1122,21 @@ function registerIpcHandlers() {
         }
       }
       await tillLedger.reverseSaleTill(db, sid);
+      /* [V16_REVERSE_LOYALTY_ON_DELETE_SALE] */
+      if (oldSale && oldSale.customer_id) {
+        const lRow = await dbGet(
+          'SELECT COALESCE(SUM(points_delta), 0) AS net_pts FROM loyalty_transactions WHERE sale_id = ? AND deleted_at IS NULL',
+          [sid]
+        ).catch(() => null);
+        const netPts = Number((lRow && lRow.net_pts) || 0);
+        if (Math.abs(netPts) > 0.001) {
+          await dbRun(
+            'UPDATE customers SET loyalty_points = MAX(0, COALESCE(loyalty_points, 0) - ?) WHERE id = ?',
+            [netPts, Number(oldSale.customer_id)]
+          ).catch(() => {});
+        }
+        await dbRun('DELETE FROM loyalty_transactions WHERE sale_id = ?', [sid]).catch(() => {});
+      }
       await dbRun('DELETE FROM stock_debt WHERE sale_id = ?', [sid]);
       await dbRun('DELETE FROM sale_payments WHERE sale_id = ?', [sid]);
       await dbRun('DELETE FROM sale_items WHERE sale_id = ?', [sid]);
@@ -1755,13 +1810,16 @@ function registerIpcHandlers() {
   ipcMain.handle('delete-purchase', async (_e, invoiceId) => {
     if (await isLanClientMode()) return lanClient.deletePurchase(invoiceId);
     const id = Number(invoiceId);
-    const items = await dbAll('SELECT batch_id FROM purchase_items WHERE invoice_id = ? AND deleted_at IS NULL', [id]);
-    const batchIds = items.map((x) => x.batch_id).filter(Boolean);
-    if (batchIds.length > 0) await batchAlloc.voidBatches(db, batchIds);
-    await dbRun('DELETE FROM invoice_payments WHERE invoice_id = ?', [id]);
-    await dbRun('DELETE FROM purchase_items WHERE invoice_id = ?', [id]);
-    await dbRun('DELETE FROM purchase_invoices WHERE id = ?', [id]);
-    return { success: true };
+    /* [V16_TX_DELETE_PURCHASE] */
+    return await db.withTransaction(async () => {
+      const items = await dbAll('SELECT batch_id FROM purchase_items WHERE invoice_id = ? AND deleted_at IS NULL', [id]);
+      const batchIds = items.map((x) => x.batch_id).filter(Boolean);
+      if (batchIds.length > 0) await batchAlloc.voidBatches(db, batchIds);
+      await dbRun('DELETE FROM invoice_payments WHERE invoice_id = ?', [id]);
+      await dbRun('DELETE FROM purchase_items WHERE invoice_id = ?', [id]);
+      await dbRun('DELETE FROM purchase_invoices WHERE id = ?', [id]);
+      return { success: true };
+    });
   });
 
   ipcMain.handle('get-supplier-returnable-items', async (_e, supplierId) => {
@@ -2202,6 +2260,10 @@ function registerIpcHandlers() {
        WHERE id = ?`,
       [closingBalance, expected, diff, closeNote, sessionId]
     );
+    /* [V16_SHIFT_CLOSE_AUTO_BACKUP] */
+    if (typeof performSilentRollingBackup === 'function') {
+      await performSilentRollingBackup('shift_close').catch(() => {});
+    }
     return { success: true, sessionId, expectedBalance: expected, closingBalance, difference: diff };
   });
 
@@ -3062,8 +3124,21 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('open-cash-drawer', async () => {
-    return { success: true };
+    ipcMain.handle('open-cash-drawer', async () => {
+    try {
+      const pulseWin = new BrowserWindow({ show: false, width: 100, height: 100 });
+      const pulseHtml = '<html><head><style>@page{size:72mm 1mm;margin:0;}body{margin:0;padding:0;height:1px;overflow:hidden;font-size:1px;}</style></head><body>&#x1B;&#x70;&#x00;&#x19;&#xFA;</body></html>';
+      await pulseWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(pulseHtml));
+      await new Promise((resolve) => {
+        pulseWin.webContents.print({ silent: true, printBackground: false }, () => {
+          if (!pulseWin.isDestroyed()) pulseWin.close();
+          resolve();
+        });
+      });
+      return { success: true, pulsed: true };
+    } catch (err) {
+      return { success: true, fallback: true };
+    }
   });
 
   ipcMain.handle('generate-barcode-image', async (_e, text, opts = {}) => {
@@ -3099,12 +3174,15 @@ function registerIpcHandlers() {
     return await QRCode.toDataURL(payload, { margin: 1, width: 240 });
   });
 
+  /* [V16_ATOMIC_BACKUP_AND_RESTORE] */
   ipcMain.handle('export-db-backup', async () => {
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
       defaultPath: `Gherbi_POS_Backup_${new Date().toISOString().slice(0, 10)}.zip`,
       filters: [{ name: 'ZIP Backup', extensions: ['zip'] }]
     });
     if (canceled || !filePath) return { canceled: true };
+
+    await dbRun('PRAGMA wal_checkpoint(TRUNCATE)').catch(() => {});
 
     const zip = new AdmZip();
     if (fs.existsSync(db.dbPath)) {
@@ -3125,6 +3203,12 @@ function registerIpcHandlers() {
     });
     if (canceled || !filePaths || filePaths.length === 0) return { canceled: true };
 
+    await dbRun('PRAGMA wal_checkpoint(TRUNCATE)').catch(() => {});
+    const walFile = db.dbPath + '-wal';
+    const shmFile = db.dbPath + '-shm';
+    try { if (fs.existsSync(walFile)) fs.unlinkSync(walFile); } catch (_) {}
+    try { if (fs.existsSync(shmFile)) fs.unlinkSync(shmFile); } catch (_) {}
+
     const chosen = filePaths[0];
     if (chosen.toLowerCase().endsWith('.zip')) {
       const zip = new AdmZip(chosen);
@@ -3134,9 +3218,22 @@ function registerIpcHandlers() {
       if (dbEntry) {
         fs.copyFileSync(path.join(tempDir, dbEntry), db.dbPath);
       }
+      const extractedImagesDir = path.join(tempDir, 'product_images');
+      if (fs.existsSync(extractedImagesDir)) {
+        const targetImgDir = getImagesDir();
+        if (!fs.existsSync(targetImgDir)) fs.mkdirSync(targetImgDir, { recursive: true });
+        for (const imgFile of fs.readdirSync(extractedImagesDir)) {
+          try {
+            fs.copyFileSync(path.join(extractedImagesDir, imgFile), path.join(targetImgDir, imgFile));
+          } catch (_) {}
+        }
+      }
+      try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (_) {}
     } else {
       fs.copyFileSync(chosen, db.dbPath);
     }
+    try { if (fs.existsSync(walFile)) fs.unlinkSync(walFile); } catch (_) {}
+    try { if (fs.existsSync(shmFile)) fs.unlinkSync(shmFile); } catch (_) {}
     return { success: true };
   });
 
@@ -4028,3 +4125,36 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
+
+/* [V13_AUTO_ROLLING_BACKUP_ENGINE] */
+async function performSilentRollingBackup(triggerReason = 'auto') {
+  try {
+    if (!db || !db.dbPath || !fs.existsSync(db.dbPath)) return;
+    // تفريغ ودمج ملف WAL بالكامل داخل ملف قاعدة البيانات الرئيسي قبل النسخ لضمان عدم ضياع آخر المبيعات
+    if (typeof dbRun === 'function') {
+      await dbRun('PRAGMA wal_checkpoint(TRUNCATE)').catch(() => {});
+    }
+    const backupDir = path.join(path.dirname(db.dbPath), 'auto_backups');
+    if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
+    const destFile = path.join(backupDir, `gherbi_pos_${triggerReason}_${stamp}.db`);
+    fs.copyFileSync(db.dbPath, destFile);
+
+    const files = fs.readdirSync(backupDir)
+      .filter((f) => f.endsWith('.db'))
+      .map((f) => ({ name: f, time: fs.statSync(path.join(backupDir, f)).mtimeMs }))
+      .sort((a, b) => b.time - a.time);
+
+    if (files.length > 10) {
+      files.slice(10).forEach((old) => {
+        try { fs.unlinkSync(path.join(backupDir, old.name)); } catch (_) {}
+      });
+    }
+  } catch (_) {}
+}
+
+app.on('before-quit', () => {
+  performSilentRollingBackup('exit');
+});
+

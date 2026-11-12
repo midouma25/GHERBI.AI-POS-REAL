@@ -751,7 +751,7 @@ function startLocalServer(port = 8080, onStartedCallback = null) {
   
 /* [GHERBI_AISLE_PRICE_KIOSK_ROUTE] */
 let _gherbiMemoryKioskCatalog = [];
-const _kioskCacheFilePath = require('path').join(__dirname, 'kiosk-catalog-cache.json');
+const _kioskCacheFilePath = require('path').join(db && db.dbPath ? require('path').dirname(db.dbPath) : __dirname, 'kiosk-catalog-cache.json');
 
 try {
   if (require('fs').existsSync(_kioskCacheFilePath)) {
@@ -868,6 +868,10 @@ try {
     });
 
     app.post('/api/kiosk/sync-catalog', express.text({ type: '*/*', limit: '25mb' }), (req, res) => {
+      const clientIp = String(req.ip || req.connection?.remoteAddress || '');
+      if (!clientIp.includes('127.0.0.1') && !clientIp.includes('::1') && !clientIp.includes('localhost')) {
+        return res.status(403).json({ ok: false, error: 'Localhost only' });
+      }
       res.setHeader('Access-Control-Allow-Origin', '*');
       try {
         const parsed = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
@@ -888,7 +892,7 @@ try {
             total_stock: Number(p.total_stock ?? p.stock ?? 0)
           }));
           try {
-            require('fs').writeFileSync(_kioskCacheFilePath, JSON.stringify(_gherbiMemoryKioskCatalog), 'utf8');
+            require('fs').promises.writeFile(_kioskCacheFilePath, JSON.stringify(_gherbiMemoryKioskCatalog), 'utf8').catch(() => {});
           } catch (_) {}
         }
         res.json({ ok: true, count: _gherbiMemoryKioskCatalog.length });

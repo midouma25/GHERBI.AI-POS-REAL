@@ -385,6 +385,7 @@ function tombstoneOrphans() {
 function initializeDatabase() {
   db.serialize(() => {
     db._rawRun('PRAGMA journal_mode = WAL');
+    db._rawGet('PRAGMA quick_check', () => {});
     db._rawRun('PRAGMA synchronous = NORMAL');
     db._rawRun('PRAGMA foreign_keys = ON');
     db._rawRun('PRAGMA busy_timeout = 10000');
@@ -1718,83 +1719,15 @@ try {
 
 module.exports = db;
 
-/* [RETAIL_LOYALTY_SAVE_PATCH] */
-(function patchCustomerLoyaltySave() {
-  try {
-    const origUpdateCustomer = module.exports.updateCustomer;
-    if (typeof origUpdateCustomer === 'function') {
-      module.exports.updateCustomer = function (idOrObj, maybeData, callback) {
-        let id = idOrObj;
-        let data = maybeData || {};
-        if (typeof idOrObj === 'object' && idOrObj !== null) {
-          id = idOrObj.id;
-          data = idOrObj;
-          callback = maybeData;
-        }
-        const res = origUpdateCustomer.apply(this, arguments);
-        if (id && data && data.loyalty_points !== undefined && data.loyalty_points !== null) {
-          const pts = Math.max(0, parseInt(data.loyalty_points, 10) || 0);
-          if (typeof db !== 'undefined' && db && typeof db.run === 'function') {
-            db.run('UPDATE customers SET loyalty_points = ? WHERE id = ?', [pts, Number(id)], () => {});
-          }
-        }
-        return res;
-      };
-    }
 
-    const origAddCustomer = module.exports.addCustomer;
-    if (typeof origAddCustomer === 'function') {
-      module.exports.addCustomer = function (data, callback) {
-        const res = origAddCustomer.apply(this, arguments);
-        if (res && typeof res.then === 'function' && data && data.loyalty_points !== undefined) {
-          res.then((created) => {
-            const newId = created && (created.id || created.lastID);
-            if (newId && typeof db !== 'undefined' && db && typeof db.run === 'function') {
-              const pts = Math.max(0, parseInt(data.loyalty_points, 10) || 0);
-              db.run('UPDATE customers SET loyalty_points = ? WHERE id = ?', [pts, Number(newId)], () => {});
-            }
-          }).catch(() => {});
-        }
-        return res;
-      };
-    }
-  } catch (_) {}
-})();
-
-/* [RETAIL_PACK_DB_SYNC_PATCH] */
-(function ensureProductPackColumnsSaved() {
+/* [V14_CLEAN_SCHEMA_COLUMNS_GUARD] */
+(function ensureV14RetailColumns() {
   try {
     if (typeof db !== 'undefined' && db && typeof db.safeAddColumn === 'function') {
       db.safeAddColumn('products', 'wholesale_price REAL DEFAULT 0');
       db.safeAddColumn('products', 'wholesale_qty REAL DEFAULT 0');
       db.safeAddColumn('products', "wholesale_unit TEXT DEFAULT 'كرتونة'");
-    }
-    const origUpdateProduct = module.exports.updateProduct;
-    if (typeof origUpdateProduct === 'function') {
-      module.exports.updateProduct = function (idOrObj, maybeData) {
-        const res = origUpdateProduct.apply(this, arguments);
-        try {
-          const data = typeof idOrObj === 'object' && idOrObj !== null ? idOrObj : (maybeData || {});
-          const pid = Number(data.id || idOrObj);
-          const wPrice = parseFloat(data.wholesale_price ?? data.pack_price ?? 0) || 0;
-          const wQty = parseFloat(data.wholesale_qty ?? data.pack_qty ?? data.wholesale_min_qty ?? 0) || 0;
-          const wUnit = String(data.wholesale_unit ?? data.pack_unit ?? 'كرتونة').trim();
-          if (pid > 0 && typeof db !== 'undefined' && db) {
-            db.run(
-              'UPDATE products SET wholesale_price = ?, wholesale_qty = ?, wholesale_unit = ? WHERE id = ?',
-              [wPrice, wQty, wUnit, pid],
-              () => {}
-            );
-            db.run(
-              'UPDATE inventory_batches SET wholesale_price = ? WHERE product_id = ? AND deleted_at IS NULL',
-              [wPrice, pid],
-              () => {}
-            );
-          }
-        } catch (_) {}
-        return res;
-      };
+      db.safeAddColumn('products', 'loyalty_multiplier REAL DEFAULT 1');
     }
   } catch (_) {}
 })();
-
