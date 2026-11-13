@@ -210,8 +210,7 @@ const api = {
   addAuditLog: (payload) => invoke('add-audit-log', payload),
   getInstallmentPlans: (filters) => invoke('get-installment-plans', filters),
   createInstallmentPlan: (payload) => invoke('create-installment-plan', payload),
-  payInstallmentSchedule: (scheduleId, amount) =>
-    invoke('pay-installment-schedule', scheduleId, amount),
+  payInstallmentSchedule: (...args) => invoke('pay-installment-schedule', ...args),
   openCustomerDisplay: () => invoke('open-customer-display'),
   updateCustomerDisplay: (cartState) => invoke('update-customer-display', cartState),
 
@@ -230,7 +229,6 @@ const api = {
   exportProductsExcel: () => invoke('export-products-excel'),
   importProductsExcel: () => invoke('import-products-excel'),
   importDzMasterCsv: (autoPath) => invoke('import-dz-master-csv', autoPath),
-  importDzDictionaryCsv: () => invoke('import-dz-dictionary-csv'),
   importProductsFromExcel: () => invoke('import-products-excel'),
   downloadInventoryTemplate: () => invoke('download-inventory-template'),
   exportSalesToExcel: () => invoke('export-sales-excel'),
@@ -302,7 +300,6 @@ const api = {
   // === التوسعات المؤسسية الـ 6 (Clean-Room Enterprise Modules V14) ===
   getInstallmentContracts: (filters) => invoke('get-installment-contracts', filters),
   createInstallmentContract: (payload) => invoke('create-installment-contract', payload),
-  payInstallmentSchedule: (payload) => invoke('pay-installment-schedule', payload),
   reconcileCcpStatement: (payload) => invoke('reconcile-ccp-statement', payload),
   getCcpReconciliationLogs: (filters) => invoke('get-ccp-reconciliation-logs', filters),
   getEtat104: (year) => invoke('get-etat-104', year),

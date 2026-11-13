@@ -1,3 +1,50 @@
+/* [V31_SAFE_QUERY_SELECTOR_SHIELD] */
+(function installSafeQuerySelectorShield() {
+  function sanitizeFractionalSelector(sel) {
+    if (typeof sel !== 'string') return sel;
+    return sel.replace(/\.([a-zA-Z0-9_-]+)\.(5)\b/g, '.$1\\.$2');
+  }
+  const origElQS = Element.prototype.querySelector;
+  const origElQSA = Element.prototype.querySelectorAll;
+  const origDocQS = Document.prototype.querySelector;
+  const origDocQSA = Document.prototype.querySelectorAll;
+  Element.prototype.querySelector = function (s) {
+    try { return origElQS.call(this, s); } catch (_) { return origElQS.call(this, sanitizeFractionalSelector(s)); }
+  };
+  Element.prototype.querySelectorAll = function (s) {
+    try { return origElQSA.call(this, s); } catch (_) { return origElQSA.call(this, sanitizeFractionalSelector(s)); }
+  };
+  Document.prototype.querySelector = function (s) {
+    try { return origDocQS.call(this, s); } catch (_) { return origDocQS.call(this, sanitizeFractionalSelector(s)); }
+  };
+  Document.prototype.querySelectorAll = function (s) {
+    try { return origDocQSA.call(this, s); } catch (_) { return origDocQSA.call(this, sanitizeFractionalSelector(s)); }
+  };
+})();
+/* [V30_TAILWIND_DECIMAL_SELECTOR_SHIELD] */
+(function installTailwindDecimalSelectorShield() {
+  function sanitizeSelector(sel) {
+    if (typeof sel !== 'string' || !sel.includes('.')) return sel;
+    return sel.replace(/(\.[a-zA-Z0-9_-]+?)\.(\d)/g, '$1\\.$2');
+  }
+  if (typeof Element !== 'undefined' && Element.prototype) {
+    const origQS = Element.prototype.querySelector;
+    const origQSA = Element.prototype.querySelectorAll;
+    if (origQS && !Element.prototype._v30QsPatched) {
+      Element.prototype._v30QsPatched = true;
+      Element.prototype.querySelector = function (sel) {
+        return origQS.call(this, sanitizeSelector(sel));
+      };
+    }
+    if (origQSA && !Element.prototype._v30QsaPatched) {
+      Element.prototype._v30QsaPatched = true;
+      Element.prototype.querySelectorAll = function (sel) {
+        return origQSA.call(this, sanitizeSelector(sel));
+      };
+    }
+  }
+})();
+
 /* ==================== [SAFE CART TOTAL HELPER] ==================== */
 window.computeSafeCartTotalDzd = function () {
   try {
@@ -6848,5 +6895,250 @@ window.GherbiV4Stage1.getCartTotalDirectly = window.computeSafeCartTotalDzd;
     document.addEventListener('DOMContentLoaded', () => V15Seal.init());
   } else {
     V15Seal.init();
+  }
+})();
+
+
+/* ==================== [V17 COMPETITIVE EXCELLENCE: SERVICE TIMER, CARTON FLOOR GUARD & RADAR EXPORT] ==================== */
+(function initV17CompetitiveExcellence() {
+  const V17Excellence = {
+    cartStartTime: null,
+
+    init() {
+      const wait = setInterval(() => {
+        if (!window.App || !window.AppState) return;
+        clearInterval(wait);
+        this.setupLiveCashierServiceTimer();
+        this.setupCartonFloorPriceWarning();
+        this.injectExportAndPrintButtonsIntoOwnerRadar();
+        console.log('🏆 [Gherbi V17 Excellence]: عداد سرعة الكاشير + درع سعر الكرتونة + تصدير/طباعة رادار المدير نشطة 100%.');
+      }, 260);
+    },
+
+    // ========================================================================
+    // 1. عداد سرعة خدمة الزبون الحي في شريط السلة (⏱️ Live Cashier Service Timer)
+    // ========================================================================
+    setupLiveCashierServiceTimer() {
+      setInterval(() => {
+        const items = window.App?.currentCart?.items || [];
+        if (items.length === 0) {
+          this.cartStartTime = null;
+        } else if (!this.cartStartTime) {
+          this.cartStartTime = Date.now();
+        }
+
+        const multStrip = document.querySelector('.gherbi-multiplier-strip') || document.getElementById('multiCartTabs')?.parentElement;
+        if (!multStrip) return;
+
+        let timerBadge = document.getElementById('v17CashierServiceTimerBadge');
+        if (!timerBadge) {
+          timerBadge = document.createElement('span');
+          timerBadge.id = 'v17CashierServiceTimerBadge';
+          timerBadge.className = 'px-2 py-0.5 rounded-md font-mono font-black text-[10px] border transition';
+          timerBadge.title = 'زمن خدمة الزبون الحالي منذ مسح أول سلعة';
+          multStrip.appendChild(timerBadge);
+        }
+
+        if (!this.cartStartTime) {
+          const idleTxt = '⏱️ جاهز';
+          if (timerBadge.textContent !== idleTxt) {
+            timerBadge.textContent = idleTxt;
+            timerBadge.className = 'px-2 py-0.5 rounded-md font-mono font-black text-[10px] bg-slate-500/10 text-slate-500 border border-slate-500/20';
+          }
+          return;
+        }
+
+        const elapsedSec = Math.max(0, Math.floor((Date.now() - this.cartStartTime) / 1000));
+        const mins = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+        const secs = String(elapsedSec % 60).padStart(2, '0');
+        const activeTxt = `⏱️ ${mins}:${secs}`;
+
+        if (timerBadge.textContent !== activeTxt) {
+          timerBadge.textContent = activeTxt;
+          timerBadge.className =
+            elapsedSec > 90
+              ? 'px-2 py-0.5 rounded-md font-mono font-black text-[10px] bg-amber-500/15 text-amber-600 border border-amber-500/30'
+              : 'px-2 py-0.5 rounded-md font-mono font-black text-[10px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30';
+        }
+      }, 1000);
+    },
+
+    // ========================================================================
+    // 2. درع التنبيه عند بيع حبة مفردة بسعر أقل من سعر الحبة داخل الكرتونة
+    // ========================================================================
+    setupCartonFloorPriceWarning() {
+      if (!window.GherbiV9Engine || window.GherbiV9Engine._v17CartonFloorHooked) return;
+      const origApplyUnit = window.GherbiV9Engine.applyUnitPriceChangeToRow.bind(window.GherbiV9Engine);
+
+      window.GherbiV9Engine.applyUnitPriceChangeToRow = function (idx, newUnitPriceVal) {
+        const res = origApplyUnit(idx, newUnitPriceVal);
+        try {
+          const item = window.App?.currentCart?.items?.[idx];
+          if (item && !item._isCartonPackMode && window.GherbiV8PackEngine) {
+            const prod = (window.AppState?.products || []).find(
+              (p) => Number(p.id) === Number(item.product_id || item.productId) || p.name === item.name
+            );
+            const cfg = window.GherbiV8PackEngine.resolvePackConfig(prod, item);
+            const costPrice = Number(prod?.cost_price || 0);
+            if (
+              cfg.isConfigured &&
+              Number(item.price) < cfg.unitPriceInsidePack - 0.05 &&
+              Number(item.price) > costPrice
+            ) {
+              if (window.showToast) {
+                window.showToast(
+                  `📦 تنبيه: السعر المدخل للحبة (${Number(item.price).toFixed(2)} د.ج) أقل حتى من سعر الحبة داخل الكرتونة (${cfg.unitPriceInsidePack.toFixed(2)} د.ج)!`,
+                  'warning'
+                );
+              }
+            }
+          }
+        } catch (_) {}
+        return res;
+      };
+      window.GherbiV9Engine._v17CartonFloorHooked = true;
+    },
+
+    // ========================================================================
+    // 3. تصدير وطباعة سجل "رادار رقابة صاحب المحل" (CSV/Excel & 80mm Thermal)
+    // ========================================================================
+    exportOwnerRadarToCsv() {
+      const logs = window.GherbiV9Engine ? window.GherbiV9Engine.getRadarLogs() : [];
+      if (!logs.length) {
+        if (window.showToast) window.showToast('ℹ️ السجل الرقابي فارغ حالياً', 'info');
+        return;
+      }
+
+      const headers = ['التوقيت', 'البائع', 'الزبون', 'الصنف', 'طريقة البيع', 'الكمية', 'المتبقي بالسطوك', 'سعر الشراء', 'السعر الأصلي', 'السعر الجديد', 'إجمالي السطر', 'صافي الربح', 'التصنيف'];
+      const rows = logs.map((l) => [
+        l.dateFormatted || '',
+        l.seller || '',
+        l.customerName || '',
+        `"${String(l.productName || '').replace(/"/g, '""')}"`,
+        `"${String(l.saleMode || '').replace(/"/g, '""')}"`,
+        l.quantity ?? 1,
+        l.stockAfter ?? '',
+        Number(l.costPrice || 0).toFixed(2),
+        Number(l.originalUnitPrice || 0).toFixed(2),
+        Number(l.newUnitPrice || 0).toFixed(2),
+        Number(l.newLineTotal || 0).toFixed(2),
+        Number(l.netProfitOnLine || 0).toFixed(2),
+        l.category || ''
+      ]);
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Gherbi_Owner_Radar_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      if (window.showToast) window.showToast('📊 تم تصدير تقرير رادار رقابة صاحب المحل بنجاح!', 'success');
+    },
+
+    printOwnerRadarThermal80mm() {
+      const logs = window.GherbiV9Engine ? window.GherbiV9Engine.getRadarLogs() : [];
+      if (!logs.length) {
+        if (window.showToast) window.showToast('ℹ️ السجل الرقابي فارغ حالياً', 'info');
+        return;
+      }
+
+      const rowsHtml = logs.slice(0, 40).map((l) => `
+        <tr>
+          <td style="padding:3px 2px;border-bottom:1px dashed #ccc;">${l.productName}</td>
+          <td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:center;">${l.quantity}</td>
+          <td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:center;">${Number(l.originalUnitPrice || 0).toFixed(0)}⬅${Number(l.newUnitPrice || 0).toFixed(0)}</td>
+          <td style="padding:3px 2px;border-bottom:1px dashed #ccc;text-align:left;">${l.category === 'voided_line' ? 'حذف' : Number(l.newLineTotal || 0).toFixed(0)}</td>
+        </tr>
+      `).join('');
+
+      const html = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { width: 72mm; margin: 0 auto; padding: 3mm; font-family: 'Cairo', Tahoma, sans-serif; font-size: 11px; color: #000; }
+    h3 { text-align: center; margin: 0 0 4px; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-top: 6px; }
+    th { border-bottom: 1.5px solid #000; padding: 3px 2px; text-align: right; }
+  </style>
+</head>
+<body>
+  <h3>🛡️ تقرير رادار رقابة صاحب المحل</h3>
+  <div style="text-align:center;font-size:10px;border-bottom:1px solid #000;padding-bottom:4px;">التاريخ: ${new Date().toLocaleString('fr-DZ')} | العمليات: ${logs.length}</div>
+  <table>
+    <thead>
+      <tr><th>الصنف</th><th style="text-align:center;">ك</th><th style="text-align:center;">السعر</th><th style="text-align:left;">إجمالي</th></tr>
+    </thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+</body>
+</html>`;
+
+      window.api?.printSilent?.({ html, silent: false });
+    },
+
+    injectExportAndPrintButtonsIntoOwnerRadar() {
+      setInterval(() => {
+        const radarEl = document.getElementById('v9OwnerPriceSurveillanceRadar');
+        if (!radarEl) return;
+        const clearBtn = radarEl.querySelector('button[onclick*="clearRadarLogs"]');
+        if (!clearBtn || radarEl.querySelector('#v17RadarExportCsvBtn')) return;
+
+        const parentDiv = clearBtn.parentElement;
+        parentDiv.className = 'flex flex-wrap items-center gap-1.5';
+
+        const csvBtn = document.createElement('button');
+        csvBtn.id = 'v17RadarExportCsvBtn';
+        csvBtn.type = 'button';
+        csvBtn.className = 'px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-600 text-emerald-700 dark:text-emerald-300 hover:text-white font-black text-xs transition';
+        csvBtn.innerHTML = '📊 تصدير Excel/CSV';
+        csvBtn.onclick = () => this.exportOwnerRadarToCsv();
+
+        const printBtn = document.createElement('button');
+        printBtn.type = 'button';
+        printBtn.className = 'px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 font-black text-xs transition';
+        printBtn.innerHTML = '🖨️ طباعة التقرير (80mm)';
+        printBtn.onclick = () => this.printOwnerRadarThermal80mm();
+
+        parentDiv.insertBefore(csvBtn, clearBtn);
+        parentDiv.insertBefore(printBtn, clearBtn);
+      }, 600);
+    }
+  };
+
+  window.GherbiV17Excellence = V17Excellence;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => V17Excellence.init());
+  } else {
+    V17Excellence.init();
+  }
+})();
+
+/* [V29_PURE_RETAIL_PACK_GUARD] */
+(function enforcePureRetailWithPackEngine() {
+  function applyRetailLabels() {
+    try {
+      if (window.App && typeof window.App.setCartPriceTier === 'function' && !window.App._v29RetailTierLocked) {
+        window.App._v29RetailTierLocked = true;
+        window.App.setCartPriceTier = function () {
+          const sel = document.getElementById('posPriceTierSelect');
+          if (sel) sel.value = 'retail';
+          const c = typeof window.App.getCurrentCart === 'function' ? window.App.getCurrentCart() : null;
+          if (c) c.priceTier = 'retail';
+          return 'retail';
+        };
+      }
+      const custTier = document.getElementById('custPriceTierInput');
+      if (custTier) custTier.value = 'retail';
+    } catch (_) {}
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applyRetailLabels);
+  } else {
+    applyRetailLabels();
   }
 })();

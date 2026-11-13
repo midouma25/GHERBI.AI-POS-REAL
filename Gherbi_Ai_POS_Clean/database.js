@@ -88,7 +88,7 @@ const SYNCED_TABLES = [
 
 const DEFAULT_SETTINGS = {
   shop_name: 'Gherbi.Ai POS',
-  shop_description: 'تجارة عامة وتوزيع',
+  shop_description: 'تجارة بالتجزئة وسوبرماركت',
   shop_address: 'الجزائر',
   shop_phone: '',
   shop_fax: '',
@@ -1667,6 +1667,7 @@ db.dataRevisionTracker = dataRevisionTracker;
  * شحن تلقائي كامل لملف Lumina_DZ_Products.csv (31,533 منتجاً) في جدول dz_product_dictionary
  */
 function autoSeedFullAlgerianCsvDictionary() {
+  db._dzCsvSeededOrRunning = true;
   db._rawGet('SELECT COUNT(*) AS cnt FROM dz_product_dictionary', [], (err, row) => {
     if (err || (row && Number(row.cnt) >= 1000)) return;
     const candidates = [
@@ -1682,7 +1683,7 @@ function autoSeedFullAlgerianCsvDictionary() {
       if (lines.length <= 1) return;
 
       db.serialize(() => {
-        db._rawRun('BEGIN IMMEDIATE TRANSACTION');
+        /* [V17_SAFE_SEED_SERIALIZED] */
         const stmt = db._rawPrepare(
           'INSERT OR IGNORE INTO dz_product_dictionary (barcode, name, category, brand, unit, suggested_price) VALUES (?, ?, ?, ?, ?, ?)'
         );
@@ -1699,7 +1700,7 @@ function autoSeedFullAlgerianCsvDictionary() {
           stmt.run(barcode, name.slice(0, 120), category.slice(0, 60), brand.slice(0, 60), 'قطعة', price);
         }
         stmt.finalize();
-        db._rawRun('COMMIT');
+        
       });
     } catch (e) {
       console.warn('[DZ Dictionary Auto-Seed] Warning:', e.message);
@@ -1728,6 +1729,15 @@ module.exports = db;
       db.safeAddColumn('products', 'wholesale_qty REAL DEFAULT 0');
       db.safeAddColumn('products', "wholesale_unit TEXT DEFAULT 'كرتونة'");
       db.safeAddColumn('products', 'loyalty_multiplier REAL DEFAULT 1');
+    }
+  } catch (_) {}
+})();
+
+/* [V29_PURE_RETAIL_SHOP_DESC_MIGRATION] */
+(function migrateShopDescToRetail() {
+  try {
+    if (typeof db !== 'undefined' && db && typeof db._rawRun === 'function') {
+      db._rawRun("UPDATE settings SET value = 'تجارة بالتجزئة وسوبرماركت' WHERE key = 'shop_description' AND value = 'تجارة عامة وتوزيع'", () => {});
     }
   } catch (_) {}
 })();

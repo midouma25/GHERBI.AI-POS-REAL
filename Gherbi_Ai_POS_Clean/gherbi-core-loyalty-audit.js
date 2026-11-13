@@ -2726,3 +2726,2129 @@
     SqliteBridge.init();
   }
 })();
+
+
+/* ==================== [V30 ALGERIAN RETAIL FISCAL STUDIO (TAB 13: IFU G12 / G12 BIS & G50)] ==================== */
+(function initV33UltimateAlgerianRetailFiscalStudio() {
+  const STORAGE_KEY = 'gherbi_v30_retail_fiscal_config_v1';
+  const REGULATED_MAP_KEY = 'gherbi_v32_regulated_products_map_v1';
+
+  const DZ_REGULATED_KEYWORDS = [
+    'حليب', 'لبن', 'شكارة حليب', 'candia', 'soummam', 'hodna', 'giplait', 'lait',
+    'خبز', 'سميد', 'فرينة', 'دقيق', 'semoule', 'farine', 'mama', 'sim', 'safina',
+    'زيت', 'إيليو', 'ايليو', 'عافية', 'فلوريال', 'صافي', 'زيت المائدة', 'elio', 'afia', 'fleurial', 'huile',
+    'سكر', 'سيفيتال', 'sucre', 'cevital',
+    'ماء سعيدة', 'إيفري', 'ايفري', 'ifri', 'saida',
+    'قارورة غاز', 'غاز بوتان', 'طابع', 'جرائد'
+  ];
+
+  const RetailFiscalStudio = {
+    isTab13Active: false,
+    inactiveBtnClass: '',
+    activeBtnClass: '',
+    regulatedMap: {},
+    state: {
+      year: new Date().getFullYear(),
+      calcMode: 'auto_invoices', // 'auto_invoices' | 'manual_ratio'
+      enforceLegalMinimum: true, // تطبيق الحد الأدنى القانوني (10,000 د.ج) أو عرض الضريبة النسبية 5% فقط
+      ifuCeilingDzd: 8000000,
+      ifuRateGoods: 5,
+      ifuRateServices: 12,
+      regulatedExemptRatio: 15,
+      serviceRevenueDzd: 0,
+      minIfuTaxDzd: 10000
+    },
+
+    loadConfig() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) this.state = { ...this.state, ...JSON.parse(raw) };
+      } catch (_) {}
+      try {
+        const rawMap = localStorage.getItem(REGULATED_MAP_KEY);
+        if (rawMap) this.regulatedMap = JSON.parse(rawMap) || {};
+      } catch (_) {}
+    },
+
+    saveConfig() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
+      } catch (_) {}
+    },
+
+    saveRegulatedMap() {
+      try {
+        localStorage.setItem(REGULATED_MAP_KEY, JSON.stringify(this.regulatedMap));
+      } catch (_) {}
+    },
+
+    isProductRegulated(prod) {
+      if (!prod) return false;
+      const pid = String(prod.id || '');
+      if (pid && this.regulatedMap[pid] !== undefined) {
+        return Boolean(this.regulatedMap[pid]);
+      }
+      const text = (String(prod.name || '') + ' ' + String(prod.category || '') + ' ' + String(prod.family || '')).toLowerCase();
+      for (const kw of DZ_REGULATED_KEYWORDS) {
+        if (text.includes(kw.toLowerCase())) return true;
+      }
+      return false;
+    },
+
+    setProductRegulated(productId, isReg) {
+      if (!productId) return;
+      this.regulatedMap[String(productId)] = Boolean(isReg);
+      this.saveRegulatedMap();
+    },
+
+    init() {
+      this.loadConfig();
+      const wait = setInterval(() => {
+        if (!window.App) return;
+        clearInterval(wait);
+        this.hookGlobalNavigation();
+        this.hookProductModalCheckbox();
+        this.startTab13InjectorLoop();
+        this.startAiCopilotButtonFixer();
+        console.log('🇩🇿 [Gherbi V33 Ultimate Retail Fiscal Studio]: الواجهة التفصيلية الشاملة للتبويب 13 نشطة 100%.');
+      }, 200);
+    },
+
+    hookProductModalCheckbox() {
+      if (window.App && typeof window.App.openProductModal === 'function' && !window.App._v33RegModalHooked) {
+        const origOpen = window.App.openProductModal.bind(window.App);
+        window.App._v33RegModalHooked = true;
+        window.App.openProductModal = (...args) => {
+          const res = origOpen(...args);
+          setTimeout(() => {
+            const prod = args[0] && typeof args[0] === 'object' ? args[0] : null;
+            const chk = document.getElementById('prodIsRegulatedInput');
+            if (chk) chk.checked = prod ? this.isProductRegulated(prod) : false;
+          }, 60);
+          return res;
+        };
+      }
+
+      if (window.App && typeof window.App.saveProduct === 'function' && !window.App._v33RegSaveHooked) {
+        const origSave = window.App.saveProduct.bind(window.App);
+        window.App._v33RegSaveHooked = true;
+        window.App.saveProduct = async (...args) => {
+          const chk = document.getElementById('prodIsRegulatedInput');
+          const isChecked = chk ? chk.checked : false;
+          const editId = window.App.editingProductId || document.getElementById('prodIdInput')?.value;
+          const res = await origSave(...args);
+          setTimeout(() => {
+            const targetId = editId || (res && res.id) || (window.AppState?.products?.slice(-1)[0]?.id);
+            if (targetId) this.setProductRegulated(targetId, isChecked);
+          }, 150);
+          return res;
+        };
+      }
+    },
+
+    async openStudio() {
+      try {
+        const oldModal = document.getElementById('algerianFiscalModal');
+        if (oldModal) oldModal.classList.add('hidden');
+        this.isTab13Active = true;
+
+        if (window.App && typeof window.App.switchView === 'function') {
+          const hasAnalytics = document.getElementById('view-analytics');
+          await window.App.switchView(hasAnalytics ? 'analytics' : 'reports');
+        }
+        setTimeout(() => {
+          this.ensureTab13ButtonExists();
+          this.activateTab13();
+        }, 120);
+        setTimeout(() => {
+          this.ensureTab13ButtonExists();
+          this.activateTab13();
+        }, 320);
+      } catch (e) {
+        console.error('openStudio error:', e);
+      }
+    },
+
+    async openZakatTab12() {
+      this.isTab13Active = false;
+      if (window.App && typeof window.App.switchView === 'function') {
+        const hasAnalytics = document.getElementById('view-analytics');
+        await window.App.switchView(hasAnalytics ? 'analytics' : 'reports');
+      }
+      setTimeout(() => {
+        const tab12Btn = this.findTab12ZakatButton();
+        if (tab12Btn) tab12Btn.click();
+      }, 180);
+    },
+
+    hookGlobalNavigation() {
+      window.openAlgerianRetailFiscalStudio = () => this.openStudio();
+      if (window.App) {
+        window.App.openAlgerianFiscalModal = () => this.openStudio();
+        if (typeof window.App.switchAnalyticsTab === 'function' && !window.App._v33FiscalHooked) {
+          const origSwitchTab = window.App.switchAnalyticsTab.bind(window.App);
+          window.App._v33FiscalHooked = true;
+          window.App.switchAnalyticsTab = async (...args) => {
+            const tabArg = String(args[0] || '');
+            if (tabArg === '13' || tabArg === 'fiscal') {
+              this.isTab13Active = true;
+              this.ensureTab13ButtonExists();
+              await this.activateTab13();
+              return;
+            }
+            this.isTab13Active = false;
+            this.hideFiscalStageAndRestoreOriginal();
+            const res = await origSwitchTab(...args);
+            setTimeout(() => this.ensureTab13ButtonExists(), 60);
+            return res;
+          };
+        }
+      }
+      if (window.ReportsCommandCenter) {
+        window.ReportsCommandCenter.openFiscalStudio = () => this.openStudio();
+      }
+    },
+
+    findTab12ZakatButton() {
+      const allBtns = Array.from(document.querySelectorAll('button'));
+      return allBtns.find((b) => {
+        const t = (b.textContent || '').trim();
+        return (t.includes('12.') && t.includes('الزكاة')) || t.includes('حاسبة وأرشيف الزكاة');
+      });
+    },
+
+    startTab13InjectorLoop() {
+      setInterval(() => {
+        const tab12Btn = this.findTab12ZakatButton();
+        if (!tab12Btn) return;
+        this.ensureTab13ButtonExists(tab12Btn);
+        if (this.isTab13Active) {
+          const pane = document.getElementById('v30RetailFiscalStudioContainer');
+          if (!pane || pane.classList.contains('hidden')) {
+            this.activateTab13();
+          }
+        }
+      }, 300);
+    },
+
+    ensureTab13ButtonExists(passedTab12) {
+      const tab12Btn = passedTab12 || this.findTab12ZakatButton();
+      if (!tab12Btn || !tab12Btn.parentElement) return null;
+
+      const tabBar = tab12Btn.parentElement;
+      const siblingBtns = Array.from(tabBar.querySelectorAll('button')).filter(
+        (b) => b.id !== 'v30RccTab13FiscalBtn'
+      );
+
+      for (const sb of siblingBtns) {
+        const cls = sb.className || '';
+        if (cls.includes('bg-blue-600') || cls.includes('bg-indigo-600') || cls.includes('text-white')) {
+          if (!this.activeBtnClass) this.activeBtnClass = cls;
+        } else if (cls.length > 10) {
+          if (!this.inactiveBtnClass) this.inactiveBtnClass = cls;
+        }
+      }
+
+      let tab13Btn = document.getElementById('v30RccTab13FiscalBtn');
+      if (!tab13Btn) {
+        tab13Btn = document.createElement('button');
+        tab13Btn.id = 'v30RccTab13FiscalBtn';
+        tab13Btn.type = 'button';
+        tab13Btn.className =
+          this.inactiveBtnClass ||
+          'px-4 py-2 rounded-full font-black text-xs transition flex items-center gap-1.5 bg-white text-slate-800 border border-slate-200 shadow-sm hover:border-blue-500';
+        tab13Btn.innerHTML = '13. 🇩🇿 استوديو الجباية والضرائب (IFU G12 / G50)';
+        tab13Btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.isTab13Active = true;
+          this.activateTab13();
+        });
+        tab12Btn.insertAdjacentElement('afterend', tab13Btn);
+      }
+
+      for (const sb of siblingBtns) {
+        if (sb.dataset.v33FiscalSiblingHooked === '1') continue;
+        sb.dataset.v33FiscalSiblingHooked = '1';
+        sb.addEventListener('click', () => {
+          this.isTab13Active = false;
+          this.hideFiscalStageAndRestoreOriginal();
+        });
+      }
+
+      return tab13Btn;
+    },
+
+    findTabBarWrapper(tab12Btn) {
+      if (!tab12Btn) return null;
+      let curr = tab12Btn.parentElement;
+      while (curr && curr.parentElement) {
+        if (curr.querySelectorAll('button').length >= 10) return curr;
+        curr = curr.parentElement;
+      }
+      return tab12Btn.parentElement;
+    },
+
+    hideFiscalStageAndRestoreOriginal() {
+      const tab13Btn = document.getElementById('v30RccTab13FiscalBtn');
+      if (tab13Btn && this.inactiveBtnClass) tab13Btn.className = this.inactiveBtnClass;
+      const fiscalPane = document.getElementById('v30RetailFiscalStudioContainer');
+      if (fiscalPane) fiscalPane.classList.add('hidden');
+
+      const hiddenEls = document.querySelectorAll('[data-v31-hidden-by-fiscal="1"]');
+      for (const el of hiddenEls) {
+        el.classList.remove('hidden');
+        delete el.dataset.v31HiddenByFiscal;
+      }
+    },
+
+    async activateTab13() {
+      const tab12Btn = this.findTab12ZakatButton();
+      const tab13Btn = this.ensureTab13ButtonExists(tab12Btn);
+      if (!tab13Btn || !tab12Btn) return;
+
+      const tabBarWrapper = this.findTabBarWrapper(tab12Btn);
+      if (tabBarWrapper) {
+        for (const b of Array.from(tabBarWrapper.querySelectorAll('button'))) {
+          if (b.id === 'v30RccTab13FiscalBtn') {
+            b.className =
+              this.activeBtnClass ||
+              'px-4 py-2 rounded-full font-black text-xs transition flex items-center gap-1.5 bg-blue-600 text-white shadow-md border border-blue-500';
+          } else if (this.inactiveBtnClass) {
+            b.className = this.inactiveBtnClass;
+          }
+        }
+      }
+
+      const parentContainer = tabBarWrapper ? tabBarWrapper.parentElement : tab12Btn.parentElement.parentElement;
+      if (!parentContainer) return;
+
+      let fiscalPane = document.getElementById('v30RetailFiscalStudioContainer');
+      if (!fiscalPane) {
+        fiscalPane = document.createElement('div');
+        fiscalPane.id = 'v30RetailFiscalStudioContainer';
+        fiscalPane.className = 'mt-4 space-y-5';
+        if (tabBarWrapper && tabBarWrapper.nextSibling) {
+          parentContainer.insertBefore(fiscalPane, tabBarWrapper.nextSibling);
+        } else {
+          parentContainer.appendChild(fiscalPane);
+        }
+      }
+
+      let sibling = tabBarWrapper ? tabBarWrapper.nextElementSibling : null;
+      while (sibling) {
+        if (sibling.id !== 'v30RetailFiscalStudioContainer' && !sibling.classList.contains('hidden')) {
+          sibling.classList.add('hidden');
+          sibling.dataset.v31HiddenByFiscal = '1';
+        }
+        sibling = sibling.nextElementSibling;
+      }
+
+      fiscalPane.classList.remove('hidden');
+      await this.renderFiscalStudioContent(fiscalPane);
+    },
+
+    startAiCopilotButtonFixer() {
+      setInterval(() => {
+        const buttons = document.querySelectorAll('button, a');
+        for (const btn of buttons) {
+          if (btn.id === 'v30RccTab13FiscalBtn') continue;
+          const txt = (btn.textContent || '').trim();
+          if (txt.includes('فتح استوديو الجباية') && btn.dataset.v33FiscalHooked !== '1') {
+            btn.dataset.v33FiscalHooked = '1';
+            btn.removeAttribute('onclick');
+            btn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              this.openStudio();
+            }, true);
+          } else if (txt.includes('فتح حاسبة الزكاة') && btn.dataset.v33FiscalHooked !== '1') {
+            btn.dataset.v33FiscalHooked = '1';
+            btn.removeAttribute('onclick');
+            btn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              this.openZakatTab12();
+            }, true);
+          }
+        }
+      }, 350);
+    },
+
+    // ========================================================================
+    // المحرك التحليلي الشامل لكل تفاصيل الفواتير والضرائب والمصاريف
+    // ========================================================================
+    async computeFiscalData() {
+      const yr = Number(this.state.year || new Date().getFullYear());
+      let sales = window.AppState?.sales || [];
+      let products = window.AppState?.products || [];
+      let purchases = window.AppState?.purchases || [];
+      let expenses = window.AppState?.expenses || [];
+
+      try {
+        if ((!sales || !sales.length) && window.api?.getSales) sales = await window.api.getSales();
+        if ((!products || !products.length) && window.api?.getProducts) products = await window.api.getProducts();
+        if ((!purchases || !purchases.length) && window.api?.getPurchases) purchases = await window.api.getPurchases();
+        if ((!expenses || !expenses.length) && window.api?.getExpenses) expenses = await window.api.getExpenses();
+      } catch (_) {}
+
+      const prodById = new Map();
+      const prodByName = new Map();
+      let regulatedProductsCount = 0;
+
+      for (const p of products || []) {
+        prodById.set(Number(p.id), p);
+        if (p.name) prodByName.set(String(p.name).trim().toLowerCase(), p);
+        if (this.isProductRegulated(p)) regulatedProductsCount++;
+      }
+
+      const yearSales = (sales || []).filter(
+        (s) => String(s.sale_date || s.date || '').startsWith(String(yr)) && !s.deleted_at
+      );
+      const yearPurchases = (purchases || []).filter(
+        (p) => String(p.date || p.created_at || '').startsWith(String(yr)) && !p.deleted_at
+      );
+      const yearExpenses = (expenses || []).filter(
+        (e) => String(e.date || e.created_at || '').startsWith(String(yr)) && !e.deleted_at
+      );
+
+      const qTurnover = [0, 0, 0, 0];
+      const qSalesCount = [0, 0, 0, 0];
+      let annualTurnoverDzd = 0;
+      let totalTvaCollected = 0;
+      let totalTimbreCollected = 0;
+      let totalCashSalesDzd = 0;
+      let totalCreditSalesDzd = 0;
+
+      let realRegulatedSalesDzd = 0;
+      let realRegulatedCostExemptDzd = 0;
+      let realRegulatedMarginDzd = 0;
+      let realRegulatedUnitsSold = 0;
+      const regulatedBreakdownMap = new Map();
+
+      // جلب تفاصيل السطور للفواتير إن لم تكن محملة مسبقاً
+      if (yearSales.length > 0 && window.api?.getSaleDetails) {
+        const missingItemsSales = yearSales.filter((s) => !Array.isArray(s.items) || s.items.length === 0).slice(0, 150);
+        for (const s of missingItemsSales) {
+          try {
+            const det = await window.api.getSaleDetails(s.id);
+            s.items = (det && det.items) || (Array.isArray(det) ? det : []);
+          } catch (_) {}
+        }
+      }
+
+      for (const s of yearSales) {
+        const tot = Math.max(0, Number(s.total || 0));
+        const paid = Math.max(0, Number(s.paid_amount ?? tot));
+        annualTurnoverDzd += tot;
+        totalCashSalesDzd += Math.min(tot, paid);
+        totalCreditSalesDzd += Math.max(0, tot - paid);
+        totalTvaCollected += Math.max(0, Number(s.tva_amount || 0));
+        totalTimbreCollected += Math.max(0, Number(s.stamp_amount || 0));
+
+        const dt = new Date(s.sale_date || s.date || Date.now());
+        const qIdx = Math.min(3, Math.floor(dt.getMonth() / 3));
+        qTurnover[qIdx] += tot;
+        qSalesCount[qIdx] += 1;
+
+        const items = Array.isArray(s.items) ? s.items : [];
+        for (const it of items) {
+          const prod =
+            prodById.get(Number(it.product_id)) ||
+            prodByName.get(String(it.product_name || it.name || '').trim().toLowerCase());
+          const itemName = String(it.product_name || it.name || (prod && prod.name) || '');
+          const isReg = prod
+            ? this.isProductRegulated(prod)
+            : this.isProductRegulated({ name: itemName });
+
+          if (isReg) {
+            const qty = Math.max(0, Number(it.quantity || 0));
+            const sub = Math.max(0, Number(it.subtotal ?? Number(it.price || 0) * qty));
+            const unitCost = Math.max(0, Number(it.cost_price ?? (prod && prod.cost_price) ?? Number(it.price || 0) * 0.92));
+            const costTotal = Math.min(sub, Number((unitCost * qty).toFixed(2)));
+            const margin = Math.max(0, Number((sub - costTotal).toFixed(2)));
+
+            realRegulatedSalesDzd += sub;
+            realRegulatedCostExemptDzd += costTotal;
+            realRegulatedMarginDzd += margin;
+            realRegulatedUnitsSold += qty;
+
+            const key = itemName || 'سلعة مقننة';
+            const prev = regulatedBreakdownMap.get(key) || { name: key, qty: 0, sales: 0, costExempt: 0, margin: 0 };
+            prev.qty += qty;
+            prev.sales += sub;
+            prev.costExempt += costTotal;
+            prev.margin += margin;
+            regulatedBreakdownMap.set(key, prev);
+          }
+        }
+      }
+
+      let totalPurchasesDzd = 0;
+      let totalPurchasesTva = 0;
+      for (const p of yearPurchases) {
+        totalPurchasesDzd += Math.max(0, Number(p.total || 0));
+        totalPurchasesTva += Math.max(0, Number(p.tva_amount || 0));
+      }
+
+      let paidTaxExpensesDzd = 0;
+      const taxExpensesList = [];
+      let isTranche1Paid = false;
+      let isTranche2Paid = false;
+      let isTranche3Paid = false;
+
+      for (const ex of yearExpenses) {
+        const amt = Math.max(0, Number(ex.amount || 0));
+        const desc = String(ex.description || '');
+        const cat = String(ex.category || '') + ' ' + desc;
+        if (cat.includes('ضرائب') || cat.includes('جباية') || cat.includes('IFU') || cat.includes('G12') || cat.includes('G50')) {
+          paidTaxExpensesDzd += amt;
+          taxExpensesList.push(ex);
+          if (desc.includes('القسط الأول') || desc.includes('جوان')) isTranche1Paid = true;
+          if (desc.includes('القسط الثاني') || desc.includes('سبتمبر')) isTranche2Paid = true;
+          if (desc.includes('الرصيد الختامي') || desc.includes('ديسمبر')) isTranche3Paid = true;
+        }
+      }
+
+      const isAutoMode = this.state.calcMode !== 'manual_ratio';
+      const regulatedDeduction = isAutoMode
+        ? Number(realRegulatedCostExemptDzd.toFixed(2))
+        : Number(((annualTurnoverDzd * Number(this.state.regulatedExemptRatio || 0)) / 100).toFixed(2));
+
+      const effectiveExemptPct =
+        annualTurnoverDzd > 0 ? Number(((regulatedDeduction / annualTurnoverDzd) * 100).toFixed(1)) : 0;
+
+      // السلع العادية غير المقننة
+      const regularGoodsTurnover = Math.max(0, Number((annualTurnoverDzd - realRegulatedSalesDzd).toFixed(2)));
+      // الوعاء الصافي الخاضع لـ 5% = (مبيعات السلع العادية + هامش ربح السلع المقننة فقط) = (إجمالي رقم الأعمال - رأسمال السلع المقننة المعفى)
+      const taxableGoodsTurnover = Math.max(0, Number((annualTurnoverDzd - regulatedDeduction).toFixed(2)));
+      const serviceRev = Math.max(0, Number(this.state.serviceRevenueDzd || 0));
+
+      const rateG = Number(this.state.ifuRateGoods || 5);
+      const rateS = Number(this.state.ifuRateServices || 12);
+
+      const rawIfuGoodsTax = Number(((taxableGoodsTurnover * rateG) / 100).toFixed(2));
+      const rawIfuServiceTax = Number(((serviceRev * rateS) / 100).toFixed(2));
+      const exactProportionalTax = Number((rawIfuGoodsTax + rawIfuServiceTax).toFixed(2));
+
+      const minLegalTax = Math.max(10000, Number(this.state.minIfuTaxDzd || 10000));
+      const isMinimumApplied = Boolean(this.state.enforceLegalMinimum) && exactProportionalTax < minLegalTax;
+      const finalIfuTaxDue = this.state.enforceLegalMinimum
+        ? Math.max(minLegalTax, exactProportionalTax)
+        : exactProportionalTax;
+
+      // نقطة التعادل التي تتجاوز فيها ضريبة الـ 5% الحد الأدنى (10,000 / 5% = 200,000 د.ج)
+      const breakEvenTurnoverForMin = rateG > 0 ? Number(((minLegalTax / (rateG / 100))).toFixed(2)) : 200000;
+
+      const tranche1_June = Number((finalIfuTaxDue * 0.30).toFixed(2));
+      const tranche2_Sept = Number((finalIfuTaxDue * 0.30).toFixed(2));
+      const tranche3_Dec = Number((finalIfuTaxDue - tranche1_June - tranche2_Sept).toFixed(2));
+
+      const ceiling = Math.max(1000000, Number(this.state.ifuCeilingDzd || 8000000));
+      const ceilingUsagePct = Math.min(100, Number(((annualTurnoverDzd / ceiling) * 100).toFixed(1)));
+
+      return {
+        year: yr,
+        isAutoMode,
+        rateG,
+        rateS,
+        salesCount: yearSales.length,
+        purchasesCount: yearPurchases.length,
+        totalProductsCount: (products || []).length,
+        regulatedProductsCount,
+        regularGoodsTurnover,
+        realRegulatedSalesDzd: Number(realRegulatedSalesDzd.toFixed(2)),
+        realRegulatedCostExemptDzd: Number(realRegulatedCostExemptDzd.toFixed(2)),
+        realRegulatedMarginDzd: Number(realRegulatedMarginDzd.toFixed(2)),
+        realRegulatedUnitsSold: Number(realRegulatedUnitsSold.toFixed(2)),
+        regulatedBreakdown: Array.from(regulatedBreakdownMap.values()).sort((a, b) => b.sales - a.sales),
+        annualTurnoverDzd: Number(annualTurnoverDzd.toFixed(2)),
+        totalCashSalesDzd: Number(totalCashSalesDzd.toFixed(2)),
+        totalCreditSalesDzd: Number(totalCreditSalesDzd.toFixed(2)),
+        regulatedDeduction,
+        effectiveExemptPct,
+        taxableGoodsTurnover,
+        serviceRev,
+        rawIfuGoodsTax,
+        rawIfuServiceTax,
+        exactProportionalTax,
+        minLegalTax,
+        isMinimumApplied,
+        breakEvenTurnoverForMin,
+        finalIfuTaxDue,
+        tranche1_June,
+        tranche2_Sept,
+        tranche3_Dec,
+        isTranche1Paid,
+        isTranche2Paid,
+        isTranche3Paid,
+        qTurnover,
+        qSalesCount,
+        totalPurchasesDzd: Number(totalPurchasesDzd.toFixed(2)),
+        totalTvaCollected: Number(totalTvaCollected.toFixed(2)),
+        totalTimbreCollected: Number(totalTimbreCollected.toFixed(2)),
+        totalPurchasesTva: Number(totalPurchasesTva.toFixed(2)),
+        paidTaxExpensesDzd: Number(paidTaxExpensesDzd.toFixed(2)),
+        taxExpensesList,
+        ceiling,
+        ceilingUsagePct
+      };
+    },
+
+    fmtDzd(val) {
+      return Number(val || 0).toLocaleString('fr-DZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' د.ج';
+    },
+
+    fmtCentimes(val) {
+      const c = Math.round(Number(val || 0) * 100);
+      return c >= 1000000 ? (c / 1000000).toFixed(2) + ' مليون سنتيم' : (c / 1000).toFixed(1) + ' ألف سنتيم';
+    },
+
+    // ========================================================================
+    // الواجهة الشاملة والمفصلة لاستوديو الجباية والضرائب للتجزئة (V33 Ultimate UX)
+    // ========================================================================
+    async renderFiscalStudioContent(container) {
+      if (!container) return;
+      const d = await this.computeFiscalData();
+      const remainingToPay = Math.max(0, Number((d.finalIfuTaxDue - d.paidTaxExpensesDzd).toFixed(2)));
+
+      const statusBadge =
+        d.ceilingUsagePct < 75
+          ? '<span class="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-black">🟢 ضمن السقف القانوني للنظام الجزافي (IFU آمن)</span>'
+          : d.ceilingUsagePct < 95
+          ? '<span class="px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-black">🟡 اقترب من سقف الـ IFU</span>'
+          : '<span class="px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 text-xs font-black">🔴 تجاوز سقف الـ IFU (نظام حقيقي G50)</span>';
+
+      // بناء صفوف جدول تفصيل السلع المقننة المباعة فعلياً داخل الصفحة
+      const inlineRegulatedRows =
+        d.regulatedBreakdown.length > 0
+          ? d.regulatedBreakdown
+              .map((it, idx) => {
+                const taxOnMarginOnly = Number(((it.margin * d.rateG) / 100).toFixed(2));
+                const taxSavedByExemption = Number(((it.costExempt * d.rateG) / 100).toFixed(2));
+                return `
+                  <tr class="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <td class="py-2.5 px-3 font-mono text-slate-400">#${idx + 1}</td>
+                    <td class="py-2.5 px-3 font-black text-slate-900 dark:text-white">${it.name}</td>
+                    <td class="py-2.5 px-3 font-mono font-bold">${it.qty} وحدة</td>
+                    <td class="py-2.5 px-3 font-mono font-bold">${this.fmtDzd(it.sales)}</td>
+                    <td class="py-2.5 px-3 font-mono font-black text-emerald-600 dark:text-emerald-400">- ${this.fmtDzd(it.costExempt)}</td>
+                    <td class="py-2.5 px-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">${this.fmtDzd(it.margin)}</td>
+                    <td class="py-2.5 px-3 font-mono font-bold text-amber-600">${this.fmtDzd(taxOnMarginOnly)} <span class="text-[10px] text-emerald-600 block">(وفّرت ${this.fmtDzd(taxSavedByExemption)})</span></td>
+                  </tr>
+                `;
+              })
+              .join('')
+          : `<tr><td colspan="7" class="py-5 text-center text-slate-400 font-bold">لم يتم بيع سلع مقننة في الفواتير بعد — اضغط على (🍞 تحديد السلع المقننة) لاختيار الحليب أو السميد أو الزيت أو السكر في متجرك.</td></tr>`;
+
+      // بناء سجل المصاريف الجبائية المسددة فعلياً
+      const paidTaxHistoryHtml =
+        d.taxExpensesList.length > 0
+          ? d.taxExpensesList
+              .map(
+                (ex) => `
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs">
+                  <div>
+                    <span class="font-black text-emerald-900 dark:text-emerald-200">✅ ${ex.description || ex.category}</span>
+                    <span class="text-[11px] text-slate-500 font-mono mr-2">📅 ${String(ex.date || '').slice(0, 10)}</span>
+                  </div>
+                  <span class="font-mono font-black text-emerald-700 dark:text-emerald-300">${this.fmtDzd(ex.amount)}</span>
+                </div>`
+              )
+              .join('')
+          : '<div class="text-xs text-slate-400 font-bold py-2 text-center">لم يتم قيد أي دفعة ضريبية في سجل المصاريف لهذه السنة حتى الآن.</div>';
+
+      container.innerHTML = `
+        <!-- ==================== [1] الترويسة التنفيذية + شريط المفسر الجبائي الذكي ==================== -->
+        <div class="rounded-2xl bg-gradient-to-l from-slate-900 via-indigo-950 to-slate-900 text-white p-5 shadow-xl border border-indigo-500/30 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-2.5 flex-wrap">
+                <span class="px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-black text-xs">13. 🇩🇿 استوديو الجباية والضرائب للتجزئة</span>
+                <h2 class="text-xl font-black">مركز الضريبة الجزافية الوحيدة (IFU — G12 / G12 Bis) وملخص G50</h2>
+                ${statusBadge}
+              </div>
+              <p class="text-xs text-slate-300 mt-1">
+                نظام محاسبي وجبائي شفاف 100%: يفصل تلقائياً بين السلع العادية والسلع المقننة، ويشرح لك الفرق بين ضريبتك النسبية الفعلية (5%) والحد الأدنى القانوني.
+              </p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <select id="v33FiscalYearSelect" class="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-600 text-white font-black text-xs">
+                <option value="${d.year}" selected>📅 السنة الجبائية: ${d.year}</option>
+                <option value="${d.year - 1}">📅 السنة الجبائية: ${d.year - 1}</option>
+                <option value="${d.year + 1}">📅 السنة الجبائية: ${d.year + 1}</option>
+              </select>
+              <button type="button" onclick="window.GherbiRetailFiscalStudio.openRegulatedProductsManagerModal()" class="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition shadow">
+                🍞 تحديد وجرد السلع المقننة (${d.regulatedProductsCount} صنف)
+              </button>
+              <button type="button" onclick="window.GherbiRetailFiscalStudio.openZakatTab12()" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition">
+                🕌 حاسبة الزكاة (تبويب 12)
+              </button>
+              <button type="button" onclick="window.GherbiRetailFiscalStudio.askAiAboutTaxes()" class="px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-black text-xs transition">
+                🤖 استشارة الوكيل الذكي
+              </button>
+              <button type="button" onclick="window.GherbiRetailFiscalStudio.printOfficialG12Statement()" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-black text-xs transition">
+                🖨️ طباعة استمارة G12 الرسمية
+              </button>
+              <button type="button" onclick="window.GherbiRetailFiscalStudio.exportFiscalCsv()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-emerald-400 font-black text-xs transition">
+                📊 تصدير Excel
+              </button>
+            </div>
+          </div>
+
+          <!-- صندوق المفسر الجبائي الذكي بلغة التاجر المبسطة -->
+          <div class="rounded-xl bg-white/10 border border-indigo-400/30 p-3.5 text-xs leading-relaxed">
+            <div class="font-black text-amber-300 mb-1 flex items-center justify-between">
+              <span>💡 كيف تقرأ وضعيتك الجبائية الحالية في 3 نقاط واضحة؟</span>
+              <span class="text-[11px] text-indigo-200 font-mono">عتبة تجاوز الحد الأدنى (10,000 د.ج) هي: ${this.fmtDzd(d.breakEvenTurnoverForMin)}</span>
+            </div>
+            <ul class="space-y-1 text-slate-100 list-disc list-inside">
+              <li>
+                <strong>1. مبيعاتك وإعفاء المواد المقننة:</strong> حقق متجرك إجمالي مبيعات قدره <strong class="text-white font-mono">${this.fmtDzd(d.annualTurnoverDzd)}</strong> عبر <strong>${d.salesCount} فاتورة</strong>، منها <strong>${d.realRegulatedUnitsSold} وحدة</strong> من المواد المقننة (حليب/سميد/زيت/سكر...) بإجمالي بيع <strong class="font-mono">${this.fmtDzd(d.realRegulatedSalesDzd)}</strong>؛ وقد أعفى النظام رأسمال شرائها البالغ <strong class="text-emerald-300 font-mono">${this.fmtDzd(d.regulatedDeduction)} (${d.effectiveExemptPct}%)</strong> ليبقى ربحها الصافي فقط (<strong class="font-mono">${this.fmtDzd(d.realRegulatedMarginDzd)}</strong>) داخل الوعاء.
+              </li>
+              <li>
+                <strong>2. ضريبتك النسبية الفعلية (${d.rateG}%):</strong> بعد طرح رأسمال المواد المقننة، يصبح وعاؤك الصافي الخاضع للضريبة هو <strong class="text-white font-mono">${this.fmtDzd(d.taxableGoodsTurnover)}</strong>، وضريبته الحقيقية بنسبة ${d.rateG}% هي <strong class="text-amber-300 font-mono">${this.fmtDzd(d.exactProportionalTax)} (${this.fmtCentimes(d.exactProportionalTax)})</strong> فقط.
+              </li>
+              <li>
+                <strong>3. لماذا يظهر المبلغ النهائي ${this.fmtDzd(d.finalIfuTaxDue)}؟</strong>
+                ${
+                  d.isMinimumApplied
+                    ? `لأن قانون الضرائب الجزائري يفرض <strong>حداً أدنى قانونياً سنوياً قدره ${this.fmtDzd(d.minLegalTax)} (مليون سنتيم)</strong> في تصريح G12 طالما أن مبيعاتك الخاضعة لم تتجاوز <strong class="font-mono">${this.fmtDzd(d.breakEvenTurnoverForMin)}</strong>. (يمكنك إيقاف خيار الحد الأدنى من لوحة الإعدادات بالأسفل إذا أردت رؤية الأقساط محسوبة على أساس ${this.fmtDzd(d.exactProportionalTax)} فقط).`
+                    : `تم اعتماد الضريبة المحسوبة مباشرة بقيمة <strong class="text-emerald-300 font-mono">${this.fmtDzd(d.finalIfuTaxDue)}</strong>.`
+                }
+              </li>
+            </ul>
+          </div>
+
+          <!-- شريط استهلاك السقف القانوني للنظام الجزافي -->
+          <div class="pt-1">
+            <div class="flex items-center justify-between text-xs font-bold mb-1">
+              <span>📊 استهلاك السقف السنوي للنظام الجزافي (IFU): <strong class="text-amber-300 font-mono">${this.fmtDzd(d.annualTurnoverDzd)}</strong> من أصل <strong class="text-white font-mono">${this.fmtDzd(d.ceiling)} (800 مليون سنتيم)</strong></span>
+              <span class="font-mono text-sm font-black text-emerald-400">${d.ceilingUsagePct}%</span>
+            </div>
+            <div class="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden p-0.5 border border-slate-700">
+              <div class="h-full rounded-full bg-emerald-500 transition-all duration-500" style="width: ${Math.max(2, d.ceilingUsagePct)}%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================== [2] شلال المعادلة الجبائية البصري (5 بطاقات متسلسلة تشرح الحساب خطوة بخطوة) ==================== -->
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <!-- خطوة 1: إجمالي المبيعات -->
+          <div class="rounded-2xl p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm relative">
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-black text-[10px]">الخطوة [1] — المبيعات (A)</span>
+              <span class="text-xs font-bold text-slate-400">${d.salesCount} فاتورة</span>
+            </div>
+            <div class="text-xs font-bold text-slate-500 mt-1.5">إجمالي رقم الأعمال السنوي</div>
+            <div class="text-xl font-black text-slate-900 dark:text-white font-mono mt-1">${this.fmtDzd(d.annualTurnoverDzd)}</div>
+            <div class="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 mt-1">🇩🇿 ${this.fmtCentimes(d.annualTurnoverDzd)}</div>
+            <div class="text-[10px] text-slate-400 mt-1 border-t border-slate-100 dark:border-slate-700 pt-1">
+              نقداً: ${this.fmtDzd(d.totalCashSalesDzd)} | آجل: ${this.fmtDzd(d.totalCreditSalesDzd)}
+            </div>
+          </div>
+
+          <!-- خطوة 2: يطرح إعفاء المواد المقننة -->
+          <div class="rounded-2xl p-4 bg-white dark:bg-slate-800 border-2 border-emerald-500/40 shadow-sm relative">
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-black text-[10px]">الخطوة [2] — يُطرح الإعفاء (- B)</span>
+              <button type="button" onclick="window.GherbiRetailFiscalStudio.openRegulatedProductsManagerModal()" class="text-[10px] font-black text-indigo-600 hover:underline">تعديل السلع 🔍</button>
+            </div>
+            <div class="text-xs font-bold text-slate-500 mt-1.5">رأسمال المواد المقننة المعفى (${d.effectiveExemptPct}%)</div>
+            <div class="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono mt-1">- ${this.fmtDzd(d.regulatedDeduction)}</div>
+            <div class="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 mt-1">
+              ${d.isAutoMode ? `🤖 من الفواتير (${d.realRegulatedUnitsSold} وحدة مقننة)` : `📐 نسبة تقديرية (${this.state.regulatedExemptRatio}%)`}
+            </div>
+            <div class="text-[10px] text-slate-400 mt-1 border-t border-slate-100 dark:border-slate-700 pt-1">
+              مبيعاتها: ${this.fmtDzd(d.realRegulatedSalesDzd)} | ربحها الخاضع: ${this.fmtDzd(d.realRegulatedMarginDzd)}
+            </div>
+          </div>
+
+          <!-- خطوة 3: يساوي الوعاء الصافي الخاضع -->
+          <div class="rounded-2xl p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm relative">
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded bg-blue-500/15 text-blue-700 dark:text-blue-300 font-black text-[10px]">الخطوة [3] — الوعاء (= C)</span>
+              <span class="text-[10px] font-mono font-bold text-slate-400">A - B</span>
+            </div>
+            <div class="text-xs font-bold text-slate-500 mt-1.5">الوعاء الصافي الخاضع لـ ${d.rateG}%</div>
+            <div class="text-xl font-black text-blue-600 dark:text-blue-400 font-mono mt-1">${this.fmtDzd(d.taxableGoodsTurnover)}</div>
+            <div class="text-[11px] font-bold text-slate-600 dark:text-slate-300 mt-1">🇩🇿 ${this.fmtCentimes(d.taxableGoodsTurnover)}</div>
+            <div class="text-[10px] text-slate-400 mt-1 border-t border-slate-100 dark:border-slate-700 pt-1">
+              سلع عادية (${this.fmtDzd(d.regularGoodsTurnover)}) + ربح المقنن (${this.fmtDzd(d.realRegulatedMarginDzd)})
+            </div>
+          </div>
+
+          <!-- خطوة 4: الضريبة النسبية الفعلية 5% -->
+          <div class="rounded-2xl p-4 bg-amber-50/70 dark:bg-amber-950/20 border-2 border-amber-400/50 shadow-sm relative">
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-black text-[10px]">الخطوة [4] — ضريبة ${d.rateG}% الفعلية (D)</span>
+              <span class="text-[10px] font-mono font-bold text-amber-700">C × ${d.rateG}%</span>
+            </div>
+            <div class="text-xs font-bold text-amber-900 dark:text-amber-200 mt-1.5">الضريبة النسبية المحسوبة فعلياً</div>
+            <div class="text-xl font-black text-amber-600 dark:text-amber-400 font-mono mt-1">${this.fmtDzd(d.exactProportionalTax)}</div>
+            <div class="text-[11px] font-bold text-amber-800 dark:text-amber-300 mt-1">🇩🇿 ${this.fmtCentimes(d.exactProportionalTax)}</div>
+            <div class="text-[10px] text-amber-700/80 dark:text-amber-400/80 mt-1 border-t border-amber-200 dark:border-amber-800 pt-1">
+              تمثل ${d.rateG}% بالضبط من وعائك الصافي
+            </div>
+          </div>
+
+          <!-- خطوة 5: الضريبة النهائية الواجبة الأداء والمتبقي -->
+          <div class="rounded-2xl p-4 bg-indigo-600 text-white shadow-lg relative">
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded bg-white/20 text-white font-black text-[10px]">الخطوة [5] — الواجب دفعه (E)</span>
+              <span class="text-[10px] font-bold text-amber-300">${d.isMinimumApplied ? '⚖️ الحد الأدنى' : '✔ نسبة 5%'}</span>
+            </div>
+            <div class="text-xs font-bold text-indigo-100 mt-1.5">الضريبة النهائية المستحقة (G12)</div>
+            <div class="text-xl font-black font-mono mt-1">${this.fmtDzd(d.finalIfuTaxDue)}</div>
+            <div class="text-[11px] font-bold text-amber-300 mt-1">🇩🇿 ${this.fmtCentimes(d.finalIfuTaxDue)}</div>
+            <div class="text-[10px] text-indigo-100 mt-1 border-t border-indigo-400/40 pt-1 flex items-center justify-between font-bold">
+              <span>المسدد: ${this.fmtDzd(d.paidTaxExpensesDzd)}</span>
+              <span class="text-amber-300">المتبقي: ${this.fmtDzd(remainingToPay)}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================== [3] محاكي استمارة G12 الرسمية + رزنامة الأقساط الثلاثة ==================== -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <!-- يمين: محاكي استمارة التصريح الرسمي لقباضة الضرائب (Série G N°12) -->
+          <div class="lg:col-span-6 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 space-y-3 shadow-sm">
+            <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2.5">
+              <div>
+                <h3 class="font-black text-sm text-slate-900 dark:text-white">📋 محاكي استمارة التصريح الجبائي الرسمي (Série G N°12 / G12 Bis)</h3>
+                <p class="text-[11px] text-slate-500">الأرقام الجاهزة لملء خانات وثيقة الضرائب الرسمية بدون أي خطأ حسابي</p>
+              </div>
+              <button type="button" onclick="window.GherbiRetailFiscalStudio.copyG12SummaryToClipboard()" class="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-600 text-indigo-700 dark:text-indigo-300 hover:text-white font-black text-xs transition border border-indigo-200 dark:border-indigo-800">
+                📋 نسخ أرقام G12
+              </button>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs text-right border-collapse">
+                <thead>
+                  <tr class="bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                    <th class="py-2 px-2.5">خانة استمارة G12 (طبيعة النشاط)</th>
+                    <th class="py-2 px-2.5">رقم الأعمال الخاضع</th>
+                    <th class="py-2 px-2.5">المعدل</th>
+                    <th class="py-2 px-2.5">الضريبة المحسوبة</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200 dark:divide-slate-700 font-bold">
+                  <tr>
+                    <td class="py-2 px-2.5">1. مبيعات السلع العادية بالتجزئة (خاضعة كلياً)</td>
+                    <td class="py-2 px-2.5 font-mono">${this.fmtDzd(d.regularGoodsTurnover)}</td>
+                    <td class="py-2 px-2.5 font-mono text-indigo-600">${d.rateG}%</td>
+                    <td class="py-2 px-2.5 font-mono">${this.fmtDzd((d.regularGoodsTurnover * d.rateG) / 100)}</td>
+                  </tr>
+                  <tr class="bg-emerald-50/40 dark:bg-emerald-950/15">
+                    <td class="py-2 px-2.5">
+                      2. المواد المقننة واسعة الاستهلاك (الهامش الصافي فقط)
+                      <span class="block text-[10px] text-emerald-600">إجمالي بيعها: ${this.fmtDzd(d.realRegulatedSalesDzd)} | رأسمالها المعفى: ${this.fmtDzd(d.regulatedDeduction)}</span>
+                    </td>
+                    <td class="py-2 px-2.5 font-mono text-emerald-700 dark:text-emerald-400">${this.fmtDzd(d.realRegulatedMarginDzd)}</td>
+                    <td class="py-2 px-2.5 font-mono text-indigo-600">${d.rateG}%</td>
+                    <td class="py-2 px-2.5 font-mono text-emerald-700 dark:text-emerald-400">${this.fmtDzd((d.realRegulatedMarginDzd * d.rateG) / 100)}</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2 px-2.5">3. إيرادات الخدمات والأنشطة الأخرى</td>
+                    <td class="py-2 px-2.5 font-mono">${this.fmtDzd(d.serviceRev)}</td>
+                    <td class="py-2 px-2.5 font-mono text-indigo-600">${d.rateS}%</td>
+                    <td class="py-2 px-2.5 font-mono">${this.fmtDzd(d.rawIfuServiceTax)}</td>
+                  </tr>
+                  <tr class="bg-amber-50/60 dark:bg-amber-950/20 font-black">
+                    <td class="py-2.5 px-2.5">المجموع النسبي الفعلي (قبل الحد الأدنى)</td>
+                    <td class="py-2.5 px-2.5 font-mono">${this.fmtDzd(d.taxableGoodsTurnover + d.serviceRev)}</td>
+                    <td class="py-2.5 px-2.5 font-mono">—</td>
+                    <td class="py-2.5 px-2.5 font-mono text-amber-600">${this.fmtDzd(d.exactProportionalTax)}</td>
+                  </tr>
+                  <tr class="bg-indigo-600/10 dark:bg-indigo-500/20 font-black text-indigo-950 dark:text-white">
+                    <td class="py-2.5 px-2.5" colspan="3">
+                      🏛️ الضريبة الجزافية الوحيدة النهائية الواجبة الأداء في قباضة الضرائب
+                      <span class="block text-[10px] font-normal text-slate-500 dark:text-slate-300">${d.isMinimumApplied ? 'تم تطبيق الحد الأدنى القانوني (المادة 282 مكرر 6 من قانون الضرائب المباشرة)' : 'محسوبة بنسبة 5% المباشرة'}</span>
+                    </td>
+                    <td class="py-2.5 px-2.5 font-mono text-sm text-indigo-600 dark:text-indigo-300">${this.fmtDzd(d.finalIfuTaxDue)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- يسار: رزنامة تسديد الأقساط الفصلية الثلاثة (30% / 30% / 40%) وسجل الدفعات -->
+          <div class="lg:col-span-6 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 space-y-3 shadow-sm">
+            <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2.5">
+              <div>
+                <h3 class="font-black text-sm text-slate-900 dark:text-white">🗓️ رزنامة الأقساط القانونية الثلاثة (G12) وحالة التسديد</h3>
+                <p class="text-[11px] text-slate-500">اضغط (💸 قيد كمصروف) عند تسديد أي قسط ليُخصم تلقائياً من المتبقي</p>
+              </div>
+              <button type="button" onclick="window.GherbiRetailFiscalStudio.goToExpensesView()" class="text-xs font-black text-indigo-600 hover:underline">
+                💸 سجل المصاريف ⬅
+              </button>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs text-right">
+                <thead>
+                  <tr class="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                    <th class="py-2 px-2">القسط الجبائي</th>
+                    <th class="py-2 px-2">موعد الاستحقاق</th>
+                    <th class="py-2 px-2">النسبة</th>
+                    <th class="py-2 px-2">المبلغ الواجب</th>
+                    <th class="py-2 px-2">الحالة</th>
+                    <th class="py-2 px-2 text-center">إجراء</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200 dark:divide-slate-700 font-bold">
+                  <tr>
+                    <td class="py-2.5 px-2">القسط الأول (Tranche 1)</td>
+                    <td class="py-2.5 px-2 font-mono">15 - 30 جوان ${d.year}</td>
+                    <td class="py-2.5 px-2 font-mono text-indigo-600">30%</td>
+                    <td class="py-2.5 px-2 font-mono">${this.fmtDzd(d.tranche1_June)}</td>
+                    <td class="py-2.5 px-2">
+                      ${d.isTranche1Paid ? '<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-black">✅ مسدد</span>' : '<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-black">⏳ قيد الانتظار</span>'}
+                    </td>
+                    <td class="py-2.5 px-2 text-center">
+                      <button type="button" onclick="window.GherbiRetailFiscalStudio.recordTaxAsExpense(${d.tranche1_June}, 'تسديد القسط الأول G12 (30% - جوان ${d.year})')" class="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-600 text-emerald-700 hover:text-white font-black text-[11px] transition">
+                        💸 قيد كمصروف
+                      </button>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="py-2.5 px-2">القسط الثاني (Tranche 2)</td>
+                    <td class="py-2.5 px-2 font-mono">15 - 30 سبتمبر ${d.year}</td>
+                    <td class="py-2.5 px-2 font-mono text-indigo-600">30%</td>
+                    <td class="py-2.5 px-2 font-mono">${this.fmtDzd(d.tranche2_Sept)}</td>
+                    <td class="py-2.5 px-2">
+                      ${d.isTranche2Paid ? '<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-black">✅ مسدد</span>' : '<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-black">⏳ قيد الانتظار</span>'}
+                    </td>
+                    <td class="py-2.5 px-2 text-center">
+                      <button type="button" onclick="window.GherbiRetailFiscalStudio.recordTaxAsExpense(${d.tranche2_Sept}, 'تسديد القسط الثاني G12 (30% - سبتمبر ${d.year})')" class="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-600 text-emerald-700 hover:text-white font-black text-[11px] transition">
+                        💸 قيد كمصروف
+                      </button>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="py-2.5 px-2">الرصيد الختامي (G12 Bis)</td>
+                    <td class="py-2.5 px-2 font-mono">15 - 30 ديسمبر ${d.year}</td>
+                    <td class="py-2.5 px-2 font-mono text-indigo-600">40%</td>
+                    <td class="py-2.5 px-2 font-mono">${this.fmtDzd(d.tranche3_Dec)}</td>
+                    <td class="py-2.5 px-2">
+                      ${d.isTranche3Paid ? '<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-black">✅ مسدد</span>' : '<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-black">⏳ قيد الانتظار</span>'}
+                    </td>
+                    <td class="py-2.5 px-2 text-center">
+                      <button type="button" onclick="window.GherbiRetailFiscalStudio.recordTaxAsExpense(${d.tranche3_Dec}, 'تسديد الرصيد الختامي G12 Bis (40% - ديسمبر ${d.year})')" class="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-600 text-emerald-700 hover:text-white font-black text-[11px] transition">
+                        💸 قيد كمصروف
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- أرشيف الدفعات المسددة -->
+            <div class="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-1.5">
+              <div class="text-[11px] font-black text-slate-600 dark:text-slate-300">🧾 سجل الدفعات الجبائية المقيدة في المصاريف (${d.year}):</div>
+              ${paidTaxHistoryHtml}
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================== [4] جدول الجرد التفصيلي المباشر للسلع المقننة المباعة في الفواتير ==================== -->
+        <div class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 shadow-sm space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-2.5">
+            <div>
+              <h3 class="font-black text-sm text-slate-900 dark:text-white">🍞 تفصيل المبيعات الفعلية للمواد المقننة والمدعمة من داخل فواتيرك (${d.regulatedBreakdown.length} صنف مباع / ${d.realRegulatedUnitsSold} وحدة)</h3>
+              <p class="text-[11px] text-slate-500">يوضح هذا الجدول كيف حُسب مبلغ الإعفاء (- ${this.fmtDzd(d.regulatedDeduction)}) سطراً بسطر من الفواتير، وكيف وُفرت الضريبة عن رأسمال هذه السلع</p>
+            </div>
+            <button type="button" onclick="window.GherbiRetailFiscalStudio.openRegulatedProductsManagerModal()" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition shadow">
+              ➕ إضافة / تعديل قائمة السلع المقننة في المخزن (${d.regulatedProductsCount} محدد)
+            </button>
+          </div>
+
+          <div class="overflow-x-auto max-h-64">
+            <table class="w-full text-xs text-right">
+              <thead>
+                <tr class="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                  <th class="py-2 px-3">#</th>
+                  <th class="py-2 px-3">اسم السلعة المقننة المباعة</th>
+                  <th class="py-2 px-3">الكمية المباعة</th>
+                  <th class="py-2 px-3">إجمالي سعر البيع</th>
+                  <th class="py-2 px-3 text-emerald-600">رأسمال الشراء المعفى (يُطرح من الوعاء)</th>
+                  <th class="py-2 px-3 text-indigo-600">هامش الربح الصافي الخاضع</th>
+                  <th class="py-2 px-3 text-amber-600">ضريبة 5% على الربح فقط (ومقدار الوفر)</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${inlineRegulatedRows}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ==================== [5] إعدادات المعايرة الجبائية + توزيع الثلاثيات الأربعة وملخص G50 ==================== -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <!-- يمين: إعدادات المعايرة وخيار تفعيل/إيقاف الحد الأدنى القانوني -->
+          <div class="lg:col-span-5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 space-y-3 shadow-sm">
+            <h3 class="font-black text-sm text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-2">⚙️ إعدادات ومعايرة الحاسبة الجبائية</h3>
+
+            <div class="space-y-2 text-xs">
+              <label class="block font-bold text-slate-600 dark:text-slate-300">مصدر حساب إعفاء المواد المقننة:</label>
+              <select id="v32CalcModeSelect" onchange="window.GherbiRetailFiscalStudio.onModeChange(this.value)" class="w-full px-3 py-2 rounded-xl border border-indigo-400 bg-indigo-50/50 dark:bg-slate-900 font-black text-xs">
+                <option value="auto_invoices" ${d.isAutoMode ? 'selected' : ''}>🤖 حساب حقيقي آلي من السلع المباعة في الفواتير (يعفي رأسمال السلع المقننة)</option>
+                <option value="manual_ratio" ${!d.isAutoMode ? 'selected' : ''}>📐 نسبة تقديرية يدوية من إجمالي المبيعات (%)</option>
+              </select>
+            </div>
+
+            <!-- خيار تطبيق الحد الأدنى القانوني (10,000 د.ج) أو عرض نسبة 5% الصافية -->
+            <label class="flex items-center justify-between p-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 cursor-pointer text-xs">
+              <div class="flex items-center gap-2">
+                <input id="v33EnforceMinCheckbox" type="checkbox" ${this.state.enforceLegalMinimum ? 'checked' : ''} onchange="window.GherbiRetailFiscalStudio.toggleLegalMinimum(this.checked)" class="w-4 h-4 rounded accent-amber-600">
+                <span class="font-black text-amber-950 dark:text-amber-200">تطبيق الحد الأدنى القانوني للضريبة (10,000 د.ج)</span>
+              </div>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500 text-slate-950">قانون المالية</span>
+            </label>
+
+            <div class="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">معدل ضريبة بيع السلع (IFU %)</label>
+                <input id="v30IfuRateGoods" type="number" step="0.5" value="${this.state.ifuRateGoods}" class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 font-mono font-bold">
+              </div>
+              <div class="${d.isAutoMode ? 'opacity-50' : ''}">
+                <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">النسبة اليدوية (في الوضع التقديري %)</label>
+                <input id="v30RegulatedRatio" type="number" step="1" min="0" max="95" value="${this.state.regulatedExemptRatio}" ${d.isAutoMode ? 'disabled' : ''} class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 font-mono font-bold">
+              </div>
+              <div>
+                <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">إيرادات خدمات إضافية (12% د.ج)</label>
+                <input id="v30ServiceRev" type="number" step="100" value="${this.state.serviceRevenueDzd}" class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 font-mono font-bold">
+              </div>
+              <div>
+                <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">السقف السنوي للـ IFU (د.ج)</label>
+                <input id="v30IfuCeiling" type="number" step="100000" value="${this.state.ifuCeilingDzd}" class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 font-mono font-bold">
+              </div>
+            </div>
+
+            <button type="button" onclick="window.GherbiRetailFiscalStudio.saveFormSettings()" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs transition shadow">
+              💾 حفظ الإعدادات وإعادة حساب الضريبة فوراً
+            </button>
+          </div>
+
+          <!-- يسار: تفصيل الثلاثيات الأربعة + ملخص G50 والمشتريات -->
+          <div class="lg:col-span-7 space-y-4">
+            <div class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 shadow-sm">
+              <h4 class="font-black text-xs text-slate-700 dark:text-slate-200 mb-3">📈 تفصيل مبيعات التجزئة حسب الثلاثيات الأربعة (${d.year})</h4>
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-center">
+                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                  <div class="text-[11px] text-slate-500 font-bold">الثلاثي الأول (جانفي - مارس)</div>
+                  <div class="font-mono font-black text-xs mt-1">${this.fmtDzd(d.qTurnover[0])}</div>
+                  <div class="text-[10px] text-indigo-600 font-bold mt-0.5">${d.qSalesCount[0]} فاتورة</div>
+                </div>
+                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                  <div class="text-[11px] text-slate-500 font-bold">الثلاثي الثاني (أفريل - جوان)</div>
+                  <div class="font-mono font-black text-xs mt-1">${this.fmtDzd(d.qTurnover[1])}</div>
+                  <div class="text-[10px] text-indigo-600 font-bold mt-0.5">${d.qSalesCount[1]} فاتورة</div>
+                </div>
+                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                  <div class="text-[11px] text-slate-500 font-bold">الثلاثي الثالث (جويلية - سبتمبر)</div>
+                  <div class="font-mono font-black text-xs mt-1">${this.fmtDzd(d.qTurnover[2])}</div>
+                  <div class="text-[10px] text-indigo-600 font-bold mt-0.5">${d.qSalesCount[2]} فاتورة</div>
+                </div>
+                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                  <div class="text-[11px] text-slate-500 font-bold">الثلاثي الرابع (أكتوبر - ديسمبر)</div>
+                  <div class="font-mono font-black text-xs mt-1">${this.fmtDzd(d.qTurnover[3])}</div>
+                  <div class="text-[10px] text-indigo-600 font-bold mt-0.5">${d.qSalesCount[3]} فاتورة</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 shadow-sm">
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="font-black text-xs text-slate-700 dark:text-slate-200">🏛️ ملخص المشتريات والرسوم المجمعة (TVA & Droit de Timbre — G50)</h4>
+                <button type="button" onclick="window.GherbiRetailFiscalStudio.goToPurchasesView()" class="text-xs font-black text-indigo-600 hover:underline">🛍️ مراجعة فواتير الشراء (${d.purchasesCount}) ⬅</button>
+              </div>
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-center">
+                <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                  <div class="text-[11px] text-slate-500 font-bold">إجمالي فواتير الشراء</div>
+                  <div class="font-mono font-black text-xs text-slate-900 dark:text-white mt-1">${this.fmtDzd(d.totalPurchasesDzd)}</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                  <div class="text-[11px] text-slate-500 font-bold">TVA المبيعات المحصلة</div>
+                  <div class="font-mono font-black text-xs text-indigo-600 mt-1">${this.fmtDzd(d.totalTvaCollected)}</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                  <div class="text-[11px] text-slate-500 font-bold">TVA المشتريات المسترجعة</div>
+                  <div class="font-mono font-black text-xs text-emerald-600 mt-1">${this.fmtDzd(d.totalPurchasesTva)}</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                  <div class="text-[11px] text-slate-500 font-bold">حقوق الطابع الجبائي (Timbre)</div>
+                  <div class="font-mono font-black text-xs text-amber-600 mt-1">${this.fmtDzd(d.totalTimbreCollected)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const yrSelect = document.getElementById('v33FiscalYearSelect');
+      if (yrSelect) {
+        yrSelect.addEventListener('change', (e) => {
+          this.state.year = Number(e.target.value);
+          this.saveConfig();
+          this.renderFiscalStudioContent(container);
+        });
+      }
+    },
+
+    toggleLegalMinimum(isChecked) {
+      this.state.enforceLegalMinimum = Boolean(isChecked);
+      this.saveConfig();
+      this.refreshStudioUI();
+      if (window.showToast) {
+        window.showToast(
+          isChecked
+            ? '⚖️ تم تفعيل الحد الأدنى القانوني (10,000 د.ج) وفق قانون الضرائب الجزائري'
+            : '📐 تم التبديل لعرض الضريبة النسبية الفعلية (5%) فقط على الأقساط',
+          'info'
+        );
+      }
+    },
+
+    async copyG12SummaryToClipboard() {
+      const d = await this.computeFiscalData();
+      const text = [
+        `=== كشف التصريح الجبائي للضريبة الجزافية الوحيدة (G12 / G12 Bis - ${d.year}) ===`,
+        `1. إجمالي رقم الأعمال السنوي: ${this.fmtDzd(d.annualTurnoverDzd)} (${this.fmtCentimes(d.annualTurnoverDzd)})`,
+        `2. مبيعات السلع العادية (خاضعة لـ ${d.rateG}%): ${this.fmtDzd(d.regularGoodsTurnover)}`,
+        `3. مبيعات المواد المقننة: ${this.fmtDzd(d.realRegulatedSalesDzd)} | رأسمالها المعفى: ${this.fmtDzd(d.regulatedDeduction)} | ربحها الخاضع: ${this.fmtDzd(d.realRegulatedMarginDzd)}`,
+        `4. الوعاء الجبائي الصافي الخاضع لـ ${d.rateG}%: ${this.fmtDzd(d.taxableGoodsTurnover)}`,
+        `5. الضريبة النسبية الفعلية (${d.rateG}%): ${this.fmtDzd(d.exactProportionalTax)}`,
+        `6. الضريبة النهائية الواجبة الأداء: ${this.fmtDzd(d.finalIfuTaxDue)}`,
+        `   - القسط الأول (30% جوان): ${this.fmtDzd(d.tranche1_June)}`,
+        `   - القسط الثاني (30% سبتمبر): ${this.fmtDzd(d.tranche2_Sept)}`,
+        `   - الرصيد الختامي (40% ديسمبر): ${this.fmtDzd(d.tranche3_Dec)}`
+      ].join('\n');
+      try {
+        await navigator.clipboard.writeText(text);
+        if (window.showToast) window.showToast('📋 تم نسخ جميع أرقام استمارة G12 إلى الحافظة بنجاح!', 'success');
+      } catch (_) {}
+    },
+
+    async openRegulatedProductsManagerModal() {
+      let products = window.AppState?.products || [];
+      if ((!products || !products.length) && window.api?.getProducts) {
+        products = await window.api.getProducts();
+      }
+      const d = await this.computeFiscalData();
+
+      let modal = document.getElementById('v32RegulatedProductsModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'v32RegulatedProductsModal';
+        modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4';
+        document.body.appendChild(modal);
+      }
+
+      const productRows = (products || [])
+        .map((p) => {
+          const isReg = this.isProductRegulated(p);
+          return `
+            <label class="flex items-center justify-between p-2.5 rounded-xl border ${
+              isReg
+                ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-400'
+                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+            } cursor-pointer hover:border-indigo-500 transition text-xs">
+              <div class="flex items-center gap-2.5">
+                <input type="checkbox" data-reg-prod-id="${p.id}" ${isReg ? 'checked' : ''} onchange="window.GherbiRetailFiscalStudio.toggleProductRegulatedFromModal(${p.id}, this.checked)" class="w-4 h-4 rounded accent-emerald-600">
+                <div>
+                  <div class="font-black text-slate-900 dark:text-white">${p.name || 'بدون اسم'}</div>
+                  <div class="text-[11px] text-slate-500">الشراء: ${this.fmtDzd(p.cost_price)} | البيع: ${this.fmtDzd(p.selling_price)}</div>
+                </div>
+              </div>
+              <span class="px-2 py-0.5 rounded text-[10px] font-black ${
+                isReg ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+              }">${isReg ? '🇩🇿 سلعة مقننة (معفاة الرأسمال)' : 'سلعة عادية (5%)'}</span>
+            </label>
+          `;
+        })
+        .join('');
+
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-4xl w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden" dir="rtl">
+          <div class="p-4 bg-slate-900 text-white flex items-center justify-between">
+            <div>
+              <h3 class="text-base font-black">🍞 تحديد السلع المقننة والمدعمة في متجرك (إعفاء G12 IFU)</h3>
+              <p class="text-xs text-slate-300 mt-0.5">ضع علامة ✔ أمام أي سلعة مقننة (حليب، سميد، فرينة، زيت، سكر، خبز...) ليقوم البرنامج بإعفاء رأسمال شرائها من ضريبة الـ 5% تلقائياً.</p>
+            </div>
+            <button type="button" onclick="document.getElementById('v32RegulatedProductsModal').classList.add('hidden')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-600 text-white font-black text-xs">✕ إغلاق</button>
+          </div>
+
+          <div class="p-4 overflow-y-auto space-y-3 flex-1">
+            <div class="flex items-center justify-between">
+              <span class="font-black text-xs text-slate-700 dark:text-slate-200">قائمة منتجات المتجر (${d.totalProductsCount} منتج):</span>
+              <span class="text-xs font-black text-emerald-600">السلع المصنفة كمقننة حالياً: ${d.regulatedProductsCount} صنف</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+              ${productRows}
+            </div>
+          </div>
+
+          <div class="p-3 bg-slate-100 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 flex items-center justify-end gap-2">
+            <button type="button" onclick="document.getElementById('v32RegulatedProductsModal').classList.add('hidden'); window.GherbiRetailFiscalStudio.refreshStudioUI();" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow">
+              ✔ حفظ التحديد وإعادة حساب الجباية الآن
+            </button>
+          </div>
+        </div>
+      `;
+
+      modal.classList.remove('hidden');
+    },
+
+    toggleProductRegulatedFromModal(productId, isChecked) {
+      this.setProductRegulated(productId, isChecked);
+    },
+
+    async refreshStudioUI() {
+      const pane = document.getElementById('v30RetailFiscalStudioContainer');
+      if (pane) await this.renderFiscalStudioContent(pane);
+    },
+
+    onModeChange(val) {
+      this.state.calcMode = val === 'manual_ratio' ? 'manual_ratio' : 'auto_invoices';
+      this.saveConfig();
+      this.refreshStudioUI();
+    },
+
+    saveFormSettings() {
+      const modeSel = document.getElementById('v32CalcModeSelect');
+      if (modeSel) this.state.calcMode = modeSel.value;
+      const minChk = document.getElementById('v33EnforceMinCheckbox');
+      if (minChk) this.state.enforceLegalMinimum = Boolean(minChk.checked);
+      this.state.ifuRateGoods = Math.max(0, Number(document.getElementById('v30IfuRateGoods')?.value ?? 5));
+      this.state.regulatedExemptRatio = Math.max(0, Math.min(95, Number(document.getElementById('v30RegulatedRatio')?.value ?? 15)));
+      this.state.serviceRevenueDzd = Math.max(0, Number(document.getElementById('v30ServiceRev')?.value ?? 0));
+      this.state.ifuCeilingDzd = Math.max(100000, Number(document.getElementById('v30IfuCeiling')?.value ?? 8000000));
+      this.saveConfig();
+      this.refreshStudioUI();
+      if (window.showToast) window.showToast('✅ تم تحديث معايير الجباية وإعادة احتساب تصريح G12 بنجاح!', 'success');
+    },
+
+    async recordTaxAsExpense(amount, description) {
+      try {
+        const amt = Number(amount || 0);
+        if (amt <= 0) return;
+        await window.api.addExpense({
+          category: 'ضرائب وجباية (IFU G12)',
+          description,
+          amount: amt,
+          date: new Date().toISOString().slice(0, 10),
+          deductFromCaisse: false
+        });
+        if (window.AppState && window.api?.getExpenses) {
+          window.AppState.expenses = await window.api.getExpenses();
+        }
+        await this.refreshStudioUI();
+        if (window.showToast) window.showToast(`💸 تم قيد (${this.fmtDzd(amt)}) في سجل المصاريف الجبائية بنجاح!`, 'success');
+      } catch (e) {
+        if (window.showToast) window.showToast('⚠️ تعذر تسجيل المصروف: ' + e.message, 'error');
+      }
+    },
+
+    goToExpensesView() {
+      if (window.App && typeof window.App.switchView === 'function') window.App.switchView('expenses');
+    },
+
+    goToPurchasesView() {
+      if (window.App && typeof window.App.switchView === 'function') window.App.switchView('purchases');
+    },
+
+    async askAiAboutTaxes() {
+      const d = await this.computeFiscalData();
+      if (window.App && typeof window.App.switchView === 'function') await window.App.switchView('ai-assistant');
+      setTimeout(() => {
+        const input = document.querySelector('#view-ai-assistant input[type="text"], #view-ai-assistant textarea');
+        if (input) {
+          input.value = `احسب لي الزكاة والضريبة الجزافية IFU (رقم أعمالي السنوي ${d.annualTurnoverDzd} د.ج، وإعفاء المواد المقننة الفعلي ${d.regulatedDeduction} د.ج، والضريبة النسبية ${d.exactProportionalTax} د.ج، والضريبة النهائية ${d.finalIfuTaxDue} د.ج)`;
+          input.focus();
+        }
+      }, 150);
+    },
+
+    async exportFiscalCsv() {
+      const d = await this.computeFiscalData();
+      const rows = [
+        ['البند الجبائي', 'القيمة بالدينار (د.ج)', 'القيمة بالسنتيم'],
+        ['السنة الجبائية', d.year, ''],
+        ['1. إجمالي رقم الأعمال السنوي للتجزئة (A)', d.annualTurnoverDzd.toFixed(2), this.fmtCentimes(d.annualTurnoverDzd)],
+        ['2. مبيعات السلع العادية (خاضعة كلياً لـ 5%)', d.regularGoodsTurnover.toFixed(2), this.fmtCentimes(d.regularGoodsTurnover)],
+        ['3. مبيعات المواد المقننة الكلية', d.realRegulatedSalesDzd.toFixed(2), this.fmtCentimes(d.realRegulatedSalesDzd)],
+        ['4. رأسمال المواد المقننة المعفى من الضريبة (- B)', d.regulatedDeduction.toFixed(2), this.fmtCentimes(d.regulatedDeduction)],
+        ['5. هامش ربح المواد المقننة الصافي الخاضع', d.realRegulatedMarginDzd.toFixed(2), this.fmtCentimes(d.realRegulatedMarginDzd)],
+        ['6. الوعاء الصافي الخاضع للضريبة الجزافية (= C)', d.taxableGoodsTurnover.toFixed(2), this.fmtCentimes(d.taxableGoodsTurnover)],
+        ['7. الضريبة النسبية الفعلية (5%) (= D)', d.exactProportionalTax.toFixed(2), this.fmtCentimes(d.exactProportionalTax)],
+        ['8. الضريبة النهائية الواجبة الأداء (G12) (= E)', d.finalIfuTaxDue.toFixed(2), this.fmtCentimes(d.finalIfuTaxDue)],
+        ['القسط الأول (30% - جوان)', d.tranche1_June.toFixed(2), this.fmtCentimes(d.tranche1_June)],
+        ['القسط الثاني (30% - سبتمبر)', d.tranche2_Sept.toFixed(2), this.fmtCentimes(d.tranche2_Sept)],
+        ['الرصيد الختامي (40% - ديسمبر)', d.tranche3_Dec.toFixed(2), this.fmtCentimes(d.tranche3_Dec)]
+      ];
+      const csv = '\uFEFF' + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Gherbi_Retail_IFU_G12_${d.year}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      if (window.showToast) window.showToast('📊 تم تصدير الكشف الجبائي التفصيلي إلى ملف Excel بنجاح!', 'success');
+    },
+
+    async printOfficialG12Statement() {
+      const d = await this.computeFiscalData();
+      const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><style>
+        body { font-family: 'Cairo', Tahoma, sans-serif; padding: 12mm; color: #0f172a; }
+        h2 { text-align: center; margin: 0 0 4px 0; }
+        .sub { text-align: center; font-size: 12px; color: #475569; border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 14px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12.5px; }
+        th, td { border: 1px solid #cbd5e1; padding: 7px 10px; text-align: right; }
+        th { background: #f1f5f9; font-weight: 900; }
+      </style></head><body>
+        <h2>🇩🇿 استمارة حساب الضريبة الجزافية الوحيدة للتجزئة (Série G N°12 / G12 Bis)</h2>
+        <div class="sub">السنة الجبائية: ${d.year} | تاريخ الطباعة: ${new Date().toLocaleString('fr-DZ')}</div>
+        <table>
+          <tbody>
+            <tr><th>1. إجمالي رقم الأعمال السنوي (Chiffre d'Affaires Global)</th><td>${this.fmtDzd(d.annualTurnoverDzd)} (${this.fmtCentimes(d.annualTurnoverDzd)})</td></tr>
+            <tr><th>2. مبيعات السلع العادية بالتجزئة (خاضعة لـ ${d.rateG}%)</th><td>${this.fmtDzd(d.regularGoodsTurnover)}</td></tr>
+            <tr><th>3. مبيعات المواد المقننة (إجمالي البيع: ${this.fmtDzd(d.realRegulatedSalesDzd)}) — الرأسمال المعفى</th><td>- ${this.fmtDzd(d.regulatedDeduction)} (${d.effectiveExemptPct}%)</td></tr>
+            <tr><th>4. هامش الربح الصافي للمواد المقننة الخاضع للضريبة</th><td>${this.fmtDzd(d.realRegulatedMarginDzd)}</td></tr>
+            <tr><th>5. الوعاء الصافي الإجمالي الخاضع لـ ${d.rateG}%</th><td><strong>${this.fmtDzd(d.taxableGoodsTurnover)}</strong></td></tr>
+            <tr><th>6. الضريبة النسبية المحسوبة (${d.rateG}%)</th><td>${this.fmtDzd(d.exactProportionalTax)}</td></tr>
+            <tr><th>7. الضريبة النهائية الواجبة الأداء (G12)</th><td><strong>${this.fmtDzd(d.finalIfuTaxDue)} (${this.fmtCentimes(d.finalIfuTaxDue)})</strong></td></tr>
+            <tr><th>القسط الفصلي الأول (30% — جوان ${d.year})</th><td>${this.fmtDzd(d.tranche1_June)}</td></tr>
+            <tr><th>القسط الفصلي الثاني (30% — سبتمبر ${d.year})</th><td>${this.fmtDzd(d.tranche2_Sept)}</td></tr>
+            <tr><th>الرصيد الختامي (40% — ديسمبر ${d.year})</th><td>${this.fmtDzd(d.tranche3_Dec)}</td></tr>
+          </tbody>
+        </table>
+      </body></html>`;
+      window.api?.printSilent?.({ html, silent: false });
+    }
+  };
+
+  window.GherbiRetailFiscalStudio = RetailFiscalStudio;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => RetailFiscalStudio.init());
+  } else {
+    RetailFiscalStudio.init();
+  }
+})();
+
+
+/* ==================== [V34 TAB 14: FORENSIC SECURITY & LOSS-PREVENTION RADAR HUB] ==================== */
+(function initV34ForensicRadarTab14() {
+  const ForensicRadarHub = {
+    isTab14Active: false,
+    activeFilterSection: 'all', // 'all' | 'price_radar' | 'below_cost' | 'loyalty_pin' | 'db_audit'
+    searchQuery: '',
+    dbAuditLogs: [],
+    lastTotalAlertsCount: -1,
+
+    init() {
+      const wait = setInterval(() => {
+        if (!window.App) return;
+        clearInterval(wait);
+        this.hookNavigation();
+        this.startCardIsolatorAndTab14Loop();
+        console.log('🚨 [Gherbi V34 Forensic Radar Tab 14]: تم تفعيل التبويب 14 وعزل البطاقات الرقابية الثلاث عن الصفحات 1..13 بنجاح 100%.');
+      }, 220);
+    },
+
+    // ========================================================================
+    // 1. قراءة البيانات الرقابية الحية من التخزين المحلي وقاعدة البيانات
+    // ========================================================================
+    readAllForensicData() {
+      const safeParse = (key) => {
+        try {
+          const raw = localStorage.getItem(key);
+          if (!raw) return [];
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (_) {
+          return [];
+        }
+      };
+
+      // 1) سجل رادار صاحب المحل الشامل (تعديلات الأسعار، الكميات الجزئية، الحذف بعد المسح)
+      const priceRadarLogs = safeParse('gherbi_v9_owner_price_radar_log_v1');
+
+      // 2) سجل البيع بسعر التكلفة أو بخسارة
+      const belowCostLogs = safeParse('gherbi_v8_below_cost_audit_log_v1');
+
+      // 3) سجل تعديلات نقاط الوفاء ومحاولات كود المدير السري (PIN)
+      const loyaltyAuditLogs = safeParse('gherbi_v10_loyalty_audit_log_v1');
+
+      // تصنيف حركات رادار صاحب المحل
+      let scannedDeletedCount = 0;
+      let scannedDeletedValueDzd = 0;
+      let discountOverridesCount = 0;
+      let totalDiscountLossDzd = 0;
+      let priceIncreaseCount = 0;
+      let totalPriceIncreaseGainDzd = 0;
+      let partialWeightSalesCount = 0;
+      let belowCostInRadarCount = 0;
+
+      // مصفوفة تقييم البائعين
+      const cashierMap = new Map();
+      const ensureCashier = (name) => {
+        const cleanName = String(name || 'المدير العام').trim() || 'المدير العام';
+        if (!cashierMap.has(cleanName)) {
+          cashierMap.set(cleanName, {
+            name: cleanName,
+            deletedLines: 0,
+            deletedValueDzd: 0,
+            priceDiscounts: 0,
+            discountLossDzd: 0,
+            belowCostCount: 0,
+            belowCostLossDzd: 0,
+            partialQtyCount: 0,
+            loyaltyEditsCount: 0
+          });
+        }
+        return cashierMap.get(cleanName);
+      };
+
+      for (const r of priceRadarLogs) {
+        const cashier = ensureCashier(r.cashier || r.user_name || r.userName || 'المدير العام');
+        const mode = String(r.mode || r.type || '');
+        const oldP = Number(r.oldPrice ?? r.original_price ?? 0);
+        const newP = Number(r.newPrice ?? r.price ?? 0);
+        const qty = Math.abs(Number(r.newQty ?? r.quantity ?? 1));
+        const delta = Number(r.priceDelta ?? (newP - oldP));
+
+        if (mode === 'deleted_line' || String(r.reason || '').includes('حذف سطر')) {
+          scannedDeletedCount++;
+          const estVal = Number((oldP * (qty || 1)).toFixed(2));
+          scannedDeletedValueDzd += estVal;
+          cashier.deletedLines++;
+          cashier.deletedValueDzd += estVal;
+        } else if (mode === 'amount_scale' || String(r.reason || '').includes('بيع بالمبلغ')) {
+          partialWeightSalesCount++;
+          cashier.partialQtyCount++;
+        } else if (delta < -0.009) {
+          discountOverridesCount++;
+          const loss = Math.abs(delta);
+          totalDiscountLossDzd += loss;
+          cashier.priceDiscounts++;
+          cashier.discountLossDzd += loss;
+        } else if (delta > 0.009) {
+          priceIncreaseCount++;
+          totalPriceIncreaseGainDzd += delta;
+        }
+
+        if (r.isBelowOrAtCost) {
+          belowCostInRadarCount++;
+        }
+      }
+
+      let totalBelowCostLossDzd = 0;
+      for (const b of belowCostLogs) {
+        const cashier = ensureCashier(b.cashier || b.user_name || 'المدير العام');
+        const cost = Number(b.costPrice ?? b.cost_price ?? 0);
+        const sold = Number(b.soldPrice ?? b.selling_price ?? 0);
+        const qty = Math.max(1, Number(b.qty ?? b.quantity ?? 1));
+        const loss = Math.max(0, Number(((cost - sold) * qty).toFixed(2)));
+        totalBelowCostLossDzd += loss;
+        cashier.belowCostCount++;
+        cashier.belowCostLossDzd += loss;
+      }
+
+      for (const l of loyaltyAuditLogs) {
+        const cashier = ensureCashier(l.user || l.cashier || 'المدير العام');
+        cashier.loyaltyEditsCount++;
+      }
+
+      const totalAlertsCount =
+        priceRadarLogs.length + belowCostLogs.length + loyaltyAuditLogs.length + this.dbAuditLogs.length;
+
+      // حساب مؤشر النزاهة الأمنية للمتجر من 100
+      const riskPenalty =
+        belowCostLogs.length * 4 +
+        scannedDeletedCount * 2.5 +
+        discountOverridesCount * 1.5;
+      const integrityScore = Math.max(45, Math.min(100, Math.round(100 - riskPenalty)));
+
+      return {
+        priceRadarLogs,
+        belowCostLogs,
+        loyaltyAuditLogs,
+        totalAlertsCount,
+        scannedDeletedCount,
+        scannedDeletedValueDzd: Number(scannedDeletedValueDzd.toFixed(2)),
+        discountOverridesCount,
+        totalDiscountLossDzd: Number(totalDiscountLossDzd.toFixed(2)),
+        priceIncreaseCount,
+        totalPriceIncreaseGainDzd: Number(totalPriceIncreaseGainGain(totalPriceIncreaseGainDzd)),
+        partialWeightSalesCount,
+        belowCostCount: belowCostLogs.length + belowCostInRadarCount,
+        totalBelowCostLossDzd: Number(totalBelowCostLossDzd.toFixed(2)),
+        loyaltyEditsCount: loyaltyAuditLogs.length,
+        cashierStats: Array.from(cashierMap.values()),
+        integrityScore
+      };
+
+      function totalPriceIncreaseGainGain(v) {
+        return Number(v || 0).toFixed(2);
+      }
+    },
+
+    async loadDatabaseAuditLogs() {
+      try {
+        if (window.api && typeof window.api.getAuditLogs === 'function') {
+          const logs = await window.api.getAuditLogs({ limit: 50 });
+          if (Array.isArray(logs)) {
+            this.dbAuditLogs = logs;
+          }
+        }
+      } catch (_) {}
+    },
+
+    fmtDzd(val) {
+      return Number(val || 0).toLocaleString('fr-DZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' د.ج';
+    },
+
+    fmtCentimes(val) {
+      const c = Math.round(Number(val || 0) * 100);
+      return c >= 1000000 ? (c / 1000000).toFixed(2) + ' مليون سنتيم' : (c / 1000).toFixed(1) + ' ألف سنتيم';
+    },
+
+    // ========================================================================
+    // 2. العثور على البطاقات الرقابية الثلاث في DOM وعزلها عن الصفحات 1..13
+    //    واحتواؤها داخل التبويب 14 فقط
+    // ========================================================================
+    findThreeForensicCardsInDom() {
+      const analyticsView = document.getElementById('view-analytics') || document.getElementById('view-reports') || document.body;
+      const found = {
+        belowCostCard: null,
+        ownerPriceRadarCard: document.getElementById('gherbi-owner-price-radar-card') || null,
+        loyaltyPinCard: null
+      };
+
+      const candidates = analyticsView.querySelectorAll('div, section');
+      for (const el of candidates) {
+        if (el.id === 'v34Tab14ForensicRadarContainer' || el.id === 'v34ForensicCardsSlot') continue;
+        // نتأكد أنه بطاقة مستقلة وليس حاوية عملاقة تضم الصفحة كلها
+        if (el.querySelector('#v30RccTab13FiscalBtn') || el.querySelector('#v34RccTab14ForensicBtn')) continue;
+        if (el.children.length > 15) continue;
+
+        const txt = el.textContent || '';
+        if (
+          !found.belowCostCard &&
+          txt.includes('سجل رقابة المدير: تنبيهات البيع بسعر التكلفة أو بخسارة') &&
+          el.querySelector('table')
+        ) {
+          found.belowCostCard = el;
+        }
+        if (
+          !found.ownerPriceRadarCard &&
+          txt.includes('رادار رقابة صاحب المحل الشامل: تعديلات الإجمالي') &&
+          el.querySelector('table')
+        ) {
+          found.ownerPriceRadarCard = el;
+        }
+        if (
+          !found.loyaltyPinCard &&
+          txt.includes('سجل رقابة المدير: تعديلات رصيد نقاط الوفاء') &&
+          el.querySelector('table')
+        ) {
+          found.loyaltyPinCard = el;
+        }
+      }
+
+      return found;
+    },
+
+    isolateAndMoveForensicCards() {
+      const { belowCostCard, ownerPriceRadarCard, loyaltyPinCard } = this.findThreeForensicCardsInDom();
+      const slot = document.getElementById('v34ForensicCardsSlot');
+
+      const cards = [
+        { el: ownerPriceRadarCard, key: 'price_radar' },
+        { el: belowCostCard, key: 'below_cost' },
+        { el: loyaltyPinCard, key: 'loyalty_pin' }
+      ];
+
+      for (const item of cards) {
+        if (!item.el) continue;
+        item.el.classList.add('v34-forensic-card-isolated');
+        item.el.dataset.v34CardType = item.key;
+
+        if (this.isTab14Active && slot) {
+          item.el.classList.add('v34-inside-tab14');
+          if (item.el.parentElement !== slot) {
+            slot.appendChild(item.el);
+          }
+          // تطبيق فلتر القسم النشط داخل التبويب 14
+          if (this.activeFilterSection === 'all' || this.activeFilterSection === item.key) {
+            item.el.style.display = '';
+          } else {
+            item.el.style.display = 'none';
+          }
+        } else {
+          // عندما يكون المستخدم في أي تبويب من 1 إلى 13، تُخفى البطاقات الثلاث تماماً!
+          item.el.classList.remove('v34-inside-tab14');
+          item.el.style.display = 'none';
+        }
+      }
+
+      if (this.isTab14Active && this.searchQuery.trim() !== '') {
+        this.applyLiveSearchFilterOnTables(this.searchQuery);
+      }
+    },
+
+    // ========================================================================
+    // 3. حقن زر التبويب 14 بجوار التبويب 13 والتبويب 12 في شريط مركز القيادة
+    // ========================================================================
+    findAnchorTabButton() {
+      const tab13 = document.getElementById('v30RccTab13FiscalBtn');
+      if (tab13) return tab13;
+      const allBtns = Array.from(document.querySelectorAll('button'));
+      return allBtns.find((b) => {
+        const t = (b.textContent || '').trim();
+        return (t.includes('12.') && t.includes('الزكاة')) || t.includes('حاسبة وأرشيف الزكاة');
+      });
+    },
+
+    startCardIsolatorAndTab14Loop() {
+      setInterval(() => {
+        this.isolateAndMoveForensicCards();
+        const anchorBtn = this.findAnchorTabButton();
+        if (!anchorBtn) return;
+        this.ensureTab14ButtonExists(anchorBtn);
+
+        if (this.isTab14Active) {
+          const pane = document.getElementById('v34Tab14ForensicRadarContainer');
+          if (!pane || pane.classList.contains('hidden')) {
+            this.activateTab14();
+          }
+        }
+      }, 280);
+    },
+
+    ensureTab14ButtonExists(passedAnchor) {
+      const anchorBtn = passedAnchor || this.findAnchorTabButton();
+      if (!anchorBtn || !anchorBtn.parentElement) return null;
+
+      const tabBar = anchorBtn.parentElement;
+      const stats = this.readAllForensicData();
+
+      let tab14Btn = document.getElementById('v34RccTab14ForensicBtn');
+      if (!tab14Btn) {
+        tab14Btn = document.createElement('button');
+        tab14Btn.id = 'v34RccTab14ForensicBtn';
+        tab14Btn.type = 'button';
+        tab14Btn.className =
+          'v34-tab14-inactive px-4 py-2 rounded-full font-black text-xs transition flex items-center gap-2 cursor-pointer';
+        tab14Btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.openTab14();
+        });
+        anchorBtn.insertAdjacentElement('afterend', tab14Btn);
+      }
+
+      // تحديث شارة العدد على زر التبويب 14 فقط عند تغير العدد
+      if (this.lastTotalAlertsCount !== stats.totalAlertsCount) {
+        this.lastTotalAlertsCount = stats.totalAlertsCount;
+        const badgeBg = stats.belowCostCount > 0 || stats.scannedDeletedCount > 0 ? 'bg-rose-600 text-white' : 'bg-amber-500 text-slate-950';
+        tab14Btn.innerHTML = `
+          <span>14. 🚨 رادار الرقابة وحماية الأرباح</span>
+          <span class="v34-alert-badge-pulse px-2 py-0.5 rounded-full text-[10px] font-black ${badgeBg} shadow-sm">
+            ${stats.totalAlertsCount} حركة
+          </span>
+        `;
+      }
+
+      // ربط النقر على التبويبات الأخرى (1..13) لإغلاق التبويب 14 تلقائياً
+      const siblingBtns = Array.from(tabBar.querySelectorAll('button')).filter(
+        (b) => b.id !== 'v34RccTab14ForensicBtn'
+      );
+      for (const sb of siblingBtns) {
+        if (sb.dataset.v34SiblingHooked === '1') continue;
+        sb.dataset.v34SiblingHooked = '1';
+        sb.addEventListener('click', () => {
+          if (this.isTab14Active) {
+            this.isTab14Active = false;
+            this.hideTab14AndRestoreOriginal();
+          }
+        });
+      }
+
+      return tab14Btn;
+    },
+
+    hookNavigation() {
+      window.openGherbiForensicRadarTab14 = () => this.openTab14();
+
+      if (window.App && typeof window.App.switchAnalyticsTab === 'function' && !window.App._v34ForensicTabHooked) {
+        const origSwitch = window.App.switchAnalyticsTab.bind(window.App);
+        window.App._v34ForensicTabHooked = true;
+        window.App.switchAnalyticsTab = async (...args) => {
+          const arg = String(args[0] || '');
+          if (arg === '14' || arg === 'forensic') {
+            await this.openTab14();
+            return;
+          }
+          this.isTab14Active = false;
+          this.hideTab14AndRestoreOriginal();
+          return await origSwitch(...args);
+        };
+      }
+    },
+
+    async openTab14() {
+      try {
+        this.isTab14Active = true;
+        if (window.GherbiRetailFiscalStudio) {
+          window.GherbiRetailFiscalStudio.isTab13Active = false;
+          const fiscalPane = document.getElementById('v30RetailFiscalStudioContainer');
+          if (fiscalPane) fiscalPane.classList.add('hidden');
+        }
+
+        if (window.App && typeof window.App.switchView === 'function') {
+          const hasAnalytics = document.getElementById('view-analytics');
+          const currentView = document.getElementById(hasAnalytics ? 'view-analytics' : 'view-reports');
+          if (currentView && currentView.classList.contains('hidden')) {
+            await window.App.switchView(hasAnalytics ? 'analytics' : 'reports');
+          }
+        }
+
+        await this.loadDatabaseAuditLogs();
+        this.ensureTab14ButtonExists();
+        await this.activateTab14();
+      } catch (e) {
+        console.error('openTab14 error:', e);
+      }
+    },
+
+    findTabBarWrapper(anchorBtn) {
+      if (!anchorBtn) return null;
+      let curr = anchorBtn.parentElement;
+      while (curr && curr.parentElement) {
+        if (curr.querySelectorAll('button').length >= 10) return curr;
+        curr = curr.parentElement;
+      }
+      return anchorBtn.parentElement;
+    },
+
+    hideTab14AndRestoreOriginal() {
+      const tab14Btn = document.getElementById('v34RccTab14ForensicBtn');
+      if (tab14Btn) {
+        tab14Btn.classList.remove('v34-tab14-active');
+        tab14Btn.classList.add('v34-tab14-inactive');
+      }
+      const tab14Pane = document.getElementById('v34Tab14ForensicRadarContainer');
+      if (tab14Pane) tab14Pane.classList.add('hidden');
+
+      this.isolateAndMoveForensicCards();
+
+      if (!window.GherbiRetailFiscalStudio || !window.GherbiRetailFiscalStudio.isTab13Active) {
+        const hiddenEls = document.querySelectorAll('[data-v34-hidden-by-forensic="1"]');
+        for (const el of hiddenEls) {
+          el.classList.remove('hidden');
+          delete el.dataset.v34HiddenByForensic;
+        }
+      }
+    },
+
+    async activateTab14() {
+      const anchorBtn = this.findAnchorTabButton();
+      const tab14Btn = this.ensureTab14ButtonExists(anchorBtn);
+      if (!tab14Btn || !anchorBtn) return;
+
+      const tabBarWrapper = this.findTabBarWrapper(anchorBtn);
+      if (tabBarWrapper) {
+        const inactiveCls =
+          (window.GherbiRetailFiscalStudio && window.GherbiRetailFiscalStudio.inactiveBtnClass) ||
+          'px-4 py-2 rounded-full font-black text-xs transition flex items-center gap-1.5 bg-white text-slate-800 border border-slate-200 shadow-sm';
+        for (const b of Array.from(tabBarWrapper.querySelectorAll('button'))) {
+          if (b.id === 'v34RccTab14ForensicBtn') {
+            b.classList.remove('v34-tab14-inactive');
+            b.classList.add('v34-tab14-active');
+          } else {
+            b.className = inactiveCls;
+          }
+        }
+      }
+
+      const parentContainer = tabBarWrapper ? tabBarWrapper.parentElement : anchorBtn.parentElement.parentElement;
+      if (!parentContainer) return;
+
+      let tab14Pane = document.getElementById('v34Tab14ForensicRadarContainer');
+      if (!tab14Pane) {
+        tab14Pane = document.createElement('div');
+        tab14Pane.id = 'v34Tab14ForensicRadarContainer';
+        tab14Pane.className = 'mt-4 space-y-5';
+        if (tabBarWrapper && tabBarWrapper.nextSibling) {
+          parentContainer.insertBefore(tab14Pane, tabBarWrapper.nextSibling);
+        } else {
+          parentContainer.appendChild(tab14Pane);
+        }
+      }
+
+      // إخفاء اللوحات الشقيقة وإظهار لوحة التبويب 14 فقط
+      let sibling = tabBarWrapper ? tabBarWrapper.nextElementSibling : null;
+      while (sibling) {
+        if (sibling.id !== 'v34Tab14ForensicRadarContainer' && !sibling.classList.contains('hidden')) {
+          sibling.classList.add('hidden');
+          sibling.dataset.v34HiddenByForensic = '1';
+        }
+        sibling = sibling.nextElementSibling;
+      }
+
+      tab14Pane.classList.remove('hidden');
+      this.renderTab14Content(tab14Pane);
+      this.isolateAndMoveForensicCards();
+    },
+
+    // ========================================================================
+    // 4. رسم الواجهة التنفيذية الشاملة للتبويب 14 (غرفة الرقابة الجنائية وحماية الأرباح)
+    // ========================================================================
+    renderTab14Content(container) {
+      if (!container) return;
+      const s = this.readAllForensicData();
+      const totalMoneyAtRisk = Number(
+        (s.scannedDeletedValueDzd + s.totalDiscountLossDzd + s.totalBelowCostLossDzd).toFixed(2)
+      );
+
+      // بناء صفوف مصفوفة تقييم انضباط ومخاطر البائعين
+      const cashierRowsHtml =
+        s.cashierStats.length > 0
+          ? s.cashierStats
+              .map((c) => {
+                const totalRiskEvents = c.deletedLines + c.priceDiscounts + c.belowCostCount;
+                const totalImpactDzd = Number(
+                  (c.deletedValueDzd + c.discountLossDzd + c.belowCostLossDzd).toFixed(2)
+                );
+                const riskBadge =
+                  c.belowCostCount > 0 || c.deletedLines >= 3
+                    ? '<span class="px-2.5 py-1 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 font-black text-[11px]">🔴 مؤشر خطر مرتفع (يتطلب مراجعة)</span>'
+                    : totalRiskEvents > 0
+                    ? '<span class="px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-black text-[11px]">🟡 تنبيهات متوسطة</span>'
+                    : '<span class="px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-black text-[11px]">🟢 انضباط ممتاز</span>';
+
+                return `
+                  <tr class="border-b border-slate-200 dark:border-slate-700 hover:bg-rose-50/30 dark:hover:bg-slate-800/60 transition">
+                    <td class="py-3 px-3 font-black text-slate-900 dark:text-white flex items-center gap-2">
+                      <span class="w-7 h-7 rounded-full bg-rose-600/15 text-rose-600 flex items-center justify-center font-black text-xs">👤</span>
+                      <span>${c.name}</span>
+                    </td>
+                    <td class="py-3 px-3 font-mono font-bold ${c.deletedLines > 0 ? 'text-rose-600' : 'text-slate-500'}">
+                      ${c.deletedLines} سطر (${this.fmtDzd(c.deletedValueDzd)})
+                    </td>
+                    <td class="py-3 px-3 font-mono font-bold ${c.priceDiscounts > 0 ? 'text-amber-600' : 'text-slate-500'}">
+                      ${c.priceDiscounts} تعديل (-${this.fmtDzd(c.discountLossDzd)})
+                    </td>
+                    <td class="py-3 px-3 font-mono font-bold ${c.belowCostCount > 0 ? 'text-rose-600 font-black' : 'text-slate-500'}">
+                      ${c.belowCostCount} حالة (-${this.fmtDzd(c.belowCostLossDzd)})
+                    </td>
+                    <td class="py-3 px-3 font-mono font-bold text-emerald-600">${c.partialQtyCount} عملية</td>
+                    <td class="py-3 px-3 font-mono font-bold text-indigo-600">${c.loyaltyEditsCount} حركة</td>
+                    <td class="py-3 px-3 font-mono font-black text-rose-600">${this.fmtDzd(totalImpactDzd)}</td>
+                    <td class="py-3 px-3 text-center">${riskBadge}</td>
+                  </tr>
+                `;
+              })
+              .join('')
+          : `<tr><td colspan="8" class="py-5 text-center text-slate-400 font-bold">لا توجد حركات مسجلة على البائعين حتى الآن — المتجر آمن 100%.</td></tr>`;
+
+      // بناء صفوف السجل الجنائي لقاعدة البيانات (الفواتير المحذوفة وإشعارات الدائن Avoir)
+      const dbAuditRowsHtml =
+        this.dbAuditLogs.length > 0
+          ? this.dbAuditLogs
+              .slice(0, 25)
+              .map((log) => {
+                const dt = String(log.created_at || log.timestamp || '').replace('T', ' ').slice(0, 16);
+                const action = String(log.action_type || log.action || 'عملية رقابية');
+                const actionAr =
+                  action.includes('delete_sale')
+                    ? '🗑️ حذف فاتورة مبيعات'
+                    : action.includes('credit_note')
+                    ? '📄 إصدار إشعار دائن (Avoir)'
+                    : action.includes('price')
+                    ? '🏷️ تعديل سعر حساس'
+                    : action;
+                let detailsTxt = '';
+                try {
+                  const parsed = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
+                  detailsTxt = parsed ? JSON.stringify(parsed).replace(/[{"}]/g, ' ') : '';
+                } catch (_) {
+                  detailsTxt = String(log.details || '');
+                }
+                return `
+                  <tr class="border-b border-slate-200 dark:border-slate-700 text-xs">
+                    <td class="py-2.5 px-3 font-mono text-slate-500">${dt}</td>
+                    <td class="py-2.5 px-3 font-black text-slate-900 dark:text-white">${log.user_name || 'المدير العام'}</td>
+                    <td class="py-2.5 px-3 font-bold text-rose-600">${actionAr}</td>
+                    <td class="py-2.5 px-3 font-mono">#${log.target_id || '-'}</td>
+                    <td class="py-2.5 px-3 text-slate-600 dark:text-slate-300">${detailsTxt}</td>
+                  </tr>
+                `;
+              })
+              .join('')
+          : `<tr><td colspan="5" class="py-4 text-center text-slate-400 font-bold">لا توجد فواتير ملغاة أو إشعارات دائن مسجلة في قاعدة البيانات.</td></tr>`;
+
+      container.innerHTML = `
+        <!-- ==================== [1] الترويسة الجنائية الجذابة ومؤشر نزاهة وأمان المتجر ==================== -->
+        <div class="rounded-2xl bg-gradient-to-l from-rose-950 via-slate-900 to-slate-950 text-white p-5 shadow-2xl border border-rose-500/40">
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+              <div class="w-16 h-16 rounded-2xl bg-rose-600/20 border-2 border-rose-500 flex flex-col items-center justify-center shadow-inner">
+                <span class="text-[10px] font-bold text-rose-300">درع الأمان</span>
+                <span class="text-xl font-black font-mono text-white">${s.integrityScore}<small class="text-[10px]">/100</small></span>
+              </div>
+              <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-black text-xs shadow">14. 🚨 الصندوق الأسود لصاحب المحل</span>
+                  <h2 class="text-xl font-black">رادار الرقابة الجنائية، كشف التلاعب، وحماية الأرباح (Anti-Theft & Loss Shield)</h2>
+                </div>
+                <p class="text-xs text-rose-200/90 mt-1">
+                  يرصد في مكان واحد كل حركة حساسة في الكاشير: السلع الممسوحة ثم المحذوفة قبل الدفع، البيع بأقل من التكلفة، تخفيض الأسعار اليدوي (F12 / Alt+P)، البيع بالمبلغ، وتعديلات نقاط الوفاء.
+                </p>
+              </div>
+            </div>
+
+            <!-- أزرار التحكم السريعة لصاحب المحل -->
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" onclick="window.GherbiLoyaltyEngine && window.GherbiLoyaltyEngine.changeManagerPin && window.GherbiLoyaltyEngine.changeManagerPin()" class="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition shadow">
+                🔑 تغيير كود المدير السري (PIN)
+              </button>
+              <button type="button" onclick="window.GherbiV9Engine && window.GherbiV9Engine.printOwnerRadarThermal && window.GherbiV9Engine.printOwnerRadarThermal()" class="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-black text-xs transition">
+                🖨️ طباعة التقرير (80mm)
+              </button>
+              <button type="button" onclick="window.GherbiV9Engine && window.GherbiV9Engine.exportOwnerRadarCsv && window.GherbiV9Engine.exportOwnerRadarCsv()" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition shadow">
+                📊 تصدير Excel/CSV
+              </button>
+              <button type="button" onclick="window.GherbiForensicRadarHub.printFullA4ForensicReport()" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs transition shadow">
+                📄 تقرير جنائي رسمي (A4)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================== [2] البطاقات الخمس الكبرى لنزيف الأرباح والثغرات الرقابية ==================== -->
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <!-- 1. إجمالي المال المعرض للخطر أو الضياع -->
+          <div class="rounded-2xl p-4 bg-gradient-to-br from-rose-600 to-rose-800 text-white shadow-lg">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-black text-rose-100">🚨 إجمالي الأثر المالي المرصود</span>
+              <span class="px-2 py-0.5 rounded bg-white/20 text-[10px] font-black">${s.totalAlertsCount} حركة</span>
+            </div>
+            <div class="text-2xl font-black font-mono mt-1.5">${this.fmtDzd(totalMoneyAtRisk)}</div>
+            <div class="text-[11px] font-bold text-amber-300 mt-1">🇩🇿 ${this.fmtCentimes(totalMoneyAtRisk)}</div>
+            <div class="text-[10px] text-rose-100 mt-1.5 pt-1 border-t border-rose-400/30">
+              مجموع السطور المحذوفة + التخفيضات + البيع بخسارة
+            </div>
+          </div>
+
+          <!-- 2. السلع الممسوحة ثم المحذوفة من السلة (مؤشر السرقة الأول في الكاشير) -->
+          <div onclick="window.GherbiForensicRadarHub.setSectionFilter('price_radar')" class="cursor-pointer rounded-2xl p-4 bg-white dark:bg-slate-800 border-2 border-rose-500/40 hover:border-rose-500 shadow-sm transition">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black text-rose-600 dark:text-rose-400">🗑️ سلع ممسوحة ثم محذوفة</span>
+              <span class="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 font-mono font-black text-xs">${s.scannedDeletedCount} مرة</span>
+            </div>
+            <div class="text-xl font-black text-slate-900 dark:text-white font-mono mt-1.5">${this.fmtDzd(s.scannedDeletedValueDzd)}</div>
+            <div class="text-[11px] font-bold text-rose-600 mt-1">🇩🇿 ${this.fmtCentimes(s.scannedDeletedValueDzd)}</div>
+            <div class="text-[10px] text-slate-500 mt-1.5 pt-1 border-t border-slate-100 dark:border-slate-700">
+              سلع قُرئت بالباركود ثم أُلغيت قبل حفظ الفاتورة
+            </div>
+          </div>
+
+          <!-- 3. البيع بسعر التكلفة أو بخسارة صريحة -->
+          <div onclick="window.GherbiForensicRadarHub.setSectionFilter('below_cost')" class="cursor-pointer rounded-2xl p-4 bg-white dark:bg-slate-800 border-2 border-amber-500/40 hover:border-amber-500 shadow-sm transition">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black text-amber-600 dark:text-amber-400">⚠️ بيع بالتكلفة أو بخسارة</span>
+              <span class="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-mono font-black text-xs">${s.belowCostCount} حالة</span>
+            </div>
+            <div class="text-xl font-black text-rose-600 font-mono mt-1.5">-${this.fmtDzd(s.totalBelowCostLossDzd)}</div>
+            <div class="text-[11px] font-bold text-amber-600 mt-1">خسارة مباشرة من رأس المال</div>
+            <div class="text-[10px] text-slate-500 mt-1.5 pt-1 border-t border-slate-100 dark:border-slate-700">
+              بيع بسعر أقل من سعر الشراء المسجل في الدفعة
+            </div>
+          </div>
+
+          <!-- 4. التخفيضات السعرية اليدوية وتعديلات السعر (F12 / Alt+P) -->
+          <div onclick="window.GherbiForensicRadarHub.setSectionFilter('price_radar')" class="cursor-pointer rounded-2xl p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-500 shadow-sm transition">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black text-indigo-600 dark:text-indigo-400">📉 تخفيضات السعر اليدوية</span>
+              <span class="px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-600 font-mono font-black text-xs">${s.discountOverridesCount} عملية</span>
+            </div>
+            <div class="text-xl font-black text-amber-600 font-mono mt-1.5">-${this.fmtDzd(s.totalDiscountLossDzd)}</div>
+            <div class="text-[11px] font-bold text-emerald-600 mt-1">زيادات السعر: +${this.fmtDzd(s.totalPriceIncreaseGainDzd)} (${s.priceIncreaseCount})</div>
+            <div class="text-[10px] text-slate-500 mt-1.5 pt-1 border-t border-slate-100 dark:border-slate-700">
+              تغيير سعر الوحدة أو الإجمالي يدوياً في السلة
+            </div>
+          </div>
+
+          <!-- 5. البيع بالمبلغ (كميات جزئية) + نقاط الوفاء -->
+          <div onclick="window.GherbiForensicRadarHub.setSectionFilter('loyalty_pin')" class="cursor-pointer rounded-2xl p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 shadow-sm transition">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black text-emerald-600 dark:text-emerald-400">⚖️ كميات جزئية ونقاط وفاء</span>
+              <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-mono font-black text-xs">${s.partialWeightSalesCount + s.loyaltyEditsCount} حركة</span>
+            </div>
+            <div class="text-lg font-black text-slate-900 dark:text-white font-mono mt-1.5">
+              ⚖️ ${s.partialWeightSalesCount} بيع بالمبلغ
+            </div>
+            <div class="text-xs font-bold text-amber-600 mt-1">👑 ${s.loyaltyEditsCount} تعديل يدوي لنقاط الوفاء</div>
+            <div class="text-[10px] text-slate-500 mt-1.5 pt-1 border-t border-slate-100 dark:border-slate-700">
+              مراقبة كسور الكميات وهدايا نقاط الزبائن
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================== [3] مصفوفة تقييم نزاهة وانضباط البائعين (Cashier Risk Matrix) ==================== -->
+        <div class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 shadow-sm space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-2.5">
+            <div>
+              <h3 class="font-black text-sm text-slate-900 dark:text-white">🕵️‍♂️ مصفوفة تقييم انضباط ومخاطر البائعين (Cashier Integrity & Risk Matrix)</h3>
+              <p class="text-[11px] text-slate-500">تفرز جميع التعديلات والسطور المحذوفة حسب كل كاشير لتكشف لك فوراً مصدر أي عجز أو تلاعب في المحل</p>
+            </div>
+            <span class="text-xs font-black px-3 py-1 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400">تحليل سلوكي آلي للبائعين</span>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-right">
+              <thead>
+                <tr class="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                  <th class="py-2.5 px-3">اسم البائع / الكاشير</th>
+                  <th class="py-2.5 px-3">🗑️ سطور محذوفة بعد المسح</th>
+                  <th class="py-2.5 px-3">📉 تخفيض السعر يدوياً</th>
+                  <th class="py-2.5 px-3">🚨 بيع بالتكلفة أو بخسارة</th>
+                  <th class="py-2.5 px-3">⚖️ بيع بالمبلغ (كمية جزئية)</th>
+                  <th class="py-2.5 px-3">👑 تعديل نقاط وفاء</th>
+                  <th class="py-2.5 px-3">إجمالي الأثر المالي</th>
+                  <th class="py-2.5 px-3 text-center">التشخيص الأمني للبائع</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${cashierRowsHtml}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ==================== [4] شريط البحث الجنائي والتنقل بين الجداول الرقابية الأربعة ==================== -->
+        <div class="rounded-2xl bg-slate-900 text-white p-3.5 shadow-md flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button type="button" onclick="window.GherbiForensicRadarHub.setSectionFilter('all')" class="px-3 py-1.5 rounded-xl font-black text-xs transition ${this.activeFilterSection === 'all' ? 'bg-rose-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}">
+              🔍 عرض كل الرادارات معاً (${s.totalAlertsCount})
+            </button>
+            <button type="button" onclick="window.GherbiForensicRadarHub.setSectionFilter('price_radar')" class="px-3 py-1.5 rounded-xl font-black text-xs transition ${this.activeFilterSection === 'price_radar' ? 'bg-rose-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}">
+              🛡️ رادار الأسعار والكميات والسطور المحذوفة (${s.priceRadarLogs.length})
+            </button>
+            <button type="button" onclick="window.GherbiForensicRadarHub.setSectionFilter('below_cost')" class="px-3 py-1.5 rounded-xl font-black text-xs transition ${this.activeFilterSection === 'below_cost' ? 'bg-rose-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}">
+              🚨 سجل البيع بالتكلفة أو بخسارة (${s.belowCostLogs.length})
+            </button>
+            <button type="button" onclick="window.GherbiForensicRadarHub.setSectionFilter('loyalty_pin')" class="px-3 py-1.5 rounded-xl font-black text-xs transition ${this.activeFilterSection === 'loyalty_pin' ? 'bg-rose-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}">
+              👑 سجل تعديلات نقاط الوفاء و PIN (${s.loyaltyAuditLogs.length})
+            </button>
+            <button type="button" onclick="window.GherbiForensicRadarHub.setSectionFilter('db_audit')" class="px-3 py-1.5 rounded-xl font-black text-xs transition ${this.activeFilterSection === 'db_audit' ? 'bg-rose-600 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}">
+              📜 الفواتير الملغاة وإشعارات الدائن (${this.dbAuditLogs.length})
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2 flex-1 max-w-xs">
+            <input id="v34ForensicSearchInput" type="text" value="${this.searchQuery}" oninput="window.GherbiForensicRadarHub.onSearchInput(this.value)" placeholder="🔎 ابحث باسم السلعة أو البائع أو الزبون..." class="w-full px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-bold placeholder-slate-400 focus:border-rose-500 outline-none">
+          </div>
+        </div>
+
+        <!-- ==================== [5] حاوية البطاقات الثلاث التفاعلية المنقولة من الصفحات 1..13 ==================== -->
+        <div id="v34ForensicCardsSlot" class="space-y-5"></div>
+
+        <!-- ==================== [6] جدول السجل الجنائي الخلفي (الفواتير المحذوفة وإشعارات الدائن Avoir) ==================== -->
+        <div id="v34DbAuditCardBox" class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 shadow-sm space-y-3 ${this.activeFilterSection === 'all' || this.activeFilterSection === 'db_audit' ? '' : 'hidden'}">
+          <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2.5">
+            <div>
+              <h3 class="font-black text-sm text-slate-900 dark:text-white">📜 السجل الجنائي لقاعدة البيانات: الفواتير المحذوفة وإشعارات الدائن (Factures d'Avoir)</h3>
+              <p class="text-[11px] text-slate-500">يوثق أي عملية حذف فاتورة بيع بعد إصدارها أو تحرير إشعار دائن للزبون</p>
+            </div>
+            <span class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono font-black text-xs">${this.dbAuditLogs.length} سجل</span>
+          </div>
+          <div class="overflow-x-auto max-h-64">
+            <table class="w-full text-xs text-right">
+              <thead>
+                <tr class="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                  <th class="py-2 px-3">التوقيت</th>
+                  <th class="py-2 px-3">المستخدم</th>
+                  <th class="py-2 px-3">نوع العملية الحساسة</th>
+                  <th class="py-2 px-3">رقم المستند</th>
+                  <th class="py-2 px-3">التفاصيل والسبب</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${dbAuditRowsHtml}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    },
+
+    setSectionFilter(sec) {
+      this.activeFilterSection = sec || 'all';
+      const pane = document.getElementById('v34Tab14ForensicRadarContainer');
+      if (pane) {
+        this.renderTab14Content(pane);
+        this.isolateAndMoveForensicCards();
+      }
+    },
+
+    onSearchInput(val) {
+      this.searchQuery = String(val || '');
+      this.applyLiveSearchFilterOnTables(this.searchQuery);
+    },
+
+    applyLiveSearchFilterOnTables(query) {
+      const q = String(query || '').trim().toLowerCase();
+      const container = document.getElementById('v34Tab14ForensicRadarContainer');
+      if (!container) return;
+      const rows = container.querySelectorAll('#v34ForensicCardsSlot tbody tr, #v34DbAuditCardBox tbody tr');
+      for (const tr of rows) {
+        if (!q) {
+          tr.style.display = '';
+          continue;
+        }
+        const txt = (tr.textContent || '').toLowerCase();
+        tr.style.display = txt.includes(q) ? '' : 'none';
+      }
+    },
+
+    printFullA4ForensicReport() {
+      const s = this.readAllForensicData();
+      const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><style>
+        body { font-family: 'Cairo', Tahoma, sans-serif; padding: 12mm; color: #0f172a; }
+        h2 { text-align: center; margin: 0 0 4px 0; color: #9f1239; }
+        .sub { text-align: center; font-size: 12px; color: #475569; border-bottom: 2px solid #9f1239; padding-bottom: 8px; margin-bottom: 14px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+        th, td { border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right; }
+        th { background: #ffe4e6; font-weight: 900; }
+      </style></head><body>
+        <h2>🚨 التقرير الجنائي الشامل لرقابة الكاشير وحماية الأرباح</h2>
+        <div class="sub">تاريخ الاستخراج: ${new Date().toLocaleString('fr-DZ')} | مؤشر أمان المتجر: ${s.integrityScore}/100</div>
+        <table>
+          <tbody>
+            <tr><th>1. السلع الممسوحة ثم المحذوفة من السلة قبل الدفع</th><td>${s.scannedDeletedCount} سطر (بقيمة إجمالية: ${this.fmtDzd(s.scannedDeletedValueDzd)})</td></tr>
+            <tr><th>2. عمليات البيع بسعر التكلفة أو بخسارة</th><td>${s.belowCostCount} حالة (إجمالي الخسارة: -${this.fmtDzd(s.totalBelowCostLossDzd)})</td></tr>
+            <tr><th>3. التخفيضات السعرية اليدوية (F12 / Alt+P)</th><td>${s.discountOverridesCount} عملية (إجمالي التخفيض: -${this.fmtDzd(s.totalDiscountLossDzd)})</td></tr>
+            <tr><th>4. عمليات البيع بالمبلغ (كميات جزئية)</th><td>${s.partialWeightSalesCount} عملية</td></tr>
+            <tr><th>5. التعديلات اليدوية لرصيد نقاط الوفاء</th><td>${s.loyaltyEditsCount} عملية</td></tr>
+          </tbody>
+        </table>
+      </body></html>`;
+      window.api?.printSilent?.({ html, silent: false });
+    }
+  };
+
+  window.GherbiForensicRadarHub = ForensicRadarHub;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => ForensicRadarHub.init());
+  } else {
+    ForensicRadarHub.init();
+  }
+})();

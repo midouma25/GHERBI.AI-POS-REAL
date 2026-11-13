@@ -29226,7 +29226,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
         actionsHtml =
           '<div class="flex flex-wrap gap-1.5 pt-2">' +
           '  <button type="button" onclick="App.switchView(\'analytics\'); App.switchAnalyticsTab(\'zakat\')" class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-black text-[11px]">🕌 فتح حاسبة الزكاة</button>' +
-          '  <button type="button" onclick="App.switchView(\'analytics\'); App.switchAnalyticsTab(\'fiscal\')" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-black text-[11px]">🇩🇿 فتح استوديو الجباية IFU/G50</button>' +
+          '  <button type="button" onclick="window.GherbiRetailFiscalStudio && window.GherbiRetailFiscalStudio.openStudio()" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-black text-[11px]">🇩🇿 فتح استوديو الجباية IFU/G50</button>' +
           '</div>';
       } else {
         // تشخيص تنفيذي شامل 360° (الرد الافتراضي الذكي)
@@ -30246,7 +30246,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
         actionsHtml =
           '<div class="flex flex-wrap gap-1.5 pt-2">' +
           '  <button type="button" onclick="App.switchView(\'analytics\'); App.switchAnalyticsTab(\'zakat\')" class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-black text-[11px]">🕌 فتح حاسبة الزكاة</button>' +
-          '  <button type="button" onclick="App.switchView(\'analytics\'); App.switchAnalyticsTab(\'fiscal\')" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-black text-[11px]">🇩🇿 فتح استوديو الجباية</button>' +
+          '  <button type="button" onclick="window.GherbiRetailFiscalStudio && window.GherbiRetailFiscalStudio.openStudio()" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-black text-[11px]">🇩🇿 فتح استوديو الجباية</button>' +
           '</div>';
       }
     }

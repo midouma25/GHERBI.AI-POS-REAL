@@ -62,8 +62,8 @@
       "!apply-*.js",
       "!fix-*.js",
       "!achieve-perfect-10.js",
-      "!kiosk-catalog-cache.json",
-      "!apply-v16-*.js"
+      "!verify-system.js",
+      "!kiosk-catalog-cache.json"
     ]
   }
 }

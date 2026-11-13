@@ -210,8 +210,10 @@ async function openCustomerFacingWindow() {
 
   customerDisplayWindow = new BrowserWindow(winOpts);
 
-  const shopName = await getSetting('shop_name', 'Gherbi.Ai POS');
-  const rip = await getSetting('shop_baridimob_rip', '00799999000000000000');
+  const rawShopName = await getSetting('shop_name', 'Gherbi.Ai POS');
+  const shopName = String(rawShopName || 'Gherbi.Ai POS').replace(/[&<>"']/g, '');
+  const rawRip = await getSetting('shop_baridimob_rip', '00799999000000000000');
+  const rip = String(rawRip || '').replace(/[&<>"']/g, '');
   const ripQrImg = rip ? await QRCode.toDataURL(String(rip), { margin: 1, width: 130 }).catch(() => '') : '';
 
   const html = [
@@ -255,41 +257,45 @@ async function openCustomerFacingWindow() {
     '    </div>',
     '  </div>',
     '  <script>',
-    '    const { ipcRenderer } = require("electron");',
-    '    function escCustHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); },',
-    '    setInterval(() => { document.getElementById("clock").textContent = new Date().toLocaleTimeString("ar-DZ"); }, 1000);',
-    '    ipcRenderer.on("customer-display:update", (_e, state) => {',
-    '      const items = (state && state.items) || [];',
-    '      const list = document.getElementById("itemsList");',
-    '      if (items.length === 0) {',
-    '        list.innerHTML = "<div style=\"text-align:center;color:#64748b;margin-top:110px;font-size:22px;font-weight:800;\">شكراً لزيارتكم — مرحباً بكم في متجرنا 🇩🇿</div>";',
-    '      } else {',
-    '        list.innerHTML = items.map((it) => {',
-    '          const packBadge = it._isCartonPackMode ? "<span style=\"background:#f59e0b;color:#0f172a;font-size:11px;padding:2px 6px;border-radius:6px;margin-right:6px;font-weight:900;\">📦 بالباكي/الكرتونة</span>" : "";',
-    '          return "<div class=\"item-row\"><div><span>" + escCustHtml(it.name) + "</span><span style=\"color:#94a3b8;font-size:15px;margin-right:8px;\">× " + it.quantity + "</span>" + packBadge + "</div><span style=\"font-family:monospace;color:#38bdf8;font-weight:900;\">" + Number(it.subtotal || 0).toFixed(2) + " د.ج</span></div>";',
-    '        }).join("");',
-    '      }',
-    '      const totalDzd = Number((state && state.total) || 0);',
-    '      const centimes = Math.round(totalDzd * 100).toLocaleString("fr-DZ");',
-    '      document.getElementById("grandTotal").innerHTML = "<div>" + totalDzd.toFixed(2) + " د.ج</div><div style=\"font-size:18px;color:#fde047;margin-top:4px;\">🇩🇿 بالسنتيم: " + centimes + " سنتيم</div>";',
-    '      const disc = Number((state && state.discount) || 0);',
-    '      const received = Number((state && state.receivedCash) || 0);',
-    '      const changeDzd = received > totalDzd ? Number((received - totalDzd).toFixed(2)) : 0;',
-    '      const custName = (state && state.customerName) || "";',
-    '      const custPts = Number((state && state.customerPoints) || 0);',
-    '      let extraHtml = "";',
-    '      if (disc > 0) {',
-    '        extraHtml += "<div style=\"background:rgba(16,185,129,0.25);border:1px solid #34d399;padding:6px 10px;border-radius:10px;margin-top:6px;color:#ecfdf5;font-size:15px;font-weight:900;\">🎁 وفّرتم في هذه الفاتورة: -" + disc.toFixed(2) + " د.ج</div>";',
-    '      }',
-    '      if (received > 0) {',
-    '        const chgCent = Math.round(changeDzd * 100).toLocaleString("fr-DZ");',
-    '        extraHtml += "<div style=\"background:rgba(15,23,42,0.55);padding:8px 10px;border-radius:10px;margin-top:6px;font-size:14px;font-weight:900;\">💵 المستلم: " + received.toFixed(2) + " د.ج | الباقي لكم: <span style=\"color:#4ade80;\">" + changeDzd.toFixed(2) + " د.ج (" + chgCent + " سنتيم)</span></div>";',
-    '      }',
-    '      if (custName) {',
-    '        extraHtml += "<div style=\"margin-top:6px;font-size:13px;color:#fef08a;font-weight:800;\">👑 مرحباً بزبوننا الوفي: " + escCustHtml(custName) + " (الرصيد: ⭐ " + custPts + " نقطة)</div>";',
-    '      }',
-    '      document.getElementById("discountLine").innerHTML = extraHtml;',
-    '    });',
+    "    const { ipcRenderer } = require(\"electron\");",
+    "    function escCustHtml(s) {",
+    "      return String(s || \"\").replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\");",
+    "    }",
+    "    setInterval(() => {",
+    "      document.getElementById(\"clock\").textContent = new Date().toLocaleTimeString(\"ar-DZ\");",
+    "    }, 1000);",
+    "    ipcRenderer.on(\"customer-display:update\", (_e, state) => {",
+    "      const items = (state && state.items) || [];",
+    "      const list = document.getElementById(\"itemsList\");",
+    "      if (items.length === 0) {",
+    "        list.innerHTML = '<div style=\"text-align:center;color:#64748b;margin-top:110px;font-size:22px;font-weight:800;\">شكراً لزيارتكم — مرحباً بكم في متجرنا 🇩🇿</div>';",
+    "      } else {",
+    "        list.innerHTML = items.map((it) => {",
+    "          const packBadge = it._isCartonPackMode ? '<span style=\"background:#f59e0b;color:#0f172a;font-size:11px;padding:2px 6px;border-radius:6px;margin-right:6px;font-weight:900;\">📦 بالباكي/الكرتونة</span>' : \"\";",
+    "          return '<div class=\"item-row\"><div><span>' + escCustHtml(it.name) + '</span><span style=\"color:#94a3b8;font-size:15px;margin-right:8px;\">× ' + it.quantity + '</span>' + packBadge + '</div><span style=\"font-family:monospace;color:#38bdf8;font-weight:900;\">' + Number(it.subtotal || 0).toFixed(2) + ' د.ج</span></div>';",
+    "        }).join(\"\");",
+    "      }",
+    "      const totalDzd = Number((state && state.total) || 0);",
+    "      const centimes = Math.round(totalDzd * 100).toLocaleString(\"fr-DZ\");",
+    "      document.getElementById(\"grandTotal\").innerHTML = '<div>' + totalDzd.toFixed(2) + ' د.ج</div><div style=\"font-size:18px;color:#fde047;margin-top:4px;\">🇩🇿 بالسنتيم: ' + centimes + ' سنتيم</div>';",
+    "      const disc = Number((state && state.discount) || 0);",
+    "      const received = Number((state && state.receivedCash) || 0);",
+    "      const changeDzd = received > totalDzd ? Number((received - totalDzd).toFixed(2)) : 0;",
+    "      const custName = (state && state.customerName) || \"\";",
+    "      const custPts = Number((state && state.customerPoints) || 0);",
+    "      let extraHtml = \"\";",
+    "      if (disc > 0) {",
+    "        extraHtml += '<div style=\"background:rgba(16,185,129,0.25);border:1px solid #34d399;padding:6px 10px;border-radius:10px;margin-top:6px;color:#ecfdf5;font-size:15px;font-weight:900;\">🎁 وفّرتم في هذه الفاتورة: -' + disc.toFixed(2) + ' د.ج</div>';",
+    "      }",
+    "      if (received > 0) {",
+    "        const chgCent = Math.round(changeDzd * 100).toLocaleString(\"fr-DZ\");",
+    "        extraHtml += '<div style=\"background:rgba(15,23,42,0.55);padding:8px 10px;border-radius:10px;margin-top:6px;font-size:14px;font-weight:900;\">💵 المستلم: ' + received.toFixed(2) + ' د.ج | الباقي لكم: <span style=\"color:#4ade80;\">' + changeDzd.toFixed(2) + ' د.ج (' + chgCent + ' سنتيم)</span></div>';",
+    "      }",
+    "      if (custName) {",
+    "        extraHtml += '<div style=\"margin-top:6px;font-size:13px;color:#fef08a;font-weight:800;\">👑 مرحباً بزبوننا الوفي: ' + escCustHtml(custName) + ' (الرصيد: ⭐ ' + custPts + ' نقطة)</div>';",
+    "      }",
+    "      document.getElementById(\"discountLine\").innerHTML = extraHtml;",
+    "    });",
     '  </script>',
     '</body>',
     '</html>'
@@ -853,12 +859,14 @@ function registerIpcHandlers() {
   ipcMain.handle('delete-product', async (_e, productId) => {
     if (await isLanClientMode()) return lanClient.deleteProduct(productId);
     const pid = Number(productId);
-    await dbRun('DELETE FROM inventory_batches WHERE product_id = ?', [pid]);
-    await dbRun('DELETE FROM products WHERE id = ?', [pid]);
-    db.tombstoneOrphans();
-    return { success: true };
+    /* [V17_ACID_DELETE_PRODUCT] */
+    return await db.withTransaction(async () => {
+      await dbRun('DELETE FROM inventory_batches WHERE product_id = ?', [pid]);
+      await dbRun('DELETE FROM products WHERE id = ?', [pid]);
+      db.tombstoneOrphans();
+      return { success: true };
+    });
   });
-
   ipcMain.handle('add-batch', async (_e, arg1, arg2) => {
     const productId = Number(typeof arg1 === 'object' ? arg1.product_id || arg1.productId : arg1);
     const b = typeof arg1 === 'object' ? arg1 : arg2 || {};
@@ -1054,9 +1062,15 @@ function registerIpcHandlers() {
     if (await isLanClientMode()) return lanClient.addSalePayment(saleId, amount, date, meta);
     const sid = Number(saleId);
     const amt = Number(amount || 0);
+    /* [V25_FINANCIAL_POSITIVE_AMOUNT_GUARD] */
+    if (!Number.isFinite(amt) || amt <= 0.009) throw new Error('يرجى إدخال مبلغ دفع صحيح أكبر من الصفر');
     const payDate = date || new Date().toISOString();
     const sale = await dbGet('SELECT * FROM sales WHERE id = ?', [sid]);
     if (!sale) throw new Error('الفاتورة غير موجودة');
+    /* [V26_SALE_OVERPAYMENT_CAP] */
+    const maxDue = Number(Math.max(0, Number(sale.total || 0) - Number(sale.paid_amount || 0)).toFixed(2));
+    if (maxDue <= 0.009) throw new Error('هذه الفاتورة مسددة بالكامل مسبقاً');
+    const effectiveAmt = Number(Math.min(amt, maxDue).toFixed(2));
 
     const receiptNum = await generateNextDocNumber('payment_receipt');
     return await db.withTransaction(async () => {
@@ -1066,7 +1080,7 @@ function registerIpcHandlers() {
         [
           sid,
           sale.customer_id,
-          amt,
+          effectiveAmt,
           payDate,
           meta.payment_method || 'cash',
           meta.reference || null,
@@ -1074,8 +1088,8 @@ function registerIpcHandlers() {
           meta.notes || null
         ]
       );
-      await dbRun('UPDATE sales SET paid_amount = COALESCE(paid_amount, 0) + ? WHERE id = ?', [
-        amt,
+      await dbRun('UPDATE sales SET paid_amount = MIN(total, COALESCE(paid_amount, 0) + ?) WHERE id = ?', [
+        effectiveAmt,
         sid
       ]);
       const activeSess = await tillLedger.resolveOpenSession(db, null, meta.userId);
@@ -1083,7 +1097,7 @@ function registerIpcHandlers() {
         await dbRun(
           `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
            VALUES (?, 'debt_payment', ?, 'sales', ?, ?)`,
-          [activeSess, amt, `تسديد فاتورة بيع #${sid}`, ins.lastID]
+          [activeSess, effectiveAmt, `تسديد فاتورة بيع #${sid}`, ins.lastID]
         );
       }
       return { success: true, paymentId: ins.lastID, receiptNumber: receiptNum };
@@ -1112,15 +1126,40 @@ function registerIpcHandlers() {
     }
 
     return await db.withTransaction(async () => {
+      /* [V24_RESTORE_BONUS_SERIAL_PROMO_ON_DELETE] */
       for (const it of items) {
         if (it.batch_id && Number(it.sold_without_stock || 0) === 0) {
           await batchAlloc.restoreBatch(db, {
             batchId: it.batch_id,
-            quantity: it.quantity,
+            quantity: Number(it.quantity || 0) + Number(it.bonus_qty || 0),
             soldWithoutStock: it.sold_without_stock
           });
         }
+        /* [V25_RESTORE_BUNDLE_COMPONENTS_ON_DELETE] */
+        if (!it.product_id && !it.batch_id && it.custom_product_name && Number(it.quantity || 0) > 0) {
+          const bRow = await dbGet('SELECT id FROM product_bundles WHERE name = ? AND deleted_at IS NULL LIMIT 1', [String(it.custom_product_name).trim()]).catch(() => null);
+          if (bRow && bRow.id) {
+            const bComps = await dbAll('SELECT product_id, quantity FROM bundle_items WHERE bundle_id = ? AND deleted_at IS NULL', [bRow.id]).catch(() => []);
+            for (const bc of bComps) {
+              const restoreQty = Number((Number(bc.quantity || 1) * Number(it.quantity || 1)).toFixed(6));
+              const targetBatch = await dbGet('SELECT id FROM inventory_batches WHERE product_id = ? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1', [bc.product_id]).catch(() => null);
+              if (targetBatch && targetBatch.id && restoreQty > 0) {
+                await batchAlloc.restoreBatch(db, { batchId: targetBatch.id, quantity: restoreQty, soldWithoutStock: 0 });
+              }
+            }
+          }
+        }
+        if (it.applied_promotion_id && Number(it.quantity || 0) > 0) {
+          await dbRun(
+            'UPDATE product_promotions SET used_qty = MAX(0, COALESCE(used_qty, 0) - ?) WHERE id = ?',
+            [Number(it.quantity || 0), Number(it.applied_promotion_id)]
+          ).catch(() => {});
+        }
       }
+      await dbRun(
+        "UPDATE product_serials SET status = 'in_stock', sale_id = NULL WHERE sale_id = ?",
+        [sid]
+      ).catch(() => {});
       await tillLedger.reverseSaleTill(db, sid);
       /* [V16_REVERSE_LOYALTY_ON_DELETE_SALE] */
       if (oldSale && oldSale.customer_id) {
@@ -1138,6 +1177,16 @@ function registerIpcHandlers() {
         await dbRun('DELETE FROM loyalty_transactions WHERE sale_id = ?', [sid]).catch(() => {});
       }
       await dbRun('DELETE FROM stock_debt WHERE sale_id = ?', [sid]);
+      /* [V23_CASCADE_SALE_INSTALLMENTS_AND_TILL] */
+      await dbRun(
+        "DELETE FROM caisse_transactions WHERE type = 'debt_payment' AND reference_id IN (SELECT id FROM sale_payments WHERE sale_id = ?)",
+        [sid]
+      ).catch(() => {});
+      await dbRun(
+        'DELETE FROM installment_schedules WHERE plan_id IN (SELECT id FROM installment_plans WHERE sale_id = ?)',
+        [sid]
+      ).catch(() => {});
+      await dbRun('DELETE FROM installment_plans WHERE sale_id = ?', [sid]).catch(() => {});
       await dbRun('DELETE FROM sale_payments WHERE sale_id = ?', [sid]);
       await dbRun('DELETE FROM sale_items WHERE sale_id = ?', [sid]);
       await dbRun('DELETE FROM sales WHERE id = ?', [sid]);
@@ -1244,8 +1293,22 @@ function registerIpcHandlers() {
 
   ipcMain.handle('delete-customer', async (_e, id) => {
     if (await isLanClientMode()) return lanClient.deleteCustomer(id);
-    await dbRun('DELETE FROM customers WHERE id = ?', [Number(id)]);
-    return { success: true };
+    const cid = Number(id);
+    /* [V23_CASCADE_CUSTOMER_DELETE] */
+    return await db.withTransaction(async () => {
+      await dbRun(
+        'DELETE FROM installment_schedules WHERE plan_id IN (SELECT id FROM installment_plans WHERE customer_id = ?)',
+        [cid]
+      ).catch(() => {});
+      await dbRun('DELETE FROM installment_plans WHERE customer_id = ?', [cid]).catch(() => {});
+      /* [V25_RELEASE_CUSTOMER_ORDER_RESERVATIONS] */
+      await dbRun(
+        'UPDATE inventory_reservations SET released = 1, released_at = CURRENT_TIMESTAMP WHERE order_id IN (SELECT id FROM customer_orders WHERE customer_id = ?)',
+        [cid]
+      ).catch(() => {});
+      await dbRun('DELETE FROM customers WHERE id = ?', [cid]);
+      return { success: true };
+    });
   });
 
   ipcMain.handle('get-customer-credit-summary', async (_e, customerId, excludeSaleId = null) => {
@@ -1287,6 +1350,7 @@ function registerIpcHandlers() {
     if (await isLanClientMode()) return lanClient.addCustomerPayment(customerId, amount, date, meta);
     const cid = Number(customerId);
     let remainingAmt = Number(amount || 0);
+    if (!Number.isFinite(remainingAmt) || remainingAmt <= 0.009) throw new Error('يرجى إدخال مبلغ قبض صحيح أكبر من الصفر');
     const payDate = date || new Date().toISOString();
     const receiptNum = await generateNextDocNumber('payment_receipt');
 
@@ -1317,12 +1381,17 @@ function registerIpcHandlers() {
         remainingAmt = Number((remainingAmt - apply).toFixed(2));
       }
 
+      /* [V27_EXACT_CUSTOMER_DEBT_APPLIED] */
+      const appliedAmt = Number((Number(amount || 0) - remainingAmt).toFixed(2));
+      if (appliedAmt <= 0.009) {
+        throw new Error('لا يوجد دين مستحق على هذا الزبون لتسديده');
+      }
       const ins = await dbRun(
         `INSERT INTO sale_payments (sale_id, customer_id, amount, date, payment_method, reference, receipt_number, notes)
          VALUES (NULL, ?, ?, ?, ?, ?, ?, ?)`,
         [
           cid,
-          Number(amount || 0),
+          appliedAmt,
           payDate,
           meta.payment_method || 'cash',
           meta.reference || null,
@@ -1336,7 +1405,7 @@ function registerIpcHandlers() {
         await dbRun(
           `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
            VALUES (?, 'debt_payment', ?, 'sales', ?, ?)`,
-          [activeSess, Number(amount || 0), `تسديد دين زبون #${cid}`, ins.lastID]
+          [activeSess, appliedAmt, `تسديد دين زبون #${cid}`, ins.lastID]
         );
       }
 
@@ -1375,10 +1444,20 @@ function registerIpcHandlers() {
     const saleId = Number(payload.saleId || payload.sale_id);
     const creditNoteNumber = payload.creditNoteNumber || (await generateNextDocNumber('avoir'));
     const nowIso = new Date().toISOString();
+    /* [V21_CREDIT_NOTE_AUDIT_LOG] */
     await dbRun(
       'UPDATE sales SET credit_note_number = ?, credit_note_issued_at = ?, credit_note_reason = ? WHERE id = ?',
       [creditNoteNumber, nowIso, payload.reason || null, saleId]
     );
+    await recordAuditLog({
+      user_id: payload.user_id || payload.userId || null,
+      user_name: payload.user_name || payload.userName || 'Admin',
+      action_type: 'issue_credit_note',
+      target_type: 'sale',
+      target_id: saleId,
+      severity: 'warning',
+      details: { credit_note_number: creditNoteNumber, reason: payload.reason || 'إرجاع بضاعة من الزبون' }
+    }).catch(() => {});
     return { success: true, credit_note_number: creditNoteNumber };
   });
 
@@ -1483,8 +1562,11 @@ function registerIpcHandlers() {
 
   ipcMain.handle('delete-supplier', async (_e, id) => {
     if (await isLanClientMode()) return lanClient.deleteSupplier(id);
-    await dbRun('DELETE FROM suppliers WHERE id = ?', [Number(id)]);
-    return { success: true };
+    const sid = Number(id);
+    return await db.withTransaction(async () => {
+      await dbRun('DELETE FROM suppliers WHERE id = ?', [sid]);
+      return { success: true };
+    });
   });
 
   ipcMain.handle('get-supplier-purchases', async (_e, supplierId) => {
@@ -1499,6 +1581,7 @@ function registerIpcHandlers() {
     if (await isLanClientMode()) return lanClient.addSupplierPayment(supplierId, amount, date, meta);
     const sid = Number(supplierId);
     let rem = Number(amount || 0);
+    if (!Number.isFinite(rem) || rem <= 0.009) throw new Error('يرجى إدخال مبلغ تسديد صحيح أكبر من الصفر');
     const payDate = date || new Date().toISOString();
     const receiptNum = await generateNextDocNumber('payment_receipt');
 
@@ -1531,12 +1614,17 @@ function registerIpcHandlers() {
         rem = Number((rem - apply).toFixed(2));
       }
 
+      /* [V27_EXACT_SUPPLIER_DEBT_APPLIED] */
+      const appliedSupAmt = Number((Number(amount || 0) - rem).toFixed(2));
+      if (appliedSupAmt <= 0.009) {
+        throw new Error('لا يوجد دين مستحق لهذا المورد لتسديده');
+      }
       const ins = await dbRun(
         `INSERT INTO invoice_payments (invoice_id, supplier_id, amount, date, payment_method, reference, receipt_number, notes)
          VALUES (NULL, ?, ?, ?, ?, ?, ?, ?)`,
         [
           sid,
-          Number(amount || 0),
+          appliedSupAmt,
           payDate,
           meta.payment_method || 'cash',
           meta.reference || null,
@@ -1544,6 +1632,16 @@ function registerIpcHandlers() {
           meta.notes || null
         ]
       );
+
+      /* [V17_SUPPLIER_PAYMENT_CAISSE_TX] */
+      const activeSess = await tillLedger.resolveOpenSession(db, null, meta.userId);
+      if (activeSess && (!meta.payment_method || meta.payment_method === 'cash')) {
+        await dbRun(
+          `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
+           VALUES (?, 'expense', ?, 'suppliers', ?, ?)`,
+          [activeSess, appliedSupAmt, `تسديد دفعة للمورد #${sid}`, ins.lastID]
+        ).catch(() => {});
+      }
 
       return { success: true, paymentId: ins.lastID, receiptNumber: receiptNum };
     });
@@ -1622,23 +1720,15 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('save-purchase', async (_e, data = {}) => {
-    if (data.editInvoiceId || data.edit_invoice_id) {
-      const oldId = Number(data.editInvoiceId || data.edit_invoice_id);
-      const oldItems = await dbAll('SELECT batch_id FROM purchase_items WHERE invoice_id = ? AND deleted_at IS NULL', [oldId]);
-      const oldBatchIds = oldItems.map((x) => x.batch_id).filter(Boolean);
-      if (oldBatchIds.length > 0) await batchAlloc.voidBatches(db, oldBatchIds);
-      await dbRun('DELETE FROM invoice_payments WHERE invoice_id = ?', [oldId]);
-      await dbRun('DELETE FROM purchase_items WHERE invoice_id = ?', [oldId]);
-      await dbRun('DELETE FROM purchase_invoices WHERE id = ?', [oldId]);
-    }
     if (await isLanClientMode()) return lanClient.savePurchase(data);
     const items = Array.isArray(data.items) ? data.items : [];
     const supplierId = data.supplier_id || data.supplierId ? Number(data.supplier_id || data.supplierId) : null;
     const subtotal = Number(data.subtotal ?? 0);
     const taxPercentage = Number(data.tax_percentage ?? 0);
     const additionalCosts = Number(data.additional_costs ?? 0);
-    const total = Number(data.total ?? 0);
-    const paidAmount = Number(data.paid_amount ?? 0);
+    const total = Math.max(0, Number(data.total ?? 0) || 0);
+    /* [V28_PURCHASE_INIT_PAID_CAP] */
+    const paidAmount = Number(Math.max(0, Math.min(Number(data.paid_amount ?? 0) || 0, total)).toFixed(2));
     const paymentMethod = String(data.payment_method || 'cash').trim();
     const unifySellingPrice = data.unify_selling_price !== false;
     const invDate = data.date || new Date().toISOString().slice(0, 10);
@@ -1651,6 +1741,21 @@ function registerIpcHandlers() {
     const extraCostPerUnit = totalUnits > 0 ? additionalCosts / totalUnits : 0;
 
     return await db.withTransaction(async () => {
+      /* [V18_TX_SAFE_PURCHASE_EDIT] */
+      if (data.editInvoiceId || data.edit_invoice_id) {
+        const oldId = Number(data.editInvoiceId || data.edit_invoice_id);
+        const oldItems = await dbAll('SELECT batch_id FROM purchase_items WHERE invoice_id = ? AND deleted_at IS NULL', [oldId]);
+        const oldBatchIds = oldItems.map((x) => x.batch_id).filter(Boolean);
+        if (oldBatchIds.length > 0) await batchAlloc.voidBatches(db, oldBatchIds);
+        /* [V22_CLEAN_PURCHASE_TILL_ON_EDIT] */
+        await dbRun(
+          "DELETE FROM caisse_transactions WHERE category = 'purchases' AND type = 'expense' AND reference_id IN (SELECT id FROM invoice_payments WHERE invoice_id = ?)",
+          [oldId]
+        ).catch(() => {});
+        await dbRun('DELETE FROM invoice_payments WHERE invoice_id = ?', [oldId]);
+        await dbRun('DELETE FROM purchase_items WHERE invoice_id = ?', [oldId]);
+        await dbRun('DELETE FROM purchase_invoices WHERE id = ?', [oldId]);
+      }
       const freightCost = Number(data.freight_cost ?? 0);
       const customsCost = Number(data.customs_cost ?? 0);
       const handlingCost = Number(data.handling_cost ?? 0);
@@ -1664,10 +1769,21 @@ function registerIpcHandlers() {
 
       if (paidAmount > 0) {
         const recNum = await generateNextDocNumber('payment_receipt');
-        await dbRun(
+        const payIns = await dbRun(
           'INSERT INTO invoice_payments (invoice_id, supplier_id, amount, date, payment_method, receipt_number, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
           [invoiceId, supplierId, paidAmount, invDate, paymentMethod, recNum, data.notes || null]
         );
+        /* [V19_PURCHASE_INIT_CASH_TILL] */
+        if (!paymentMethod || paymentMethod === 'cash') {
+          const activeSess = await tillLedger.resolveOpenSession(db, null, data.user_id || data.userId);
+          if (activeSess) {
+            await dbRun(
+              `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
+               VALUES (?, 'expense', ?, 'purchases', ?, ?)`,
+              [activeSess, paidAmount, `دفعة فاتورة شراء #${invNumber}`, payIns.lastID]
+            ).catch(() => {});
+          }
+        }
       }
 
       const supRow = supplierId ? await dbGet('SELECT name FROM suppliers WHERE id = ?', [supplierId]) : null;
@@ -1795,16 +1911,32 @@ function registerIpcHandlers() {
     if (await isLanClientMode()) return lanClient.addInvoicePayment(invoiceId, amount, date, meta);
     const id = Number(invoiceId);
     const amt = Number(amount || 0);
+    if (!Number.isFinite(amt) || amt <= 0.009) throw new Error('يرجى إدخال مبلغ تسديد صحيح أكبر من الصفر');
     const inv = await dbGet('SELECT * FROM purchase_invoices WHERE id = ?', [id]);
     if (!inv) throw new Error('فاتورة الشراء غير موجودة');
+    /* [V26_INVOICE_OVERPAYMENT_CAP] */
+    const maxInvDue = Number(Math.max(0, Number(inv.total || 0) - Number(inv.paid_amount || 0)).toFixed(2));
+    if (maxInvDue <= 0.009) throw new Error('فاتورة الشراء هذه مسددة بالكامل مسبقاً');
+    const effectiveInvAmt = Number(Math.min(amt, maxInvDue).toFixed(2));
 
     const receiptNum = await generateNextDocNumber('payment_receipt');
-    await dbRun('UPDATE purchase_invoices SET paid_amount = COALESCE(paid_amount, 0) + ? WHERE id = ?', [amt, id]);
-    const ins = await dbRun(
-      'INSERT INTO invoice_payments (invoice_id, supplier_id, amount, date, payment_method, receipt_number) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, inv.supplier_id, amt, date || new Date().toISOString(), meta.payment_method || 'cash', receiptNum]
-    );
-    return { success: true, paymentId: ins.lastID, receiptNumber: receiptNum };
+    /* [V18_ATOMIC_INVOICE_PAYMENT_AND_TILL] */
+    return await db.withTransaction(async () => {
+      await dbRun('UPDATE purchase_invoices SET paid_amount = MIN(total, COALESCE(paid_amount, 0) + ?) WHERE id = ?', [effectiveInvAmt, id]);
+      const ins = await dbRun(
+        'INSERT INTO invoice_payments (invoice_id, supplier_id, amount, date, payment_method, receipt_number) VALUES (?, ?, ?, ?, ?, ?)',
+        [id, inv.supplier_id, effectiveInvAmt, date || new Date().toISOString(), meta.payment_method || 'cash', receiptNum]
+      );
+      const activeSess = await tillLedger.resolveOpenSession(db, null, meta.userId);
+      if (activeSess && (!meta.payment_method || meta.payment_method === 'cash') && effectiveInvAmt > 0) {
+        await dbRun(
+          `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
+           VALUES (?, 'expense', ?, 'purchases', ?, ?)`,
+          [activeSess, effectiveInvAmt, `تسديد فاتورة شراء #${inv.invoice_number || id}`, ins.lastID]
+        ).catch(() => {});
+      }
+      return { success: true, paymentId: ins.lastID, receiptNumber: receiptNum };
+    });
   });
 
   ipcMain.handle('delete-purchase', async (_e, invoiceId) => {
@@ -1815,6 +1947,11 @@ function registerIpcHandlers() {
       const items = await dbAll('SELECT batch_id FROM purchase_items WHERE invoice_id = ? AND deleted_at IS NULL', [id]);
       const batchIds = items.map((x) => x.batch_id).filter(Boolean);
       if (batchIds.length > 0) await batchAlloc.voidBatches(db, batchIds);
+      /* [V22_CLEAN_PURCHASE_TILL_ON_DELETE] */
+      await dbRun(
+        "DELETE FROM caisse_transactions WHERE category = 'purchases' AND type = 'expense' AND reference_id IN (SELECT id FROM invoice_payments WHERE invoice_id = ?)",
+        [id]
+      ).catch(() => {});
       await dbRun('DELETE FROM invoice_payments WHERE invoice_id = ?', [id]);
       await dbRun('DELETE FROM purchase_items WHERE invoice_id = ?', [id]);
       await dbRun('DELETE FROM purchase_invoices WHERE id = ?', [id]);
@@ -1837,7 +1974,15 @@ function registerIpcHandlers() {
     if (await isLanClientMode()) return lanClient.saveSupplierReturn(data);
     const returnNum = data.return_number || (await generateNextDocNumber('supplier_return'));
     const items = Array.isArray(data.items) ? data.items : [];
-    const total = Number(data.total ?? 0);
+    const total = Math.max(0, Number(data.total ?? 0) || 0);
+    /* [V28_SUPPLIER_RETURN_EXCLUSIVE_SETTLEMENT] */
+    const isCashRefund = String(data.refund_method || 'credit').trim() === 'cash';
+    const effectiveRefundAmt = isCashRefund
+      ? (Number(data.refund_amount) > 0 ? Math.min(total, Number(data.refund_amount)) : total)
+      : Math.max(0, Math.min(total, Number(data.refund_amount || 0)));
+    const effectiveCreditApplied = (!isCashRefund && data.credit_applied !== undefined)
+      ? Math.max(0, Math.min(total, Number(data.credit_applied)))
+      : Math.max(0, Number((total - effectiveRefundAmt).toFixed(2)));
 
     return await db.withTransaction(async () => {
       const ins = await dbRun(
@@ -1849,9 +1994,9 @@ function registerIpcHandlers() {
           Number(data.supplier_id),
           total,
           total,
-          Number(data.credit_applied ?? total),
-          Number(data.refund_amount ?? 0),
-          data.refund_method || 'credit',
+          effectiveCreditApplied,
+          effectiveRefundAmt,
+          isCashRefund ? 'cash' : 'credit',
           data.reason || null,
           data.notes || null,
           data.date || new Date().toISOString().slice(0, 10)
@@ -1881,6 +2026,18 @@ function registerIpcHandlers() {
             Number((qty * Number(it.cost_price ?? 0)).toFixed(2))
           ]
         );
+      }
+      /* [V19_SUPPLIER_RETURN_CASH_TILL] */
+      const refundCashAmt = effectiveRefundAmt;
+      if (isCashRefund && refundCashAmt > 0) {
+        const activeSess = await tillLedger.resolveOpenSession(db, null, data.user_id || data.userId);
+        if (activeSess) {
+          await dbRun(
+            `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
+             VALUES (?, 'cash_in', ?, 'supplier_return', ?, ?)`,
+            [activeSess, refundCashAmt, `استرداد نقدي لمرتجع مورد #${returnNum}`, returnId]
+          ).catch(() => {});
+        }
       }
       return { success: true, id: returnId, return_number: returnNum };
     });
@@ -1919,11 +2076,27 @@ function registerIpcHandlers() {
 
   ipcMain.handle('delete-supplier-return', async (_e, returnId) => {
     if (await isLanClientMode()) return lanClient.deleteSupplierReturn(returnId);
-    await dbRun('DELETE FROM supplier_return_items WHERE return_id = ?', [Number(returnId)]);
-    await dbRun('DELETE FROM supplier_returns WHERE id = ?', [Number(returnId)]);
-    return { success: true };
+    const rid = Number(returnId);
+    /* [V17_RESTORE_STOCK_ON_DELETE_SUPPLIER_RETURN] */
+    return await db.withTransaction(async () => {
+      const items = await dbAll(
+        'SELECT batch_id, quantity FROM supplier_return_items WHERE return_id = ? AND deleted_at IS NULL',
+        [rid]
+      );
+      for (const it of items) {
+        if (it.batch_id && Number(it.quantity || 0) > 0) {
+          await dbRun(
+            'UPDATE inventory_batches SET stock = COALESCE(stock, 0) + ? WHERE id = ?',
+            [Number(it.quantity), Number(it.batch_id)]
+          );
+        }
+      }
+      await dbRun("DELETE FROM caisse_transactions WHERE reference_id = ? AND category = 'supplier_return'", [rid]).catch(() => {});
+      await dbRun('DELETE FROM supplier_return_items WHERE return_id = ?', [rid]);
+      await dbRun('DELETE FROM supplier_returns WHERE id = ?', [rid]);
+      return { success: true };
+    });
   });
-
   // 6. الفواتير الشكلية (Proformas) والطلبيات (Customer Orders)
   ipcMain.handle('create-proforma', async (_e, d = {}) => {
     if (await isLanClientMode()) return lanClient.createProforma(d);
@@ -2011,11 +2184,13 @@ function registerIpcHandlers() {
 
   ipcMain.handle('delete-proforma', async (_e, id) => {
     if (await isLanClientMode()) return lanClient.deleteProforma(id);
-    await dbRun('DELETE FROM proforma_items WHERE proforma_id = ?', [Number(id)]);
-    await dbRun('DELETE FROM proforma_invoices WHERE id = ?', [Number(id)]);
-    return { success: true };
+    const pid = Number(id);
+    return await db.withTransaction(async () => {
+      await dbRun('DELETE FROM proforma_items WHERE proforma_id = ?', [pid]);
+      await dbRun('DELETE FROM proforma_invoices WHERE id = ?', [pid]);
+      return { success: true };
+    });
   });
-
   ipcMain.handle('cancel-proforma', async (_e, id) => {
     if (await isLanClientMode()) return lanClient.cancelProforma(id);
     await dbRun("UPDATE proforma_invoices SET status = 'cancelled' WHERE id = ?", [Number(id)]);
@@ -2066,10 +2241,18 @@ function registerIpcHandlers() {
     return { ok: shortages.length === 0, shortages };
   });
 
+  const _convertingProformaLocks = new Set();
   ipcMain.handle('convert-proforma-to-sale', async (_e, proformaId, extra = {}) => {
+    /* [V26_IDEMPOTENT_PROFORMA_CONVERT] */
     const pid = Number(proformaId);
-    const head = await dbGet('SELECT * FROM proforma_invoices WHERE id = ? AND deleted_at IS NULL', [pid]);
-    if (!head) throw new Error('الفاتورة الشكلية غير موجودة');
+    if (_convertingProformaLocks.has(pid)) throw new Error('جاري تحويل هذه الفاتورة الشكلية بالفعل...');
+    _convertingProformaLocks.add(pid);
+    try {
+      const head = await dbGet('SELECT * FROM proforma_invoices WHERE id = ? AND deleted_at IS NULL', [pid]);
+      if (!head) throw new Error('الفاتورة الشكلية غير موجودة');
+      if (head.status === 'converted' && head.converted_to_sale_id) {
+        return { success: true, saleId: head.converted_to_sale_id, alreadyConverted: true };
+      }
     const items = await dbAll('SELECT * FROM proforma_items WHERE proforma_id = ? AND deleted_at IS NULL', [pid]);
     const saleOut = await executeSaleTransaction({
       customer_id: head.customer_id,
@@ -2082,17 +2265,20 @@ function registerIpcHandlers() {
       items
     });
     await dbRun(
-      "UPDATE proforma_invoices SET status = 'converted', converted_to_sale_id = ? WHERE id = ?",
-      [saleOut.saleId, pid]
-    );
-    return { success: true, saleId: saleOut.saleId, docNumber: saleOut.docNumber };
+        "UPDATE proforma_invoices SET status = 'converted', converted_to_sale_id = ? WHERE id = ?",
+        [saleOut.saleId, pid]
+      );
+      return { success: true, saleId: saleOut.saleId, docNumber: saleOut.docNumber };
+    } finally {
+      _convertingProformaLocks.delete(pid);
+    }
   });
 
   ipcMain.handle('create-order', async (_e, d = {}) => {
     if (await isLanClientMode()) return lanClient.createOrder(d);
     const docNum = d.doc_number || (await generateNextDocNumber('order'));
     const items = Array.isArray(d.items) ? d.items : [];
-    const deposit = Number(d.deposit_amount ?? 0);
+    const deposit = Math.max(0, Math.min(Number(d.deposit_amount ?? 0) || 0, Number(d.total ?? 0) || 0));
 
     return await db.withTransaction(async () => {
       const ins = await dbRun(
@@ -2196,18 +2382,24 @@ function registerIpcHandlers() {
   ipcMain.handle('delete-order', async (_e, id) => {
     if (await isLanClientMode()) return lanClient.deleteOrder(id);
     const oid = Number(id);
-    await dbRun('UPDATE inventory_reservations SET released = 1, released_at = CURRENT_TIMESTAMP WHERE order_id = ?', [oid]);
-    await dbRun('DELETE FROM customer_order_items WHERE order_id = ?', [oid]);
-    await dbRun('DELETE FROM customer_orders WHERE id = ?', [oid]);
-    return { success: true };
+    return await db.withTransaction(async () => {
+      /* [V19_REVERSE_ORDER_DEPOSIT_ON_DELETE] */
+      await dbRun("DELETE FROM caisse_transactions WHERE reference_id = ? AND type = 'order_deposit'", [oid]).catch(() => {});
+      await dbRun('UPDATE inventory_reservations SET released = 1, released_at = CURRENT_TIMESTAMP WHERE order_id = ?', [oid]);
+      await dbRun('DELETE FROM customer_order_items WHERE order_id = ?', [oid]);
+      await dbRun('DELETE FROM customer_orders WHERE id = ?', [oid]);
+      return { success: true };
+    });
   });
-
   ipcMain.handle('cancel-order', async (_e, id) => {
     if (await isLanClientMode()) return lanClient.cancelOrder(id);
     const oid = Number(id);
-    await dbRun('UPDATE inventory_reservations SET released = 1, released_at = CURRENT_TIMESTAMP WHERE order_id = ?', [oid]);
-    await dbRun("UPDATE customer_orders SET status = 'cancelled' WHERE id = ?", [oid]);
-    return { success: true };
+    return await db.withTransaction(async () => {
+      await dbRun("DELETE FROM caisse_transactions WHERE reference_id = ? AND type = 'order_deposit'", [oid]).catch(() => {});
+      await dbRun('UPDATE inventory_reservations SET released = 1, released_at = CURRENT_TIMESTAMP WHERE order_id = ?', [oid]);
+      await dbRun("UPDATE customer_orders SET status = 'cancelled' WHERE id = ?", [oid]);
+      return { success: true };
+    });
   });
 
   ipcMain.handle('order-to-sale-payload', async (_e, id) => {
@@ -2218,22 +2410,31 @@ function registerIpcHandlers() {
   ipcMain.handle('mark-order-delivered', async (_e, id, saleId) => {
     if (await isLanClientMode()) return lanClient.markOrderDelivered(id, saleId);
     const oid = Number(id);
-    await dbRun('UPDATE inventory_reservations SET released = 1, released_at = CURRENT_TIMESTAMP WHERE order_id = ?', [oid]);
-    await dbRun("UPDATE customer_orders SET status = 'delivered', converted_to_sale_id = ? WHERE id = ?", [
-      Number(saleId),
-      oid
-    ]);
-    return { success: true };
+    return await db.withTransaction(async () => {
+      await dbRun('UPDATE inventory_reservations SET released = 1, released_at = CURRENT_TIMESTAMP WHERE order_id = ?', [oid]);
+      await dbRun("UPDATE customer_orders SET status = 'delivered', converted_to_sale_id = ? WHERE id = ?", [
+        Number(saleId),
+        oid
+      ]);
+      return { success: true };
+    });
   });
 
   // 7. الخزينة والمناوبات، المصاريف، رأس المال، الباقات، والعروض
   ipcMain.handle('open-caisse-session', async (_e, payload = {}) => {
     if (await isLanClientMode()) return lanClient.openCaisseSession(payload);
+    /* [V28_IDEMPOTENT_SHIFT_OPEN_CLOSE] */
     const userId =
       typeof payload === 'object' ? payload.userId || payload.user_id : Number(payload);
-    const openingBalance =
+    const rawOpening =
       typeof payload === 'object' ? Number(payload.openingBalance ?? payload.opening_balance ?? 0) : 0;
+    const openingBalance = Number.isFinite(rawOpening) && rawOpening > 0 ? Number(rawOpening.toFixed(2)) : 0;
     const deviceId = await getSetting('instance_id', 'local');
+
+    const existingOpenId = await tillLedger.resolveOpenSession(db, null, userId, deviceId);
+    if (existingOpenId) {
+      return await tillLedger.computeSessionSummary(db, existingOpenId);
+    }
 
     const ins = await dbRun(
       `INSERT INTO caisse_sessions (user_id, device_id, opening_balance, status, opened_at)
@@ -2250,6 +2451,16 @@ function registerIpcHandlers() {
     const closeNote = payload.closeNote || payload.close_note || payload.note || null;
 
     const info = await tillLedger.computeSessionSummary(db, sessionId);
+    if (info && info.session && info.session.status === 'closed') {
+      return {
+        success: true,
+        sessionId,
+        expectedBalance: Number(info.session.expected_balance || 0),
+        closingBalance: Number(info.session.closing_balance || 0),
+        difference: Number(info.session.difference || 0),
+        alreadyClosed: true
+      };
+    }
     const expected = info ? info.summary.expectedBalance : 0;
     const diff = Number((closingBalance - expected).toFixed(2));
 
@@ -2294,6 +2505,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('add-caisse-transaction', async (_e, tx = {}) => {
     if (await isLanClientMode()) return lanClient.addCaisseTransaction(tx);
+    const txAmt = Number(tx.amount || 0);
+    if (!Number.isFinite(txAmt) || Math.abs(txAmt) <= 0.009) {
+      throw new Error('يرجى إدخال مبلغ حركة نقدية صحيح أكبر من الصفر');
+    }
     const sessId =
       tx.session_id || tx.sessionId || (await tillLedger.resolveOpenSession(db, null, tx.user_id));
     if (!sessId) throw new Error('لا توجد مناوبة صندوق مفتوحة حالياً');
@@ -2304,7 +2519,7 @@ function registerIpcHandlers() {
       [
         Number(sessId),
         tx.type || 'cash_in',
-        Math.abs(Number(tx.amount || 0)),
+        Math.abs(txAmt),
         tx.category || 'عام',
         tx.description || null
       ]
@@ -2338,20 +2553,24 @@ function registerIpcHandlers() {
 
   ipcMain.handle('add-expense', async (_e, exp = {}) => {
     if (await isLanClientMode()) return lanClient.addExpense(exp);
+    /* [V26_ACID_EXPENSE_AND_CAPITAL_GUARDS] */
     const amt = Number(exp.amount || 0);
-    const ins = await dbRun(
-      'INSERT INTO expenses (category, description, amount, date, user_id, session_id) VALUES (?, ?, ?, ?, ?, ?)',
-      [
-        exp.category || 'عام',
-        exp.description || null,
-        amt,
-        exp.date || new Date().toISOString().slice(0, 10),
-        exp.user_id || null,
-        exp.session_id || null
-      ]
-    );
-    if (exp.deductFromCaisse || exp.session_id) {
-      const sessId = await tillLedger.resolveOpenSession(db, exp.session_id, exp.user_id);
+    if (!Number.isFinite(amt) || amt <= 0.009) throw new Error('يرجى إدخال مبلغ مصروف صحيح أكبر من الصفر');
+    return await db.withTransaction(async () => {
+      const sessId = (exp.deductFromCaisse || exp.session_id)
+        ? await tillLedger.resolveOpenSession(db, exp.session_id, exp.user_id)
+        : null;
+      const ins = await dbRun(
+        'INSERT INTO expenses (category, description, amount, date, user_id, session_id) VALUES (?, ?, ?, ?, ?, ?)',
+        [
+          exp.category || 'عام',
+          exp.description || null,
+          amt,
+          exp.date || new Date().toISOString().slice(0, 10),
+          exp.user_id || null,
+          sessId || exp.session_id || null
+        ]
+      );
       if (sessId) {
         await dbRun(
           `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
@@ -2359,28 +2578,33 @@ function registerIpcHandlers() {
           [sessId, amt, exp.category || 'عام', exp.description || 'مصروف', ins.lastID]
         );
       }
-    }
-    return { success: true, id: ins.lastID };
+      return { success: true, id: ins.lastID };
+    });
   });
 
   
   ipcMain.handle('update-expense', async (_e, id, exp = {}) => {
     const eid = Number(id);
     const amt = Number(exp.amount || 0);
-    await dbRun(
-      'UPDATE expenses SET category = ?, description = ?, amount = ?, date = COALESCE(?, date) WHERE id = ?',
-      [exp.category || 'عام', exp.description || null, amt, exp.date || null, eid]
-    );
-    await dbRun(
-      "UPDATE caisse_transactions SET amount = ?, category = ?, description = ? WHERE reference_id = ? AND type = 'expense'",
-      [amt, exp.category || 'عام', exp.description || 'مصروف', eid]
-    );
-    return { success: true, id: eid };
+    if (!Number.isFinite(amt) || amt <= 0.009) throw new Error('يرجى إدخال مبلغ مصروف صحيح أكبر من الصفر');
+    /* [V21_ISOLATED_EXPENSE_CAISSE_UPDATE] */
+    return await db.withTransaction(async () => {
+      await dbRun(
+        'UPDATE expenses SET category = ?, description = ?, amount = ?, date = COALESCE(?, date) WHERE id = ?',
+        [exp.category || 'عام', exp.description || null, amt, exp.date || null, eid]
+      );
+      await dbRun(
+        "UPDATE caisse_transactions SET amount = ?, category = ?, description = ? WHERE reference_id = ? AND type = 'expense' AND COALESCE(category, '') NOT IN ('suppliers', 'purchases')",
+        [amt, exp.category || 'عام', exp.description || 'مصروف', eid]
+      );
+      return { success: true, id: eid };
+    });
   });
 
   ipcMain.handle('update-capital', async (_e, id, cap = {}) => {
     const cid = Number(id);
     const amt = Number(cap.amount || 0);
+    if (!Number.isFinite(amt) || amt <= 0.009) throw new Error('يرجى إدخال مبلغ رأس مال صحيح أكبر من الصفر');
     await dbRun(
       'UPDATE capital_injections SET category = ?, description = ?, amount = ?, date = COALESCE(?, date) WHERE id = ?',
       [cap.category || 'إيداع رأس مال', cap.description || null, amt, cap.date || null, cid]
@@ -2390,11 +2614,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle('delete-expense', async (_e, id) => {
     if (await isLanClientMode()) return lanClient.deleteExpense(id);
-    await dbRun("DELETE FROM caisse_transactions WHERE reference_id = ? AND type = 'expense'", [Number(id)]);
-    await dbRun('DELETE FROM expenses WHERE id = ?', [Number(id)]);
-    return { success: true };
+    const eid = Number(id);
+    return await db.withTransaction(async () => {
+      /* [V21_ISOLATED_EXPENSE_CAISSE_DELETE] */
+      await dbRun("DELETE FROM caisse_transactions WHERE reference_id = ? AND type = 'expense' AND COALESCE(category, '') NOT IN ('suppliers', 'purchases')", [eid]);
+      await dbRun('DELETE FROM expenses WHERE id = ?', [eid]);
+      return { success: true };
+    });
   });
-
   ipcMain.handle('get-capital', async () => {
     if (await isLanClientMode()) return lanClient.getCapital();
     return await dbAll('SELECT * FROM capital_injections WHERE deleted_at IS NULL ORDER BY id DESC');
@@ -2402,6 +2629,8 @@ function registerIpcHandlers() {
 
   ipcMain.handle('add-capital', async (_e, cap = {}) => {
     if (await isLanClientMode()) return lanClient.addCapital(cap);
+    const capAmt = Number(cap.amount || 0);
+    if (!Number.isFinite(capAmt) || capAmt <= 0.009) throw new Error('يرجى إدخال مبلغ رأس مال صحيح أكبر من الصفر');
     const ins = await dbRun(
       'INSERT INTO capital_injections (category, description, amount, date) VALUES (?, ?, ?, ?)',
       [
@@ -2499,11 +2728,13 @@ function registerIpcHandlers() {
 
   ipcMain.handle('delete-bundle', async (_e, id) => {
     if (await isLanClientMode()) return lanClient.deleteBundle(id);
-    await dbRun('DELETE FROM bundle_items WHERE bundle_id = ?', [Number(id)]);
-    await dbRun('DELETE FROM product_bundles WHERE id = ?', [Number(id)]);
-    return { success: true };
+    const bid = Number(id);
+    return await db.withTransaction(async () => {
+      await dbRun('DELETE FROM bundle_items WHERE bundle_id = ?', [bid]);
+      await dbRun('DELETE FROM product_bundles WHERE id = ?', [bid]);
+      return { success: true };
+    });
   });
-
   ipcMain.handle('set-bundle-active', async (_e, id, isActive) => {
     if (await isLanClientMode()) return lanClient.setBundleActive(id, isActive);
     await dbRun('UPDATE product_bundles SET is_active = ? WHERE id = ?', [isActive ? 1 : 0, Number(id)]);
@@ -2657,7 +2888,37 @@ function registerIpcHandlers() {
       await dbRun('UPDATE customer_order_items SET product_id = ? WHERE product_id = ?', [keepId, removeId]);
       await dbRun('UPDATE bundle_items SET product_id = ? WHERE product_id = ?', [keepId, removeId]);
       await dbRun('UPDATE product_barcodes SET product_id = ? WHERE product_id = ?', [keepId, removeId]);
+      /* [V24_FULL_15_TABLE_PRODUCT_MERGE] */
+      await dbRun('UPDATE product_prices SET product_id = ? WHERE product_id = ?', [keepId, removeId]).catch(() => {});
+      await dbRun('UPDATE product_promotions SET product_id = ? WHERE product_id = ?', [keepId, removeId]).catch(() => {});
+      await dbRun('UPDATE product_serials SET product_id = ? WHERE product_id = ?', [keepId, removeId]).catch(() => {});
+      await dbRun('UPDATE stock_debt SET product_id = ? WHERE product_id = ?', [keepId, removeId]).catch(() => {});
+      await dbRun('UPDATE supplier_return_items SET product_id = ? WHERE product_id = ?', [keepId, removeId]).catch(() => {});
+      await dbRun('UPDATE inventory_reservations SET product_id = ? WHERE product_id = ?', [keepId, removeId]).catch(() => {});
+      await dbRun('UPDATE stocktake_items SET product_id = ? WHERE product_id = ?', [keepId, removeId]).catch(() => {});
+      await dbRun('UPDATE bom_recipes SET product_id = ? WHERE product_id = ?', [keepId, removeId]).catch(() => {});
+      await dbRun('UPDATE bom_components SET component_product_id = ? WHERE component_product_id = ?', [keepId, removeId]).catch(() => {});
+      await dbRun('UPDATE production_orders SET product_id = ? WHERE product_id = ?', [keepId, removeId]).catch(() => {});
+      await dbRun('UPDATE production_order_items SET component_product_id = ? WHERE component_product_id = ?', [keepId, removeId]).catch(() => {});
+      /* [V25_MERGE_VARIANTS_AND_MOVEMENTS] */
+      await dbRun('UPDATE product_option_groups SET product_id = ? WHERE product_id = ?', [keepId, removeId]).catch(() => {});
+      await dbRun('UPDATE product_variants SET product_id = ? WHERE product_id = ?', [keepId, removeId]).catch(() => {});
+      /* [V26_INHERIT_PRIMARY_BARCODE_ON_MERGE] */
+      const keepProd = await dbGet('SELECT uuid, barcode FROM products WHERE id = ?', [keepId]).catch(() => null);
+      const remProd = await dbGet('SELECT uuid, barcode FROM products WHERE id = ?', [removeId]).catch(() => null);
+      if (keepProd && keepProd.uuid && remProd && remProd.uuid) {
+        await dbRun('UPDATE stock_movements SET product_uuid = ? WHERE product_uuid = ?', [keepProd.uuid, remProd.uuid]).catch(() => {});
+      }
+      const oldPrimaryBc = remProd && remProd.barcode ? String(remProd.barcode).trim() : '';
       await dbRun('DELETE FROM products WHERE id = ?', [removeId]);
+      if (oldPrimaryBc && (!keepProd || keepProd.barcode !== oldPrimaryBc)) {
+        await productWriter.freeTombstonedProductBarcode(oldPrimaryBc);
+        await dbRun(
+          'INSERT OR IGNORE INTO product_barcodes (product_id, barcode, price_label) VALUES (?, ?, NULL)',
+          [keepId, oldPrimaryBc]
+        ).catch(() => {});
+      }
+      db.tombstoneOrphans();
       return { success: true, keepId, removeId };
     });
   });
@@ -2737,7 +2998,7 @@ function registerIpcHandlers() {
       `SELECT s.*, p.customer_id, c.name AS customer_name, c.phone AS customer_phone
        FROM installment_schedules s
        INNER JOIN installment_plans p ON p.id = s.plan_id AND p.deleted_at IS NULL
-       LEFT JOIN customers c ON c.id = p.customer_id
+       INNER JOIN customers c ON c.id = p.customer_id AND c.deleted_at IS NULL
        WHERE s.deleted_at IS NULL AND s.status <> 'paid'
          AND date(s.due_date) <= date('now', '+7 days')
        ORDER BY date(s.due_date) ASC LIMIT 50`
@@ -2929,7 +3190,7 @@ function registerIpcHandlers() {
     const payments = await dbAll(
       `SELECT ip.*, pi.invoice_number
        FROM invoice_payments ip
-       LEFT JOIN purchase_invoices pi ON pi.id = ip.invoice_id
+       LEFT JOIN purchase_invoices pi ON pi.id = ip.invoice_id AND pi.deleted_at IS NULL
        WHERE (ip.supplier_id = ? OR pi.supplier_id = ?) AND ip.deleted_at IS NULL
        ORDER BY ip.id DESC`,
       [sid, sid]
@@ -2990,7 +3251,7 @@ function registerIpcHandlers() {
     const plans = await dbAll(
       `SELECT ip.*, c.name AS customer_name, c.phone AS customer_phone
        FROM installment_plans ip
-       LEFT JOIN customers c ON c.id = ip.customer_id
+       LEFT JOIN customers c ON c.id = ip.customer_id AND c.deleted_at IS NULL
        WHERE ${conds.join(' AND ')}
        ORDER BY ip.id DESC`,
       params
@@ -3009,15 +3270,29 @@ function registerIpcHandlers() {
     return await createInstallmentPlanRecord(payload);
   });
 
-  ipcMain.handle('pay-installment-schedule', async (_e, scheduleId, amount) => {
+  ipcMain.handle('pay-installment-schedule', async (_e, arg1, arg2, arg3 = {}) => {
+    /* [V22_DUAL_SIG_INSTALLMENT] */
+    const isObj = typeof arg1 === 'object' && arg1 !== null;
+    const scheduleId = isObj ? (arg1.scheduleId ?? arg1.schedule_id ?? arg1.id) : arg1;
+    const amount = isObj ? arg1.amount : arg2;
+    const meta = isObj ? arg1 : (arg3 || {});
     if (await isLanClientMode()) return lanClient.payInstallmentSchedule(scheduleId, amount);
     const sid = Number(scheduleId);
     const sched = await dbGet('SELECT * FROM installment_schedules WHERE id = ?', [sid]);
     if (!sched) throw new Error('القسط المطلوب غير موجود');
-    const payAmt = amount !== undefined ? Number(amount) : Number(sched.amount) - Number(sched.paid_amount || 0);
+    /* [V27_INSTALLMENT_SCHEDULE_OVERPAYMENT_CAP] */
+    const maxSchedDue = Number(Math.max(0, Number(sched.amount || 0) - Number(sched.paid_amount || 0)).toFixed(2));
+    if (maxSchedDue <= 0.009) throw new Error('هذا القسط مسدد بالكامل مسبقاً');
+    const rawPayAmt = amount !== undefined ? Number(amount) : maxSchedDue;
+    if (!Number.isFinite(rawPayAmt) || rawPayAmt <= 0.009) throw new Error('يرجى إدخال مبلغ قسط صحيح أكبر من الصفر');
+    const payAmt = Number(Math.min(rawPayAmt, maxSchedDue).toFixed(2));
     const newPaid = Number((Number(sched.paid_amount || 0) + payAmt).toFixed(2));
     const newStatus = newPaid >= Number(sched.amount) - 0.01 ? 'paid' : 'partial';
     const nowIso = new Date().toISOString();
+
+    /* [V18_ATOMIC_INSTALLMENT_TILL_AND_DEBT_SYNC] */
+    const plan = await dbGet('SELECT * FROM installment_plans WHERE id = ?', [sched.plan_id]);
+    const receiptNum = await generateNextDocNumber('payment_receipt');
 
     return await db.withTransaction(async () => {
       await dbRun(
@@ -3035,7 +3310,62 @@ function registerIpcHandlers() {
       if (Number((pendingRow && pendingRow.c) || 0) === 0) {
         await dbRun("UPDATE installment_plans SET status = 'completed' WHERE id = ?", [sched.plan_id]);
       }
-      return { success: true, scheduleId: sid, status: newStatus };
+
+      if (plan && payAmt > 0) {
+        /* [V19_INSTALLMENT_FALLBACK_DEBT_ALLOCATION] */
+        if (plan.sale_id) {
+          await dbRun(
+            'UPDATE sales SET paid_amount = MIN(total, COALESCE(paid_amount, 0) + ?) WHERE id = ?',
+            [payAmt, Number(plan.sale_id)]
+          );
+        } else if (plan.customer_id) {
+          let remAlloc = payAmt;
+          const cust = await dbGet('SELECT * FROM customers WHERE id = ?', [Number(plan.customer_id)]);
+          if (cust) {
+            const initRem = Math.max(0, Number(cust.initial_debt || 0) - Number(cust.initial_debt_paid || 0));
+            if (initRem > 0 && remAlloc > 0) {
+              const takeInit = Math.min(initRem, remAlloc);
+              await dbRun('UPDATE customers SET initial_debt_paid = COALESCE(initial_debt_paid, 0) + ? WHERE id = ?', [takeInit, cust.id]);
+              remAlloc = Number((remAlloc - takeInit).toFixed(2));
+            }
+          }
+          if (remAlloc > 0.009) {
+            const unpaidSales = await dbAll(
+              'SELECT id, total, paid_amount FROM sales WHERE customer_id = ? AND (total - paid_amount) > 0.009 AND deleted_at IS NULL ORDER BY sale_date ASC, id ASC',
+              [Number(plan.customer_id)]
+            );
+            for (const s of unpaidSales) {
+              if (remAlloc <= 0.009) break;
+              const due = Number((Number(s.total) - Number(s.paid_amount)).toFixed(2));
+              const apply = Math.min(due, remAlloc);
+              await dbRun('UPDATE sales SET paid_amount = paid_amount + ? WHERE id = ?', [apply, s.id]);
+              remAlloc = Number((remAlloc - apply).toFixed(2));
+            }
+          }
+        }
+        const payIns = await dbRun(
+          `INSERT INTO sale_payments (sale_id, customer_id, amount, date, payment_method, receipt_number, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            plan.sale_id || null,
+            plan.customer_id || null,
+            payAmt,
+            nowIso,
+            meta.payment_method || 'cash',
+            receiptNum,
+            `تسديد القسط رقم #${sched.installment_num || sid}`
+          ]
+        );
+        const activeSess = await tillLedger.resolveOpenSession(db, null, meta.userId);
+        if (activeSess && (!meta.payment_method || meta.payment_method === 'cash')) {
+          await dbRun(
+            `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
+             VALUES (?, 'debt_payment', ?, 'installments', ?, ?)`,
+            [activeSess, payAmt, `قبض قسط شهري #${sched.installment_num || sid}`, payIns.lastID]
+          );
+        }
+      }
+      return { success: true, scheduleId: sid, status: newStatus, receiptNumber: receiptNum };
     });
   });
 
@@ -3234,6 +3564,7 @@ function registerIpcHandlers() {
     }
     try { if (fs.existsSync(walFile)) fs.unlinkSync(walFile); } catch (_) {}
     try { if (fs.existsSync(shmFile)) fs.unlinkSync(shmFile); } catch (_) {}
+    await dbRun('PRAGMA shrink_memory').catch(() => {});
     return { success: true };
   });
 
@@ -3249,6 +3580,8 @@ function registerIpcHandlers() {
       cost_price: p.cost_price || 0,
       selling_price: p.selling_price || 0,
       wholesale_price: p.wholesale_price || '',
+      wholesale_qty: p.wholesale_qty || '',
+      wholesale_unit: p.wholesale_unit || 'كرتونة',
       stock: p.stock || 0,
       min_stock: p.min_stock || 5,
       unit: p.unit || 'قطعة',
@@ -3304,8 +3637,9 @@ function registerIpcHandlers() {
         const dzStmt = db._rawPrepare(
           'INSERT OR IGNORE INTO dz_product_dictionary (barcode, name, category, brand, unit, suggested_price) VALUES (?, ?, ?, ?, ?, ?)'
         );
+        /* [V18_IMPORT_EXCEL_CARTON_SYNC] */
         const prodStmt = db._rawPrepare(
-          'INSERT OR IGNORE INTO products (barcode, name, category, family, supplier, unit, min_stock) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          'INSERT OR IGNORE INTO products (barcode, name, category, family, supplier, unit, min_stock, wholesale_price, wholesale_qty, wholesale_unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
         const batchStmt = db._rawPrepare(
           'INSERT INTO inventory_batches (product_id, stock, cost_price, selling_price, wholesale_price, expiry_date) VALUES (?, ?, ?, ?, ?, ?)'
@@ -3329,6 +3663,8 @@ function registerIpcHandlers() {
           const cost = Math.max(0, Number(r.cost_price ?? r.Cost ?? r['سعر الشراء'] ?? 0) || 0);
           const sell = Math.max(0, Number(r.selling_price ?? r.Price ?? r['سعر البيع'] ?? 0) || 0);
           const wsPrice = r.wholesale_price !== undefined && r.wholesale_price !== '' ? Number(r.wholesale_price) : null;
+          const wsQty = Math.max(0, Number(r.wholesale_qty ?? r.pack_qty ?? r['عدد الحبات في الكرتونة'] ?? 0) || 0);
+          const wsUnit = String(r.wholesale_unit || r.pack_unit || r['وحدة الجملة'] || 'كرتونة').trim() || 'كرتونة';
           const expiry = r.expiry_date ? String(r.expiry_date).trim() : null;
 
           if (barcode && barcode.length >= 6) {
@@ -3343,6 +3679,13 @@ function registerIpcHandlers() {
 
           const existingId = barcode ? barcodeToIdMap.get(barcode) : null;
           if (existingId) {
+            /* [V19_EXCEL_EXISTING_PRODUCT_PACK_UPDATE] */
+            if (wsPrice !== null || wsQty > 0) {
+              db._rawRun(
+                'UPDATE products SET wholesale_price = COALESCE(?, wholesale_price), wholesale_qty = CASE WHEN ? > 0 THEN ? ELSE wholesale_qty END, wholesale_unit = COALESCE(?, wholesale_unit) WHERE id = ?',
+                [wsPrice, wsQty, wsQty, wsUnit, existingId]
+              );
+            }
             if (stockQty > 0 || cost > 0 || sell > 0) {
               batchStmt.run(existingId, stockQty, cost, sell, wsPrice, expiry);
               updated++;
@@ -3351,7 +3694,7 @@ function registerIpcHandlers() {
             }
           } else {
             await new Promise((resolve) => {
-              prodStmt.run([barcode, name, category, family, supplier, unit, minStock], function (err) {
+              prodStmt.run([barcode, name, category, family, supplier, unit, minStock, wsPrice || 0, wsQty, wsUnit], function (err) {
                 const newId = !err && this && this.lastID ? Number(this.lastID) : 0;
                 if (newId > 0) {
                   if (barcode) barcodeToIdMap.set(barcode, newId);
@@ -4044,6 +4387,7 @@ function registerIpcHandlers() {
 
 async function autoSeedDzCsvIfFound() {
   try {
+    if (db && db._dzCsvSeededOrRunning) return;
     const countRow = await dbGet('SELECT COUNT(*) AS c FROM dz_product_dictionary');
     if (Number((countRow && countRow.c) || 0) > 500) return;
 
@@ -4095,7 +4439,6 @@ async function autoSeedDzCsvIfFound() {
   }
 }
 
-try { app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,AutofillEnableAccountWalletStorage'); } catch (_) {}
 try { app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,AutofillEnableAccountWalletStorage'); } catch (_) {}
 app.whenReady().then(async () => {
   await autoSeedDzCsvIfFound();

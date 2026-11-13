@@ -298,7 +298,7 @@
                 <button onclick="App.openCustomerModal()" class="p-2 rounded-xl bg-emerald-600/15 text-emerald-600" title="زبون جديد">
                   <span class="material-symbols-rounded icon-sm">person_add</span>
                 </button>
-                <select id="posPriceTierSelect" onchange="App.setCartPriceTier(this.value)" class="w-28 px-2 py-2 rounded-xl text-xs font-bold">
+                <select id="posPriceTierSelect" onchange="App.setCartPriceTier('retail')" class="hidden w-28 px-2 py-2 rounded-xl text-xs font-bold">
                   <option value="retail">سعر التجزئة</option>
                   <option value="wholesale">سعر الجملة</option>
                 </select>
@@ -656,12 +656,19 @@
         <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div><label class="block font-bold mb-1">سعر التكلفة (الشراء)</label><input id="prodCostInput" type="number" step="any" value="0" oninput="App.onProdCostOrMarkupInput()" class="w-full px-3 py-2 rounded-xl font-mono font-bold"></div>
           <div><label class="block font-bold mb-1 text-emerald-600">هامش الربح (% Markup)</label><input id="prodMarkupInput" type="number" step="any" placeholder="20%" oninput="App.onProdMarkupChange(this.value)" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-emerald-600"></div>
-          <div><label class="block font-bold mb-1">سعر البيع (التجزئة)</label><input id="prodPriceInput" type="number" step="any" value="0" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-blue-600"></div>
-          <div><label class="block font-bold mb-1">سعر الجملة</label><input id="prodWholesaleInput" type="number" step="any" class="w-full px-3 py-2 rounded-xl font-mono"></div>
-          <div><label class="block font-bold mb-1">اسم وحدة الجملة (كرتونة/صندوق)</label><input id="prodWholesaleUnitInput" type="text" placeholder="كرتونة" class="w-full px-3 py-2 rounded-xl"></div>
-          <div><label class="block font-bold mb-1">عدد القطع في الكرتونة</label><input id="prodWholesaleQtyInput" type="number" placeholder="12" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+          <div><label class="block font-bold mb-1">سعر البيع بالحبة / الوحدة</label><input id="prodPriceInput" type="number" step="any" value="0" class="w-full px-3 py-2 rounded-xl font-mono font-bold text-blue-600"></div>
+          <div class="col-span-3 mt-1 p-2.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
+            <label for="prodIsRegulatedInput" class="flex items-center gap-2 cursor-pointer text-xs font-black text-emerald-900 dark:text-emerald-200 select-none">
+              <input id="prodIsRegulatedInput" type="checkbox" class="w-4 h-4 rounded accent-emerald-600">
+              <span>🇩🇿 سلعة مقننة السعر / واسعة الاستهلاك (حليب، سميد، زيت، سكر، خبز... — يُعفى رأسمالها من ضريبة 5% في G12)</span>
+            </label>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-600 text-white font-bold">إعفاء G12</span>
+          </div>
+          <div><label class="block font-bold mb-1">سعر الباكي / الكرتونة</label><input id="prodWholesaleInput" type="number" step="any" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+          <div><label class="block font-bold mb-1">نوع العبوة (باكي / فاردو / كرتونة)</label><input id="prodWholesaleUnitInput" type="text" placeholder="كرتونة" class="w-full px-3 py-2 rounded-xl"></div>
+          <div><label class="block font-bold mb-1">عدد الحبات في الباكي / الكرتونة</label><input id="prodWholesaleQtyInput" type="number" placeholder="12" class="w-full px-3 py-2 rounded-xl font-mono"></div>
         </div>
-        <div class="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
+        <div id="prodExtraPricesSectionBox" class="hidden pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
           <div class="flex items-center justify-between">
             <span class="font-bold">مستويات أسعار إضافية (نصف جملة، خاص، VIP):</span>
             <button onclick="App.addExtraPriceRow()" class="px-3 py-1 bg-blue-600/10 text-blue-600 rounded-lg font-bold">+ إضافة سعر</button>
@@ -758,7 +765,7 @@
         <input id="newBatchStock" type="number" step="any" placeholder="الكمية *" class="px-2.5 py-2 rounded-lg font-mono font-bold">
         <input id="newBatchCost" type="number" step="any" placeholder="سعر الشراء" class="px-2.5 py-2 rounded-lg font-mono">
         <input id="newBatchSell" type="number" step="any" placeholder="سعر البيع" class="px-2.5 py-2 rounded-lg font-mono font-bold">
-        <input id="newBatchWholesale" type="number" step="any" placeholder="سعر الجملة" class="px-2.5 py-2 rounded-lg font-mono">
+        <input id="newBatchWholesale" type="number" step="any" placeholder="سعر الباكي/الكرتونة" class="px-2.5 py-2 rounded-lg font-mono">
         <input id="newBatchExpiry" type="date" class="px-2.5 py-2 rounded-lg font-mono">
         <button onclick="App.submitNewBatchFromModal()" class="bg-emerald-600 text-white rounded-lg font-bold">+ إضافة دفعة</button>
       </div>
@@ -1005,21 +1012,25 @@
       <input id="custIdInput" type="hidden">
       <div class="grid grid-cols-2 gap-3 text-xs">
         <div class="col-span-2"><label class="block font-bold mb-1">اسم الزبون / المؤسسة *</label><input id="custNameInput" type="text" class="w-full px-3 py-2 rounded-xl font-bold"></div>
-        <div><label class="block font-bold mb-1">رقم الهاتف (لدعم WhatsApp)</label><input id="custPhoneInput" type="text" placeholder="0550..." class="w-full px-3 py-2 rounded-xl font-mono"></div>
-        <div>
+        <div class="col-span-2"><label class="block font-bold mb-1">رقم الهاتف (لدعم WhatsApp)</label><input id="custPhoneInput" type="text" placeholder="0550..." class="w-full px-3 py-2 rounded-xl font-mono"></div>
+        <div class="hidden">
           <label class="block font-bold mb-1">فئة التسعير الافتراضية</label>
           <select id="custPriceTierInput" class="w-full px-3 py-2 rounded-xl font-bold">
-            <option value="retail">سعر التجزئة (Détail)</option>
-            <option value="wholesale">سعر الجملة (Gros)</option>
+            <option value="retail" selected>سعر البيع بالحبة / الوحدة</option>
           </select>
         </div>
         <div><label class="block font-bold mb-1">الدين الأولي</label><input id="custInitDebtInput" type="number" step="any" value="0" class="w-full px-3 py-2 rounded-xl font-mono"></div>
         <div><label class="block font-bold mb-1">سقف الدين المسموح (Credit Limit)</label><input id="custCreditLimitInput" type="number" step="any" value="0" class="w-full px-3 py-2 rounded-xl font-mono"></div>
         <div class="col-span-2"><label class="block font-bold mb-1">العنوان</label><input id="custAddressInput" type="text" class="w-full px-3 py-2 rounded-xl"></div>
-        <div><label class="block font-bold mb-1">السجل التجاري (RC)</label><input id="custRcInput" type="text" class="w-full px-3 py-2 rounded-xl font-mono"></div>
-        <div><label class="block font-bold mb-1">الرقم الجبائي (NIF)</label><input id="custNifInput" type="text" class="w-full px-3 py-2 rounded-xl font-mono"></div>
-        <div><label class="block font-bold mb-1">مادة الضريبة (AI)</label><input id="custAiInput" type="text" class="w-full px-3 py-2 rounded-xl font-mono"></div>
-        <div><label class="block font-bold mb-1">الرقم الإحصائي (NIS)</label><input id="custNisInput" type="text" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+        <details class="col-span-2 rounded-xl border border-slate-200 dark:border-slate-700 p-2.5 bg-slate-50/60 dark:bg-slate-800/40">
+          <summary class="cursor-pointer font-bold text-slate-600 dark:text-slate-300 select-none">بيانات الفوترة الرسمية (اختياري للمؤسسات)</summary>
+          <div class="grid grid-cols-2 gap-3 pt-2.5 mt-2 border-t border-slate-200 dark:border-slate-700">
+            <div><label class="block font-bold mb-1">السجل التجاري (RC)</label><input id="custRcInput" type="text" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+            <div><label class="block font-bold mb-1">الرقم الجبائي (NIF)</label><input id="custNifInput" type="text" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+            <div><label class="block font-bold mb-1">مادة الضريبة (AI)</label><input id="custAiInput" type="text" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+            <div><label class="block font-bold mb-1">الرقم الإحصائي (NIS)</label><input id="custNisInput" type="text" class="w-full px-3 py-2 rounded-xl font-mono"></div>
+          </div>
+        </details>
       </div>
       <div class="flex justify-end gap-2 pt-3">
         <button onclick="App.closeModal('customerModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء</button>
@@ -1554,7 +1565,7 @@
   <div id="posUnitChoiceModal" class="modal-overlay">
     <div class="modal-content w-full max-w-md p-6 space-y-4">
       <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
-        <h3 id="posUnitChoiceTitle" class="text-lg font-black"><span id="unitChoiceModalTitle">اختيار الوحدة ومستوى السعر (Détail / Gros)</span></h3>
+        <h3 id="posUnitChoiceTitle" class="text-lg font-black"><span id="unitChoiceModalTitle">اختيار طريقة البيع (بالحبة أو بالباكي / الكرتونة)</span></h3>
         <button onclick="App.closeModal('posUnitChoiceModal')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>
       </div>
       <div id="posUnitChoiceBody" class="space-y-2 text-xs"><div id="posUnitChoiceModalBody" class="space-y-2 text-xs"></div></div>
@@ -1766,9 +1777,9 @@
         <div>
           <label class="block font-bold mb-1">نوع الأسعار المعروضة</label>
           <select id="priceListModeSelect" class="w-full px-3 py-2 rounded-xl font-bold">
-            <option value="retail">أسعار البيع بالتجزئة (Détail)</option>
-            <option value="wholesale">أسعار البيع بالجملة (Gros)</option>
-            <option value="both">عرض التجزئة والجملة معاً</option>
+            <option value="retail">أسعار البيع بالحبة / الوحدة</option>
+            <option value="wholesale">أسعار البيع بالباكي / الكرتونة</option>
+            <option value="both">عرض سعر الحبة وسعر الباكي معاً</option>
           </select>
         </div>
       </div>
@@ -1820,7 +1831,7 @@
       <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
         <div class="flex items-center gap-2">
           <span class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-black text-xs">🇩🇿 الجباية الجزائرية</span>
-          <h3 class="text-lg font-black">التصريح الجبائي السنوي للزبائن (État 104) وملخص الضرائب الشهري (G50)</h3>
+          <h3 class="text-lg font-black">التصريح الجبائي لتجارة التجزئة (IFU G12 / G50) وكشف مبيعات الفواتير</h3>
         </div>
         <button onclick="App.closeModal('algerianFiscalModal')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>
       </div>

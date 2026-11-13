@@ -253,7 +253,7 @@ async function enrichProductsFull(products = []) {
       wholesale_price:
         activeBatch.wholesale_price !== undefined && activeBatch.wholesale_price !== null
           ? Number(activeBatch.wholesale_price)
-          : null,
+          : (prod.wholesale_price !== undefined && prod.wholesale_price !== null && prod.wholesale_price !== '' ? Number(prod.wholesale_price) : null),
       expiry_date: activeBatch.expiry_date || null,
       location: activeBatch.location || null,
       batches,
@@ -410,6 +410,7 @@ async function executeSaleTransaction(saleData = {}) {
 
     if (editSaleId) {
       const oldItems = await db.dbAll('SELECT * FROM sale_items WHERE sale_id = ? AND deleted_at IS NULL', [editSaleId]);
+      /* [V24_EDIT_SALE_RESTORE_SERIAL_AND_PROMO] */
       for (const oldIt of oldItems) {
         if (oldIt.batch_id && Number(oldIt.sold_without_stock || 0) === 0) {
           await batchAlloc.restoreBatch(db, {
@@ -418,9 +419,62 @@ async function executeSaleTransaction(saleData = {}) {
             soldWithoutStock: oldIt.sold_without_stock
           });
         }
+        /* [V25_LAN_RESTORE_BUNDLE_COMPONENTS] */
+        if (!oldIt.product_id && !oldIt.batch_id && oldIt.custom_product_name && Number(oldIt.quantity || 0) > 0) {
+          const bRow = await db.dbGet('SELECT id FROM product_bundles WHERE name = ? AND deleted_at IS NULL LIMIT 1', [String(oldIt.custom_product_name).trim()]).catch(() => null);
+          if (bRow && bRow.id) {
+            const bComps = await db.dbAll('SELECT product_id, quantity FROM bundle_items WHERE bundle_id = ? AND deleted_at IS NULL', [bRow.id]).catch(() => []);
+            for (const bc of bComps) {
+              const restoreQty = Number((Number(bc.quantity || 1) * Number(oldIt.quantity || 1)).toFixed(6));
+              const targetBatch = await db.dbGet('SELECT id FROM inventory_batches WHERE product_id = ? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1', [bc.product_id]).catch(() => null);
+              if (targetBatch && targetBatch.id && restoreQty > 0) {
+                await batchAlloc.restoreBatch(db, { batchId: targetBatch.id, quantity: restoreQty, soldWithoutStock: 0 });
+              }
+            }
+          }
+        }
+        if (oldIt.applied_promotion_id && Number(oldIt.quantity || 0) > 0) {
+          await db.dbRun(
+            'UPDATE product_promotions SET used_qty = MAX(0, COALESCE(used_qty, 0) - ?) WHERE id = ?',
+            [Number(oldIt.quantity || 0), Number(oldIt.applied_promotion_id)]
+          ).catch(() => {});
+        }
       }
+      await db.dbRun(
+        "UPDATE product_serials SET status = 'in_stock', sale_id = NULL WHERE sale_id = ?",
+        [editSaleId]
+      ).catch(() => {});
       await db.dbRun('DELETE FROM stock_debt WHERE sale_id = ?', [editSaleId]);
       await db.dbRun('DELETE FROM sale_items WHERE sale_id = ?', [editSaleId]);
+      /* [V21_EDIT_SALE_LOYALTY_AND_PAYMENTS_SYNC] */
+      const prevSaleRow = await db.dbGet('SELECT customer_id FROM sales WHERE id = ?', [editSaleId]).catch(() => null);
+      const prevCustId = prevSaleRow && prevSaleRow.customer_id ? Number(prevSaleRow.customer_id) : customerId;
+      if (prevCustId) {
+        const lRow = await db.dbGet(
+          'SELECT COALESCE(SUM(points_delta), 0) AS net_pts FROM loyalty_transactions WHERE sale_id = ? AND deleted_at IS NULL',
+          [editSaleId]
+        ).catch(() => null);
+        const netPts = Number((lRow && lRow.net_pts) || 0);
+        if (Math.abs(netPts) > 0.001) {
+          await db.dbRun(
+            'UPDATE customers SET loyalty_points = MAX(0, COALESCE(loyalty_points, 0) - ?) WHERE id = ?',
+            [netPts, prevCustId]
+          ).catch(() => {});
+        }
+        await db.dbRun('DELETE FROM loyalty_transactions WHERE sale_id = ?', [editSaleId]).catch(() => {});
+      }
+      /* [V23_EDIT_SALE_CLEAN_DEBT_TILL] */
+      await db.dbRun(
+        "DELETE FROM caisse_transactions WHERE type = 'debt_payment' AND reference_id IN (SELECT id FROM sale_payments WHERE sale_id = ?)",
+        [editSaleId]
+      ).catch(() => {});
+      await db.dbRun('DELETE FROM sale_payments WHERE sale_id = ?', [editSaleId]).catch(() => {});
+      if (Math.abs(paidAmount) > 0.009) {
+        await db.dbRun(
+          'INSERT INTO sale_payments (sale_id, customer_id, amount, date, payment_method) VALUES (?, ?, ?, ?, ?)',
+          [editSaleId, customerId, paidAmount, saleDate, paymentMethod]
+        ).catch(() => {});
+      }
 
       await db.dbRun(
         `UPDATE sales
@@ -704,7 +758,7 @@ async function executeSaleTransaction(saleData = {}) {
     }
 
     const redeemedPtsInSale = Math.max(0, Number(saleData.redeemed_loyalty_points || 0));
-    if (customerId && redeemedPtsInSale > 0 && !editSaleId) {
+    if (customerId && redeemedPtsInSale > 0) {
       await db.dbRun(
         'UPDATE customers SET loyalty_points = MAX(0, COALESCE(loyalty_points, 0) - ?) WHERE id = ?',
         [redeemedPtsInSale, customerId]
@@ -713,7 +767,7 @@ async function executeSaleTransaction(saleData = {}) {
         'INSERT INTO loyalty_transactions (customer_id, sale_id, points_delta, reason) VALUES (?, ?, ?, ?)',
         [customerId, saleId, -redeemedPtsInSale, `استعمال نقاط ولاء للخصم في فاتورة #${docNumber || saleId}`]
       );
-    } else if (customerId && total > 0 && !editSaleId) {
+    } else if (customerId && total > 0) {
       const loyaltyEnabled = (await db.getSetting('loyalty_enabled', 'true')) === 'true';
       if (loyaltyEnabled) {
         const ptsPer100 = Number(saleData.loyalty_points_per_100_dzd ?? (await db.getSetting('loyalty_points_per_100_dzd', '1'))) || 1;
@@ -1002,7 +1056,7 @@ app.use(express.json({ limit: '50mb' }));
         `SELECT s.*, p.customer_id, c.name AS customer_name, c.phone AS customer_phone
          FROM installment_schedules s
          INNER JOIN installment_plans p ON p.id = s.plan_id AND p.deleted_at IS NULL
-         LEFT JOIN customers c ON c.id = p.customer_id
+         INNER JOIN customers c ON c.id = p.customer_id AND c.deleted_at IS NULL
          WHERE s.deleted_at IS NULL AND s.status <> 'paid'
            AND date(s.due_date) <= date('now', '+7 days')
          ORDER BY date(s.due_date) ASC LIMIT 50`
@@ -1193,7 +1247,17 @@ app.use(express.json({ limit: '50mb' }));
           ]
         );
         const productId = ins.lastID;
-
+        /* [V22_LAN_PRODUCT_PACK_SYNC] */
+        if (p.wholesale_price !== undefined || p.loyalty_multiplier !== undefined) {
+          await db.dbRun(
+            'UPDATE products SET wholesale_price = COALESCE(?, wholesale_price), loyalty_multiplier = COALESCE(?, loyalty_multiplier) WHERE id = ?',
+            [
+              p.wholesale_price !== undefined && p.wholesale_price !== '' ? Number(p.wholesale_price) : 0,
+              p.loyalty_multiplier !== undefined ? Number(p.loyalty_multiplier) : 1,
+              productId
+            ]
+          ).catch(() => {});
+        }
         await productWriter.insertExtraBarcodesAndPrices(
           productId,
           p.extra_barcodes || p.barcodes || [],
@@ -1271,6 +1335,16 @@ app.use(express.json({ limit: '50mb' }));
         if (p.extra_barcodes !== undefined || p.extra_prices !== undefined) {
           await productWriter.insertExtraBarcodesAndPrices(productId, p.extra_barcodes || [], p.extra_prices || []);
         }
+        if (p.wholesale_price !== undefined || p.loyalty_multiplier !== undefined) {
+          await db.dbRun(
+            'UPDATE products SET wholesale_price = COALESCE(?, wholesale_price), loyalty_multiplier = COALESCE(?, loyalty_multiplier) WHERE id = ?',
+            [
+              p.wholesale_price !== undefined && p.wholesale_price !== '' ? Number(p.wholesale_price) : null,
+              p.loyalty_multiplier !== undefined ? Number(p.loyalty_multiplier) : null,
+              productId
+            ]
+          ).catch(() => {});
+        }
       });
       res.json({ success: true, id: productId });
     } catch (err) {
@@ -1281,9 +1355,11 @@ app.use(express.json({ limit: '50mb' }));
   app.delete('/api/products/:id', async (req, res) => {
     try {
       const pid = Number(req.params.id);
-      await db.dbRun('DELETE FROM inventory_batches WHERE product_id = ?', [pid]);
-      await db.dbRun('DELETE FROM products WHERE id = ?', [pid]);
-      db.tombstoneOrphans();
+      await db.withTransaction(async () => {
+        await db.dbRun('DELETE FROM inventory_batches WHERE product_id = ?', [pid]);
+        await db.dbRun('DELETE FROM products WHERE id = ?', [pid]);
+        db.tombstoneOrphans();
+      });
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -1620,6 +1696,8 @@ app.use(express.json({ limit: '50mb' }));
       const sid = Number(req.params.id);
       const b = req.body || {};
       const amt = Number(b.amount || 0);
+      /* [V25_LAN_FINANCIAL_POSITIVE_GUARD] */
+      if (!Number.isFinite(amt) || amt <= 0.009) return res.status(400).json({ error: 'invalid_amount' });
       const payDate = b.date || new Date().toISOString();
       const sale = await db.dbGet('SELECT * FROM sales WHERE id = ?', [sid]);
       if (!sale) return res.status(404).json({ error: 'sale_not_found' });
@@ -1632,6 +1710,15 @@ app.use(express.json({ limit: '50mb' }));
           [sid, sale.customer_id, amt, payDate, b.payment_method || 'cash', b.reference || null, receiptNum, b.notes || null]
         );
         await db.dbRun('UPDATE sales SET paid_amount = COALESCE(paid_amount, 0) + ? WHERE id = ?', [amt, sid]);
+        /* [V21_LAN_PAYMENTS_TILL_SYNC] */
+        const activeSess = await tillLedger.resolveOpenSession(db, null, b.userId || b.user_id);
+        if (activeSess && (!b.payment_method || b.payment_method === 'cash') && amt > 0) {
+          await db.dbRun(
+            `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
+             VALUES (?, 'debt_payment', ?, 'sales', ?, ?)`,
+            [activeSess, amt, `تسديد فاتورة بيع #${sid}`, ins.lastID]
+          ).catch(() => {});
+        }
         return { success: true, paymentId: ins.lastID, receiptNumber: receiptNum };
       });
       res.json(out);
@@ -1643,19 +1730,63 @@ app.use(express.json({ limit: '50mb' }));
   app.delete('/api/sales/:id', async (req, res) => {
     try {
       const sid = Number(req.params.id);
+      const oldSale = await db.dbGet('SELECT * FROM sales WHERE id = ?', [sid]);
       const items = await db.dbAll('SELECT * FROM sale_items WHERE sale_id = ? AND deleted_at IS NULL', [sid]);
       await db.withTransaction(async () => {
+        /* [V20_LAN_REVERSE_LOYALTY_ON_DELETE_SALE] */
+        if (oldSale && oldSale.customer_id) {
+          const lRow = await db.dbGet('SELECT COALESCE(SUM(points_delta), 0) AS net_pts FROM loyalty_transactions WHERE sale_id = ? AND deleted_at IS NULL', [sid]).catch(() => null);
+          const netPts = Number((lRow && lRow.net_pts) || 0);
+          if (Math.abs(netPts) > 0.001) {
+            await db.dbRun('UPDATE customers SET loyalty_points = MAX(0, COALESCE(loyalty_points, 0) - ?) WHERE id = ?', [netPts, Number(oldSale.customer_id)]).catch(() => {});
+          }
+          await db.dbRun('DELETE FROM loyalty_transactions WHERE sale_id = ?', [sid]).catch(() => {});
+        }
+        /* [V24_LAN_RESTORE_BONUS_SERIAL_PROMO] */
         for (const it of items) {
           if (it.batch_id && Number(it.sold_without_stock || 0) === 0) {
             await batchAlloc.restoreBatch(db, {
               batchId: it.batch_id,
-              quantity: it.quantity,
+              quantity: Number(it.quantity || 0) + Number(it.bonus_qty || 0),
               soldWithoutStock: it.sold_without_stock
             });
           }
+          if (!it.product_id && !it.batch_id && it.custom_product_name && Number(it.quantity || 0) > 0) {
+            const bRow = await db.dbGet('SELECT id FROM product_bundles WHERE name = ? AND deleted_at IS NULL LIMIT 1', [String(it.custom_product_name).trim()]).catch(() => null);
+            if (bRow && bRow.id) {
+              const bComps = await db.dbAll('SELECT product_id, quantity FROM bundle_items WHERE bundle_id = ? AND deleted_at IS NULL', [bRow.id]).catch(() => []);
+              for (const bc of bComps) {
+                const restoreQty = Number((Number(bc.quantity || 1) * Number(it.quantity || 1)).toFixed(6));
+                const targetBatch = await db.dbGet('SELECT id FROM inventory_batches WHERE product_id = ? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1', [bc.product_id]).catch(() => null);
+                if (targetBatch && targetBatch.id && restoreQty > 0) {
+                  await batchAlloc.restoreBatch(db, { batchId: targetBatch.id, quantity: restoreQty, soldWithoutStock: 0 });
+                }
+              }
+            }
+          }
+          if (it.applied_promotion_id && Number(it.quantity || 0) > 0) {
+            await db.dbRun(
+              'UPDATE product_promotions SET used_qty = MAX(0, COALESCE(used_qty, 0) - ?) WHERE id = ?',
+              [Number(it.quantity || 0), Number(it.applied_promotion_id)]
+            ).catch(() => {});
+          }
         }
+        await db.dbRun(
+          "UPDATE product_serials SET status = 'in_stock', sale_id = NULL WHERE sale_id = ?",
+          [sid]
+        ).catch(() => {});
         await tillLedger.reverseSaleTill(db, sid);
         await db.dbRun('DELETE FROM stock_debt WHERE sale_id = ?', [sid]);
+        /* [V23_LAN_CASCADE_SALE_DELETE] */
+        await db.dbRun(
+          "DELETE FROM caisse_transactions WHERE type = 'debt_payment' AND reference_id IN (SELECT id FROM sale_payments WHERE sale_id = ?)",
+          [sid]
+        ).catch(() => {});
+        await db.dbRun(
+          'DELETE FROM installment_schedules WHERE plan_id IN (SELECT id FROM installment_plans WHERE sale_id = ?)',
+          [sid]
+        ).catch(() => {});
+        await db.dbRun('DELETE FROM installment_plans WHERE sale_id = ?', [sid]).catch(() => {});
         await db.dbRun('DELETE FROM sale_payments WHERE sale_id = ?', [sid]);
         await db.dbRun('DELETE FROM sale_items WHERE sale_id = ?', [sid]);
         await db.dbRun('DELETE FROM sales WHERE id = ?', [sid]);
@@ -1672,10 +1803,20 @@ app.use(express.json({ limit: '50mb' }));
       const payload = req.body || {};
       const creditNoteNumber = payload.creditNoteNumber || (await generateNextDocNumber('avoir'));
       const nowIso = new Date().toISOString();
+      /* [V23_LAN_CREDIT_NOTE_AUDIT] */
       await db.dbRun(
         'UPDATE sales SET credit_note_number = ?, credit_note_issued_at = ?, credit_note_reason = ? WHERE id = ?',
         [creditNoteNumber, nowIso, payload.reason || null, sid]
       );
+      await recordAuditLog({
+        user_id: payload.user_id || payload.userId || null,
+        user_name: payload.user_name || payload.userName || 'Admin',
+        action_type: 'issue_credit_note',
+        target_type: 'sale',
+        target_id: sid,
+        severity: 'warning',
+        details: { credit_note_number: creditNoteNumber, reason: payload.reason || 'إرجاع بضاعة من الزبون' }
+      }).catch(() => {});
       res.json({ success: true, credit_note_number: creditNoteNumber });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -1775,7 +1916,13 @@ app.use(express.json({ limit: '50mb' }));
 
   app.delete('/api/customers/:id', async (req, res) => {
     try {
-      await db.dbRun('DELETE FROM customers WHERE id = ?', [Number(req.params.id)]);
+      const cid = Number(req.params.id);
+      await db.withTransaction(async () => {
+        await db.dbRun('DELETE FROM installment_schedules WHERE plan_id IN (SELECT id FROM installment_plans WHERE customer_id = ?)', [cid]).catch(() => {});
+        await db.dbRun('DELETE FROM installment_plans WHERE customer_id = ?', [cid]).catch(() => {});
+        await db.dbRun('UPDATE inventory_reservations SET released = 1, released_at = CURRENT_TIMESTAMP WHERE order_id IN (SELECT id FROM customer_orders WHERE customer_id = ?)', [cid]).catch(() => {});
+        await db.dbRun('DELETE FROM customers WHERE id = ?', [cid]);
+      });
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -1827,6 +1974,7 @@ app.use(express.json({ limit: '50mb' }));
       const cid = Number(req.params.id);
       const b = req.body || {};
       let rem = Number(b.amount || 0);
+      if (!Number.isFinite(rem) || rem <= 0.009) return res.status(400).json({ error: 'invalid_amount' });
       const payDate = b.date || new Date().toISOString();
       const receiptNum = await generateNextDocNumber('payment_receipt');
 
@@ -1856,6 +2004,14 @@ app.use(express.json({ limit: '50mb' }));
            VALUES (NULL, ?, ?, ?, ?, ?, ?, ?)`,
           [cid, Number(b.amount || 0), payDate, b.payment_method || 'cash', b.reference || null, receiptNum, b.notes || null]
         );
+        const activeSess = await tillLedger.resolveOpenSession(db, null, b.userId || b.user_id);
+        if (activeSess && (!b.payment_method || b.payment_method === 'cash') && Number(b.amount || 0) > 0) {
+          await db.dbRun(
+            `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
+             VALUES (?, 'debt_payment', ?, 'sales', ?, ?)`,
+            [activeSess, Number(b.amount || 0), `تسديد دين زبون #${cid}`, ins.lastID]
+          ).catch(() => {});
+        }
         return { success: true, paymentId: ins.lastID, receiptNumber: receiptNum };
       });
       res.json(out);
@@ -2002,6 +2158,7 @@ app.use(express.json({ limit: '50mb' }));
       const sid = Number(req.params.id);
       const b = req.body || {};
       let rem = Number(b.amount || 0);
+      if (!Number.isFinite(rem) || rem <= 0.009) return res.status(400).json({ error: 'invalid_amount' });
       const payDate = b.date || new Date().toISOString();
       const receiptNum = await generateNextDocNumber('payment_receipt');
 
@@ -2031,6 +2188,14 @@ app.use(express.json({ limit: '50mb' }));
            VALUES (NULL, ?, ?, ?, ?, ?, ?, ?)`,
           [sid, Number(b.amount || 0), payDate, b.payment_method || 'cash', b.reference || null, receiptNum, b.notes || null]
         );
+        const activeSess = await tillLedger.resolveOpenSession(db, null, b.userId || b.user_id);
+        if (activeSess && (!b.payment_method || b.payment_method === 'cash') && Number(b.amount || 0) > 0) {
+          await db.dbRun(
+            `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
+             VALUES (?, 'expense', ?, 'suppliers', ?, ?)`,
+            [activeSess, Number(b.amount || 0), `تسديد دفعة للمورد #${sid}`, ins.lastID]
+          ).catch(() => {});
+        }
         return { success: true, paymentId: ins.lastID, receiptNumber: receiptNum };
       });
       res.json(out);
@@ -2085,8 +2250,8 @@ app.use(express.json({ limit: '50mb' }));
             Number(data.supplier_id),
             total,
             total,
-            Number(data.credit_applied ?? total),
-            Number(data.refund_amount ?? 0),
+            (String(data.refund_method || 'credit').trim() === 'cash' ? 0 : Number(data.credit_applied ?? total)),
+            (String(data.refund_method || 'credit').trim() === 'cash' ? (Number(data.refund_amount) > 0 ? Number(data.refund_amount) : total) : Number(data.refund_amount ?? 0)),
             data.refund_method || 'credit',
             data.reason || null,
             data.notes || null,
@@ -2104,6 +2269,18 @@ app.use(express.json({ limit: '50mb' }));
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [returnId, Number(it.product_id), it.variant_id || null, it.batch_id || null, qty, Number(it.cost_price ?? 0), Number((qty * Number(it.cost_price ?? 0)).toFixed(2))]
           );
+        }
+        /* [V23_LAN_PURCHASE_AND_RETURN_TILL_SYNC] */
+        const refundCashAmt = String(data.refund_method || '').trim() === 'cash' ? (Number(data.refund_amount) > 0 ? Number(data.refund_amount) : total) : 0;
+        if (data.refund_method === 'cash' && refundCashAmt > 0) {
+          const activeSess = await tillLedger.resolveOpenSession(db, null, data.user_id || data.userId);
+          if (activeSess) {
+            await db.dbRun(
+              `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
+               VALUES (?, 'cash_in', ?, 'supplier_return', ?, ?)`,
+              [activeSess, refundCashAmt, `استرداد نقدي لمرتجع مورد #${returnNum}`, returnId]
+            ).catch(() => {});
+          }
         }
         return { success: true, id: returnId, return_number: returnNum };
       });
@@ -2134,8 +2311,18 @@ app.use(express.json({ limit: '50mb' }));
   app.delete('/api/supplier-returns/:id', async (req, res) => {
     try {
       const id = Number(req.params.id);
-      await db.dbRun('DELETE FROM supplier_return_items WHERE return_id = ?', [id]);
-      await db.dbRun('DELETE FROM supplier_returns WHERE id = ?', [id]);
+      /* [V20_LAN_RESTORE_STOCK_ON_SUPPLIER_RETURN_DELETE] */
+      await db.withTransaction(async () => {
+        const items = await db.dbAll('SELECT batch_id, quantity FROM supplier_return_items WHERE return_id = ? AND deleted_at IS NULL', [id]);
+        for (const it of items) {
+          if (it.batch_id && Number(it.quantity || 0) > 0) {
+            await db.dbRun('UPDATE inventory_batches SET stock = COALESCE(stock, 0) + ? WHERE id = ?', [Number(it.quantity), Number(it.batch_id)]);
+          }
+        }
+        await db.dbRun("DELETE FROM caisse_transactions WHERE reference_id = ? AND category = 'supplier_return'", [id]).catch(() => {});
+        await db.dbRun('DELETE FROM supplier_return_items WHERE return_id = ?', [id]);
+        await db.dbRun('DELETE FROM supplier_returns WHERE id = ?', [id]);
+      });
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -2173,8 +2360,17 @@ app.use(express.json({ limit: '50mb' }));
       const extraCostPerUnit = totalUnits > 0 ? additionalCosts / totalUnits : 0;
 
       const out = await db.withTransaction(async () => {
-        const ins = await db.dbRun(
-          `INSERT INTO purchase_invoices (
+        if (data.editInvoiceId || data.edit_invoice_id) {
+          const oldId = Number(data.editInvoiceId || data.edit_invoice_id);
+          const oldItems = await db.dbAll('SELECT batch_id FROM purchase_items WHERE invoice_id = ? AND deleted_at IS NULL', [oldId]);
+          const oldBatchIds = oldItems.map((x) => x.batch_id).filter(Boolean);
+          if (oldBatchIds.length > 0) await batchAlloc.voidBatches(db, oldBatchIds);
+          await db.dbRun("DELETE FROM caisse_transactions WHERE category = 'purchases' AND type = 'expense' AND reference_id IN (SELECT id FROM invoice_payments WHERE invoice_id = ?)", [oldId]).catch(() => {});
+          await db.dbRun('DELETE FROM invoice_payments WHERE invoice_id = ?', [oldId]);
+          await db.dbRun('DELETE FROM purchase_items WHERE invoice_id = ?', [oldId]);
+          await db.dbRun('DELETE FROM purchase_invoices WHERE id = ?', [oldId]);
+        }
+        const ins = await db.dbRun(`INSERT INTO purchase_invoices (
             invoice_number, supplier_id, subtotal, tax_percentage, additional_costs, total, paid_amount, due_date, date
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [invNumber, supplierId, subtotal, taxPercentage, additionalCosts, total, paidAmount, data.due_date || null, invDate]
@@ -2182,10 +2378,22 @@ app.use(express.json({ limit: '50mb' }));
         const invoiceId = ins.lastID;
 
         if (paidAmount > 0) {
-          await db.dbRun(
-            'INSERT INTO invoice_payments (invoice_id, supplier_id, amount, date, payment_method) VALUES (?, ?, ?, ?, ?)',
-            [invoiceId, supplierId, paidAmount, invDate, 'cash']
+          const recNum = await generateNextDocNumber('payment_receipt');
+          const payMethod = String(data.payment_method || 'cash').trim();
+          const payIns = await db.dbRun(
+            'INSERT INTO invoice_payments (invoice_id, supplier_id, amount, date, payment_method, receipt_number, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [invoiceId, supplierId, paidAmount, invDate, payMethod, recNum, data.notes || null]
           );
+          if (!payMethod || payMethod === 'cash') {
+            const activeSess = await tillLedger.resolveOpenSession(db, null, data.user_id || data.userId);
+            if (activeSess) {
+              await db.dbRun(
+                `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
+                 VALUES (?, 'expense', ?, 'purchases', ?, ?)`,
+                [activeSess, paidAmount, `دفعة فاتورة شراء #${invNumber}`, payIns.lastID]
+              ).catch(() => {});
+            }
+          }
         }
 
         for (const it of items) {
@@ -2254,16 +2462,28 @@ app.use(express.json({ limit: '50mb' }));
       const id = Number(req.params.id);
       const b = req.body || {};
       const amt = Number(b.amount || 0);
+      if (!Number.isFinite(amt) || amt <= 0.009) return res.status(400).json({ error: 'invalid_amount' });
       const inv = await db.dbGet('SELECT * FROM purchase_invoices WHERE id = ?', [id]);
       if (!inv) return res.status(404).json({ error: 'invoice_not_found' });
 
       const receiptNum = await generateNextDocNumber('payment_receipt');
-      await db.dbRun('UPDATE purchase_invoices SET paid_amount = COALESCE(paid_amount, 0) + ? WHERE id = ?', [amt, id]);
-      const ins = await db.dbRun(
-        'INSERT INTO invoice_payments (invoice_id, supplier_id, amount, date, payment_method, receipt_number) VALUES (?, ?, ?, ?, ?, ?)',
-        [id, inv.supplier_id, amt, b.date || new Date().toISOString(), b.payment_method || 'cash', receiptNum]
-      );
-      res.json({ success: true, paymentId: ins.lastID, receiptNumber: receiptNum });
+      const out = await db.withTransaction(async () => {
+        await db.dbRun('UPDATE purchase_invoices SET paid_amount = COALESCE(paid_amount, 0) + ? WHERE id = ?', [amt, id]);
+        const ins = await db.dbRun(
+          'INSERT INTO invoice_payments (invoice_id, supplier_id, amount, date, payment_method, receipt_number) VALUES (?, ?, ?, ?, ?, ?)',
+          [id, inv.supplier_id, amt, b.date || new Date().toISOString(), b.payment_method || 'cash', receiptNum]
+        );
+        const activeSess = await tillLedger.resolveOpenSession(db, null, b.userId || b.user_id);
+        if (activeSess && (!b.payment_method || b.payment_method === 'cash') && amt > 0) {
+          await db.dbRun(
+            `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
+             VALUES (?, 'expense', ?, 'purchases', ?, ?)`,
+            [activeSess, amt, `تسديد فاتورة شراء #${inv.invoice_number || id}`, ins.lastID]
+          ).catch(() => {});
+        }
+        return { success: true, paymentId: ins.lastID, receiptNumber: receiptNum };
+      });
+      res.json(out);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -2272,12 +2492,18 @@ app.use(express.json({ limit: '50mb' }));
   app.delete('/api/purchases/:id', async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const items = await db.dbAll('SELECT batch_id FROM purchase_items WHERE invoice_id = ? AND deleted_at IS NULL', [id]);
-      const batchIds = items.map((x) => x.batch_id).filter(Boolean);
-      if (batchIds.length > 0) await batchAlloc.voidBatches(db, batchIds);
-      await db.dbRun('DELETE FROM invoice_payments WHERE invoice_id = ?', [id]);
-      await db.dbRun('DELETE FROM purchase_items WHERE invoice_id = ?', [id]);
-      await db.dbRun('DELETE FROM purchase_invoices WHERE id = ?', [id]);
+      await db.withTransaction(async () => {
+        const items = await db.dbAll('SELECT batch_id FROM purchase_items WHERE invoice_id = ? AND deleted_at IS NULL', [id]);
+        const batchIds = items.map((x) => x.batch_id).filter(Boolean);
+        if (batchIds.length > 0) await batchAlloc.voidBatches(db, batchIds);
+        await db.dbRun(
+          "DELETE FROM caisse_transactions WHERE category = 'purchases' AND type = 'expense' AND reference_id IN (SELECT id FROM invoice_payments WHERE invoice_id = ?)",
+          [id]
+        ).catch(() => {});
+        await db.dbRun('DELETE FROM invoice_payments WHERE invoice_id = ?', [id]);
+        await db.dbRun('DELETE FROM purchase_items WHERE invoice_id = ?', [id]);
+        await db.dbRun('DELETE FROM purchase_invoices WHERE id = ?', [id]);
+      });
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -2367,8 +2593,10 @@ app.use(express.json({ limit: '50mb' }));
   app.delete('/api/proformas/:id', async (req, res) => {
     try {
       const id = Number(req.params.id);
-      await db.dbRun('DELETE FROM proforma_items WHERE proforma_id = ?', [id]);
-      await db.dbRun('DELETE FROM proforma_invoices WHERE id = ?', [id]);
+      await db.withTransaction(async () => {
+        await db.dbRun('DELETE FROM proforma_items WHERE proforma_id = ?', [id]);
+        await db.dbRun('DELETE FROM proforma_invoices WHERE id = ?', [id]);
+      });
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -2561,9 +2789,12 @@ app.use(express.json({ limit: '50mb' }));
   app.delete('/api/orders/:id', async (req, res) => {
     try {
       const id = Number(req.params.id);
-      await db.dbRun('UPDATE inventory_reservations SET released = 1, released_at = CURRENT_TIMESTAMP WHERE order_id = ?', [id]);
-      await db.dbRun('DELETE FROM customer_order_items WHERE order_id = ?', [id]);
-      await db.dbRun('DELETE FROM customer_orders WHERE id = ?', [id]);
+      await db.withTransaction(async () => {
+        await db.dbRun("DELETE FROM caisse_transactions WHERE reference_id = ? AND type = 'order_deposit'", [id]).catch(() => {});
+        await db.dbRun('UPDATE inventory_reservations SET released = 1, released_at = CURRENT_TIMESTAMP WHERE order_id = ?', [id]);
+        await db.dbRun('DELETE FROM customer_order_items WHERE order_id = ?', [id]);
+        await db.dbRun('DELETE FROM customer_orders WHERE id = ?', [id]);
+      });
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -2592,8 +2823,10 @@ app.use(express.json({ limit: '50mb' }));
   app.post('/api/orders/:id/mark-delivered', async (req, res) => {
     try {
       const id = Number(req.params.id);
-      await db.dbRun('UPDATE inventory_reservations SET released = 1, released_at = CURRENT_TIMESTAMP WHERE order_id = ?', [id]);
-      await db.dbRun("UPDATE customer_orders SET status = 'delivered', converted_to_sale_id = ? WHERE id = ?", [Number(req.body.saleId), id]);
+      await db.withTransaction(async () => {
+        await db.dbRun('UPDATE inventory_reservations SET released = 1, released_at = CURRENT_TIMESTAMP WHERE order_id = ?', [id]);
+        await db.dbRun("UPDATE customer_orders SET status = 'delivered', converted_to_sale_id = ? WHERE id = ?", [Number(req.body.saleId), id]);
+      });
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -2724,6 +2957,7 @@ app.use(express.json({ limit: '50mb' }));
     try {
       const exp = req.body || {};
       const amt = Number(exp.amount || 0);
+      if (!Number.isFinite(amt) || amt <= 0.009) return res.status(400).json({ error: 'invalid_amount' });
       const ins = await db.dbRun(
         'INSERT INTO expenses (category, description, amount, date, user_id, session_id) VALUES (?, ?, ?, ?, ?, ?)',
         [exp.category || 'عام', exp.description || null, amt, exp.date || new Date().toISOString().slice(0, 10), exp.user_id || null, exp.session_id || null]

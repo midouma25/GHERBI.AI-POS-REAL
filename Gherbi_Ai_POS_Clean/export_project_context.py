@@ -38,7 +38,7 @@ SKIP_MINIFIED_FILES = {
 }
 
 # الحد الأقصى لحجم الملف العادي ليُنسخ بالكامل (بالبايت) — فوق هذا الحجم يُطبق المستخرج الذكي
-MAX_FULL_FILE_BYTES = 180 * 1024  # 180 KB
+MAX_FULL_FILE_BYTES = 250 * 1024  # 180 KB
 
 
 def is_ignored_file(file_path: Path) -> bool:
