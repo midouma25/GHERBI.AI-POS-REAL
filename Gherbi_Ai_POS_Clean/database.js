@@ -32,6 +32,146 @@ function resolveDatabaseFilePath() {
 
 const dbPath = resolveDatabaseFilePath();
 const db = new sqlite3.Database(dbPath);
+/* [V43_PRE_QUEUE_NATIVE_NAPI_SHIELD] */
+(function installPreQueueNativeNapiShield(database) {
+  database._isEnvironmentClosing = false;
+  database._activeNativeOps = 0;
+
+  const rawRun = database.run.bind(database);
+  const rawGet = database.get.bind(database);
+  const rawAll = database.all.bind(database);
+  const rawExec = database.exec.bind(database);
+  const rawPrepare = database.prepare.bind(database);
+  const rawClose = database.close.bind(database);
+
+  function wrapCallback(cb, defaultResult) {
+    if (typeof cb !== 'function') return null;
+    let called = false;
+    return function (err, res) {
+      if (!called) {
+        called = true;
+        database._activeNativeOps = Math.max(0, database._activeNativeOps - 1);
+      }
+      if (database._isEnvironmentClosing) return;
+      try {
+        cb.call(this, err, res !== undefined ? res : defaultResult);
+      } catch (_) {}
+    };
+  }
+
+  function makeSafeMethod(origFn, defaultRes) {
+    return function (sql, params, callback) {
+      if (typeof params === 'function') {
+        callback = params;
+        params = [];
+      }
+      if (database._isEnvironmentClosing) {
+        if (typeof callback === 'function') {
+          setImmediate(() => {
+            try { callback.call({ lastID: 0, changes: 0 }, null, defaultRes); } catch (_) {}
+          });
+        }
+        return this;
+      }
+      database._activeNativeOps++;
+      const safeCb = wrapCallback(callback, defaultRes) || function () {
+        database._activeNativeOps = Math.max(0, database._activeNativeOps - 1);
+      };
+      try {
+        if (params !== undefined) {
+          return origFn(sql, params, safeCb);
+        }
+        return origFn(sql, safeCb);
+      } catch (e) {
+        database._activeNativeOps = Math.max(0, database._activeNativeOps - 1);
+        if (typeof callback === 'function' && !database._isEnvironmentClosing) {
+          setImmediate(() => { try { callback(e); } catch (_) {} });
+        }
+        return this;
+      }
+    };
+  }
+
+  database.run = makeSafeMethod(rawRun, undefined);
+  database.get = makeSafeMethod(rawGet, undefined);
+  database.all = makeSafeMethod(rawAll, []);
+  database.exec = function (sql, callback) {
+    if (database._isEnvironmentClosing) {
+      if (typeof callback === 'function') setImmediate(() => { try { callback(null); } catch (_) {} });
+      return this;
+    }
+    database._activeNativeOps++;
+    const safeCb = wrapCallback(callback, undefined) || function () {
+      database._activeNativeOps = Math.max(0, database._activeNativeOps - 1);
+    };
+    try {
+      return rawExec(sql, safeCb);
+    } catch (e) {
+      database._activeNativeOps = Math.max(0, database._activeNativeOps - 1);
+      return this;
+    }
+  };
+
+  database.prepare = function (sql, params, callback) {
+    if (database._isEnvironmentClosing) {
+      return {
+        run: function () { return this; },
+        get: function () { return this; },
+        all: function () { return this; },
+        finalize: function (cb) { if (typeof cb === 'function') cb(); return this; }
+      };
+    }
+    try {
+      const stmt = rawPrepare(sql);
+      const origStmtRun = stmt.run.bind(stmt);
+      const origStmtFinalize = stmt.finalize.bind(stmt);
+      stmt.run = function (...sArgs) {
+        if (database._isEnvironmentClosing) return this;
+        try { return origStmtRun(...sArgs); } catch (_) { return this; }
+      };
+      stmt.finalize = function (cb) {
+        if (database._isEnvironmentClosing) {
+          if (typeof cb === 'function') setImmediate(() => { try { cb(); } catch (_) {} });
+          return this;
+        }
+        try { return origStmtFinalize(cb); } catch (_) { return this; }
+      };
+      return stmt;
+    } catch (_) {
+      return {
+        run: function () { return this; },
+        finalize: function (cb) { if (typeof cb === 'function') cb(); return this; }
+      };
+    }
+  };
+
+  database.safeShutdownAndExit = function (exitCode = 0) {
+    if (database._shutdownInitiated) return;
+    database._shutdownInitiated = true;
+
+    // 1. تفريغ سريع لملف WAL بينما القاعدة لا تزال مفتوحة وبيئة V8 حية
+    try {
+      rawRun('PRAGMA wal_checkpoint(PASSIVE)', [], () => {
+        database._isEnvironmentClosing = true;
+        rawClose(() => {
+          try { process.kill(process.pid); } catch (_) { process.exit(exitCode); }
+        });
+      });
+    } catch (_) {
+      database._isEnvironmentClosing = true;
+      try { process.kill(process.pid); } catch (_) { process.exit(exitCode); }
+    }
+
+    // صمام أمان زمني (220ms) يضمن الإنهاء المباشر قبل دخول FreeEnvironment
+    setTimeout(() => {
+      database._isEnvironmentClosing = true;
+      try { process.kill(process.pid); } catch (_) { process.exit(exitCode); }
+    }, 220);
+  };
+
+  process.on('SIGINT', () => database.safeShutdownAndExit(0));
+  process.on('SIGTERM', () => database.safeShutdownAndExit(0));
+})(db);
 
 attachWriteQueue(db);
 installSoftDeleteShim(db);
@@ -1669,7 +1809,7 @@ db.dataRevisionTracker = dataRevisionTracker;
 function autoSeedFullAlgerianCsvDictionary() {
   db._dzCsvSeededOrRunning = true;
   db._rawGet('SELECT COUNT(*) AS cnt FROM dz_product_dictionary', [], (err, row) => {
-    if (err || (row && Number(row.cnt) >= 1000)) return;
+    if (db._isEnvironmentClosing || err || (row && Number(row.cnt) >= 1000)) return;
     const candidates = [
       path.join(__dirname, 'Lumina_DZ_Products.csv'),
       path.join(__dirname, '..', 'Lumina_DZ_Products.csv')
@@ -1680,14 +1820,16 @@ function autoSeedFullAlgerianCsvDictionary() {
     try {
       const content = fs.readFileSync(csvPath, 'utf8');
       const lines = content.split(/\r?\n/);
-      if (lines.length <= 1) return;
+      if (lines.length <= 1 || db._isEnvironmentClosing) return;
 
       db.serialize(() => {
-        /* [V17_SAFE_SEED_SERIALIZED] */
+        if (db._isEnvironmentClosing) return;
+        db._rawRun('BEGIN IMMEDIATE TRANSACTION');
         const stmt = db._rawPrepare(
           'INSERT OR IGNORE INTO dz_product_dictionary (barcode, name, category, brand, unit, suggested_price) VALUES (?, ?, ?, ?, ?, ?)'
         );
         for (let i = 1; i < lines.length; i++) {
+          if (db._isEnvironmentClosing) break;
           const line = lines[i];
           if (!line || !line.trim()) continue;
           const parts = line.split(',');
@@ -1700,10 +1842,10 @@ function autoSeedFullAlgerianCsvDictionary() {
           stmt.run(barcode, name.slice(0, 120), category.slice(0, 60), brand.slice(0, 60), 'قطعة', price);
         }
         stmt.finalize();
-        
+        db._rawRun('COMMIT');
       });
     } catch (e) {
-      console.warn('[DZ Dictionary Auto-Seed] Warning:', e.message);
+      try { db._rawRun('ROLLBACK'); } catch (_) {}
     }
   });
 }
@@ -1729,15 +1871,6 @@ module.exports = db;
       db.safeAddColumn('products', 'wholesale_qty REAL DEFAULT 0');
       db.safeAddColumn('products', "wholesale_unit TEXT DEFAULT 'كرتونة'");
       db.safeAddColumn('products', 'loyalty_multiplier REAL DEFAULT 1');
-    }
-  } catch (_) {}
-})();
-
-/* [V29_PURE_RETAIL_SHOP_DESC_MIGRATION] */
-(function migrateShopDescToRetail() {
-  try {
-    if (typeof db !== 'undefined' && db && typeof db._rawRun === 'function') {
-      db._rawRun("UPDATE settings SET value = 'تجارة بالتجزئة وسوبرماركت' WHERE key = 'shop_description' AND value = 'تجارة عامة وتوزيع'", () => {});
     }
   } catch (_) {}
 })();

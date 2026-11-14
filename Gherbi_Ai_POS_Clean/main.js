@@ -4501,3 +4501,28 @@ app.on('before-quit', () => {
   performSilentRollingBackup('exit');
 });
 
+/* [V43_ELECTRON_SAFE_NAPI_SHUTDOWN] */
+(function installV43ElectronSafeShutdown() {
+  try {
+    const { app } = require('electron');
+    if (!app) return;
+
+    const triggerCleanShutdown = (e) => {
+      if (typeof db !== 'undefined' && db && typeof db.safeShutdownAndExit === 'function') {
+        if (e && typeof e.preventDefault === 'function' && !db._shutdownInitiated) {
+          e.preventDefault();
+        }
+        try {
+          if (typeof scaleBridge !== 'undefined' && scaleBridge && typeof scaleBridge.disconnect === 'function') {
+            scaleBridge.disconnect();
+          }
+        } catch (_) {}
+        db.safeShutdownAndExit(0);
+      }
+    };
+
+    app.on('window-all-closed', triggerCleanShutdown);
+    app.on('before-quit', triggerCleanShutdown);
+    app.on('will-quit', triggerCleanShutdown);
+  } catch (_) {}
+})();

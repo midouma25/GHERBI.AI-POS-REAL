@@ -2045,32 +2045,50 @@ html.dark .v13-inv-quick-btn {
   display: none !important;
 }
 
-/* === [GHERBI V34: TAB 14 FORENSIC RADAR HUB] === */
-/* إخفاء البطاقات الرقابية الثلاث عندما تكون خارج حاوية التبويب 14 */
-#view-analytics .v34-forensic-card-isolated:not(.v34-inside-tab14) {
+/* === [GHERBI V40: CLEAN UNIFIED TAB 14 FORENSIC CENTER] === */
+/* إخفاء البطاقات القديمة المبعثرة نهائياً لمنع ظهورها في التبويبات 1..13 ولمنع تكرارها في التبويب 14 */
+#gherbiV9OwnerPriceRadarCard,
+#gherbi-owner-price-radar-card,
+#gherbiV8BelowCostAuditCard,
+#gherbi-below-cost-audit-card,
+#gherbiLoyaltyAuditCard,
+#gherbi-loyalty-audit-card,
+.v9-owner-radar-card,
+.v35-forensic-isolated-card,
+#v35ForensicCardsSafeVault {
   display: none !important;
 }
-#v34RccTab14ForensicBtn.v34-tab14-inactive {
+
+/* تنسيق زر التبويب 14 في شريط مركز القيادة */
+#v40RccTab14Btn.v40-tab14-inactive {
   background: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%) !important;
   color: #be123c !important;
   border: 1.5px solid #fda4af !important;
   box-shadow: 0 2px 8px rgba(225, 29, 72, 0.12) !important;
 }
-.dark #v34RccTab14ForensicBtn.v34-tab14-inactive {
+.dark #v40RccTab14Btn.v40-tab14-inactive {
   background: linear-gradient(135deg, rgba(136, 19, 55, 0.45) 0%, rgba(76, 5, 25, 0.65) 100%) !important;
   color: #fda4af !important;
   border: 1.5px solid rgba(244, 63, 94, 0.45) !important;
 }
-#v34RccTab14ForensicBtn.v34-tab14-active {
+#v40RccTab14Btn.v40-tab14-active {
   background: linear-gradient(135deg, #e11d48 0%, #9f1239 100%) !important;
   color: #ffffff !important;
   border: 1.5px solid #fb7185 !important;
-  box-shadow: 0 6px 18px rgba(225, 29, 72, 0.35) !important;
+  box-shadow: 0 6px 16px rgba(225, 29, 72, 0.35) !important;
 }
-@keyframes v34PulseBadge {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.08); }
+
+/* توسيع نافذة الدرع العلوي (#auditLogModal) */
+#auditLogModal .modal-content {
+  max-width: 1220px !important;
+  width: 96vw !important;
+  max-height: 92vh !important;
+  border-radius: 1.5rem !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
-.v34-alert-badge-pulse {
-  animation: v34PulseBadge 2s infinite ease-in-out;
+#auditLogModalBody {
+  max-height: 80vh !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
 }
