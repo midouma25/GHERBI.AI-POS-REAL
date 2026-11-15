@@ -4526,3 +4526,431 @@ app.on('before-quit', () => {
     app.on('will-quit', triggerCleanShutdown);
   } catch (_) {}
 })();
+
+
+/* === [V54_STAGE2_QUICK_SALE_EDIT_AND_WARRANTY_IPC] === */
+(function registerV54Stage2SalesIpcHandlers() {
+  const { app, ipcMain, dialog, shell } = require('electron');
+  const fs = require('fs');
+  const XLSX = require('xlsx');
+  const db = require('./database');
+
+  app.whenReady().then(() => {
+    // 1. التعديل الفوري الشامل للفاتورة وأصنافها وأرقامها التسلسلية وضمانها
+    ipcMain.removeHandler('v54-update-sale-quick');
+    ipcMain.handle('v54-update-sale-quick', async (_e, payload = {}) => {
+      const saleId = Number(payload.saleId || payload.id);
+      if (!saleId) throw new Error('رقم الفاتورة غير صالح');
+
+      return await db.withTransaction(async () => {
+        const existingSale = await db.dbGet('SELECT * FROM sales WHERE id = ? AND deleted_at IS NULL', [saleId]);
+        if (!existingSale) throw new Error('الفاتورة غير موجودة');
+
+        const customerId = payload.customer_id ? Number(payload.customer_id) : null;
+        const paymentMethod = String(payload.payment_method || existingSale.payment_method || 'cash').trim();
+        const discount = Math.max(0, Number(payload.discount ?? existingSale.discount ?? 0));
+
+        let newSubtotal = Number(existingSale.subtotal || existingSale.total || 0);
+
+        if (Array.isArray(payload.items) && payload.items.length > 0) {
+          newSubtotal = 0;
+          for (const it of payload.items) {
+            const itemId = Number(it.id);
+            const qty = Math.max(0.001, Number(it.quantity ?? 1));
+            const price = Math.max(0, Number(it.price ?? 0));
+            const sub = Number((qty * price).toFixed(2));
+            const serial = String(it.serial_number || '').trim() || null;
+            const warrantyMonths = Math.max(0, Number(it.warranty_months ?? 0));
+            newSubtotal += sub;
+
+            if (itemId) {
+              await db.dbRun(
+                'UPDATE sale_items SET quantity = ?, price = ?, subtotal = ?, serial_number = ?, warranty_months = ? WHERE id = ? AND sale_id = ?',
+                [qty, price, sub, serial, warrantyMonths, itemId, saleId]
+              );
+            }
+          }
+        }
+
+        newSubtotal = Number(newSubtotal.toFixed(2));
+        const newTotal = Math.max(0, Number((newSubtotal - discount).toFixed(2)));
+        const paidAmount =
+          payload.paid_amount !== undefined
+            ? Math.max(0, Math.min(newTotal, Number(payload.paid_amount)))
+            : Math.min(newTotal, Number(existingSale.paid_amount ?? newTotal));
+
+        await db.dbRun(
+          'UPDATE sales SET customer_id = ?, payment_method = ?, subtotal = ?, discount = ?, total = ?, paid_amount = ? WHERE id = ?',
+          [customerId, paymentMethod, newSubtotal, discount, newTotal, paidAmount, saleId]
+        );
+
+        return {
+          success: true,
+          saleId,
+          subtotal: newSubtotal,
+          discount,
+          total: newTotal,
+          paid_amount: paidAmount
+        };
+      });
+    });
+
+    // 2. البحث الذكي الفوري عن الضمان بالأرقام التسلسلية (IMEI / S-N) أو رقم الفاتورة أو اسم المنتج
+    ipcMain.removeHandler('v54-search-warranty');
+    ipcMain.handle('v54-search-warranty', async (_e, queryStr = '') => {
+      const q = String(queryStr || '').trim();
+      const likeQ = '%' + q + '%';
+
+      const rows = await db.dbAll(
+        `SELECT
+           si.id AS sale_item_id,
+           si.sale_id,
+           si.product_id,
+           si.quantity,
+           si.price,
+           si.subtotal,
+           si.serial_number,
+           COALESCE(NULLIF(si.warranty_months, 0), NULLIF(p.warranty_months, 0), 12) AS warranty_months,
+           COALESCE(p.name, si.custom_product_name, 'منتج') AS product_name,
+           p.barcode AS product_barcode,
+           s.doc_number,
+           s.sale_date,
+           s.total AS sale_total,
+           c.name AS customer_name,
+           c.phone AS customer_phone
+         FROM sale_items si
+         INNER JOIN sales s ON s.id = si.sale_id AND s.deleted_at IS NULL
+         LEFT JOIN products p ON p.id = si.product_id
+         LEFT JOIN customers c ON c.id = s.customer_id
+         WHERE si.deleted_at IS NULL
+           AND (
+             (? = '' AND (si.serial_number IS NOT NULL OR COALESCE(si.warranty_months, p.warranty_months, 0) > 0))
+             OR (
+               ? <> '' AND (
+                 si.serial_number LIKE ?
+                 OR s.doc_number LIKE ?
+                 OR CAST(s.id AS TEXT) = ?
+                 OR p.name LIKE ?
+                 OR p.barcode LIKE ?
+                 OR c.name LIKE ?
+                 OR c.phone LIKE ?
+               )
+             )
+           )
+         ORDER BY s.id DESC
+         LIMIT 25`,
+        [q, q, likeQ, likeQ, q.replace('#', ''), likeQ, likeQ, likeQ, likeQ]
+      );
+
+      return rows || [];
+    });
+
+    // 3. تصدير الفواتير المفلترة إلى ملف Excel (.xlsx) حقيقي ومرتب
+    ipcMain.removeHandler('v54-export-sales-xlsx');
+    ipcMain.handle('v54-export-sales-xlsx', async (_e, rowsData = []) => {
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: 'تصدير سجل المبيعات إلى ملف Excel',
+        defaultPath: `Sales_History_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        filters: [{ name: 'Excel Workbook', extensions: ['xlsx'] }]
+      });
+      if (canceled || !filePath) return { success: false, canceled: true };
+
+      const sheetRows = (Array.isArray(rowsData) ? rowsData : []).map((r, i) => ({
+        '#': i + 1,
+        'رقم الفاتورة': r.doc_number || ('#' + r.id),
+        'التاريخ والتوقيت': String(r.sale_date || '').replace('T', ' ').slice(0, 16),
+        'الزبون': r.customer_name || 'زبون عابر (Comptoir)',
+        'الهاتف': r.customer_phone || '-',
+        'طريقة الدفع': r.payment_method || 'cash',
+        'الإجمالي (د.ج)': Number(r.total || 0),
+        'المدفوع (د.ج)': Number(r.paid_amount ?? r.total ?? 0),
+        'الباقي / الدين (د.ج)': Math.max(0, Number((Number(r.total || 0) - Number(r.paid_amount ?? r.total ?? 0)).toFixed(2))),
+        'إشعار دائن': r.credit_note_number || '-'
+      }));
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(sheetRows);
+      XLSX.utils.book_append_sheet(wb, ws, 'سجل المبيعات');
+      XLSX.writeFile(wb, filePath);
+      try { shell.openPath(filePath); } catch (_) {}
+      return { success: true, filePath };
+    });
+  });
+})();
+
+
+
+/* === [V54_STAGE2_SALES_QUICK_EDIT_AND_WARRANTY_IPC] === */
+(function registerV54Stage2SalesAndWarrantyIpc() {
+  const { app, ipcMain } = require('electron');
+  const db = require('./database');
+
+  app.whenReady().then(() => {
+    // 1. تحديث سريع لبيانات الفاتورة (الزبون، طريقة الدفع، وأرقام السيريال والضمان للأصناف)
+    ipcMain.removeHandler('v54-update-sale-quick-meta');
+    ipcMain.handle('v54-update-sale-quick-meta', async (_e, payload = {}) => {
+      const saleId = Number(payload.saleId || payload.id);
+      if (!saleId) throw new Error('رقم الفاتورة غير صالح');
+
+      return await db.withTransaction(async () => {
+        if (payload.customerId !== undefined || payload.paymentMethod !== undefined) {
+          const cid = payload.customerId ? Number(payload.customerId) : null;
+          const pMethod = payload.paymentMethod || 'cash';
+          await db.dbRun(
+            'UPDATE sales SET customer_id = ?, payment_method = COALESCE(?, payment_method) WHERE id = ?',
+            [cid, pMethod, saleId]
+          );
+        }
+
+        if (Array.isArray(payload.itemsUpdates)) {
+          for (const itUpd of payload.itemsUpdates) {
+            const itemId = Number(itUpd.itemId || itUpd.id);
+            if (!itemId) continue;
+            const sn = itUpd.serial_number !== undefined ? String(itUpd.serial_number || '').trim() : null;
+            const wm = itUpd.warranty_months !== undefined ? Number(itUpd.warranty_months || 0) : 0;
+            await db.dbRun(
+              'UPDATE sale_items SET serial_number = ?, warranty_months = ? WHERE id = ? AND sale_id = ?',
+              [sn || null, wm, itemId, saleId]
+            );
+            // توثيق السيريال أيضاً في جدول product_serials إن لم يكن مسجلاً
+            if (sn && itUpd.product_id) {
+              await db.dbRun(
+                `INSERT INTO product_serials (product_id, serial_number, status, sale_id, warranty_months)
+                 VALUES (?, ?, 'sold', ?, ?)
+                 ON CONFLICT(serial_number) DO UPDATE SET status = 'sold', sale_id = excluded.sale_id, warranty_months = excluded.warranty_months`,
+                [Number(itUpd.product_id), sn, saleId, wm > 0 ? wm : 12]
+              ).catch(() => {});
+            }
+          }
+        }
+        return { success: true, saleId };
+      });
+    });
+
+    // 2. البحث الفوري الشامل عن الضمان بالرقم التسلسلي (IMEI / S-N) أو رقم الفاتورة أو اسم الصنف
+    ipcMain.removeHandler('v54-search-warranty-records');
+    ipcMain.handle('v54-search-warranty-records', async (_e, queryStr = '') => {
+      const q = String(queryStr || '').trim();
+      if (!q) return [];
+      const likeQ = '%' + q + '%';
+      const cleanNum = q.replace(/[^0-9]/g, '');
+
+      const rows = await db.dbAll(
+        `SELECT
+           si.id AS sale_item_id,
+           si.sale_id,
+           si.product_id,
+           si.quantity,
+           si.price,
+           si.subtotal,
+           si.serial_number,
+           COALESCE(NULLIF(si.warranty_months, 0), NULLIF(p.warranty_months, 0), 12) AS effective_warranty_months,
+           COALESCE(p.name, si.custom_product_name, 'منتج') AS product_name,
+           p.barcode AS product_barcode,
+           s.doc_number,
+           s.sale_date,
+           s.total AS sale_total,
+           s.customer_id,
+           c.name AS customer_name,
+           c.phone AS customer_phone
+         FROM sale_items si
+         INNER JOIN sales s ON s.id = si.sale_id AND s.deleted_at IS NULL
+         LEFT JOIN products p ON p.id = si.product_id
+         LEFT JOIN customers c ON c.id = s.customer_id
+         WHERE si.deleted_at IS NULL
+           AND (
+             si.serial_number LIKE ?
+             OR s.doc_number LIKE ?
+             OR p.name LIKE ?
+             OR p.barcode LIKE ?
+             OR c.name LIKE ?
+             OR c.phone LIKE ?
+             OR (? <> '' AND CAST(s.id AS TEXT) = ?)
+           )
+         ORDER BY s.id DESC
+         LIMIT 25`,
+        [likeQ, likeQ, likeQ, likeQ, likeQ, likeQ, cleanNum, cleanNum]
+      );
+      return rows || [];
+    });
+  });
+})();
+
+
+/* === [V55_STAGE3_TRUE_80MM_IPC_PRINT_ENGINE] === */
+(function installV55Stage3MainProcessThermalEngine() {
+  const { BrowserWindow, ipcMain, dialog, shell } = require('electron');
+  const fs = require('fs');
+
+  async function handleV55PrintSilent(_e, payload = {}) {
+    const rawHtml = String((payload && payload.html) || '');
+    if (!rawHtml.trim()) return { success: false, error: 'empty_html' };
+
+    const is58mm =
+      payload.paperSize === '58mm' ||
+      Number(payload.widthMm) === 58 ||
+      rawHtml.includes('paper-58mm') ||
+      rawHtml.includes('data-paper-size="58mm"');
+
+    const is80mm =
+      !is58mm &&
+      (payload.paperSize === '80mm' ||
+        Number(payload.widthMm) === 80 ||
+        rawHtml.includes('paper-80mm') ||
+        rawHtml.includes('data-paper-size="80mm"') ||
+        rawHtml.includes('Ticket de Caisse') ||
+        rawHtml.includes('وصل مبيعات'));
+
+    const isThermal = is80mm || is58mm;
+    const thermalWidthMm = is58mm ? 58 : 80;
+    const innerWidthMm = is58mm ? 53 : 74;
+    const windowWidthPx = is58mm ? 220 : is80mm ? 302 : 820;
+
+    return await new Promise((resolve) => {
+      const printWin = new BrowserWindow({
+        width: windowWidthPx,
+        height: 680,
+        show: false,
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false
+        }
+      });
+
+      let done = false;
+      const finish = (resObj) => {
+        if (done) return;
+        done = true;
+        try {
+          if (!printWin.isDestroyed()) printWin.close();
+        } catch (_) {}
+        resolve(resObj);
+      };
+
+      printWin.webContents.once('did-finish-load', async () => {
+        try {
+          await new Promise((r) => setTimeout(r, 180));
+
+          const measureScript = [
+            '(function() {',
+            '  var paper = document.querySelector(".v45-live-paper") || document.body;',
+            '  var rect = paper.getBoundingClientRect();',
+            '  return Math.ceil(Math.max(rect.height, document.body.scrollHeight, 300));',
+            '})()'
+          ].join('\n');
+
+          const contentHeightPx = await printWin.webContents.executeJavaScript(measureScript).catch(() => 480);
+          const calcHeightMm = Math.max(isThermal ? 115 : 210, Math.ceil(contentHeightPx * 0.264583) + 10);
+
+          if (isThermal) {
+            const strictThermalCss = [
+              '@page {',
+              '  size: ' + thermalWidthMm + 'mm ' + calcHeightMm + 'mm !important;',
+              '  margin: 0mm !important;',
+              '}',
+              'html, body {',
+              '  width: ' + thermalWidthMm + 'mm !important;',
+              '  max-width: ' + thermalWidthMm + 'mm !important;',
+              '  margin: 0 !important;',
+              '  padding: 0 !important;',
+              '  background: #ffffff !important;',
+              '  overflow-x: hidden !important;',
+              '}',
+              '.v45-live-paper {',
+              '  width: ' + innerWidthMm + 'mm !important;',
+              '  max-width: ' + innerWidthMm + 'mm !important;',
+              '  margin: 0 auto !important;',
+              '  padding: 2mm !important;',
+              '  box-shadow: none !important;',
+              '}'
+            ].join('\n');
+            await printWin.webContents.insertCSS(strictThermalCss);
+          }
+
+          // معرفة ما إذا كان المستخدم يريد حفظ PDF أو لا يملك طابعة حرارية صامتة
+          const printers = await printWin.webContents.getPrintersAsync().catch(() => []);
+          const defaultPrinter = printers.find((p) => p.isDefault) || printers[0];
+          const isVirtualPdfPrinter =
+            !defaultPrinter ||
+            /pdf|xps|onenote|fax/i.test(String(defaultPrinter.name || ''));
+
+          const shouldGenerateTruePdf =
+            payload.exportAsPdfFile === true ||
+            (isThermal && !payload.silent && isVirtualPdfPrinter);
+
+          if (shouldGenerateTruePdf) {
+            // استخدام محرك printToPDF الداخلي في Electron الذي يحترم عرض 80mm (3.15 بوصة) بدقة 100% ولا يحوله إلى A4!
+            const widthInches = Number((thermalWidthMm / 25.4).toFixed(4));
+            const heightInches = Number((calcHeightMm / 25.4).toFixed(4));
+
+            const pdfBuffer = await printWin.webContents.printToPDF({
+              printBackground: true,
+              margins: { top: 0, bottom: 0, left: 0, right: 0 },
+              pageSize: isThermal
+                ? { width: widthInches, height: heightInches }
+                : payload.paperSize === 'a5'
+                ? 'A5'
+                : 'A4',
+              landscape: payload.paperSize === '2xa5'
+            });
+
+            const saveRes = await dialog.showSaveDialog({
+              title: isThermal ? 'حفظ تذكرة حرارية (' + thermalWidthMm + 'mm) كملف PDF' : 'حفظ المستند كملف PDF',
+              defaultPath: payload.defaultPdfName || (isThermal ? 'Ticket_' + thermalWidthMm + 'mm_' + Date.now() + '.pdf' : 'Document_A4_' + Date.now() + '.pdf'),
+              filters: [{ name: 'PDF Document', extensions: ['pdf'] }]
+            });
+
+            if (!saveRes.canceled && saveRes.filePath) {
+              fs.writeFileSync(saveRes.filePath, pdfBuffer);
+              try { shell.openPath(saveRes.filePath); } catch (_) {}
+              return finish({ success: true, filePath: saveRes.filePath });
+            }
+            return finish({ success: false, canceled: true });
+          }
+
+          const printOpts = {
+            silent: Boolean(payload.silent),
+            printBackground: true,
+            margins: { marginType: 'none' }
+          };
+
+          if (payload.printerName || payload.deviceName) {
+            printOpts.deviceName = payload.printerName || payload.deviceName;
+          }
+
+          if (isThermal) {
+            printOpts.pageSize = {
+              width: thermalWidthMm * 1000,
+              height: calcHeightMm * 1000
+            };
+          }
+
+          printWin.webContents.print(printOpts, (success, failureReason) => {
+            finish({ success, error: failureReason || null });
+          });
+        } catch (err) {
+          finish({ success: false, error: err.message });
+        }
+      });
+
+      printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(rawHtml)).catch((err) => {
+        finish({ success: false, error: err.message });
+      });
+    });
+  }
+
+  // اعتراض تسجيل print-silent في ipcMain سواء تم تسجيله قبل أو بعد هذا الكود
+  const origHandle = ipcMain.handle.bind(ipcMain);
+  ipcMain.handle = function (channel, listener) {
+    if (channel === 'print-silent') {
+      ipcMain.removeHandler('print-silent');
+      return origHandle('print-silent', handleV55PrintSilent);
+    }
+    return origHandle(channel, listener);
+  };
+
+  try {
+    ipcMain.removeHandler('print-silent');
+    origHandle('print-silent', handleV55PrintSilent);
+  } catch (_) {}
+})();

@@ -1646,12 +1646,14 @@
       <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs bg-slate-50 dark:bg-slate-800/70 p-3 rounded-xl">
         <div>
           <label class="block font-bold mb-1">نوع المستند</label>
-          <select id="pcDocTypeSelect" onchange="App.refreshPrintCenterPreview()" class="w-full px-3 py-2 rounded-xl font-bold">
-            <option value="invoice_a4">فاتورة رسمية (A4)</option>
-            <option value="invoice_a5">فاتورة مدمجة (A5)</option>
-            <option value="receipt">تذكرة حرارية (80mm / 58mm)</option>
-            <option value="delivery">وصل توصيل (Bon de Livraison)</option>
-            <option value="credit_note">إشعار دائن (Facture d'Avoir)</option>
+          <select id="pcDocTypeSelect" onchange="App.refreshPrintCenterPreview()" class="w-full px-3 py-2 rounded-xl font-bold cursor-pointer">
+            <option value="invoice_a4">📄 فاتورة رسمية كاملة (A4)</option>
+            <option value="invoice_a5">📑 فاتورة مدمجة نصفية (A5)</option>
+            <option value="invoice_2xa5">✂️ فاتورة مزدوجة (2×A5 في ورقة A4)</option>
+            <option value="receipt_thermal">🧾 تذكرة كاشير حرارية (80mm / 58mm)</option>
+            <option value="delivery_note">🚚 وصل تسليم وتوصيل (Bon de Livraison)</option>
+            <option value="credit_note">↩️ إشعار دائن / مرتجع (Facture d'Avoir)</option>
+            <option value="warranty_cert">🛡️ شهادة ضمان رسمية (Certificat de Garantie)</option>
           </select>
         </div>
         <div>
@@ -1664,13 +1666,14 @@
         </div>
         <div>
           <label class="block font-bold mb-1">القالب التصميمي</label>
-          <select id="pcTemplateSelect" onchange="App.refreshPrintCenterPreview()" class="w-full px-3 py-2 rounded-xl font-bold">
-            <option value="default">القالب الافتراضي للمتجر</option>
-            <option value="template1">القالب الكلاسيكي الأزرق (1)</option>
-            <option value="template2">القالب الداكن الرسمي (2)</option>
-            <option value="template3">القالب الأخضر التجاري (3)</option>
-            <option value="template9">القالب الجبائي 6 أعمدة (9)</option>
-            <option value="detailed">القالب المفصل بالرصيد السابق</option>
+          <select id="pcTemplateSelect" onchange="App.refreshPrintCenterPreview()" class="w-full px-3 py-2 rounded-xl font-bold cursor-pointer">
+            <option value="default">⭐ القالب واللون الافتراضي المعتمد للمتجر</option>
+            <option value="royal_blue">🔵 القالب الكلاسيكي الأزرق الملكي (1)</option>
+            <option value="executive_dark">⚫ القالب الداكن التنفيذي الفاخر (2)</option>
+            <option value="emerald_dz">🟢 القالب الأخضر التجاري الجزائري (3)</option>
+            <option value="crimson_bold">🔴 القالب القرمزي البارز (4)</option>
+            <option value="amber_gold">🟡 القالب الذهبي الكلاسيكي (5)</option>
+            <option value="pure_mono">⚪ القالب الأسود والأبيض الاقتصادي لتوفير الحبر (6)</option>
           </select>
         </div>
         <div class="flex items-end gap-1.5">

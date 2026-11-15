@@ -3471,7 +3471,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
         })
       };
 
-      var saved = await window.api.processSale(payload);
+      var saved = await window.__gherbiMasterProcessSale(payload);
       var saleId = saved && (saved.id || saved.saleId);
       var docNum = (saved && saved.doc_number) || ('#' + saleId);
 
@@ -3498,7 +3498,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
 
         // طباعة صامتة مباشرة على طابعة التذاكر الحرارية 80mm دون فتح مربع حوار
         if (window.api && typeof window.api.printSilent === 'function') {
-          var printRes = await window.api.printSilent({
+          var printRes = await window.__gherbiMasterPrintSilent({
             html: receiptHtml,
             silent: true,
             printerName: AppState.settings.thermal_printer_name || undefined
@@ -4049,7 +4049,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
       template: AppState.settings.receipt_template || 'receipt1'
     });
     if (window.api && typeof window.api.printSilent === 'function') {
-      var res = await window.api.printSilent({
+      var res = await window.__gherbiMasterPrintSilent({
         html: html,
         silent: true,
         printerName: AppState.settings.thermal_printer_name || undefined
@@ -4227,7 +4227,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
     var taxAmt = Number(((taxable * taxPct) / 100).toFixed(2));
     var newTotal = Number((taxable + taxAmt + Number(fullSale.stamp_amount || 0)).toFixed(2));
 
-    await window.api.processSale({
+    await window.__gherbiMasterProcessSale({
       editSaleId: fullSale.id,
       customer_id: fullSale.customer_id,
       subtotal: newSubtotal,
@@ -4806,7 +4806,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
 
     // 2) طباعة حرارية صامتة مع Fallback تلقائي إذا لم توجد طابعة حرارية
     if (mode === 'silent_80mm' && window.api && typeof window.api.printSilent === 'function') {
-      var silentRes = await window.api.printSilent({
+      var silentRes = await window.__gherbiMasterPrintSilent({
         html: html,
         silent: true,
         printerName: AppState.settings.thermal_printer_name || undefined
@@ -23147,7 +23147,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
     var method = document.getElementById('ordFinalPayMethod')?.value || 'cash';
     var totalPaidOnSale = Math.min(Number(ord.total || 0), Number(ord.deposit_amount || 0) + extraPaidToday);
 
-    var saleRes = await window.api.processSale({
+    var saleRes = await window.__gherbiMasterProcessSale({
       customer_id: ord.customer_id,
       subtotal: ord.subtotal,
       discount: ord.discount,
@@ -35917,7 +35917,7 @@ window.ALGERIAN_WILAYAS = ALGERIAN_WILAYAS;
 
     // إذا كان الخيار الصامت مفعلاً ولدينا طابعة حرارية مضبوطة، نرسلها للطابعة الحرارية مباشرة وإلا نفتح نافذة الطباعة مقاس 80mm
     if (AppState.settings && String(AppState.settings.silent_print) === 'true' && window.api && typeof window.api.printSilent === 'function') {
-      var res = await window.api.printSilent({
+      var res = await window.__gherbiMasterPrintSilent({
         html: thermalHtml,
         silent: true,
         printerName: AppState.settings.thermal_printer_name || undefined

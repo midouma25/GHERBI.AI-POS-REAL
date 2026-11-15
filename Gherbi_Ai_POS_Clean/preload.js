@@ -5,68 +5,6 @@
  */
 
 'use strict';
-/* === [V50_PRELOAD_EXTENSIBLE_PRINT_BRIDGE] === */
-(function installV50PreloadPrintBridge() {
-  try {
-    const electron = require('electron');
-    const cb = electron.contextBridge;
-    if (!cb || typeof cb.exposeInMainWorld !== 'function') return;
-
-    const origExpose = cb.exposeInMainWorld.bind(cb);
-    let registeredHooks = { onProcessSale: null, onPrintSilent: null };
-
-    try {
-      origExpose('GherbiPrintBridge', {
-        registerHooks: function (hooksObj) {
-          if (hooksObj && typeof hooksObj === 'object') {
-            registeredHooks = {
-              onProcessSale: typeof hooksObj.onProcessSale === 'function' ? hooksObj.onProcessSale : null,
-              onPrintSilent: typeof hooksObj.onPrintSilent === 'function' ? hooksObj.onPrintSilent : null
-            };
-          }
-        }
-      });
-    } catch (_) {}
-
-    cb.exposeInMainWorld = function (apiKey, apiObj) {
-      if (apiKey === 'api' && apiObj && typeof apiObj === 'object') {
-        const clonedApi = Object.assign({}, apiObj);
-
-        if (typeof apiObj.processSale === 'function') {
-          const origProcessSale = apiObj.processSale.bind(apiObj);
-          clonedApi.processSale = async function (salePayload, ...rest) {
-            const res = await origProcessSale(salePayload, ...rest);
-            if (registeredHooks.onProcessSale) {
-              try {
-                await registeredHooks.onProcessSale(salePayload, res);
-              } catch (_) {}
-            }
-            return res;
-          };
-        }
-
-        if (typeof apiObj.printSilent === 'function') {
-          const origPrintSilent = apiObj.printSilent.bind(apiObj);
-          clonedApi.printSilent = async function (payload, ...rest) {
-            let finalPayload = payload;
-            if (registeredHooks.onPrintSilent) {
-              try {
-                const transformed = await registeredHooks.onPrintSilent(payload);
-                if (transformed && typeof transformed === 'object') {
-                  finalPayload = transformed;
-                }
-              } catch (_) {}
-            }
-            return await origPrintSilent(finalPayload, ...rest);
-          };
-        }
-
-        return origExpose(apiKey, clonedApi);
-      }
-      return origExpose(apiKey, apiObj);
-    };
-  } catch (_) {}
-})();
 
 
 const { contextBridge, ipcRenderer } = require('electron');
@@ -401,4 +339,43 @@ const api = {
   generateTruckLoadingSheet: (payload) => invoke('generate-truck-loading-sheet', payload)
 };
 
+/* === [V52_PRELOAD_IPC_INTERCEPTOR] === */
+let _v52Hooks = { onProcessSale: null, onPrintSilent: null };
+const _origIpcInvoke = ipcRenderer.invoke.bind(ipcRenderer);
+ipcRenderer.invoke = async function (channel, payload, ...rest) {
+  if (channel === 'process-sale') {
+    const res = await _origIpcInvoke(channel, payload, ...rest);
+    if (typeof _v52Hooks.onProcessSale === 'function') {
+      try { await _v52Hooks.onProcessSale(payload, res); } catch (_) {}
+    }
+    return res;
+  }
+  if (channel === 'print-silent') {
+    let finalPayload = payload;
+    if (typeof _v52Hooks.onPrintSilent === 'function') {
+      try {
+        const modified = await _v52Hooks.onPrintSilent(payload);
+        if (modified && typeof modified === 'object' && modified.html) {
+          finalPayload = modified;
+        }
+      } catch (err) {
+        console.warn('[V52 Preload Print Hook Error]:', err);
+      }
+    }
+    return await _origIpcInvoke(channel, finalPayload, ...rest);
+  }
+  return await _origIpcInvoke(channel, payload, ...rest);
+};
+try {
+  contextBridge.exposeInMainWorld('GherbiV52Bridge', {
+    invokeCustom: (channel, payload) => _origIpcInvoke(channel, payload),
+    registerHooks: (hooks) => {
+      if (hooks && typeof hooks === 'object') {
+        _v52Hooks.onProcessSale = hooks.onProcessSale || _v52Hooks.onProcessSale;
+        _v52Hooks.onPrintSilent = hooks.onPrintSilent || _v52Hooks.onPrintSilent;
+      }
+    }
+  });
+} catch (_) {}
+/* === [/V52_PRELOAD_IPC_INTERCEPTOR] === */
 contextBridge.exposeInMainWorld('api', api);

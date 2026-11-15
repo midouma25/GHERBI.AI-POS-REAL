@@ -1213,7 +1213,7 @@ if (typeof window === 'undefined') {
       const silent = Boolean(options.silent);
 
       if (silent && window.api && typeof window.api.printSilent === 'function') {
-        const res = await window.api.printSilent({
+        const res = await window.__gherbiMasterPrintSilent({
           html: htmlContent,
           silent: true,
           printerName: options.printerName || undefined

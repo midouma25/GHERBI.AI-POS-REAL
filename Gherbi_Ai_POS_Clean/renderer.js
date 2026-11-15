@@ -1875,7 +1875,7 @@ const App = {
     };
 
     try {
-      const res = await window.api.processSale(salePayload);
+      const res = await window.__gherbiMasterProcessSale(salePayload);
       this.closeModal('checkoutModal');
       showToast(
         AppState.editingSaleId
@@ -4159,7 +4159,7 @@ const App = {
   async convertOrderToSaleNow(orderId) {
     const fullOrd = await window.api.getOrderDetails(orderId);
     if (!fullOrd) return;
-    const saleRes = await window.api.processSale({
+    const saleRes = await window.__gherbiMasterProcessSale({
       customer_id: fullOrd.customer_id,
       subtotal: fullOrd.subtotal,
       discount: fullOrd.discount,

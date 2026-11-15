@@ -5759,7 +5759,7 @@ window.GherbiV4Stage1.getCartTotalDirectly = window.computeSafeCartTotalDzd;
 </body>
 </html>`;
 
-      window.api?.printSilent?.({ html, silent: false });
+      window.__gherbiMasterPrintSilent({ html, silent: false });
     }
   };
 
@@ -6103,7 +6103,7 @@ window.GherbiV4Stage1.getCartTotalDirectly = window.computeSafeCartTotalDzd;
 </body>
 </html>`;
 
-      window.api?.printSilent?.({ html, silent: false });
+      window.__gherbiMasterPrintSilent({ html, silent: false });
     }
   };
 
@@ -7078,7 +7078,7 @@ window.GherbiV4Stage1.getCartTotalDirectly = window.computeSafeCartTotalDzd;
 </body>
 </html>`;
 
-      window.api?.printSilent?.({ html, silent: false });
+      window.__gherbiMasterPrintSilent({ html, silent: false });
     },
 
     injectExportAndPrintButtonsIntoOwnerRadar() {

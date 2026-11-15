@@ -2271,3 +2271,21 @@ html.dark .v45-studio-workspace {
   padding-top: 8px !important;
   padding-bottom: 8px !important;
 }
+
+/* === [GHERBI V55 STAGE 3: STRICT ARABIC RTL & 80MM PAPER LOCK] === */
+.v45-live-paper[dir="rtl"],
+html[dir="rtl"] .v45-live-paper {
+  direction: rtl !important;
+  text-align: right !important;
+}
+.v45-live-paper[dir="rtl"] table {
+  direction: rtl !important;
+  text-align: right !important;
+}
+.v45-live-paper[dir="rtl"] th,
+.v45-live-paper[dir="rtl"] td {
+  unicode-bidi: isolate !important;
+}
+.v45-live-paper bdi {
+  unicode-bidi: isolate !important;
+}

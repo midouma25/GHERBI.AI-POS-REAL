@@ -4029,7 +4029,7 @@
           </tbody>
         </table>
       </body></html>`;
-      window.api?.printSilent?.({ html, silent: false });
+      window.__gherbiMasterPrintSilent({ html, silent: false });
     }
   };
 
@@ -5250,7 +5250,7 @@
           <table><tbody>${rows80}</tbody></table>
         </body></html>`;
 
-        window.api?.printSilent?.({ html: html80, silent: false });
+        window.__gherbiMasterPrintSilent({ html: html80, silent: false });
         if (window.showToast) window.showToast('🖨️ جاري فتح معاينة الطباعة الحرارية (80mm)...', 'info');
       } else {
         // طباعة التقرير الرسمي المفصل (A4)
@@ -5326,7 +5326,7 @@
           </table>
         </body></html>`;
 
-        window.api?.printSilent?.({ html: htmlA4, silent: false });
+        window.__gherbiMasterPrintSilent({ html: htmlA4, silent: false });
         if (window.showToast) window.showToast('📄 جاري فتح معاينة التقرير الجنائي الرسمي (A4)...', 'info');
       }
     },
