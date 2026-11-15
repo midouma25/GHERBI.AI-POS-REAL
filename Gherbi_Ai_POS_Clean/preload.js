@@ -5,6 +5,69 @@
  */
 
 'use strict';
+/* === [V50_PRELOAD_EXTENSIBLE_PRINT_BRIDGE] === */
+(function installV50PreloadPrintBridge() {
+  try {
+    const electron = require('electron');
+    const cb = electron.contextBridge;
+    if (!cb || typeof cb.exposeInMainWorld !== 'function') return;
+
+    const origExpose = cb.exposeInMainWorld.bind(cb);
+    let registeredHooks = { onProcessSale: null, onPrintSilent: null };
+
+    try {
+      origExpose('GherbiPrintBridge', {
+        registerHooks: function (hooksObj) {
+          if (hooksObj && typeof hooksObj === 'object') {
+            registeredHooks = {
+              onProcessSale: typeof hooksObj.onProcessSale === 'function' ? hooksObj.onProcessSale : null,
+              onPrintSilent: typeof hooksObj.onPrintSilent === 'function' ? hooksObj.onPrintSilent : null
+            };
+          }
+        }
+      });
+    } catch (_) {}
+
+    cb.exposeInMainWorld = function (apiKey, apiObj) {
+      if (apiKey === 'api' && apiObj && typeof apiObj === 'object') {
+        const clonedApi = Object.assign({}, apiObj);
+
+        if (typeof apiObj.processSale === 'function') {
+          const origProcessSale = apiObj.processSale.bind(apiObj);
+          clonedApi.processSale = async function (salePayload, ...rest) {
+            const res = await origProcessSale(salePayload, ...rest);
+            if (registeredHooks.onProcessSale) {
+              try {
+                await registeredHooks.onProcessSale(salePayload, res);
+              } catch (_) {}
+            }
+            return res;
+          };
+        }
+
+        if (typeof apiObj.printSilent === 'function') {
+          const origPrintSilent = apiObj.printSilent.bind(apiObj);
+          clonedApi.printSilent = async function (payload, ...rest) {
+            let finalPayload = payload;
+            if (registeredHooks.onPrintSilent) {
+              try {
+                const transformed = await registeredHooks.onPrintSilent(payload);
+                if (transformed && typeof transformed === 'object') {
+                  finalPayload = transformed;
+                }
+              } catch (_) {}
+            }
+            return await origPrintSilent(finalPayload, ...rest);
+          };
+        }
+
+        return origExpose(apiKey, clonedApi);
+      }
+      return origExpose(apiKey, apiObj);
+    };
+  } catch (_) {}
+})();
+
 
 const { contextBridge, ipcRenderer } = require('electron');
 

@@ -2092,3 +2092,182 @@ html.dark .v13-inv-quick-btn {
   overflow-y: auto !important;
   overflow-x: hidden !important;
 }
+
+/* === [GHERBI V49: PERFECT THERMAL/A4 PREVIEW & ABSOLUTE ADOPTION] === */
+#view-print > *:not(#print-view-root),
+#print-view-root > *:not([data-gherbi-print-v2="1"]) {
+  display: none !important;
+}
+
+.v45-studio-workspace {
+  background-color: #cbd5e1;
+  background-image: radial-gradient(#94a3b8 1px, transparent 1px);
+  background-size: 18px 18px;
+  padding: 28px 20px;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  border-radius: 1rem;
+  box-shadow: inset 0 3px 12px rgba(15, 23, 42, 0.14);
+}
+html.dark .v45-studio-workspace {
+  background-color: #020617;
+  background-image: radial-gradient(#334155 1px, transparent 1px);
+}
+
+.v45-live-paper,
+.v45-live-paper * {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  box-sizing: border-box !important;
+}
+
+.v45-live-paper [contenteditable="true"] {
+  cursor: text !important;
+  outline: none !important;
+  border-radius: 3px;
+  transition: background-color 0.12s ease, box-shadow 0.12s ease;
+}
+.v45-live-paper [contenteditable="true"]:hover {
+  background-color: rgba(37, 99, 235, 0.06);
+}
+.v45-live-paper [contenteditable="true"]:focus {
+  background-color: #fef9c3 !important;
+  color: #0f172a !important;
+  box-shadow: 0 0 0 2px #f59e0b !important;
+}
+
+.v45-live-paper {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(15, 23, 42, 0.08);
+  position: relative;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  transform-origin: top center;
+}
+.v45-live-paper.paper-a4 {
+  width: 210mm;
+  min-height: 297mm;
+  padding: 10mm;
+}
+.v45-live-paper.paper-a5 {
+  width: 148mm;
+  min-height: 210mm;
+  padding: 7mm;
+}
+.v45-live-paper.paper-2xa5 {
+  width: 297mm;
+  min-height: 210mm;
+  padding: 7mm;
+}
+/* توسيع طفيف ومدروس للمعاينة الحرارية 80mm مع حماية الحدود الداخلية 100% */
+.v45-live-paper.paper-80mm {
+  width: 82mm;
+  min-height: 135mm;
+  padding: 3.5mm;
+}
+.v45-live-paper.paper-58mm {
+  width: 58mm;
+  min-height: 115mm;
+  padding: 2.5mm;
+}
+
+/* تصميم الطبقة التفاعلية بدون أن يغطي شريطها الأزرق أي نص فوقها */
+.v45-canvas-layer {
+  position: relative;
+  border: 1.5px solid transparent;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+.v45-canvas-layer:hover {
+  border-color: #93c5fd;
+}
+.v45-canvas-layer.layer-selected {
+  border-color: #2563eb !important;
+  background-color: rgba(37, 99, 235, 0.02);
+}
+
+/* شريط الطبقة يظهر كشريط مدمج داخل أعلى الطبقة عند التمرير دون أن يغطي الطبقة السابقة */
+.v45-layer-handle-bar {
+  display: none;
+  width: 100%;
+  background: linear-gradient(90deg, #1d4ed8, #2563eb);
+  color: #ffffff;
+  font-size: 9.5px;
+  font-weight: 900;
+  padding: 2px 6px;
+  border-radius: 4px 4px 0 0;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3px;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+.v45-canvas-layer:hover .v45-layer-handle-bar,
+.v45-canvas-layer.layer-selected .v45-layer-handle-bar {
+  display: flex;
+}
+
+.v45-word-ribbon-btn {
+  padding: 0.35rem 0.65rem;
+  border-radius: 0.55rem;
+  font-size: 11px;
+  font-weight: 800;
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.v45-word-ribbon-btn:hover,
+.v45-word-ribbon-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+/* === [GHERBI V49 PART 2: ADVANCED TABLE DENSITY & CROSS-PAGE BRIDGES] === */
+/* التحكم في هوامش الورقة الحية (Word Page Margins) */
+.v45-live-paper.margin-compact.paper-a4 { padding: 6mm !important; }
+.v45-live-paper.margin-normal.paper-a4 { padding: 11mm !important; }
+.v45-live-paper.margin-wide.paper-a4 { padding: 16mm !important; }
+
+.v45-live-paper.margin-compact.paper-a5 { padding: 4.5mm !important; }
+.v45-live-paper.margin-normal.paper-a5 { padding: 8mm !important; }
+.v45-live-paper.margin-wide.paper-a5 { padding: 12mm !important; }
+
+.v45-live-paper.margin-compact.paper-80mm { padding: 2mm !important; }
+.v45-live-paper.margin-normal.paper-80mm { padding: 3.5mm !important; }
+.v45-live-paper.margin-wide.paper-80mm { padding: 5mm !important; }
+
+/* أنماط حدود الجدول (Word Table Borders: Grid / Horizontal / Dashed) */
+.v45-live-paper.border-style-horizontal table td {
+  border-left: none !important;
+  border-right: none !important;
+  border-top: none !important;
+  border-bottom: 1px solid #cbd5e1 !important;
+}
+.v45-live-paper.border-style-dashed table td {
+  border-left: none !important;
+  border-right: none !important;
+  border-top: none !important;
+  border-bottom: 1px dashed #64748b !important;
+}
+
+/* كثافة سطور الجدول (Table Cell Density) */
+.v45-live-paper.density-compact table th,
+.v45-live-paper.density-compact table td {
+  padding-top: 2.5px !important;
+  padding-bottom: 2.5px !important;
+}
+.v45-live-paper.density-spacious table th,
+.v45-live-paper.density-spacious table td {
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+}

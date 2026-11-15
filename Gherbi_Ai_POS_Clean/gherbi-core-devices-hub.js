@@ -1829,3 +1829,3284 @@
     V13Stage3.init();
   }
 })();
+
+/* ==================== [V49 PART 1: PERFECT PREVIEW & ABSOLUTE PRINT SILENT GATEKEEPER] ==================== */
+(function initV49MasterOmniPrintStudioPart1() {
+  const STORAGE_KEY = 'gherbi_v49_master_print_studio_config_v1';
+
+  const MASTER_DOC_TYPES = [
+    { id: 'receipt_thermal', name: '🧾 تذكرة كاشير حرارية (80mm / 58mm)', cleanTitle: 'وصل مبيعات / Ticket de Caisse', defaultPaper: '80mm', sourcePage: 'pos', sourceLabel: 'شاشة المبيعات والكاشير', counterKey: 'invoice' },
+    { id: 'invoice_a4', name: '📄 فاتورة مبيعات رسمية (A4)', cleanTitle: 'فاتورة مبيعات / Facture', defaultPaper: 'a4', sourcePage: 'sales', sourceLabel: 'سجل المبيعات والضمان', counterKey: 'invoice' },
+    { id: 'invoice_a5', name: '📑 فاتورة مبيعات مدمجة (A5)', cleanTitle: 'فاتورة مبيعات مدمجة (A5)', defaultPaper: 'a5', sourcePage: 'sales', sourceLabel: 'سجل المبيعات', counterKey: 'invoice' },
+    { id: 'invoice_2xa5', name: '✂️ فاتورة مزدوجة (2×A5 في ورقة A4 — نسختان)', cleanTitle: 'فاتورة مبيعات / Facture', defaultPaper: '2xa5', sourcePage: 'sales', sourceLabel: 'سجل المبيعات (توفير 50% ورق)', counterKey: 'invoice' },
+    { id: 'delivery_note', name: '🚚 وصل تسليم وتوصيل (Bon de Livraison)', cleanTitle: 'وصل تسليم بضاعة / Bon de Livraison', defaultPaper: 'a4', sourcePage: 'sales', sourceLabel: 'سجل المبيعات والتوصيل', counterKey: 'delivery' },
+    { id: 'proforma', name: '📋 فاتورة شكلية / عرض سعر (Proforma)', cleanTitle: 'فاتورة شكلية / Facture Proforma', defaultPaper: 'a4', sourcePage: 'proformas', sourceLabel: 'الفواتير الشكلية', counterKey: 'proforma' },
+    { id: 'customer_order', name: '📦 سند طلبية زبون (Bon de Commande)', cleanTitle: 'سند طلبية زبون / Bon de Commande', defaultPaper: 'a4', sourcePage: 'orders', sourceLabel: 'طلبيات الزبائن', counterKey: 'order' },
+    { id: 'credit_note', name: "↩️ إشعار دائن / مرتجع (Facture d'Avoir)", cleanTitle: "إشعار دائن (مرتجع) / Facture d'Avoir", defaultPaper: 'a4', sourcePage: 'sales', sourceLabel: 'سجل المبيعات والمرتجعات', counterKey: 'avoir' },
+    { id: 'payment_receipt', name: '💰 وصل قبض / تسديد دين (Reçu de Paiement)', cleanTitle: 'وصل استلام دفعة / Reçu de Paiement', defaultPaper: 'a5', sourcePage: 'customers', sourceLabel: 'الزبائن والديون والأقساط', counterKey: 'payment_receipt' },
+    { id: 'purchase_invoice', name: '🛍️ سند استلام وفاتورة شراء (Bon de Réception)', cleanTitle: 'سند استلام ومشتريات / Bon de Réception', defaultPaper: 'a4', sourcePage: 'purchases', sourceLabel: 'المشتريات والموردين', counterKey: 'reception' },
+    { id: 'warranty_cert', name: '🛡️ شهادة ضمان رسمية (Certificat de Garantie)', cleanTitle: 'شهادة ضمان رسمية / Certificat de Garantie', defaultPaper: 'a5', sourcePage: 'sales', sourceLabel: 'سجل المبيعات والضمان', counterKey: 'warranty' },
+    { id: 'installment_contract', name: '🗓️ عقد بيع بالتقسيط وجدول الأقساط', cleanTitle: 'عقد بيع بالتقسيط / Contrat Vente par Facilité', defaultPaper: 'a4', sourcePage: 'customers', sourceLabel: 'الزبائن والأقساط الشهرية', counterKey: 'invoice' }
+  ];
+
+  const SUGGESTED_LAYERS_CATALOG = [
+    { id: 'header_layer', cat: 'CORE', name: '🏢 ترويسة المتجر والشعار والبيانات الجبائية', desc: 'اسم المتجر، الشعار، الهاتف، العنوان، وأرقام RC / NIF / AI / NIS.', defaultVisible: true },
+    { id: 'doc_banner_layer', cat: 'CORE', name: '🏷️ شريط عنوان ورقم المستند والباركود', desc: 'عنوان التذكرة/الفاتورة، رقمها التسلسلي، تاريخ وساعة الإصدار، والباركود.', defaultVisible: true },
+    { id: 'customer_box_layer', cat: 'CORE', name: '👤 بطاقة بيانات الزبون / المورد والرصيد', desc: 'اسم الزبون أو المورد، رقم هاتفه، عنوانه، وبياناته الجبائية.', defaultVisible: true },
+    { id: 'items_table_layer', cat: 'CORE', name: '📋 جدول الأصناف والكميات والأسعار', desc: 'جدول السلع المباعة بتخطيط ذكي يتكيف تلقائياً مع 80mm و A4.', defaultVisible: true },
+    { id: 'totals_words_layer', cat: 'CORE', name: '💰 شلال المجاميع بالدينار والسنتيم والتفقيط', desc: 'المجموع الفرعي، التخفيض، الصافي بالدينار والسنتيم، والمبلغ بالحروف.', defaultVisible: true },
+    { id: 'loyalty_points_layer', cat: 'LOYALTY', name: '👑 بطاقة نقاط الوفاء والمخصوم من البطاقة (VIP & عابر)', desc: 'تعرض نوع الزبون (وفي أو عابر 0 نقطة)، الرصيد السابق، المكتسب (+)، المخصوم (-)، والرصيد الجديد ومعادله بالدينار.', defaultVisible: true },
+    { id: 'savings_promo_layer', cat: 'LOYALTY', name: '🎉 شريط "كم وفّرت اليوم؟" وعداد القطع الإجمالي', desc: 'يبرز للزبون إجمالي ما وفّره في الفاتورة وإجمالي عدد القطع المستلمة.', defaultVisible: false },
+    { id: 'debt_ledger_layer', cat: 'FINANCE', name: '⚖️ كشف وضعية الديون والحساب التراكمي للزبون', desc: 'يوضح الدين السابق + دين الفاتورة الحالية - المدفوع اليوم = إجمالي الدين المتبقي.', defaultVisible: false },
+    { id: 'payment_breakdown_layer', cat: 'FINANCE', name: '💳 تفصيل المقبوض، الصرف المرجع (Rendu)، والبائع', desc: 'يعرض المبلغ المستلم من الزبون، الصرف المرجع له، طريقة الدفع، واسم الكاشير.', defaultVisible: false },
+    { id: 'tax_ifu_breakdown_layer', cat: 'FINANCE', name: '🇩🇿 جدول تفصيل الضرائب (TVA / الطابع / المواد المقننة)', desc: 'يفصل المبلغ خارج الرسم HT، ضريبة TVA، الطابع الجبائي، والسلع المقننة.', defaultVisible: false },
+    { id: 'warranty_imei_layer', cat: 'LOGISTICS', name: '🛡️ شهادة الضمان والأرقام التسلسلية (IMEI / S-N)', desc: 'صندوق مخصص لمدة الضمان، شروط الصيانة، والأرقام التسلسلية للأجهزة.', defaultVisible: false },
+    { id: 'installments_schedule_layer', cat: 'LOGISTICS', name: '🗓️ جدول الأقساط الشهرية ومواعيد الاستحقاق', desc: 'يعرض الدفعة الأولى (التسبيق)، عدد الأقساط الشهرية، قيمة كل قسط، وتواريخ الاستحقاق.', defaultVisible: false },
+    { id: 'delivery_driver_layer', cat: 'LOGISTICS', name: '🚚 بطاقة التوصيل، السائق، عدد الطرود، وإمضاء الاستلام', desc: 'اسم السائق، رقم المركبة، عدد الكراتين/الطرود (Colis)، وخانة إمضاء الاستلام.', defaultVisible: false },
+    { id: 'qr_social_wifi_layer', cat: 'LOYALTY', name: '📱 رمز QR، حسابات التواصل، وكود Wi-Fi الزبائن', desc: 'رمز استجابة سريعة للمتجر مع صفحات فيسبوك/واتساب أو كود Wi-Fi الزبائن.', defaultVisible: false },
+    { id: 'footer_stamp_layer', cat: 'CORE', name: '✒️ التذييل، شروط الاستبدال، رمز RIP، والختم', desc: 'شروط الإرجاع والاستبدال خلال 48 ساعة، رقم حساب BaridiMob RIP، ومربع الختم.', defaultVisible: true }
+  ];
+
+  // القوالب الافتراضية المثالية الجاهزة للاعتماد الفوري بضغطة زر (Ready-to-Adopt Ideal Presets)
+  const IDEAL_READY_PRESETS = [
+    {
+      id: 'preset_thermal_supermarket',
+      label: '🧾 تذكرة سوبرماركت حرارية مثالية (80mm)',
+      docType: 'receipt_thermal',
+      paperSize: '80mm',
+      themeId: 'pure_mono',
+      fontSize: 11.5,
+      columns: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'loyalty_points_layer', 'footer_stamp_layer']
+    },
+    {
+      id: 'preset_a4_official',
+      label: '📄 فاتورة مؤسسات رسمية كاملة (A4)',
+      docType: 'invoice_a4',
+      paperSize: 'a4',
+      themeId: 'royal_blue',
+      fontSize: 12,
+      columns: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: true, tva: false, subtotal: true },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'debt_ledger_layer', 'loyalty_points_layer', 'footer_stamp_layer']
+    },
+    {
+      id: 'preset_2xa5_economical',
+      label: '✂️ فاتورة مزدوجة اقتصادية (2×A5 في ورقة A4)',
+      docType: 'invoice_2xa5',
+      paperSize: '2xa5',
+      themeId: 'emerald_dz',
+      fontSize: 11,
+      columns: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'footer_stamp_layer']
+    },
+    {
+      id: 'preset_delivery_bl',
+      label: '🚚 وصل تسليم وتوصيل مثالي (Bon de Livraison)',
+      docType: 'delivery_note',
+      paperSize: 'a4',
+      themeId: 'emerald_dz',
+      fontSize: 12,
+      columns: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: false, discount: false, tva: false, subtotal: false },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'delivery_driver_layer', 'footer_stamp_layer']
+    },
+    {
+      id: 'preset_payment_debt',
+      label: '💰 وصل قبض وتسديد ديون (A5)',
+      docType: 'payment_receipt',
+      paperSize: 'a5',
+      themeId: 'royal_blue',
+      fontSize: 12,
+      columns: { index: true, barcode: false, name: true, unit: false, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'debt_ledger_layer', 'totals_words_layer', 'footer_stamp_layer']
+    }
+  ];
+
+  const PAPER_SIZE_META = {
+    a4: { label: 'مقاس A4 رسمي كامل (210×297 mm)', badge: 'A4', desc: 'ورقة كاملة للمؤسسات والفواتير الرسمية المفصلة', aspectW: 28, aspectH: 40 },
+    a5: { label: 'مقاس A5 نصفي مدمج (148×210 mm)', badge: 'A5', desc: 'نصف ورقة مثالي للوصولات والفواتير المتوسطة', aspectW: 24, aspectH: 34 },
+    '2xa5': { label: 'مقاس 2×A5 مزدوج (نسختان في ورقة A4)', badge: '2×A5', desc: 'يطبع نسختين (للزبون وللمتجر) في ورقة A4 واحدة بالعرض', aspectW: 42, aspectH: 28 },
+    '80mm': { label: 'رول حراري 80mm قياسي للكاشير', badge: '80MM', desc: 'تذكرة كاشير حرارية سريعة عريضة متناسقة 100%', aspectW: 18, aspectH: 38 },
+    '58mm': { label: 'رول حراري 58mm صغير', badge: '58MM', desc: 'تذكرة حرارية مدمجة للطابعات المحمولة والصغيرة', aspectW: 14, aspectH: 34 }
+  };
+
+  const VISUAL_THEMES = [
+    { id: 'royal_blue', name: 'الأزرق الملكي التجاري', primary: '#1d4ed8', accent: '#eff6ff', border: '#93c5fd' },
+    { id: 'emerald_dz', name: 'الأخضر الجزائري الرسمي', primary: '#047857', accent: '#ecfdf5', border: '#6ee7b7' },
+    { id: 'executive_dark', name: 'الكحلي التنفيذي الفاخر', primary: '#0f172a', accent: '#f1f5f9', border: '#94a3b8' },
+    { id: 'crimson_bold', name: 'القرمزي البارز للعروض', primary: '#be123c', accent: '#fff1f2', border: '#fda4af' },
+    { id: 'amber_gold', name: 'الذهبي الكلاسيكي', primary: '#b45309', accent: '#fffbeb', border: '#fcd34d' },
+    { id: 'pure_mono', name: 'الأسود والأبيض الاقتصادي (توفير الحبر)', primary: '#000000', accent: '#ffffff', border: '#000000' }
+  ];
+
+  const LABEL_PRESETS = [
+    { id: 'roll_40x25', name: 'رول حراري قياسي (40×25 mm — ملصق باركود)', w: 40, h: 25, type: 'roll', mode: 'barcode' },
+    { id: 'roll_50x30', name: 'رول حراري متوسط (50×30 mm — باركود + سنتيم)', w: 50, h: 30, type: 'roll', mode: 'barcode' },
+    { id: 'roll_60x40', name: 'بطاقة رف سوبرماركت (60×40 mm — السعر بالدينار والسنتيم)', w: 60, h: 40, type: 'roll', mode: 'shelf_tag' },
+    { id: 'promo_70x50', name: 'بطاقة عرض خاص للرف (70×50 mm — برومو مع شطب السعر القديم)', w: 70, h: 50, type: 'roll', mode: 'promo_tag' },
+    { id: 'a4_65', name: 'ورقة A4 لاصقة (65 ملصقاً — 38×21.2 mm)', w: 38, h: 21.2, cols: 5, rows: 13, type: 'a4_sheet', mode: 'barcode' },
+    { id: 'a4_40', name: 'ورقة A4 لاصقة (40 ملصقاً — 52.5×29.7 mm)', w: 52.5, h: 29.7, cols: 4, rows: 10, type: 'a4_sheet', mode: 'barcode' },
+    { id: 'a4_24', name: 'ورقة A4 بطاقات رفوف (24 بطاقة — 70×37 mm)', w: 70, h: 37, cols: 3, rows: 8, type: 'a4_sheet', mode: 'shelf_tag' }
+  ];
+
+  function generateCrispBarcodeSvg(text, heightMm = 10, showText = true) {
+    const clean = String(text || '613000000001').replace(/[^\x20-\x7E]/g, '').trim() || '6130001';
+    const PATTERNS = [
+      '11011001100','11001101100','11001100110','10010011000','10010001100','10001001100','10011001000','10011000100',
+      '10001100100','11001001000','11001000100','11000100100','10110011100','10011011100','10011001110','10111001100',
+      '10011101100','10011100110','11001110010','11001011100','11001001110','11011100100','11001110100','11101101110',
+      '11101001100','11100101100','11100100110','11101100100','11100110100','11100110010','11011011000','11011000110',
+      '11000110110','10100011000','10001011000','10001000110','10110001000','10001101000','10001100010','11010001000',
+      '11000101000','11000100010','10110111000','10110001110','10001101110','10111011000','10111000110','10001110110',
+      '11101110110','11010001110','11000101110','11011101000','11011100010','11011101110','11101011000','11101000110',
+      '11100010110','11101101000','11101100010','11100011010','11101111010','11001000010','11110001010','10100110000',
+      '10100001100','10010110000','10010000110','10000101100','10000100110','10110010000','10110000100','10011010000',
+      '10011000010','10000110100','10000110010','11000010010','11001010000','11110111010','11000010100','10001111010',
+      '10100111100','10010111100','10010011110','10111100100','10011110100','10011110010','11110100100','11110010100',
+      '11110010010','11011011110','11011110110','11110110110','10101111000','10100011110','10001011110','10111101000',
+      '10111100010','11110101000','11110100010','10111011110','10111101110','11101011110','11110101110','11010000100',
+      '11010010000','11010011100','1100011101011'
+    ];
+    let checksum = 104;
+    let bits = PATTERNS[104];
+    for (let i = 0; i < clean.length; i++) {
+      const code = Math.max(0, Math.min(94, clean.charCodeAt(i) - 32));
+      checksum += code * (i + 1);
+      bits += PATTERNS[code];
+    }
+    bits += PATTERNS[checksum % 103] + PATTERNS[106];
+
+    const totalBars = bits.length;
+    let rects = '';
+    let x = 0;
+    while (x < totalBars) {
+      if (bits[x] === '1') {
+        let w = 1;
+        while (x + w < totalBars && bits[x + w] === '1') w++;
+        rects += `<rect x="${x}" y="0" width="${w}" height="40" fill="#000000"/>`;
+        x += w;
+      } else {
+        x++;
+      }
+    }
+
+    return `
+      <div style="display:inline-flex;flex-direction:column;align-items:center;max-width:100%;">
+        <svg viewBox="0 0 ${totalBars} 40" preserveAspectRatio="none" style="width:100%;height:${heightMm}mm;display:block;">
+          ${rects}
+        </svg>
+        ${showText ? `<div style="font-family:monospace;font-size:9.5px;font-weight:900;letter-spacing:1px;margin-top:1px;color:#000;direction:ltr;">${clean}</div>` : ''}
+      </div>
+    `;
+  }
+
+  function createFullDefaultLayers() {
+    return SUGGESTED_LAYERS_CATALOG.map((item) => ({
+      id: item.id,
+      name: item.name,
+      visible: Boolean(item.defaultVisible),
+      align: 'between',
+      customNote: ''
+    }));
+  }
+
+  function mergeCatalogLayersIntoSaved(savedLayers) {
+    const list = Array.isArray(savedLayers) ? [...savedLayers] : [];
+    const existingIds = new Set(list.map((l) => l.id));
+    const footerIdx = list.findIndex((l) => l.id === 'footer_stamp_layer');
+
+    for (const catItem of SUGGESTED_LAYERS_CATALOG) {
+      if (!existingIds.has(catItem.id)) {
+        const newLayerObj = {
+          id: catItem.id,
+          name: catItem.name,
+          visible: Boolean(catItem.defaultVisible),
+          align: 'between',
+          customNote: ''
+        };
+        if (footerIdx >= 0) {
+          list.splice(footerIdx, 0, newLayerObj);
+        } else {
+          list.push(newLayerObj);
+        }
+      }
+    }
+    return list;
+  }
+
+  const MasterPrintStudio = {
+    activeSection: 'visual_studio',
+    selectedLayerId: 'items_table_layer',
+    catalogCategoryFilter: 'ALL',
+    loyaltySimMode: 'vip',
+    lastProcessedSalePayload: null,
+    lastProcessedSaleResult: null,
+    liveDataRecords: {
+      sales: [],
+      purchases: [],
+      proformas: [],
+      orders: [],
+      customers: [],
+      suppliers: [],
+      products: []
+    },
+    printersList: [],
+    selectedRecordId: 'SAMPLE',
+    activeLoadedDocData: null,
+    bridgeCategory: 'sales',
+    bridgeSearch: '',
+    labelQueue: [],
+
+    previewModalState: {
+      isOpen: false,
+      docId: 'receipt_thermal',
+      paperSize: '80mm',
+      themeId: 'pure_mono'
+    },
+
+    freeDoc: {
+      title: 'سند التزام / فاتورة حرة',
+      recipient: 'السيد / المؤسسة: ...........................',
+      date: new Date().toISOString().slice(0, 10),
+      paper: 'a4',
+      introText: 'نشهد نحن إدارة المتجر بتسليم / الاتفاق على البنود الموضحة أدناه:',
+      items: [
+        { name: 'سلعة / خدمة رقم 1', qty: 1, price: 1500 },
+        { name: 'سلعة / خدمة رقم 2', qty: 2, price: 850 }
+      ],
+      footerNote: 'حرر بـ: الجزائر — إمضاء وختم الطرفين:'
+    },
+
+    config: {
+      activeDocType: 'receipt_thermal',
+      paperSize: '80mm',
+      lang: 'ar',
+      themeId: 'pure_mono',
+      fontFamily: 'Cairo',
+      baseFontSizePx: 11.5,
+      zoomPct: 100,
+      watermarkText: '',
+      customHeaderTitle: '',
+      customFooterTerms: 'البضاعة المباعة تستبدل خلال 48 ساعة بشرط سلامة الغلاف الأصلي وإحضار التذكرة. شكراً لزيارتكم!',
+      showCentimesEquivalent: true,
+      showAmountInWords: true,
+      showCustomerBalance: true,
+      showBaridimobQr: true,
+      showDocBarcode: true,
+      showStampSignature: true,
+
+      customTexts: {
+        shopName: '',
+        shopDesc: '',
+        shopAddress: '',
+        shopPhone: '',
+        colIndex: '#',
+        colBarcode: 'الباركود',
+        colName: 'التعيين / الصنف',
+        colUnit: 'الوحدة',
+        colQty: 'الكمية',
+        colPrice: 'السعر',
+        colDiscount: 'الخصم',
+        colTva: 'TVA',
+        colSubtotal: 'المجموع',
+        totalLabel: 'الإجمالي الصافي:',
+        stampLabel: 'الختم والإمضاء (Cachet)',
+        loyaltyHeaderTitle: '👑 بطاقة الوفاء ومكافآت الزبون (Club Fidélité)',
+        walkinInviteNote: '💡 سجل مجاناً في بطاقة الوفاء عند الكاشير لتربح نقاطاً وتخفيضات على كل مشترياتك!',
+        warrantyNoteText: '🛡️ الضمان يشمل عيوب التصنيع لمدة 12 شهراً من تاريخ الفاتورة.',
+        wifiSocialNote: '📶 شبكة Wi-Fi الزبائن: Gherbi_Store_VIP | 📱 تابع عروضنا اليومية!'
+      },
+
+      columns: {
+        index: true,
+        barcode: false,
+        name: true,
+        unit: true,
+        qty: true,
+        unitPrice: true,
+        discount: false,
+        tva: false,
+        subtotal: true
+      },
+
+      layers: createFullDefaultLayers(),
+      adoptedProfiles: {},
+
+      defaultsByDocType: {
+        receipt_thermal: { paperSize: '80mm', themeId: 'pure_mono', lang: 'ar', adopted: true },
+        invoice_a4: { paperSize: 'a4', themeId: 'royal_blue', lang: 'ar', adopted: true },
+        invoice_a5: { paperSize: 'a5', themeId: 'emerald_dz', lang: 'ar', adopted: true },
+        invoice_2xa5: { paperSize: '2xa5', themeId: 'royal_blue', lang: 'ar', adopted: true },
+        delivery_note: { paperSize: 'a4', themeId: 'emerald_dz', lang: 'ar', adopted: true },
+        proforma: { paperSize: 'a4', themeId: 'executive_dark', lang: 'ar', adopted: true },
+        customer_order: { paperSize: 'a4', themeId: 'amber_gold', lang: 'ar', adopted: true },
+        credit_note: { paperSize: 'a4', themeId: 'crimson_bold', lang: 'ar', adopted: true },
+        payment_receipt: { paperSize: 'a5', themeId: 'emerald_dz', lang: 'ar', adopted: true },
+        purchase_invoice: { paperSize: 'a4', themeId: 'executive_dark', lang: 'ar', adopted: true },
+        warranty_cert: { paperSize: 'a5', themeId: 'royal_blue', lang: 'ar', adopted: true },
+        installment_contract: { paperSize: 'a4', themeId: 'amber_gold', lang: 'ar', adopted: true }
+      },
+
+      labelCfg: {
+        presetId: 'roll_40x25',
+        widthMm: 40,
+        heightMm: 25,
+        barcodeHeightMm: 11,
+        showShopName: true,
+        showProductName: true,
+        showPriceDzd: true,
+        showPriceCentimes: true,
+        showOldPriceCrossed: false,
+        oldPriceMultiplier: 1.15,
+        showExpiryDate: false,
+        previewProductId: null
+      }
+    },
+
+    loadSavedConfig() {
+      try {
+        const raw =
+          localStorage.getItem(STORAGE_KEY) ||
+          localStorage.getItem('gherbi_v47_master_print_studio_config_v1') ||
+          localStorage.getItem('gherbi_v45_master_print_studio_config_v1');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          this.config = {
+            ...this.config,
+            ...parsed,
+            customTexts: { ...this.config.customTexts, ...(parsed.customTexts || {}) },
+            columns: { ...this.config.columns, ...(parsed.columns || {}) },
+            labelCfg: { ...this.config.labelCfg, ...(parsed.labelCfg || {}) },
+            adoptedProfiles: { ...(parsed.adoptedProfiles || {}) },
+            defaultsByDocType: { ...this.config.defaultsByDocType, ...(parsed.defaultsByDocType || {}) }
+          };
+          this.config.layers = mergeCatalogLayersIntoSaved(parsed.layers);
+          for (const k of Object.keys(this.config.adoptedProfiles)) {
+            if (this.config.adoptedProfiles[k] && Array.isArray(this.config.adoptedProfiles[k].layers)) {
+              this.config.adoptedProfiles[k].layers = mergeCatalogLayersIntoSaved(this.config.adoptedProfiles[k].layers);
+            }
+          }
+          if (this.config.customHeaderTitle && this.config.customHeaderTitle.includes('80mm')) {
+            this.config.customHeaderTitle = '';
+          }
+        }
+      } catch (_) {}
+    },
+
+    saveConfigLocal() {
+      try {
+        const dt = this.config.activeDocType;
+        this.config.adoptedProfiles[dt] = {
+          paperSize: this.config.paperSize,
+          themeId: this.config.themeId,
+          fontFamily: this.config.fontFamily,
+          baseFontSizePx: this.config.baseFontSizePx,
+          watermarkText: this.config.watermarkText,
+          customHeaderTitle: this.config.customHeaderTitle,
+          customFooterTerms: this.config.customFooterTerms,
+          showCentimesEquivalent: this.config.showCentimesEquivalent,
+          showAmountInWords: this.config.showAmountInWords,
+          showCustomerBalance: this.config.showCustomerBalance,
+          showBaridimobQr: this.config.showBaridimobQr,
+          showDocBarcode: this.config.showDocBarcode,
+          showStampSignature: this.config.showStampSignature,
+          customTexts: JSON.parse(JSON.stringify(this.config.customTexts)),
+          columns: JSON.parse(JSON.stringify(this.config.columns)),
+          layers: JSON.parse(JSON.stringify(this.config.layers))
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.config));
+      } catch (_) {}
+    },
+
+    // تطبيق قالب مثالي جاهز بضغطة زر واحدة
+    async applyIdealPresetNow(presetId) {
+      const pr = IDEAL_READY_PRESETS.find((x) => x.id === presetId);
+      if (!pr) return;
+
+      this.config.activeDocType = pr.docType;
+      this.config.paperSize = pr.paperSize;
+      this.config.themeId = pr.themeId;
+      this.config.baseFontSizePx = pr.fontSize;
+      this.config.columns = { ...this.config.columns, ...pr.columns };
+
+      const activeSet = new Set(pr.activeLayers);
+      this.config.layers = SUGGESTED_LAYERS_CATALOG.map((cat) => ({
+        id: cat.id,
+        name: cat.name,
+        visible: activeSet.has(cat.id),
+        align: 'between',
+        customNote: ''
+      }));
+
+      await this.saveAsDefaultForDocType();
+      if (window.showToast) {
+        window.showToast(`✨ تم تطبيق واعتماد (${pr.label}) كقالب رسمي نشط!`, 'success');
+      }
+    },
+
+    // اعتماد كافة القوالب المثالية لكل صفحات البرنامج الـ 18 دفعة واحدة
+    async adoptAllIdealPresetsAcrossAllPages() {
+      for (const pr of IDEAL_READY_PRESETS) {
+        const activeSet = new Set(pr.activeLayers);
+        const layersList = SUGGESTED_LAYERS_CATALOG.map((cat) => ({
+          id: cat.id,
+          name: cat.name,
+          visible: activeSet.has(cat.id),
+          align: 'between',
+          customNote: ''
+        }));
+
+        this.config.defaultsByDocType[pr.docType] = {
+          paperSize: pr.paperSize,
+          themeId: pr.themeId,
+          lang: 'ar',
+          adopted: true
+        };
+
+        this.config.adoptedProfiles[pr.docType] = {
+          paperSize: pr.paperSize,
+          themeId: pr.themeId,
+          fontFamily: 'Cairo',
+          baseFontSizePx: pr.fontSize,
+          watermarkText: '',
+          customHeaderTitle: '',
+          customFooterTerms: this.config.customFooterTerms,
+          showCentimesEquivalent: true,
+          showAmountInWords: true,
+          showCustomerBalance: true,
+          showBaridimobQr: true,
+          showDocBarcode: true,
+          showStampSignature: true,
+          customTexts: JSON.parse(JSON.stringify(this.config.customTexts)),
+          columns: { ...pr.columns },
+          layers: layersList
+        };
+      }
+
+      // تطبيق القالب المثالي الحالي في المحرر أيضاً
+      const currentMeta = IDEAL_READY_PRESETS.find((x) => x.docType === this.config.activeDocType) || IDEAL_READY_PRESETS[0];
+      await this.applyIdealPresetNow(currentMeta.id);
+
+      if (window.showToast) {
+        window.showToast('🚀 تم شحن واعتماد القوالب الافتراضية المثالية لجميع صفحات البرنامج الـ 18 بنجاح!', 'success');
+      }
+    },
+
+    loadProfileForDocType(docId) {
+      const savedProf = this.config.adoptedProfiles && this.config.adoptedProfiles[docId];
+      const meta = MASTER_DOC_TYPES.find((d) => d.id === docId) || MASTER_DOC_TYPES[0];
+      const def = this.config.defaultsByDocType[docId] || { paperSize: meta.defaultPaper, themeId: 'royal_blue' };
+
+      if (savedProf) {
+        this.config.paperSize = savedProf.paperSize || def.paperSize || meta.defaultPaper;
+        this.config.themeId = savedProf.themeId || def.themeId || 'royal_blue';
+        this.config.baseFontSizePx = savedProf.baseFontSizePx || 11.5;
+        this.config.watermarkText = savedProf.watermarkText || '';
+        this.config.customHeaderTitle = savedProf.customHeaderTitle || '';
+        if (savedProf.customFooterTerms !== undefined) this.config.customFooterTerms = savedProf.customFooterTerms;
+        if (savedProf.showCentimesEquivalent !== undefined) this.config.showCentimesEquivalent = savedProf.showCentimesEquivalent;
+        if (savedProf.showAmountInWords !== undefined) this.config.showAmountInWords = savedProf.showAmountInWords;
+        if (savedProf.showCustomerBalance !== undefined) this.config.showCustomerBalance = savedProf.showCustomerBalance;
+        if (savedProf.showBaridimobQr !== undefined) this.config.showBaridimobQr = savedProf.showBaridimobQr;
+        if (savedProf.showDocBarcode !== undefined) this.config.showDocBarcode = savedProf.showDocBarcode;
+        if (savedProf.showStampSignature !== undefined) this.config.showStampSignature = savedProf.showStampSignature;
+        if (savedProf.customTexts) this.config.customTexts = { ...this.config.customTexts, ...savedProf.customTexts };
+        if (savedProf.columns) this.config.columns = { ...this.config.columns, ...savedProf.columns };
+        if (Array.isArray(savedProf.layers)) {
+          this.config.layers = mergeCatalogLayersIntoSaved(savedProf.layers);
+        }
+      } else {
+        this.config.paperSize = def.paperSize || meta.defaultPaper;
+        this.config.themeId = def.themeId || (docId === 'receipt_thermal' ? 'pure_mono' : 'royal_blue');
+        this.config.customHeaderTitle = '';
+        this.config.layers = createFullDefaultLayers();
+        if (docId === 'delivery_note') this.setLayerVisibleQuiet('delivery_driver_layer', true);
+        if (docId === 'warranty_cert') this.setLayerVisibleQuiet('warranty_imei_layer', true);
+        if (docId === 'installment_contract') this.setLayerVisibleQuiet('installments_schedule_layer', true);
+        if (docId === 'payment_receipt') this.setLayerVisibleQuiet('debt_ledger_layer', true);
+      }
+    },
+
+    setLayerVisibleQuiet(layerId, isVis) {
+      const l = this.config.layers.find((x) => x.id === layerId);
+      if (l) l.visible = Boolean(isVis);
+    },
+
+    init() {
+      this.loadSavedConfig();
+      const wait = setInterval(() => {
+        if (!window.App) return;
+        clearInterval(wait);
+        this.hookGlobalAppPrintMethods();
+        this.installAbsolutePrintSilentGatekeeper();
+        this.injectCrossPageQuickStudioButtons();
+        const viewPrint = document.getElementById('view-print');
+        if (viewPrint && viewPrint.classList.contains('active')) {
+          this.openAndRenderStudio();
+        }
+        console.log('🚀 [Gherbi V49 Part 1]: تم تفعيل المعاينة الذكية والحارس المطلق لاعتماد القوالب في كل الصفحات 100%.');
+      }, 120);
+    },
+
+    fmtDzd(val) {
+      return Number(val || 0).toLocaleString('fr-DZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' د.ج';
+    },
+
+    fmtCentimes(val) {
+      const c = Math.round(Math.abs(Number(val || 0)) * 100);
+      if (c === 0) return '0 سنتيم';
+      if (c >= 1000000) {
+        return (c / 1000000).toFixed(2) + ' مليون سنتيم';
+      }
+      const thousands = Math.floor(c / 1000);
+      const rem = c % 1000;
+      return rem > 0 ? `${thousands} ألف و ${rem} سنتيم` : `${thousands} ألف سنتيم`;
+    },
+
+    amountToArabicWords(amount) {
+      const n = Math.round(Number(amount || 0));
+      if (typeof window.numberToArabicWords === 'function') {
+        try { return window.numberToArabicWords(n) + ' دينار جزائري'; } catch (_) {}
+      }
+      return `${n.toLocaleString('fr-DZ')} دينار جزائري (${this.fmtCentimes(amount)})`;
+    },
+
+    getShopIdentity() {
+      const s = window.AppState?.settings || {};
+      const ct = this.config.customTexts || {};
+      return {
+        name: ct.shopName || s.shop_name || 'Gherbi.Ai POS',
+        desc: ct.shopDesc || s.shop_description || 'تجارة بالتجزئة — الجزائر',
+        address: ct.shopAddress || s.shop_address || 'الجزائر',
+        phone: ct.shopPhone || s.shop_phone || '0550 00 00 00',
+        rc: s.shop_rc || '00/00-0000000B00',
+        nif: s.shop_nif || '000000000000000',
+        ai: s.shop_ai || '00000000000',
+        nis: s.shop_nis || '000000000000000',
+        rip: s.shop_baridimob_rip || s.shop_ccp || '00799999000000000000',
+        logo: s.shop_logo || ''
+      };
+    },
+
+    // ========================================================================
+    // 1. الحارس المطلق لبوابة الطباعة (Absolute PrintSilent & ProcessSale Gatekeeper)
+    //    يمنع طباعة التذكرة القديمة (مثل qsffqsfqsf.pdf) ويفرض القالب المعتمد في الاستوديو 100%!
+    // ========================================================================
+    installAbsolutePrintSilentGatekeeper() {
+      const self = this;
+
+      this.generateAdoptedHtmlForDocument = async function (docTypeKey, saleOrRecordId, rawSaleObj) {
+        const prevDocType = self.config.activeDocType;
+        const prevRecId = self.selectedRecordId;
+        const prevLoaded = self.activeLoadedDocData;
+
+        try {
+          let targetDocType = docTypeKey || 'receipt_thermal';
+          if (targetDocType === 'receipt' || targetDocType === '80mm' || targetDocType === '58mm') targetDocType = 'receipt_thermal';
+          if (targetDocType === 'a4' || targetDocType === 'invoice') targetDocType = 'invoice_a4';
+          if (targetDocType === 'a5') targetDocType = 'invoice_a5';
+          if (targetDocType === 'delivery' || targetDocType === 'bl') targetDocType = 'delivery_note';
+
+          const defInfo = self.config.defaultsByDocType[targetDocType] || {};
+          const savedProfile = self.config.adoptedProfiles[targetDocType] || {};
+          const effectivePaperSize = defInfo.paperSize || savedProfile.paperSize || (targetDocType === 'receipt_thermal' ? '80mm' : 'a4');
+          const effectiveThemeId = defInfo.themeId || savedProfile.themeId || (targetDocType === 'receipt_thermal' ? 'pure_mono' : 'royal_blue');
+
+          let docData = null;
+          if (rawSaleObj && Array.isArray(rawSaleObj.items) && rawSaleObj.items.length > 0) {
+            const custId = rawSaleObj.customer_id || rawSaleObj.customerId || null;
+            const custObj = (self.liveDataRecords.customers || window.AppState?.customers || []).find(
+              (c) => custId && Number(c.id) === Number(custId)
+            );
+            docData = self.enrichDocumentDataWithLoyaltyAndDebt({
+              docNumber: rawSaleObj.doc_number || rawSaleObj.docNumber || ('#' + (rawSaleObj.id || (self.lastProcessedSaleResult && self.lastProcessedSaleResult.saleId) || Date.now().toString().slice(-4))),
+              date: String(rawSaleObj.sale_date || new Date().toISOString()).replace('T', ' ').slice(0, 16),
+              customerId: custId,
+              partyTitle: 'الزبون:',
+              partyName: rawSaleObj.customer_name || (custObj && custObj.name) || 'زبون عابر (Comptoir)',
+              partyPhone: rawSaleObj.customer_phone || (custObj && custObj.phone) || '-',
+              partyAddress: rawSaleObj.customer_address || (custObj && custObj.address) || '-',
+              partyRc: rawSaleObj.customer_rc || (custObj && custObj.rc) || '-',
+              partyNif: rawSaleObj.customer_nif || (custObj && custObj.nif) || '-',
+              paymentMethod: rawSaleObj.payment_method || 'نقداً',
+              cashierName: rawSaleObj.seller_name || rawSaleObj.user_name || 'المدير العام',
+              previousBalance: Number(rawSaleObj.previous_debt || 0),
+              loyaltyPointsEarned: rawSaleObj.points_earned,
+              loyaltyPointsRedeemed: rawSaleObj.points_redeemed,
+              loyaltyDiscountDzd: rawSaleObj.loyalty_discount,
+              items: rawSaleObj.items.map((it) => {
+                const prodLookup = (self.liveDataRecords.products || window.AppState?.products || []).find(
+                  (p) => Number(p.id) === Number(it.product_id || it.productId || it.id)
+                );
+                return {
+                  barcode: it.barcode || it.product_barcode || (prodLookup && prodLookup.barcode) || '-',
+                  name: it.name || it.product_name || it.custom_product_name || (prodLookup && prodLookup.name) || 'صنف',
+                  unit: it.unit || it.product_unit || (prodLookup && prodLookup.unit) || 'قطعة',
+                  qty: Number(it.quantity ?? it.qty ?? 1),
+                  price: Number(it.price ?? it.selling_price ?? 0),
+                  discount: Number(it.discount || 0),
+                  tva: Number(rawSaleObj.tax_percentage || 0),
+                  subtotal: Number(it.subtotal ?? Number(it.price || 0) * Number(it.quantity || 1))
+                };
+              }),
+              subtotal: Number(rawSaleObj.subtotal ?? rawSaleObj.total ?? 0),
+              discount: Number(rawSaleObj.discount || 0),
+              tvaAmount: 0,
+              stampAmount: Number(rawSaleObj.stamp_amount || 0),
+              total: Number(rawSaleObj.total || 0),
+              paidAmount: Number(rawSaleObj.paid_amount ?? rawSaleObj.total ?? 0),
+              receivedAmount: Number(rawSaleObj.received_amount ?? rawSaleObj.paid_amount ?? rawSaleObj.total ?? 0),
+              remainingDebt: Math.max(0, Number(rawSaleObj.total || 0) - Number(rawSaleObj.paid_amount ?? rawSaleObj.total ?? 0))
+            });
+          } else {
+            self.selectedRecordId = saleOrRecordId ? String(saleOrRecordId) : 'SAMPLE';
+            self.activeLoadedDocData = null;
+            docData = await self.resolveActiveDocumentData(targetDocType);
+          }
+
+          const customOverrides = {
+            ...savedProfile,
+            activeDocType: targetDocType,
+            paperSize: effectivePaperSize,
+            themeId: effectiveThemeId
+          };
+
+          const paperBody = self.buildLiveDocumentPaperHtml(docData, true, customOverrides);
+          const isThermal = effectivePaperSize === '80mm' || effectivePaperSize === '58mm';
+          const pageCss = isThermal
+            ? `@page { size: ${effectivePaperSize} auto; margin: 1.5mm; }`
+            : effectivePaperSize === '2xa5'
+            ? `@page { size: A4 landscape; margin: 6mm; }`
+            : effectivePaperSize === 'a5'
+            ? `@page { size: A5 portrait; margin: 6mm; }`
+            : `@page { size: A4 portrait; margin: 8mm; }`;
+
+          return `<!DOCTYPE html><html lang="ar" dir="rtl" data-v49-adopted-master="1"><head><meta charset="UTF-8"><style>
+            ${pageCss}
+            * { box-sizing: border-box !important; }
+            body { margin: 0; padding: 0; font-family: '${customOverrides.fontFamily || 'Cairo'}', 'Cairo', Tahoma, sans-serif; color: #0f172a; background: #fff; width: 100%; }
+            .v45-live-paper { box-shadow: none !important; margin: 0 auto !important; width: 100% !important; min-height: auto !important; padding: ${isThermal ? '1.5mm' : '4mm'} !important; }
+            .v45-canvas-layer { border: none !important; box-shadow: none !important; margin-bottom: 6px !important; }
+          </style></head><body>${paperBody}</body></html>`;
+        } finally {
+          self.config.activeDocType = prevDocType;
+          self.selectedRecordId = prevRecId;
+          self.activeLoadedDocData = prevLoaded;
+        }
+      };
+
+      // أ) دالة التحويل الموحدة لأي مستند يمر عبر بوابة الطباعة (بدون لمس الكائن المجمد window.api)
+      const transformLegacyPrintPayload = async function (payload = {}) {
+        try {
+          const rawHtml = String((payload && payload.html) || '');
+
+          const isAlreadyV49 =
+            rawHtml.includes('data-v49-adopted-master="1"') ||
+            rawHtml.includes('v45-live-paper') ||
+            rawHtml.includes('التقرير الجنائي') ||
+            rawHtml.includes('تقرير رادار الرقابة') ||
+            rawHtml.includes('استمارة حساب الضريبة') ||
+            rawHtml.includes('Z-Report');
+
+          if (isAlreadyV49) return payload;
+
+          // فحص الفواتير الشكلية والطلبيات ووصولات الشراء
+          if (rawHtml.includes('فاتورة شكلية') || rawHtml.includes('Proforma')) {
+            const pfList = self.liveDataRecords.proformas || [];
+            const latestPf = pfList[0];
+            const html = await self.generateAdoptedHtmlForDocument('proforma', latestPf ? latestPf.id : 'SAMPLE');
+            return { ...payload, html };
+          }
+          if (rawHtml.includes('طلبية زبون') || rawHtml.includes('Bon de Commande')) {
+            const ordList = self.liveDataRecords.orders || [];
+            const latestOrd = ordList[0];
+            const html = await self.generateAdoptedHtmlForDocument('customer_order', latestOrd ? latestOrd.id : 'SAMPLE');
+            return { ...payload, html };
+          }
+          if (rawHtml.includes('وصل استلام') || rawHtml.includes('Bon de Réception')) {
+            const pList = self.liveDataRecords.purchases || [];
+            const latestP = pList[0];
+            const html = await self.generateAdoptedHtmlForDocument('purchase_invoice', latestP ? latestP.id : 'SAMPLE');
+            return { ...payload, html };
+          }
+
+          // فحص تذاكر الكاشير وفواتير المبيعات القديمة
+          const looksLikeLegacySaleReceiptOrInvoice =
+            rawHtml.includes('المجموع خارج الرسوم') ||
+            rawHtml.includes('قسيمة وفاء واستبدال') ||
+            rawHtml.includes('N°:') ||
+            rawHtml.includes('receipt_template') ||
+            rawHtml.includes('invoice_template') ||
+            rawHtml.includes('الإجمالي الصافي');
+
+          if (looksLikeLegacySaleReceiptOrInvoice) {
+            const isLegacyThermal =
+              rawHtml.includes('80mm') ||
+              rawHtml.includes('58mm') ||
+              rawHtml.includes('قسيمة وفاء واستبدال') ||
+              (payload && Number(payload.widthMm || 0) <= 85 && Number(payload.widthMm || 0) > 0);
+
+            const targetDocType = isLegacyThermal ? 'receipt_thermal' : 'invoice_a4';
+
+            let matchedSaleId = null;
+            const numMatch = rawHtml.match(/N°\s*:\s*(?:FAC-\d+-)?0*(\d+)/i) || rawHtml.match(/#\s*(\d+)/);
+            if (numMatch && numMatch[1]) {
+              const candidateNum = Number(numMatch[1]);
+              const salesList = self.liveDataRecords.sales || window.AppState?.sales || [];
+              const foundSale = salesList.find(
+                (s) =>
+                  Number(s.id) === candidateNum ||
+                  String(s.doc_number || '').endsWith(String(candidateNum))
+              );
+              matchedSaleId = foundSale ? foundSale.id : candidateNum;
+            } else if (self.lastProcessedSaleResult && self.lastProcessedSaleResult.saleId) {
+              matchedSaleId = self.lastProcessedSaleResult.saleId;
+            } else if (window.App && window.App.currentPrintingSaleId) {
+              matchedSaleId = window.App.currentPrintingSaleId;
+            }
+
+            const adoptedHtml = await self.generateAdoptedHtmlForDocument(
+              targetDocType,
+              matchedSaleId,
+              !matchedSaleId ? self.lastProcessedSalePayload : null
+            );
+
+            if (adoptedHtml) {
+              const defPaper = (self.config.defaultsByDocType[targetDocType] || {}).paperSize || (isLegacyThermal ? '80mm' : 'a4');
+              return {
+                ...payload,
+                html: adoptedHtml,
+                paperSize: defPaper,
+                widthMm: defPaper === '80mm' ? 80 : defPaper === '58mm' ? 58 : undefined
+              };
+            }
+          }
+        } catch (err) {
+          console.warn('[V50 Print Gatekeeper Fallback]:', err);
+        }
+        return payload;
+      };
+
+      const onSaleProcessedCallback = async function (salePayload, res) {
+        self.lastProcessedSalePayload = salePayload;
+        self.lastProcessedSaleResult = res;
+        try {
+          if (window.api?.getCustomers) self.liveDataRecords.customers = await window.api.getCustomers();
+          if (window.api?.getSales) self.liveDataRecords.sales = await window.api.getSales();
+        } catch (_) {}
+      };
+
+      // تسجيل الخطافات عبر الجسر الآمن GherbiPrintBridge في preload.js
+      if (window.GherbiPrintBridge && typeof window.GherbiPrintBridge.registerHooks === 'function') {
+        window.GherbiPrintBridge.registerHooks({
+          onProcessSale: onSaleProcessedCallback,
+          onPrintSilent: transformLegacyPrintPayload
+        });
+      }
+
+      // اعتراض دوال الطباعة في الكائن القابل للتعديل window.App و window.PrintEngine مباشرةً أيضاً
+      if (window.App && typeof window.App.submitSale === 'function' && !window.App._v50SubmitSaleHooked) {
+        const origSubmitSale = window.App.submitSale.bind(window.App);
+        window.App._v50SubmitSaleHooked = true;
+        window.App.submitSale = async function (printMode, ...rest) {
+          const res = await origSubmitSale(printMode, ...rest);
+          return res;
+        };
+      }
+    },
+
+    // إثراء بيانات الفاتورة بنقاط الوفاء الحقيقية من قاعدة البيانات (سواء زبون وفي أو زبون عابر)
+    enrichDocumentDataWithLoyaltyAndDebt(rawDoc) {
+      const d = { ...rawDoc };
+      const customers = this.liveDataRecords.customers || window.AppState?.customers || [];
+      const pName = String(d.partyName || '').trim();
+      const isWalkinName =
+        !pName ||
+        pName.includes('زبون عابر') ||
+        pName.toLowerCase().includes('comptoir') ||
+        pName === 'زبون';
+
+      const matchedCustomer = customers.find(
+        (c) =>
+          (d.customerId && Number(c.id) === Number(d.customerId)) ||
+          (pName && !isWalkinName && pName.includes(String(c.name || '').trim()) && String(c.name || '').trim().length > 2)
+      );
+
+      if (matchedCustomer) {
+        d.isWalkinCustomer = false;
+        d.partyName = matchedCustomer.name;
+        d.partyPhone = matchedCustomer.phone || d.partyPhone || '-';
+        d.loyaltyStatusLabel = '👑 زبون وفي مسجل (VIP)';
+        d.loyaltyCardCode = matchedCustomer.loyalty_card || ('FID-' + String(matchedCustomer.id).padStart(5, '0'));
+        const currPts = Math.max(0, Number(matchedCustomer.loyalty_points ?? matchedCustomer.points ?? 43));
+        const earnedPts = d.loyaltyPointsEarned !== undefined ? Number(d.loyaltyPointsEarned) : Math.max(1, Math.floor(Number(d.total || 0) / 100));
+        const redeemedPts = d.loyaltyPointsRedeemed !== undefined ? Number(d.loyaltyPointsRedeemed) : 0;
+        const redeemedDzd = d.loyaltyDiscountDzd !== undefined ? Number(d.loyaltyDiscountDzd) : redeemedPts * 2;
+        d.loyaltyPrevPoints = Math.max(0, currPts - earnedPts + redeemedPts);
+        d.loyaltyEarnedPoints = earnedPts;
+        d.loyaltyRedeemedPoints = redeemedPts;
+        d.loyaltyRedeemedValueDzd = redeemedDzd;
+        d.loyaltyNewBalancePoints = currPts;
+        d.loyaltyNewBalanceDzdValue = Number((currPts * 2).toFixed(2));
+        if (!d.previousBalance) {
+          d.previousBalance = Math.max(0, Number(matchedCustomer.total_debt || 0) - Number(d.remainingDebt || 0));
+        }
+      } else if (d.isWalkinCustomer === true || (isWalkinName && this.loyaltySimMode === 'walkin')) {
+        d.isWalkinCustomer = true;
+        d.loyaltyStatusLabel = '🚶 زبون عابر (نقاطه: 0)';
+        d.loyaltyCardCode = 'بدون بطاقة (0)';
+        d.loyaltyPrevPoints = 0;
+        d.loyaltyEarnedPoints = 0;
+        d.loyaltyRedeemedPoints = 0;
+        d.loyaltyRedeemedValueDzd = 0;
+        d.loyaltyNewBalancePoints = 0;
+        d.loyaltyNewBalanceDzdValue = 0;
+        d.potentialPointsIfRegistered = Math.max(1, Math.floor(Number(d.total || 0) / 100));
+      } else {
+        d.isWalkinCustomer = false;
+        d.loyaltyStatusLabel = d.loyaltyStatusLabel || '👑 زبون وفي مسجل (VIP)';
+        d.loyaltyCardCode = d.loyaltyCardCode || 'FID-00003';
+        d.loyaltyPrevPoints = d.loyaltyPrevPoints ?? 40;
+        d.loyaltyEarnedPoints = d.loyaltyEarnedPoints ?? Math.max(3, Math.floor(Number(d.total || 340) / 100));
+        d.loyaltyRedeemedPoints = d.loyaltyRedeemedPoints ?? 0;
+        d.loyaltyRedeemedValueDzd = d.loyaltyRedeemedValueDzd ?? 0;
+        d.loyaltyNewBalancePoints = d.loyaltyPrevPoints + d.loyaltyEarnedPoints - d.loyaltyRedeemedPoints;
+        d.loyaltyNewBalanceDzdValue = Number((d.loyaltyNewBalancePoints * 2).toFixed(2));
+      }
+
+      const itemsQtySum = (d.items || []).reduce((s, it) => s + Number(it.qty || 1), 0);
+      const itemsDiscSum = (d.items || []).reduce((s, it) => s + Number(it.discount || 0), 0);
+      d.totalUnitsCount = Number(itemsQtySum.toFixed(2));
+      d.totalCustomerSavingsDzd = Number(
+        (itemsDiscSum + Number(d.discount || 0) + Number(d.loyaltyRedeemedValueDzd || 0)).toFixed(2)
+      );
+      d.cashierName = d.cashierName || 'المدير العام';
+      d.receivedAmount = Math.max(Number(d.paidAmount || 0), Number(d.receivedAmount || d.paidAmount || 0));
+      d.changeReturnedDzd = Math.max(0, Number((d.receivedAmount - Number(d.paidAmount || 0)).toFixed(2)));
+      d.cumulativeTotalDebt = Number((Number(d.previousBalance || 0) + Number(d.remainingDebt || 0)).toFixed(2));
+
+      return d;
+    },
+
+    // ========================================================================
+    // 2. رسم الورقة التفاعلية الحية بالتخطيط الحراري المدمج الذكي (Smart Stacked Thermal Table)
+    // ========================================================================
+    buildLiveDocumentPaperHtml(docData, forPrintOutput = false, customOverrides = null) {
+      const cfg = customOverrides ? { ...this.config, ...customOverrides } : this.config;
+      const ct = cfg.customTexts || this.config.customTexts;
+      const shop = this.getShopIdentity();
+      const theme = VISUAL_THEMES.find((t) => t.id === cfg.themeId) || VISUAL_THEMES[0];
+      const docMeta = MASTER_DOC_TYPES.find((d) => d.id === cfg.activeDocType) || MASTER_DOC_TYPES[0];
+      const isThermal = cfg.paperSize === '80mm' || cfg.paperSize === '58mm';
+      const isPreviewModal = Boolean(customOverrides && customOverrides.isPreviewModal);
+
+      const docTitleText = cfg.customHeaderTitle || docMeta.cleanTitle || 'وصل مبيعات';
+
+      const makeEdit = (fieldKey, itemIdx, itemField) => {
+        if (forPrintOutput || isPreviewModal) return '';
+        if (itemIdx !== undefined && itemIdx !== null) {
+          return `contenteditable="true" spellcheck="false" oninput="window.GherbiPrintStudioV45.onPaperDirectInput(null, this.textContent, ${itemIdx}, '${itemField}')"`;
+        }
+        return `contenteditable="true" spellcheck="false" oninput="window.GherbiPrintStudioV45.onPaperDirectInput('${fieldKey}', this.textContent)"`;
+      };
+
+      const wrapLayer = (layerObj, innerHtml) => {
+        if (!layerObj || !layerObj.visible) return '';
+        if (forPrintOutput) return `<div style="margin-bottom:6px;width:100%;">${innerHtml}</div>`;
+
+        if (isPreviewModal) {
+          return `
+            <div onclick="event.stopPropagation(); window.GherbiPrintStudioV45.jumpFromPreviewModalToEditLayer('${cfg.activeDocType}', '${cfg.paperSize}', '${cfg.themeId}', '${layerObj.id}')"
+                 title="اضغط للانتقال إلى استوديو التعديل وتخصيص (${layerObj.name})"
+                 class="v45-canvas-layer cursor-pointer" style="margin-bottom:8px;">
+              <div class="v45-layer-handle-bar">
+                <span>🎨 انقر لتعديل (${layerObj.name}) ⬅</span>
+              </div>
+              ${innerHtml}
+            </div>
+          `;
+        }
+
+        const isSel = this.selectedLayerId === layerObj.id;
+        return `
+          <div data-v47-layer-id="${layerObj.id}"
+               onclick="window.GherbiPrintStudioV45.selectLayerDomOnly('${layerObj.id}')"
+               class="v45-canvas-layer ${isSel ? 'layer-selected' : ''}" style="margin-bottom:8px;">
+            <div class="v45-layer-handle-bar" contenteditable="false">
+              <span style="overflow:hidden;text-overflow:ellipsis;">${layerObj.name}</span>
+              <span style="display:inline-flex;gap:4px;shrink:0;">
+                <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.moveLayer('${layerObj.id}', -1)" title="تحريك للأعلى">▲</button>
+                <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.moveLayer('${layerObj.id}', 1)" title="تحريك للأسفل">▼</button>
+                <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.toggleLayerVisibility('${layerObj.id}')" title="إخفاء الطبقة">✕</button>
+              </span>
+            </div>
+            ${innerHtml}
+          </div>
+        `;
+      };
+
+      const renderLayerById = (layer) => {
+        // 1. ترويسة المتجر
+        if (layer.id === 'header_layer') {
+          if (isThermal) {
+            return wrapLayer(
+              layer,
+              `<div style="text-align:center;border-bottom:1.5px dashed #0f172a;padding-bottom:5px;">
+                ${shop.logo ? `<img src="${shop.logo}" style="max-height:40px;margin:0 auto 3px;display:block;">` : ''}
+                <div ${makeEdit('shopName')} style="font-size:15.5px;font-weight:900;line-height:1.2;">${shop.name}</div>
+                <div ${makeEdit('shopDesc')} style="font-size:10.5px;color:#334155;font-weight:700;margin-top:1px;">${shop.desc} — ${shop.address}</div>
+                <div style="font-size:10.5px;font-weight:900;margin-top:2px;">
+                  <span>هاتف: </span><span ${makeEdit('shopPhone')} style="font-family:monospace;direction:ltr;display:inline-block;">${shop.phone}</span>
+                </div>
+              </div>`
+            );
+          }
+          return wrapLayer(
+            layer,
+            `<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ${theme.primary};padding-bottom:10px;">
+              <div style="flex:1;">
+                <div ${makeEdit('shopName')} style="font-size:20px;font-weight:900;color:${theme.primary};">${shop.name}</div>
+                <div ${makeEdit('shopDesc')} style="font-size:12px;font-weight:700;color:#475569;margin-top:2px;">${shop.desc}</div>
+                <div ${makeEdit('shopAddress')} style="font-size:11px;color:#334155;margin-top:3px;">📍 العنوان: ${shop.address} | 📞 الهاتف: <span style="direction:ltr;display:inline-block;font-family:monospace;">${shop.phone}</span></div>
+              </div>
+              ${shop.logo ? `<img src="${shop.logo}" style="max-height:64px;max-width:120px;object-fit:contain;margin:0 12px;">` : ''}
+              <div style="text-align:left;font-size:10px;font-family:monospace;background:${theme.accent};border:1px solid ${theme.border};padding:6px 10px;border-radius:8px;line-height:1.45;">
+                <div ${makeEdit('shopRc')}><strong>RC:</strong> ${shop.rc}</div>
+                <div ${makeEdit('shopNif')}><strong>NIF:</strong> ${shop.nif}</div>
+                <div ${makeEdit('shopAi')}><strong>AI:</strong> ${shop.ai} | <strong>NIS:</strong> ${shop.nis}</div>
+              </div>
+            </div>`
+          );
+        }
+
+        // 2. شريط عنوان ورقم المستند والباركود
+        if (layer.id === 'doc_banner_layer') {
+          const bcSvg = cfg.showDocBarcode ? generateCrispBarcodeSvg(docData.docNumber, isThermal ? 7 : 10, false) : '';
+          if (isThermal) {
+            return wrapLayer(
+              layer,
+              `<div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:4px 6px;text-align:center;">
+                <div ${makeEdit('customHeaderTitle')} style="font-size:12px;font-weight:900;color:#0f172a;">${docTitleText}</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;font-weight:800;color:#334155;margin-top:2px;">
+                  <span>N°: <strong ${makeEdit('docField:docNumber')} style="font-family:monospace;direction:ltr;display:inline-block;">${docData.docNumber}</strong></span>
+                  <span ${makeEdit('docField:date')} style="font-family:monospace;direction:ltr;display:inline-block;">${docData.date}</span>
+                </div>
+                ${bcSvg ? `<div style="width:120px;margin:3px auto 0;">${bcSvg}</div>` : ''}
+              </div>`
+            );
+          }
+          return wrapLayer(
+            layer,
+            `<div style="display:flex;justify-content:space-between;align-items:center;background:${theme.accent};border:1.5px solid ${theme.border};border-radius:10px;padding:8px 14px;">
+              <div style="flex:1;">
+                <div ${makeEdit('customHeaderTitle')} style="font-size:16px;font-weight:900;color:${theme.primary};">${docTitleText}</div>
+                <div style="font-size:11px;font-weight:800;color:#334155;margin-top:2px;">
+                  رقم المستند: <strong ${makeEdit('docField:docNumber')} style="font-family:monospace;">${docData.docNumber}</strong> | التاريخ: <strong ${makeEdit('docField:date')} style="font-family:monospace;">${docData.date}</strong>
+                </div>
+              </div>
+              ${bcSvg ? `<div style="width:140px;margin-right:6px;">${bcSvg}</div>` : ''}
+            </div>`
+          );
+        }
+
+        // 3. بطاقة بيانات الزبون / المورد (إصلاح انقسام رقم الهاتف على سطرين)
+        if (layer.id === 'customer_box_layer') {
+          if (isThermal) {
+            return wrapLayer(
+              layer,
+              `<div style="font-size:10.5px;border-bottom:1px dashed #64748b;padding-bottom:4px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px;">
+                <div><strong ${makeEdit('docField:partyTitle')}>${docData.partyTitle}</strong> <span ${makeEdit('docField:partyName')} style="font-weight:900;">${docData.partyName}</span></div>
+                ${docData.partyPhone && docData.partyPhone !== '-' ? `<div ${makeEdit('docField:partyPhone')} style="font-family:monospace;font-weight:800;direction:ltr;white-space:nowrap;">📞 ${docData.partyPhone}</div>` : ''}
+              </div>`
+            );
+          }
+          return wrapLayer(
+            layer,
+            `<div style="display:grid;grid-template-columns:1.3fr 1fr;gap:10px;border:1px solid #cbd5e1;border-radius:10px;padding:8px 12px;font-size:11.5px;background:#f8fafc;">
+              <div>
+                <div><strong ${makeEdit('docField:partyTitle')}>${docData.partyTitle}</strong> <span ${makeEdit('docField:partyName')} style="font-size:13px;font-weight:900;color:#0f172a;">${docData.partyName}</span></div>
+                <div ${makeEdit('docField:partyAddress')} style="color:#475569;margin-top:2px;">📍 العنوان: ${docData.partyAddress} | 📞 الهاتف: <span style="direction:ltr;display:inline-block;font-family:monospace;">${docData.partyPhone}</span></div>
+              </div>
+              <div style="text-align:left;font-family:monospace;font-size:10.5px;">
+                <div ${makeEdit('docField:paymentMethod')}><strong>طريقة التسديد:</strong> ${docData.paymentMethod}</div>
+                <div ${makeEdit('docField:partyRc')}><strong>RC:</strong> ${docData.partyRc} | <strong>NIF:</strong> ${docData.partyNif}</div>
+              </div>
+            </div>`
+          );
+        }
+
+        // 4. جدول الأصناف الذكي (الحل الجذري لمشكلة تكدس الأعمدة في 80mm!)
+        if (layer.id === 'items_table_layer') {
+          const cols = cfg.columns;
+
+          // أ) في التذكرة الحرارية (80mm / 58mm): نستخدم التخطيط المدمج الأنيق بحيث يأخذ اسم الصنف مساحته الكاملة ولا ينكسر عمودياً أبداً، وتظهر البيانات الإضافية المختارة كسطر فرعي نظيف تحت اسم الصنف!
+          if (isThermal) {
+            const thSt = `background:${theme.primary};color:#ffffff;padding:4px 3px;font-size:10px;font-weight:900;border:1px solid ${theme.primary};`;
+            const tdSt = `padding:4px 3px;border-bottom:1px dashed #cbd5e1;font-size:10.5px;vertical-align:top;`;
+
+            const thermalRows = (docData.items || [])
+              .map((it, i) => {
+                const subBadges = [];
+                if (cols.barcode && it.barcode && it.barcode !== '-') {
+                  subBadges.push(`<span ${makeEdit(null, i, 'barcode')} style="font-family:monospace;direction:ltr;display:inline-block;">[${it.barcode}]</span>`);
+                }
+                if (cols.unit && it.unit) {
+                  subBadges.push(`<span ${makeEdit(null, i, 'unit')}>الوحدة: ${it.unit}</span>`);
+                }
+                if (cols.discount && Number(it.discount || 0) > 0) {
+                  subBadges.push(`<span ${makeEdit(null, i, 'discount')} style="color:#be123c;">خصم: -${Number(it.discount).toFixed(2)}</span>`);
+                }
+                if (cols.tva && Number(it.tva || 0) > 0) {
+                  subBadges.push(`<span>TVA: ${Number(it.tva)}%</span>`);
+                }
+
+                const subMetaHtml =
+                  subBadges.length > 0
+                    ? `<div style="font-size:8.5px;color:#475569;font-weight:700;margin-top:1.5px;display:flex;flex-wrap:wrap;gap:4px;">${subBadges.join(' • ')}</div>`
+                    : '';
+
+                return `
+                  <tr>
+                    <td style="${tdSt}text-align:right;width:52%;word-break:break-word;">
+                      <div style="font-weight:900;line-height:1.25;color:#0f172a;">
+                        ${cols.index ? `<span style="font-family:monospace;color:#475569;">${i + 1}. </span>` : ''}
+                        <span ${makeEdit(null, i, 'name')}>${it.name}</span>
+                      </div>
+                      ${subMetaHtml}
+                    </td>
+                    ${cols.qty ? `<td ${makeEdit(null, i, 'qty')} style="${tdSt}text-align:center;font-family:monospace;font-weight:900;width:13%;">${it.qty}</td>` : ''}
+                    ${cols.unitPrice ? `<td ${makeEdit(null, i, 'price')} style="${tdSt}text-align:center;font-family:monospace;width:17%;">${Number(it.price || 0).toFixed(2)}</td>` : ''}
+                    ${cols.subtotal ? `<td ${makeEdit(null, i, 'subtotal')} style="${tdSt}text-align:left;font-family:monospace;font-weight:900;width:18%;">${Number(it.subtotal || 0).toFixed(2)}</td>` : ''}
+                  </tr>
+                `;
+              })
+              .join('');
+
+            return wrapLayer(
+              layer,
+              `<table style="width:100%;table-layout:fixed;border-collapse:collapse;">
+                <thead>
+                  <tr>
+                    <th ${makeEdit('colName')} style="${thSt}text-align:right;width:52%;">${ct.colName || 'التعيين / الصنف'}</th>
+                    ${cols.qty ? `<th ${makeEdit('colQty')} style="${thSt}text-align:center;width:13%;">${ct.colQty || 'الكمية'}</th>` : ''}
+                    ${cols.unitPrice ? `<th ${makeEdit('colPrice')} style="${thSt}text-align:center;width:17%;">${ct.colPrice || 'السعر'}</th>` : ''}
+                    ${cols.subtotal ? `<th ${makeEdit('colSubtotal')} style="${thSt}text-align:left;width:18%;">${ct.colSubtotal || 'المجموع'}</th>` : ''}
+                  </tr>
+                </thead>
+                <tbody>${thermalRows}</tbody>
+              </table>`
+            );
+          }
+
+          // ب) في الفواتير الورقية العريضة (A4 / A5 / 2xA5): تعرض كافة الأعمدة أفقياً بوضوح تام
+          const thStyle = `background:${theme.primary};color:#ffffff;padding:7px 8px;font-size:11.5px;font-weight:900;border:1px solid ${theme.primary};text-align:right;`;
+          const tdStyle = `padding:6px 8px;border:1px solid #cbd5e1;font-size:11.5px;`;
+
+          const headers = [];
+          if (cols.index) headers.push(`<th ${makeEdit('colIndex')} style="${thStyle}width:28px;text-align:center;">${ct.colIndex || '#'}</th>`);
+          if (cols.barcode) headers.push(`<th ${makeEdit('colBarcode')} style="${thStyle}">${ct.colBarcode || 'الباركود'}</th>`);
+          if (cols.name) headers.push(`<th ${makeEdit('colName')} style="${thStyle}">${ct.colName || 'التعيين / الصنف'}</th>`);
+          if (cols.unit) headers.push(`<th ${makeEdit('colUnit')} style="${thStyle}text-align:center;">${ct.colUnit || 'الوحدة'}</th>`);
+          if (cols.qty) headers.push(`<th ${makeEdit('colQty')} style="${thStyle}text-align:center;">${ct.colQty || 'الكمية'}</th>`);
+          if (cols.unitPrice) headers.push(`<th ${makeEdit('colPrice')} style="${thStyle}">${ct.colPrice || 'سعر الوحدة'}</th>`);
+          if (cols.discount) headers.push(`<th ${makeEdit('colDiscount')} style="${thStyle}">${ct.colDiscount || 'الخصم'}</th>`);
+          if (cols.tva) headers.push(`<th ${makeEdit('colTva')} style="${thStyle}">${ct.colTva || 'TVA'}</th>`);
+          if (cols.subtotal) headers.push(`<th ${makeEdit('colSubtotal')} style="${thStyle}text-align:left;">${ct.colSubtotal || 'المجموع'}</th>`);
+
+          const rowsHtml = (docData.items || [])
+            .map((it, i) => {
+              const cells = [];
+              if (cols.index) cells.push(`<td style="${tdStyle}text-align:center;font-family:monospace;">${i + 1}</td>`);
+              if (cols.barcode) cells.push(`<td ${makeEdit(null, i, 'barcode')} style="${tdStyle}font-family:monospace;font-size:10px;">${it.barcode || '-'}</td>`);
+              if (cols.name) cells.push(`<td ${makeEdit(null, i, 'name')} style="${tdStyle}font-weight:800;">${it.name}</td>`);
+              if (cols.unit) cells.push(`<td ${makeEdit(null, i, 'unit')} style="${tdStyle}text-align:center;">${it.unit || 'قطعة'}</td>`);
+              if (cols.qty) cells.push(`<td ${makeEdit(null, i, 'qty')} style="${tdStyle}text-align:center;font-family:monospace;font-weight:900;">${it.qty}</td>`);
+              if (cols.unitPrice) cells.push(`<td ${makeEdit(null, i, 'price')} style="${tdStyle}font-family:monospace;">${Number(it.price || 0).toFixed(2)}</td>`);
+              if (cols.discount) cells.push(`<td ${makeEdit(null, i, 'discount')} style="${tdStyle}font-family:monospace;">${Number(it.discount || 0).toFixed(2)}</td>`);
+              if (cols.tva) cells.push(`<td style="${tdStyle}font-family:monospace;">${Number(it.tva || 0)}%</td>`);
+              if (cols.subtotal) cells.push(`<td ${makeEdit(null, i, 'subtotal')} style="${tdStyle}text-align:left;font-family:monospace;font-weight:900;">${Number(it.subtotal || 0).toFixed(2)}</td>`);
+              return `<tr style="background:${i % 2 === 1 ? '#f8fafc' : '#ffffff'};">${cells.join('')}</tr>`;
+            })
+            .join('');
+
+          return wrapLayer(
+            layer,
+            `<table style="width:100%;border-collapse:collapse;">
+              <thead><tr>${headers.join('')}</tr></thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>`
+          );
+        }
+
+        // 5. شلال المجاميع بالدينار والسنتيم والتفقيط
+        if (layer.id === 'totals_words_layer') {
+          if (isThermal) {
+            return wrapLayer(
+              layer,
+              `<div style="border-top:2px solid #000;padding-top:5px;font-size:11px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:13.5px;">
+                  <span ${makeEdit('totalLabel')}>${ct.totalLabel || 'الإجمالي الصافي:'}</span>
+                  <span id="v47LiveDocTotalVal" ${makeEdit('docField:total')} style="font-family:monospace;direction:ltr;">${this.fmtDzd(docData.total)}</span>
+                </div>
+                ${cfg.showCentimesEquivalent ? `<div id="v47LiveDocCentimesVal" style="text-align:left;font-size:10.5px;font-weight:900;color:#334155;margin-top:1px;">🇩🇿 بالسنتيم: ${this.fmtCentimes(docData.total)}</div>` : ''}
+                ${cfg.showCustomerBalance ? `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:800;margin-top:4px;border-top:1px dashed #94a3b8;padding-top:4px;"><span ${makeEdit('docField:paidAmount')}>المدفوع: ${this.fmtDzd(docData.paidAmount)}</span><span ${makeEdit('docField:remainingDebt')}>الباقي: ${this.fmtDzd(docData.remainingDebt)}</span></div>` : ''}
+              </div>`
+            );
+          }
+
+          return wrapLayer(
+            layer,
+            `<div style="display:grid;grid-template-columns:1.25fr 1fr;gap:12px;align-items:stretch;">
+              <div style="border:1px solid #cbd5e1;border-radius:10px;padding:10px;background:#f8fafc;display:flex;flex-direction:column;justify-content:space-between;">
+                ${
+                  cfg.showAmountInWords
+                    ? `<div>
+                        <div style="font-size:10.5px;font-weight:900;color:#475569;">أوقفت هذه الوثيقة على مبلغ قدره (بالحروف):</div>
+                        <div id="v47LiveDocWordsVal" ${makeEdit('amountWords')} style="font-size:12px;font-weight:900;color:${theme.primary};margin-top:3px;">${this.amountToArabicWords(docData.total)}</div>
+                      </div>`
+                    : ''
+                }
+                ${
+                  cfg.showCustomerBalance
+                    ? `<div style="display:flex;gap:12px;border-top:1px dashed #cbd5e1;padding-top:6px;margin-top:6px;font-size:11px;font-weight:800;">
+                        <span ${makeEdit('docField:paidAmount')}>المدفوع: <strong style="font-family:monospace;color:#047857;">${this.fmtDzd(docData.paidAmount)}</strong></span>
+                        <span ${makeEdit('docField:remainingDebt')}>الباقي (دين): <strong style="font-family:monospace;color:#be123c;">${this.fmtDzd(docData.remainingDebt)}</strong></span>
+                      </div>`
+                    : ''
+                }
+              </div>
+
+              <div style="border:2px solid ${theme.primary};border-radius:10px;padding:10px;background:${theme.accent};">
+                <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;margin-bottom:4px;">
+                  <span>المجموع الفرعي:</span>
+                  <span style="font-family:monospace;">${this.fmtDzd(docData.subtotal)}</span>
+                </div>
+                ${
+                  docData.discount > 0
+                    ? `<div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:#be123c;margin-bottom:4px;">
+                        <span>التخفيض الممنوح:</span>
+                        <span style="font-family:monospace;">-${this.fmtDzd(docData.discount)}</span>
+                      </div>`
+                    : ''
+                }
+                <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:900;color:${theme.primary};border-top:1.5px solid ${theme.border};padding-top:6px;">
+                  <span ${makeEdit('totalLabel')}>${ct.totalLabel || 'الإجمالي المستحق:'}</span>
+                  <span id="v47LiveDocTotalVal" ${makeEdit('docField:total')} style="font-family:monospace;">${this.fmtDzd(docData.total)}</span>
+                </div>
+                ${
+                  cfg.showCentimesEquivalent
+                    ? `<div id="v47LiveDocCentimesVal" style="text-align:left;font-size:11px;font-weight:900;color:#b45309;margin-top:3px;">🇩🇿 بالسنتيم: ${this.fmtCentimes(docData.total)}</div>`
+                    : ''
+                }
+              </div>
+            </div>`
+          );
+        }
+
+        // 6. 👑 بطاقة نقاط الوفاء والمخصوم من البطاقة
+        if (layer.id === 'loyalty_points_layer') {
+          if (docData.isWalkinCustomer) {
+            return wrapLayer(
+              layer,
+              `<div style="border:1.5px dashed #64748b;border-radius:8px;padding:${isThermal ? '5px 6px' : '8px 12px'};background:#f8fafc;font-size:${isThermal ? '9.5px' : '11px'};">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-weight:900;color:#0f172a;border-bottom:1px dotted #cbd5e1;padding-bottom:3px;margin-bottom:3px;">
+                  <span ${makeEdit('loyaltyHeaderTitle')}>${ct.loyaltyHeaderTitle || '👑 برنامج الوفاء'}</span>
+                  <span ${makeEdit('docField:loyaltyStatusLabel')} style="font-size:9px;background:#e2e8f0;padding:1px 5px;border-radius:99px;">🚶 زبون عابر (0 نقطة)</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-weight:800;color:#334155;">
+                  <div ${makeEdit('walkinPts')}>• رصيد البطاقة: <strong style="font-family:monospace;">0 نقطة</strong></div>
+                  <div ${makeEdit('walkinDed')}>• المخصوم: <strong style="font-family:monospace;">0 نقطة (0.00 د.ج)</strong></div>
+                </div>
+                <div ${makeEdit('walkinInviteNote')} style="margin-top:3px;font-size:${isThermal ? '9px' : '10.5px'};font-weight:900;color:#b45309;text-align:center;">
+                  ${ct.walkinInviteNote || `💡 لو كنت مسجلاً في بطاقة الوفاء لربحت (+${docData.potentialPointsIfRegistered || 4} نقاط) من هذه التذكرة!`}
+                </div>
+              </div>`
+            );
+          }
+
+          return wrapLayer(
+            layer,
+            `<div style="border:1.5px solid #f59e0b;border-radius:8px;padding:${isThermal ? '5px 6px' : '8px 12px'};background:#fffbeb;font-size:${isThermal ? '9.5px' : '11px'};">
+              <div style="display:flex;justify-content:space-between;align-items:center;font-weight:900;color:#92400e;border-bottom:1px dashed #fcd34d;padding-bottom:3px;margin-bottom:4px;">
+                <span ${makeEdit('loyaltyHeaderTitle')}>${ct.loyaltyHeaderTitle || '👑 بطاقة الوفاء ومكافآت الزبون'}</span>
+                <span ${makeEdit('docField:loyaltyCardCode')} style="font-family:monospace;font-size:9.5px;background:#fef3c7;border:1px solid #f59e0b;padding:0 5px;border-radius:99px;direction:ltr;">${docData.loyaltyCardCode || 'FID-00003'}</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:3px 6px;font-weight:800;color:#1e293b;">
+                <div ${makeEdit('docField:loyaltyPrevPoints')}>• الرصيد السابق: <strong style="font-family:monospace;">${docData.loyaltyPrevPoints} نقطة</strong></div>
+                <div ${makeEdit('docField:loyaltyEarnedPoints')} style="color:#047857;">• المكتسب اليوم: <strong style="font-family:monospace;">+${docData.loyaltyEarnedPoints} نقطة</strong></div>
+                <div ${makeEdit('docField:loyaltyRedeemedPoints')} style="color:#be123c;">• المخصوم: <strong style="font-family:monospace;">-${docData.loyaltyRedeemedPoints} ن (-${Number(docData.loyaltyRedeemedValueDzd || 0).toFixed(2)} د.ج)</strong></div>
+                <div ${makeEdit('docField:loyaltyNewBalancePoints')} style="color:#1d4ed8;">• الرصيد الجديد: <strong style="font-family:monospace;">${docData.loyaltyNewBalancePoints} نقطة (${Number(docData.loyaltyNewBalanceDzdValue || docData.loyaltyNewBalancePoints * 2).toFixed(2)} د.ج)</strong></div>
+              </div>
+            </div>`
+          );
+        }
+
+        if (layer.id === 'savings_promo_layer') {
+          return wrapLayer(
+            layer,
+            `<div style="border:1.5px dashed #10b981;border-radius:8px;padding:5px 8px;background:#ecfdf5;display:flex;justify-content:space-between;align-items:center;font-size:${isThermal ? '9.5px' : '11px'};font-weight:900;color:#065f46;">
+              <span ${makeEdit('savingsBannerText')}>🎉 توفيرك اليوم: <strong style="font-family:monospace;">${this.fmtDzd(docData.totalCustomerSavingsDzd || 25)}</strong></span>
+              <span ${makeEdit('totalUnitsBannerText')} style="font-family:monospace;background:#d1fae5;padding:1px 6px;border-radius:99px;">📦 القطع: ${docData.totalUnitsCount || 3}</span>
+            </div>`
+          );
+        }
+
+        if (layer.id === 'debt_ledger_layer') {
+          return wrapLayer(
+            layer,
+            `<div style="border:1.5px solid #cbd5e1;border-radius:8px;padding:${isThermal ? '5px 6px' : '8px 12px'};background:#f8fafc;font-size:${isThermal ? '9.5px' : '11px'};">
+              <div ${makeEdit('debtHeaderLabel')} style="font-weight:900;color:#0f172a;border-bottom:1px solid #e2e8f0;padding-bottom:3px;margin-bottom:4px;">
+                ⚖️ كشف وضعية الحساب والديون للزبون
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(${isThermal ? 2 : 4}, 1fr);gap:4px;font-weight:800;">
+                <div ${makeEdit('debtPrev')}>الدين السابق: <strong style="font-family:monospace;">${this.fmtDzd(docData.previousBalance || 0)}</strong></div>
+                <div ${makeEdit('debtCurr')}>الفاتورة: <strong style="font-family:monospace;">${this.fmtDzd(docData.total || 0)}</strong></div>
+                <div ${makeEdit('debtPaid')} style="color:#047857;">المدفوع: <strong style="font-family:monospace;">${this.fmtDzd(docData.paidAmount || 0)}</strong></div>
+                <div ${makeEdit('debtTotalRem')} style="color:#be123c;">إجمالي المتبقي: <strong style="font-family:monospace;">${this.fmtDzd(docData.cumulativeTotalDebt || 0)}</strong></div>
+              </div>
+            </div>`
+          );
+        }
+
+        if (layer.id === 'payment_breakdown_layer') {
+          return wrapLayer(
+            layer,
+            `<div style="border:1px dashed #64748b;border-radius:8px;padding:4px 8px;font-size:${isThermal ? '9.5px' : '11px'};display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px;font-weight:800;background:#ffffff;">
+              <span ${makeEdit('payRecText')}>💵 المقبوض: <strong style="font-family:monospace;">${this.fmtDzd(docData.receivedAmount || docData.paidAmount)}</strong></span>
+              <span ${makeEdit('payChangeText')}>🪙 الصرف (Rendu): <strong style="font-family:monospace;color:#047857;">${this.fmtDzd(docData.changeReturnedDzd || 0)}</strong></span>
+              <span ${makeEdit('payCashierText')}>👤 البائع: <strong>${docData.cashierName || 'المدير العام'}</strong></span>
+            </div>`
+          );
+        }
+
+        if (layer.id === 'tax_ifu_breakdown_layer') {
+          const htVal = Number((Number(docData.total || 0) / 1.19).toFixed(2));
+          const tvaVal = Number((Number(docData.total || 0) - htVal).toFixed(2));
+          return wrapLayer(
+            layer,
+            `<div style="border:1px solid #cbd5e1;border-radius:8px;padding:5px 8px;font-size:${isThermal ? '9px' : '10.5px'};background:#f8fafc;">
+              <div ${makeEdit('taxTableTitle')} style="font-weight:900;margin-bottom:2px;color:#334155;">🇩🇿 التفصيل الجبائي (HT / TVA / Timbre):</div>
+              <div style="display:flex;justify-content:space-between;font-family:monospace;font-weight:800;">
+                <span ${makeEdit('taxHt')}>HT: ${htVal.toFixed(2)}</span>
+                <span ${makeEdit('taxTva')}>TVA: ${tvaVal.toFixed(2)}</span>
+                <span ${makeEdit('taxTimbre')}>Timbre: ${Number(docData.stampAmount || 0).toFixed(2)}</span>
+              </div>
+            </div>`
+          );
+        }
+
+        if (layer.id === 'warranty_imei_layer') {
+          return wrapLayer(
+            layer,
+            `<div style="border:1.5px solid #1d4ed8;border-radius:8px;padding:6px 8px;background:#eff6ff;font-size:${isThermal ? '9.5px' : '11px'};">
+              <div ${makeEdit('warrantyTitle')} style="font-weight:900;color:#1d4ed8;margin-bottom:2px;">🛡️ شهادة الضمان والأرقام التسلسلية (S/N - IMEI)</div>
+              <div ${makeEdit('warrantySerialLine')} style="font-family:monospace;font-weight:800;color:#0f172a;margin-bottom:2px;">• S/N: [انقر لكتابة رقم السيريال] — الضمان: 12 شهراً</div>
+              <div ${makeEdit('warrantyNoteText')} style="font-size:9.5px;color:#334155;font-weight:700;">${ct.warrantyNoteText || 'الضمان يشمل عيوب التصنيع فقط.'}</div>
+            </div>`
+          );
+        }
+
+        if (layer.id === 'installments_schedule_layer') {
+          const rem = Math.max(0, Number(docData.remainingDebt || docData.total || 3000));
+          const mInst = Number((rem / 3).toFixed(2));
+          return wrapLayer(
+            layer,
+            `<div style="border:1.5px solid #b45309;border-radius:8px;padding:6px 8px;background:#fffbeb;font-size:${isThermal ? '9.5px' : '11px'};">
+              <div ${makeEdit('instTitle')} style="font-weight:900;color:#92400e;margin-bottom:3px;">🗓️ جدول أقساط البيع بالتقسيط</div>
+              <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:4px;font-family:monospace;font-weight:800;text-align:center;">
+                <div ${makeEdit('inst1')} style="border:1px solid #fcd34d;padding:2px;border-radius:4px;background:#fff;">قسط 1: ${mInst}</div>
+                <div ${makeEdit('inst2')} style="border:1px solid #fcd34d;padding:2px;border-radius:4px;background:#fff;">قسط 2: ${mInst}</div>
+                <div ${makeEdit('inst3')} style="border:1px solid #fcd34d;padding:2px;border-radius:4px;background:#fff;">قسط 3: ${mInst}</div>
+              </div>
+            </div>`
+          );
+        }
+
+        if (layer.id === 'delivery_driver_layer') {
+          return wrapLayer(
+            layer,
+            `<div style="border:1.5px solid #047857;border-radius:8px;padding:6px 8px;background:#ecfdf5;font-size:${isThermal ? '9.5px' : '11px'};">
+              <div ${makeEdit('delivTitle')} style="font-weight:900;color:#047857;margin-bottom:2px;">🚚 بيانات الشحن والتوصيل واستلام البضاعة</div>
+              <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px;font-weight:800;color:#0f172a;">
+                <span ${makeEdit('delivDriver')}>• السائق: ...................</span>
+                <span ${makeEdit('delivColis')}>• الطرود: ${docData.items ? docData.items.length : 1}</span>
+                <span ${makeEdit('delivSign')}>• إمضاء المستلم: ...............</span>
+              </div>
+            </div>`
+          );
+        }
+
+        if (layer.id === 'qr_social_wifi_layer') {
+          return wrapLayer(
+            layer,
+            `<div style="border:1px dashed #6366f1;border-radius:8px;padding:5px 8px;background:#eef2ff;text-align:center;font-size:${isThermal ? '9.5px' : '11px'};font-weight:800;color:#312e81;">
+              <div ${makeEdit('wifiSocialNote')}>${ct.wifiSocialNote || '📶 شبكة Wi-Fi الزبائن: Gherbi_Store_VIP'}</div>
+            </div>`
+          );
+        }
+
+        if (layer.id === 'footer_stamp_layer') {
+          return wrapLayer(
+            layer,
+            `<div style="border-top:1.5px solid #cbd5e1;padding-top:6px;margin-top:4px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;font-size:${isThermal ? '9.5px' : '10.5px'};">
+              <div style="flex:1;text-align:${isThermal ? 'center' : 'right'};">
+                <div ${makeEdit('customFooterTerms')} style="font-weight:800;color:#334155;line-height:1.4;">${cfg.customFooterTerms}</div>
+                ${
+                  cfg.showBaridimobQr && shop.rip
+                    ? `<div ${makeEdit('shopRip')} style="margin-top:3px;font-family:monospace;font-weight:800;color:${theme.primary};direction:ltr;">RIP: ${shop.rip}</div>`
+                    : ''
+                }
+              </div>
+              ${
+                cfg.showStampSignature && !isThermal
+                  ? `<div style="width:140px;height:60px;border:1.5px dashed #94a3b8;border-radius:10px;display:flex;align-items:flex-start;justify-content:center;padding-top:5px;font-weight:900;color:#64748b;">
+                      <span ${makeEdit('stampLabel')}>${ct.stampLabel || 'الختم والإمضاء (Cachet)'}</span>
+                    </div>`
+                  : ''
+              }
+            </div>`
+          );
+        }
+
+        return wrapLayer(
+          layer,
+          `<div ${makeEdit('layerNote:' + layer.id)} style="padding:6px 10px;border:1px solid ${theme.border};border-radius:8px;background:${theme.accent};font-size:11px;font-weight:800;">
+            ${layer.customNote || 'انقر هنا لكتابة أي ملاحظة إضافية...'}
+          </div>`
+        );
+      };
+
+      const allLayersHtml = cfg.layers.map((l) => renderLayerById(l)).join('');
+      const watermarkHtml = cfg.watermarkText
+        ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:0;overflow:hidden;">
+            <span style="font-size:52px;font-weight:900;color:rgba(15,23,42,0.05);transform:rotate(-28deg);white-space:nowrap;">${cfg.watermarkText}</span>
+          </div>`
+        : '';
+
+      if (cfg.paperSize === '2xa5') {
+        return `
+          <div class="v45-live-paper paper-2xa5" style="font-family:'${cfg.fontFamily}',sans-serif;font-size:${cfg.baseFontSizePx}px;display:grid;grid-template-columns:1fr 1fr;gap:8mm;">
+            <div style="border-left:1.5px dashed #94a3b8;padding-left:4mm;position:relative;">
+              <div style="text-align:center;font-size:10px;font-weight:900;color:#64748b;margin-bottom:4px;">— نسخة الزبون (Exemplaire Client) —</div>
+              ${watermarkHtml}
+              <div style="position:relative;z-index:1;">${allLayersHtml}</div>
+            </div>
+            <div style="position:relative;">
+              <div style="text-align:center;font-size:10px;font-weight:900;color:#64748b;margin-bottom:4px;">— نسخة الأرشيف والمتجر (Exemplaire Magasin) —</div>
+              ${watermarkHtml}
+              <div style="position:relative;z-index:1;">${allLayersHtml}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="v45-live-paper paper-${cfg.paperSize}" style="font-family:'${cfg.fontFamily}',sans-serif;font-size:${cfg.baseFontSizePx}px;transform:scale(${forPrintOutput ? 1 : cfg.zoomPct / 100});">
+          ${watermarkHtml}
+          <div style="position:relative;z-index:1;">
+            ${allLayersHtml}
+          </div>
+        </div>
+      `;
+    },
+
+    async switchLoyaltySimulationMode(mode) {
+      this.loyaltySimMode = mode === 'walkin' ? 'walkin' : 'vip';
+      this.activeLoadedDocData = null;
+      this.setLayerVisibleQuiet('loyalty_points_layer', true);
+      this.selectedLayerId = 'loyalty_points_layer';
+      this.saveConfigLocal();
+      await this.renderStudioIntoRoot();
+    },
+
+    onPaperDirectInput(fieldKey, newValue, itemIdx, itemField) {
+      const cleanVal = String(newValue ?? '').trim();
+
+      if (itemIdx !== undefined && itemIdx !== null && itemField) {
+        if (this.activeLoadedDocData && Array.isArray(this.activeLoadedDocData.items) && this.activeLoadedDocData.items[itemIdx]) {
+          const item = this.activeLoadedDocData.items[itemIdx];
+          if (itemField === 'name' || itemField === 'unit' || itemField === 'barcode') {
+            item[itemField] = cleanVal;
+          } else {
+            const num = parseFloat(cleanVal.replace(/[^\d.-]/g, '')) || 0;
+            item[itemField] = num;
+            if (itemField === 'qty' || itemField === 'price') {
+              item.subtotal = Number((Number(item.qty || 1) * Number(item.price || 0)).toFixed(2));
+            }
+          }
+          const newSub = this.activeLoadedDocData.items.reduce((s, x) => s + Number(x.subtotal || 0), 0);
+          this.activeLoadedDocData.subtotal = Number(newSub.toFixed(2));
+          this.activeLoadedDocData.total = Math.max(0, Number((newSub - Number(this.activeLoadedDocData.discount || 0)).toFixed(2)));
+          this.updateLiveTotalsInDomWithoutReRender();
+        }
+        return;
+      }
+
+      if (fieldKey === 'customHeaderTitle') {
+        this.config.customHeaderTitle = cleanVal;
+      } else if (fieldKey === 'customFooterTerms') {
+        this.config.customFooterTerms = cleanVal;
+      } else if (fieldKey && fieldKey.startsWith('layerNote:')) {
+        const lid = fieldKey.replace('layerNote:', '');
+        const lObj = this.config.layers.find((x) => x.id === lid);
+        if (lObj) lObj.customNote = cleanVal;
+      } else if (fieldKey && fieldKey.startsWith('docField:')) {
+        const df = fieldKey.replace('docField:', '');
+        if (this.activeLoadedDocData) {
+          this.activeLoadedDocData[df] = cleanVal;
+        }
+      } else if (fieldKey) {
+        this.config.customTexts[fieldKey] = cleanVal;
+        if (window.AppState && window.AppState.settings) {
+          if (fieldKey === 'shopName') window.AppState.settings.shop_name = cleanVal;
+          if (fieldKey === 'shopDesc') window.AppState.settings.shop_description = cleanVal;
+          if (fieldKey === 'shopAddress') window.AppState.settings.shop_address = cleanVal;
+          if (fieldKey === 'shopPhone') window.AppState.settings.shop_phone = cleanVal;
+        }
+      }
+
+      this.saveConfigLocal();
+    },
+
+    updateLiveTotalsInDomWithoutReRender() {
+      if (!this.activeLoadedDocData) return;
+      const totEl = document.getElementById('v47LiveDocTotalVal');
+      const centEl = document.getElementById('v47LiveDocCentimesVal');
+      const wordsEl = document.getElementById('v47LiveDocWordsVal');
+      if (totEl) totEl.textContent = this.fmtDzd(this.activeLoadedDocData.total);
+      if (centEl) centEl.textContent = '🇩🇿 بالسنتيم: ' + this.fmtCentimes(this.activeLoadedDocData.total);
+      if (wordsEl) wordsEl.textContent = this.amountToArabicWords(this.activeLoadedDocData.total);
+    },
+
+    async addRowToActiveTicket() {
+      if (!this.activeLoadedDocData) {
+        this.activeLoadedDocData = await this.resolveActiveDocumentData();
+      }
+      this.activeLoadedDocData.items.push({
+        barcode: '613000999',
+        name: 'صنف جديد (انقر لتعديل الاسم)',
+        unit: 'قطعة',
+        qty: 1,
+        price: 100,
+        discount: 0,
+        tva: 0,
+        subtotal: 100
+      });
+      const newSub = this.activeLoadedDocData.items.reduce((s, x) => s + Number(x.subtotal || 0), 0);
+      this.activeLoadedDocData.subtotal = newSub;
+      this.activeLoadedDocData.total = Math.max(0, newSub - Number(this.activeLoadedDocData.discount || 0));
+      await this.renderStudioIntoRoot();
+    },
+
+    async removeLastRowFromActiveTicket() {
+      if (!this.activeLoadedDocData || !Array.isArray(this.activeLoadedDocData.items) || this.activeLoadedDocData.items.length <= 1) return;
+      this.activeLoadedDocData.items.pop();
+      const newSub = this.activeLoadedDocData.items.reduce((s, x) => s + Number(x.subtotal || 0), 0);
+      this.activeLoadedDocData.subtotal = newSub;
+      this.activeLoadedDocData.total = Math.max(0, newSub - Number(this.activeLoadedDocData.discount || 0));
+      await this.renderStudioIntoRoot();
+    },
+
+    execPaperTextCommand(cmd, val = null) {
+      try { document.execCommand(cmd, false, val); } catch (_) {}
+    },
+
+    triggerLogoUploadFromStudio() {
+      let fileInp = document.getElementById('v47HiddenLogoUploadInput');
+      if (!fileInp) {
+        fileInp = document.createElement('input');
+        fileInp.id = 'v47HiddenLogoUploadInput';
+        fileInp.type = 'file';
+        fileInp.accept = 'image/*';
+        fileInp.style.display = 'none';
+        fileInp.onchange = (e) => {
+          const file = e.target.files && e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = async (ev) => {
+            const dataUrl = ev.target.result;
+            if (window.AppState && window.AppState.settings) {
+              window.AppState.settings.shop_logo = dataUrl;
+            }
+            try {
+              if (window.api?.updateSettings) await window.api.updateSettings({ shop_logo: dataUrl });
+            } catch (_) {}
+            await this.renderStudioIntoRoot();
+          };
+          reader.readAsDataURL(file);
+        };
+        document.body.appendChild(fileInp);
+      }
+      fileInp.click();
+    },
+
+    async refreshLiveCrossPageData() {
+      try {
+        if (window.api?.getSales) this.liveDataRecords.sales = (await window.api.getSales()) || [];
+        if (window.api?.getPurchases) this.liveDataRecords.purchases = (await window.api.getPurchases()) || [];
+        if (window.api?.getProformas) this.liveDataRecords.proformas = (await window.api.getProformas()) || [];
+        if (window.api?.getOrders) this.liveDataRecords.orders = (await window.api.getOrders()) || [];
+        if (window.api?.getCustomers) this.liveDataRecords.customers = (await window.api.getCustomers()) || [];
+        if (window.api?.getSuppliers) this.liveDataRecords.suppliers = (await window.api.getSuppliers()) || [];
+        if (window.api?.getProducts) {
+          this.liveDataRecords.products = (await window.api.getProducts()) || [];
+          if (!this.config.labelCfg.previewProductId && this.liveDataRecords.products.length > 0) {
+            this.config.labelCfg.previewProductId = this.liveDataRecords.products[0].id;
+          }
+        }
+        if (window.api?.getPrinters) {
+          this.printersList = (await window.api.getPrinters()) || [];
+        }
+      } catch (_) {}
+    },
+
+    hookGlobalAppPrintMethods() {
+      const self = this;
+      window.GherbiPrintStudioV45 = this;
+
+      for (const fn of ['renderPrintView', 'renderPrintStudio', 'renderPrintCenter', 'initPrintStudio', 'renderUnifiedPrintHub']) {
+        window.App[fn] = async function () {
+          await self.openAndRenderStudio();
+        };
+      }
+
+      window.App.openDocumentInPrintStudio = async function (docType, recordId, targetLayerId) {
+        self.activeSection = 'visual_studio';
+        if (docType) {
+          self.config.activeDocType = docType;
+          self.loadProfileForDocType(docType);
+        }
+        if (recordId) {
+          self.selectedRecordId = String(recordId);
+          self.activeLoadedDocData = null;
+        }
+        if (targetLayerId) {
+          self.selectedLayerId = targetLayerId;
+        }
+        self.saveConfigLocal();
+
+        const viewPrint = document.getElementById('view-print');
+        if (!viewPrint || !viewPrint.classList.contains('active')) {
+          await window.App.switchView('print');
+        }
+        await self.renderStudioIntoRoot();
+      };
+
+      if (typeof window.App.switchView === 'function' && !window.App._v49SwitchPrintHooked) {
+        const origSwitch = window.App.switchView.bind(window.App);
+        window.App._v49SwitchPrintHooked = true;
+        window.App.switchView = async function (viewName, ...rest) {
+          const res = await origSwitch(viewName, ...rest);
+          if (viewName === 'print') {
+            await self.openAndRenderStudio();
+          }
+          return res;
+        };
+      }
+    },
+
+    injectCrossPageQuickStudioButtons() {
+      setInterval(() => {
+        const pcModal = document.getElementById('posPrintCenterModal');
+        if (pcModal && !pcModal.querySelector('#v45JumpToFullStudioBtn')) {
+          const header = pcModal.querySelector('.border-b');
+          if (header) {
+            const btn = document.createElement('button');
+            btn.id = 'v45JumpToFullStudioBtn';
+            btn.type = 'button';
+            btn.className = 'px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow transition mr-auto ml-3 cursor-pointer';
+            btn.innerHTML = '🎨 فتح وتعديل في استوديو الطباعة الشامل (Word/Photoshop)';
+            btn.onclick = () => {
+              window.App.closeModal('posPrintCenterModal');
+              window.App.openDocumentInPrintStudio('invoice_a4', window.App.currentPrintingSaleId || 'SAMPLE');
+            };
+            header.insertBefore(btn, header.lastElementChild);
+          }
+        }
+      }, 600);
+    },
+
+    async resolveActiveDocumentData(overrideDocType) {
+      if (!overrideDocType && this.activeLoadedDocData) {
+        return this.activeLoadedDocData;
+      }
+
+      const docType = overrideDocType || this.config.activeDocType;
+      const recId = this.selectedRecordId;
+      const isWalkinSim = this.loyaltySimMode === 'walkin';
+
+      const fallbackData = this.enrichDocumentDataWithLoyaltyAndDebt({
+        docNumber: 'FAC-2026-0076',
+        date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        isWalkinCustomer: isWalkinSim,
+        partyTitle: docType === 'purchase_invoice' ? 'المورد:' : 'الزبون:',
+        partyName:
+          docType === 'purchase_invoice'
+            ? 'شركة التوزيع الغذائي الكبرى'
+            : isWalkinSim
+            ? 'زبون عابر (Comptoir)'
+            : 'أمين بن يحيى (زبون وفي 👑)',
+        partyPhone: isWalkinSim ? '-' : '0550 12 34 56',
+        partyAddress: 'حي البدر، قسنطينة — الجزائر',
+        partyRc: '21/00-4589210B19',
+        partyNif: '002104589210045',
+        paymentMethod: 'نقداً (Espèces)',
+        previousBalance: isWalkinSim ? 0 : 1200,
+        items: [
+          { barcode: '6130001000012', name: 'مناديل مبللة ألترا جوي جوي (LINGHETTES ULTRA JOY)', unit: 'علبة', qty: 1, price: 70, discount: 0, tva: 19, subtotal: 70 },
+          { barcode: '6130002000011', name: 'حفاضات أطفال جوي 72 (JOY PR BB 72)', unit: 'كيس', qty: 1, price: 145, discount: 0, tva: 19, subtotal: 145 },
+          { barcode: '6130006000017', name: 'غولد لاين (GOLD LINE)', unit: 'قطعة', qty: 1, price: 125, discount: 0, tva: 19, subtotal: 125 }
+        ],
+        subtotal: 340,
+        discount: 0,
+        tvaAmount: 0,
+        stampAmount: 0,
+        total: 340,
+        paidAmount: 340,
+        receivedAmount: 400,
+        remainingDebt: 0
+      });
+
+      if (!recId || recId === 'SAMPLE') {
+        if (!overrideDocType) this.activeLoadedDocData = JSON.parse(JSON.stringify(fallbackData));
+        return fallbackData;
+      }
+
+      try {
+        if (['receipt_thermal', 'invoice_a4', 'invoice_a5', 'invoice_2xa5', 'delivery_note', 'credit_note', 'warranty_cert', 'installment_contract'].includes(docType)) {
+          const det = window.api?.getSaleDetails ? await window.api.getSaleDetails(Number(recId)) : null;
+          if (det) {
+            const loaded = this.enrichDocumentDataWithLoyaltyAndDebt({
+              docNumber: det.doc_number || ('#' + det.id),
+              date: String(det.sale_date || det.created_at || '').replace('T', ' ').slice(0, 16),
+              customerId: det.customer_id || null,
+              partyTitle: 'الزبون:',
+              partyName: det.customer_name || 'زبون عابر (Comptoir)',
+              partyPhone: det.customer_phone || '-',
+              partyAddress: det.customer_address || '-',
+              partyRc: det.customer_rc || '-',
+              partyNif: det.customer_nif || '-',
+              paymentMethod: det.payment_method || 'نقداً',
+              previousBalance: 0,
+              items: (det.items || []).map((it) => ({
+                barcode: it.product_barcode || '-',
+                name: it.product_name || it.custom_product_name || 'منتج',
+                unit: it.product_unit || 'قطعة',
+                qty: Number(it.quantity || 1),
+                price: Number(it.price || 0),
+                discount: Number(it.discount || 0),
+                tva: Number(det.tax_percentage || 0),
+                subtotal: Number(it.subtotal || 0)
+              })),
+              subtotal: Number(det.subtotal || det.total || 0),
+              discount: Number(det.discount || 0),
+              tvaAmount: Number((Number(det.subtotal || 0) * Number(det.tax_percentage || 0)) / 100),
+              stampAmount: Number(det.stamp_amount || 0),
+              total: Number(det.total || 0),
+              paidAmount: Number(det.paid_amount ?? det.total ?? 0),
+              receivedAmount: Number(det.paid_amount ?? det.total ?? 0),
+              remainingDebt: Math.max(0, Number(det.total || 0) - Number(det.paid_amount ?? det.total ?? 0))
+            });
+            if (!overrideDocType) this.activeLoadedDocData = loaded;
+            return loaded;
+          }
+        }
+      } catch (_) {}
+
+      if (!overrideDocType) this.activeLoadedDocData = JSON.parse(JSON.stringify(fallbackData));
+      return fallbackData;
+    },
+
+    selectLayerDomOnly(layerId) {
+      this.selectedLayerId = layerId;
+      const allCanvasLayers = document.querySelectorAll('.v45-canvas-layer');
+      for (const el of allCanvasLayers) {
+        if (el.getAttribute('data-v47-layer-id') === layerId) {
+          el.classList.add('layer-selected');
+        } else {
+          el.classList.remove('layer-selected');
+        }
+      }
+      const allSidebarItems = document.querySelectorAll('[data-v47-sidebar-layer-id]');
+      for (const item of allSidebarItems) {
+        if (item.getAttribute('data-v47-sidebar-layer-id') === layerId) {
+          item.className = 'flex items-center justify-between p-2 rounded-xl border text-xs cursor-pointer transition bg-blue-50/80 dark:bg-blue-950/40 border-blue-500 font-black';
+        } else {
+          item.className = 'flex items-center justify-between p-2 rounded-xl border text-xs cursor-pointer transition bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-700 font-bold';
+        }
+      }
+    },
+
+    async activateSuggestedLayerFromCatalog(layerId) {
+      let layer = this.config.layers.find((l) => l.id === layerId);
+      if (!layer) {
+        const catMeta = SUGGESTED_LAYERS_CATALOG.find((c) => c.id === layerId);
+        if (catMeta) {
+          layer = { id: catMeta.id, name: catMeta.name, visible: true, align: 'between', customNote: '' };
+          this.config.layers.push(layer);
+        }
+      } else {
+        layer.visible = !layer.visible;
+      }
+
+      this.selectedLayerId = layerId;
+      this.saveConfigLocal();
+      await this.renderStudioIntoRoot();
+    },
+
+    setCatalogCategoryFilter(cat) {
+      this.catalogCategoryFilter = cat || 'ALL';
+      this.renderStudioIntoRoot();
+    },
+
+    async enableAllSuggestedLayers() {
+      for (const l of this.config.layers) {
+        l.visible = true;
+      }
+      this.saveConfigLocal();
+      await this.renderStudioIntoRoot();
+    },
+
+    async openMultiSizePreviewModal(docId) {
+      const meta = MASTER_DOC_TYPES.find((d) => d.id === docId) || MASTER_DOC_TYPES[1];
+      const def = this.config.defaultsByDocType[docId] || {
+        paperSize: meta.defaultPaper,
+        themeId: 'royal_blue',
+        lang: 'ar'
+      };
+
+      this.previewModalState = {
+        isOpen: true,
+        docId: meta.id,
+        paperSize: def.paperSize || meta.defaultPaper,
+        themeId: def.themeId || 'royal_blue'
+      };
+
+      let modal = document.getElementById('v46MultiSizePreviewModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'v46MultiSizePreviewModal';
+        modal.style.zIndex = '29500';
+        modal.className = 'fixed inset-0 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4';
+        document.body.appendChild(modal);
+      }
+
+      await this.renderMultiSizePreviewModalContent();
+      modal.classList.remove('hidden');
+    },
+
+    async renderMultiSizePreviewModalContent() {
+      const modal = document.getElementById('v46MultiSizePreviewModal');
+      if (!modal) return;
+
+      const st = this.previewModalState;
+      const meta = MASTER_DOC_TYPES.find((d) => d.id === st.docId) || MASTER_DOC_TYPES[1];
+      const sizeInfo = PAPER_SIZE_META[st.paperSize] || PAPER_SIZE_META.a4;
+      const docData = await this.resolveActiveDocumentData(st.docId);
+
+      const previewPaperHtml = this.buildLiveDocumentPaperHtml(docData, false, {
+        activeDocType: st.docId,
+        paperSize: st.paperSize,
+        themeId: st.themeId,
+        zoomPct: st.paperSize === '2xa5' ? 78 : 92,
+        isPreviewModal: true
+      });
+
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-slate-900 border-2 border-blue-500 rounded-3xl max-w-6xl w-[96vw] max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-right" dir="rtl">
+          <div class="p-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 border-b border-slate-700">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center font-black text-lg shadow">👁️</div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <h3 class="text-base font-black">${meta.name} — معاينة المقاسات والتعديل المباشر</h3>
+                  <span class="px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 font-mono font-black text-xs">${sizeInfo.badge}</span>
+                </div>
+                <p class="text-xs text-slate-300 mt-0.5">
+                  جرّب التبديل بين المقاسات الخمسة بالأسفل، أو <strong>انقر على أي قسم داخل الورقة</strong> للانتقال مباشرةً لتعديله في الاستوديو!
+                </p>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" onclick="window.GherbiPrintStudioV45.jumpFromPreviewModalToEditLayer('${st.docId}', '${st.paperSize}', '${st.themeId}', 'header_layer')" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-lg cursor-pointer transition">
+                🎨 افتح وعدّل هذا المقاس في الاستوديو الكامل ⬅
+              </button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.savePreviewSelectionAsDefault()" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow cursor-pointer transition">
+                ⭐ اعتماد (${sizeInfo.badge}) كمقاس افتراضي
+              </button>
+              <button type="button" onclick="document.getElementById('v46MultiSizePreviewModal').classList.add('hidden')" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-600 text-white font-black text-xs cursor-pointer">
+                ✕ إغلاق
+              </button>
+            </div>
+          </div>
+
+          <div class="p-3 bg-slate-100 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="font-black text-slate-700 dark:text-slate-200">📐 اختر المقاس لمعاينته فوراً:</span>
+              <button type="button" onclick="window.GherbiPrintStudioV45.switchPreviewModalSize('a4')" class="px-3.5 py-1.5 rounded-xl font-black transition cursor-pointer ${st.paperSize === 'a4' ? 'bg-blue-600 text-white shadow' : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300'}">📄 A4 رسمي</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.switchPreviewModalSize('a5')" class="px-3.5 py-1.5 rounded-xl font-black transition cursor-pointer ${st.paperSize === 'a5' ? 'bg-blue-600 text-white shadow' : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300'}">📑 A5 نصفي</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.switchPreviewModalSize('2xa5')" class="px-3.5 py-1.5 rounded-xl font-black transition cursor-pointer ${st.paperSize === '2xa5' ? 'bg-blue-600 text-white shadow' : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300'}">✂️ 2×A5 مزدوج</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.switchPreviewModalSize('80mm')" class="px-3.5 py-1.5 rounded-xl font-black transition cursor-pointer ${st.paperSize === '80mm' ? 'bg-blue-600 text-white shadow' : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300'}">🧾 80mm حراري</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.switchPreviewModalSize('58mm')" class="px-3.5 py-1.5 rounded-xl font-black transition cursor-pointer ${st.paperSize === '58mm' ? 'bg-blue-600 text-white shadow' : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300'}">🧾 58mm حراري</button>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <span class="font-black text-slate-700 dark:text-slate-200">🎨 اللون:</span>
+              <select onchange="window.GherbiPrintStudioV45.switchPreviewModalTheme(this.value)" class="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 font-black">
+                ${VISUAL_THEMES.map((t) => `<option value="${t.id}" ${st.themeId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+
+          <div class="v45-studio-workspace flex-1 overflow-y-auto">
+            ${previewPaperHtml}
+          </div>
+        </div>
+      `;
+    },
+
+    async switchPreviewModalSize(newSize) {
+      this.previewModalState.paperSize = newSize;
+      await this.renderMultiSizePreviewModalContent();
+    },
+
+    async switchPreviewModalTheme(newTheme) {
+      this.previewModalState.themeId = newTheme;
+      await this.renderMultiSizePreviewModalContent();
+    },
+
+    savePreviewSelectionAsDefault() {
+      const st = this.previewModalState;
+      this.setDocDefaultPaper(st.docId, st.paperSize);
+      this.setDocDefaultTheme(st.docId, st.themeId);
+      document.getElementById('v46MultiSizePreviewModal')?.classList.add('hidden');
+      this.renderStudioIntoRoot();
+      if (window.showToast) {
+        window.showToast(`⭐ تم اعتماد مقاس (${st.paperSize.toUpperCase()}) كقالب افتراضي نشط لهذا المستند!`, 'success');
+      }
+    },
+
+    async jumpFromPreviewModalToEditLayer(docId, paperSize, themeId, layerId) {
+      document.getElementById('v46MultiSizePreviewModal')?.classList.add('hidden');
+      this.setDocDefaultPaper(docId, paperSize);
+      this.setDocDefaultTheme(docId, themeId);
+      this.config.activeDocType = docId;
+      this.loadProfileForDocType(docId);
+      this.config.paperSize = paperSize;
+      this.config.themeId = themeId;
+      this.selectedLayerId = layerId || 'header_layer';
+      this.activeSection = 'visual_studio';
+      this.saveConfigLocal();
+      await this.renderStudioIntoRoot();
+    },
+
+    async customizeCardInStudioNow(docId) {
+      this.config.activeDocType = docId;
+      this.loadProfileForDocType(docId);
+      this.activeSection = 'visual_studio';
+      this.saveConfigLocal();
+      await this.renderStudioIntoRoot();
+    },
+
+    async openAndRenderStudio() {
+      const viewPrint = document.getElementById('view-print');
+      if (!viewPrint) return;
+
+      let root = document.getElementById('print-view-root');
+      if (!root) {
+        root = document.createElement('div');
+        root.id = 'print-view-root';
+        viewPrint.appendChild(root);
+      }
+
+      await this.refreshLiveCrossPageData();
+      await this.renderStudioIntoRoot(root);
+    },
+
+    async renderStudioIntoRoot(rootEl) {
+      const targetRoot = rootEl || document.getElementById('print-view-root');
+      if (!targetRoot) return;
+
+      const docData = await this.resolveActiveDocumentData();
+      const cfg = this.config;
+      const activeDocMeta = MASTER_DOC_TYPES.find((d) => d.id === cfg.activeDocType) || MASTER_DOC_TYPES[0];
+
+      // شريط القوالب المثالية الجاهزة للاعتماد الفوري بضغطة زر
+      const idealPresetsBarHtml = `
+        <div class="rounded-2xl bg-gradient-to-l from-indigo-950 via-slate-900 to-slate-900 text-white p-3.5 shadow-md border border-indigo-500/40 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-black text-xs">⚡ قوالب مثالية جاهزة</span>
+            <span class="text-xs font-bold text-slate-200">اختر قالباً مثالياً جاهزاً لاعتماده فوراً بدلاً من التصميم من الصفر:</span>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5">
+            ${IDEAL_READY_PRESETS.map(
+              (pr) => `
+              <button type="button" onclick="window.GherbiPrintStudioV45.applyIdealPresetNow('${pr.id}')" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-amber-500 hover:text-slate-950 text-white font-black text-[11px] border border-white/15 transition cursor-pointer">
+                ${pr.label}
+              </button>`
+            ).join('')}
+            <button type="button" onclick="window.GherbiPrintStudioV45.adoptAllIdealPresetsAcrossAllPages()" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] shadow transition cursor-pointer">
+              🚀 اعتماد القوالب المثالية لكل الصفحات دفعة واحدة
+            </button>
+          </div>
+        </div>
+      `;
+
+      let sectionBodyHtml = '';
+
+      if (this.activeSection === 'visual_studio') {
+        const paperHtml = this.buildLiveDocumentPaperHtml(docData, false);
+
+        let recordsList = [];
+        if (activeDocMeta.sourcePage === 'purchases') recordsList = this.liveDataRecords.purchases;
+        else if (activeDocMeta.sourcePage === 'proformas') recordsList = this.liveDataRecords.proformas;
+        else if (activeDocMeta.sourcePage === 'orders') recordsList = this.liveDataRecords.orders;
+        else recordsList = this.liveDataRecords.sales;
+
+        const recordOptionsHtml = [
+          `<option value="SAMPLE" ${this.selectedRecordId === 'SAMPLE' ? 'selected' : ''}>✨ بيانات تذكرة نموذجية جاهزة للتعديل الحر</option>`,
+          ...recordsList.slice(0, 50).map((r) => {
+            const num = r.doc_number || r.invoice_number || ('#' + r.id);
+            const party = r.customer_name || r.supplier_name || 'زبون عابر';
+            const tot = Number(r.total || 0).toFixed(2);
+            return `<option value="${r.id}" ${String(this.selectedRecordId) === String(r.id) ? 'selected' : ''}>📄 ${num} — ${party} (${tot} د.ج)</option>`;
+          })
+        ].join('');
+
+        const filteredCatalog = SUGGESTED_LAYERS_CATALOG.filter(
+          (c) => this.catalogCategoryFilter === 'ALL' || c.cat === this.catalogCategoryFilter
+        );
+
+        const suggestedCatalogHtml = filteredCatalog
+          .map((catItem) => {
+            const layerState = cfg.layers.find((l) => l.id === catItem.id);
+            const isVis = Boolean(layerState && layerState.visible);
+            return `
+              <div class="p-2.5 rounded-xl border transition flex items-start justify-between gap-2 ${
+                isVis
+                  ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-400'
+                  : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+              }">
+                <div class="space-y-0.5">
+                  <div class="font-black text-xs text-slate-900 dark:text-white">${catItem.name}</div>
+                  <div class="text-[10.5px] text-slate-500 dark:text-slate-400 leading-snug">${catItem.desc}</div>
+                </div>
+                <button type="button" onclick="window.GherbiPrintStudioV45.activateSuggestedLayerFromCatalog('${catItem.id}')" class="shrink-0 px-2.5 py-1.5 rounded-xl font-black text-[11px] transition cursor-pointer ${
+                  isVis
+                    ? 'bg-emerald-600 text-white shadow-sm hover:bg-rose-600'
+                    : 'bg-blue-600 text-white shadow-sm hover:bg-blue-500'
+                }">
+                  ${isVis ? '✅ مفعّلة' : '➕ إضافة'}
+                </button>
+              </div>
+            `;
+          })
+          .join('');
+
+        sectionBodyHtml = `
+          ${idealPresetsBarHtml}
+
+          <div class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 shadow-sm space-y-2.5">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 pb-2.5">
+              <div class="flex flex-wrap items-center gap-2">
+                <label class="text-xs font-black text-slate-600 dark:text-slate-300">📑 المستند:</label>
+                <select onchange="window.GherbiPrintStudioV45.selectDocType(this.value)" class="px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-slate-900 border border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-300 font-black text-xs cursor-pointer">
+                  ${MASTER_DOC_TYPES.map((d) => `<option value="${d.id}" ${cfg.activeDocType === d.id ? 'selected' : ''}>${d.name}</option>`).join('')}
+                </select>
+
+                <select onchange="window.GherbiPrintStudioV45.selectLiveRecord(this.value)" class="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-bold text-xs max-w-xs cursor-pointer">
+                  ${recordOptionsHtml}
+                </select>
+
+                <div class="inline-flex items-center rounded-xl bg-amber-50 dark:bg-slate-900 border border-amber-300 dark:border-amber-700 p-0.5 text-[11px]">
+                  <button type="button" onclick="window.GherbiPrintStudioV45.switchLoyaltySimulationMode('vip')" class="px-2.5 py-1 rounded-lg font-black transition cursor-pointer ${this.loyaltySimMode === 'vip' ? 'bg-amber-500 text-slate-950 shadow' : 'text-amber-800 dark:text-amber-300'}">
+                    👑 معاينة زبون وفي (نقاط)
+                  </button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.switchLoyaltySimulationMode('walkin')" class="px-2.5 py-1 rounded-lg font-black transition cursor-pointer ${this.loyaltySimMode === 'walkin' ? 'bg-slate-800 text-white shadow' : 'text-slate-600 dark:text-slate-300'}">
+                    🚶 معاينة زبون عابر (0 نقطة)
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="window.GherbiPrintStudioV45.saveAsDefaultForDocType()" class="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md transition cursor-pointer flex items-center gap-1.5">
+                  <span>⭐ اعتماد وحفظ كأمر مطلق للطباعة (Par Défaut)</span>
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.printCurrentCanvasNow()" class="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-md transition cursor-pointer">
+                  🖨️ طباعة / PDF الآن
+                </button>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="font-black text-slate-500 text-[11px]">📐 المقاس:</span>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('a4')" class="v45-word-ribbon-btn ${cfg.paperSize === 'a4' ? 'active' : ''}">A4 رسمي</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('a5')" class="v45-word-ribbon-btn ${cfg.paperSize === 'a5' ? 'active' : ''}">A5 نصفي</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('2xa5')" class="v45-word-ribbon-btn ${cfg.paperSize === '2xa5' ? 'active' : ''}">2×A5 مزدوج</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('80mm')" class="v45-word-ribbon-btn ${cfg.paperSize === '80mm' ? 'active' : ''}">80mm حراري</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('58mm')" class="v45-word-ribbon-btn ${cfg.paperSize === '58mm' ? 'active' : ''}">58mm حراري</button>
+
+                <span class="mx-1 text-slate-300">|</span>
+                <span class="font-black text-slate-500 text-[11px]">🎨 الثيم:</span>
+                <select onchange="window.GherbiPrintStudioV45.updateCfg('themeId', this.value)" class="px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-bold text-xs">
+                  ${VISUAL_THEMES.map((t) => `<option value="${t.id}" ${cfg.themeId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                </select>
+
+                <span class="mx-1 text-slate-300">|</span>
+                <span class="font-black text-slate-500 text-[11px]">🔤 الخط:</span>
+                <button type="button" onclick="window.GherbiPrintStudioV45.stepFontSize(-0.5)" class="v45-word-ribbon-btn">-A</button>
+                <span class="font-mono font-black px-1">${cfg.baseFontSizePx}px</span>
+                <button type="button" onclick="window.GherbiPrintStudioV45.stepFontSize(0.5)" class="v45-word-ribbon-btn">+A</button>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="window.GherbiPrintStudioV45.addRowToActiveTicket()" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] shadow-sm cursor-pointer">
+                  ➕ سطر جديد
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.removeLastRowFromActiveTicket()" class="px-2.5 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 font-black text-[11px] cursor-pointer">
+                  ➖ حذف سطر
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.triggerLogoUploadFromStudio()" class="px-2.5 py-1 rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-800 font-black text-[11px] cursor-pointer">
+                  📷 الشعار
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.toggleCfgBool('showCentimesEquivalent')" class="v45-word-ribbon-btn ${cfg.showCentimesEquivalent ? 'active' : ''}">🇩🇿 السنتيم</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.toggleCfgBool('showCustomerBalance')" class="v45-word-ribbon-btn ${cfg.showCustomerBalance ? 'active' : ''}">⚖️ الباقي</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.toggleCfgBool('showDocBarcode')" class="v45-word-ribbon-btn ${cfg.showDocBarcode ? 'active' : ''}">||| باركود</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+            <div class="lg:col-span-5 space-y-3.5 max-h-[78vh] overflow-y-auto pl-1">
+              <div class="rounded-2xl bg-white dark:bg-slate-800 border-2 border-indigo-400/60 dark:border-indigo-600/60 p-4 shadow-sm space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 pb-2">
+                  <div>
+                    <h3 class="font-black text-xs text-indigo-900 dark:text-indigo-300">🧩 مكتبة الطبقات الذكية المقترحة (15 طبقة)</h3>
+                    <p class="text-[10.5px] text-slate-500 mt-0.5">أضف أو أخفِ أي طبقة بضغطة زر (تعمل في 80mm و A4 معاً)</p>
+                  </div>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.enableAllSuggestedLayers()" class="px-2.5 py-1 rounded-lg bg-indigo-100 hover:bg-indigo-600 text-indigo-800 hover:text-white font-black text-[10.5px] transition cursor-pointer">
+                    ✨ تفعيل الكل
+                  </button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-1 text-[11px]">
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('ALL')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${this.catalogCategoryFilter === 'ALL' ? 'bg-slate-900 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}">الكل (${SUGGESTED_LAYERS_CATALOG.length})</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('LOYALTY')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${this.catalogCategoryFilter === 'LOYALTY' ? 'bg-amber-500 text-slate-950' : 'bg-amber-50 dark:bg-slate-700 text-amber-800 dark:text-amber-300'}">👑 الوفاء والتوفير</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('FINANCE')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${this.catalogCategoryFilter === 'FINANCE' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 dark:bg-slate-700 text-emerald-800 dark:text-emerald-300'}">💰 الديون والدفع</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('LOGISTICS')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${this.catalogCategoryFilter === 'LOGISTICS' ? 'bg-blue-600 text-white' : 'bg-blue-50 dark:bg-slate-700 text-blue-800 dark:text-blue-300'}">🚚 الضمان والتوصيل</button>
+                </div>
+
+                <div class="space-y-2 max-h-60 overflow-y-auto pr-0.5">
+                  ${suggestedCatalogHtml}
+                </div>
+              </div>
+
+              <div class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 shadow-sm space-y-2.5">
+                <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+                  <h3 class="font-black text-xs text-slate-900 dark:text-white">🗂️ ترتيب طبقات المستند (Photoshop Layers)</h3>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.addCustomLayerBlock()" class="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-black text-[11px] hover:bg-blue-500 cursor-pointer">
+                    + طبقة نصية حرة
+                  </button>
+                </div>
+
+                <div class="space-y-1.5 max-h-56 overflow-y-auto">
+                  ${cfg.layers
+                    .map(
+                      (l, idx) => `
+                      <div data-v47-sidebar-layer-id="${l.id}" onclick="window.GherbiPrintStudioV45.selectLayerDomOnly('${l.id}')" class="flex items-center justify-between p-2 rounded-xl border text-xs cursor-pointer transition ${
+                        this.selectedLayerId === l.id
+                          ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-500 font-black'
+                          : 'bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-700 font-bold'
+                      }">
+                        <div class="flex items-center gap-2 truncate">
+                          <input type="checkbox" ${l.visible ? 'checked' : ''} onclick="event.stopPropagation(); window.GherbiPrintStudioV45.toggleLayerVisibility('${l.id}')" class="w-4 h-4 accent-blue-600 rounded cursor-pointer">
+                          <span class="truncate ${l.visible ? '' : 'line-through text-slate-400'}">${l.name}</span>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0">
+                          <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.moveLayer('${l.id}', -1)" ${idx === 0 ? 'disabled' : ''} class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-[10px] hover:bg-blue-600 hover:text-white disabled:opacity-30">▲</button>
+                          <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.moveLayer('${l.id}', 1)" ${idx === cfg.layers.length - 1 ? 'disabled' : ''} class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-[10px] hover:bg-blue-600 hover:text-white disabled:opacity-30">▼</button>
+                          ${
+                            l.id.startsWith('custom_')
+                              ? `<button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.deleteCustomLayer('${l.id}')" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 text-[10px] hover:bg-rose-600 hover:text-white">✕</button>`
+                              : ''
+                          }
+                        </div>
+                      </div>`
+                    )
+                    .join('')}
+                </div>
+              </div>
+
+              <div class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 shadow-sm space-y-2.5 text-xs">
+                <h3 class="font-black text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-700 pb-2">
+                  📊 تخصيص أعمدة وبيانات جدول التذكرة / الفاتورة
+                </h3>
+                <p class="text-[10.5px] text-slate-500">في مقاس 80mm تظهر البيانات الإضافية (الباركود والوحدة والخصم) بشكل أنيق تحت اسم الصنف حتى لا ينضغط الجدول!</p>
+                <div class="grid grid-cols-2 gap-2 font-bold">
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.index ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('index')" class="accent-blue-600"> <span>رقم السطر (#)</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.barcode ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('barcode')" class="accent-blue-600"> <span>الباركود</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.name ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('name')" class="accent-blue-600"> <span>اسم الصنف</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.unit ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('unit')" class="accent-blue-600"> <span>الوحدة</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.qty ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('qty')" class="accent-blue-600"> <span>الكمية</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.unitPrice ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('unitPrice')" class="accent-blue-600"> <span>سعر الوحدة</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.discount ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('discount')" class="accent-blue-600"> <span>الخصم</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.tva ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('tva')" class="accent-blue-600"> <span>ضريبة TVA</span></label>
+                </div>
+              </div>
+            </div>
+
+            <div class="lg:col-span-7">
+              <div class="v45-studio-workspace max-h-[78vh]">
+                <div id="v45LivePaperHost">
+                  ${paperHtml}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (this.activeSection === 'cross_page_bridge') {
+        const cat = this.bridgeCategory;
+        const q = this.bridgeSearch.trim().toLowerCase();
+        let list = this.liveDataRecords[cat] || [];
+        if (q) {
+          list = list.filter((item) => JSON.stringify(item).toLowerCase().includes(q));
+        }
+
+        const rowsHtml =
+          list.length > 0
+            ? list
+                .slice(0, 50)
+                .map((r) => {
+                  const num = r.doc_number || r.invoice_number || ('#' + r.id);
+                  const dt = String(r.sale_date || r.date || r.created_at || '').replace('T', ' ').slice(0, 16);
+                  const party = r.customer_name || r.supplier_name || r.name || 'زبون عابر';
+                  const tot = Number(r.total ?? r.total_debt ?? r.selling_price ?? 0);
+                  const targetDocType =
+                    cat === 'purchases'
+                      ? 'purchase_invoice'
+                      : cat === 'proformas'
+                      ? 'proforma'
+                      : cat === 'orders'
+                      ? 'customer_order'
+                      : 'invoice_a4';
+
+                  return `
+                    <tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-blue-50/40 dark:hover:bg-slate-800/50 text-xs">
+                      <td class="py-3 px-3 font-mono font-black text-blue-600">${num}</td>
+                      <td class="py-3 px-3 font-mono text-slate-500">${dt}</td>
+                      <td class="py-3 px-3 font-black text-slate-900 dark:text-white">${party}</td>
+                      <td class="py-3 px-3 font-mono font-black text-emerald-600">${this.fmtDzd(tot)}</td>
+                      <td class="py-3 px-3 text-center">
+                        <div class="flex items-center justify-center gap-1.5">
+                          <button type="button" onclick="window.App.openDocumentInPrintStudio('${targetDocType}', '${r.id}')" class="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-[11px] shadow-sm cursor-pointer">
+                            🎨 فتح وتعديل الفاتورة (A4/A5)
+                          </button>
+                          <button type="button" onclick="window.App.openDocumentInPrintStudio('receipt_thermal', '${r.id}')" class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-[11px] cursor-pointer">
+                            🧾 فتح كتذكرة كاشير (80mm)
+                          </button>
+                          <button type="button" onclick="window.App.openDocumentInPrintStudio('delivery_note', '${r.id}')" class="px-2.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-black text-[11px] cursor-pointer">
+                            🚚 وصل BL
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                })
+                .join('')
+            : `<tr><td colspan="5" class="py-10 text-center text-slate-400 font-bold">لا توجد سجلات مطابقة في هذا القسم حالياً.</td></tr>`;
+
+        sectionBodyHtml = `
+          <div class="rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 shadow-sm space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-700 pb-3">
+              <div>
+                <h3 class="text-base font-black text-slate-900 dark:text-white">🔗 جسر الربط الحي مع جميع صفحات البرنامج</h3>
+                <p class="text-xs text-slate-500">اختر أي فاتورة أو تذكرة من أقسام البرنامج بالأسفل لفتحها وتعديل أي كلمة أو رقم بداخلها ثم طباعتها فوراً</p>
+              </div>
+              <input type="text" value="${this.bridgeSearch}" oninput="window.GherbiPrintStudioV45.setBridgeSearch(this.value)" placeholder="🔎 ابحث برقم الفاتورة أو اسم الزبون أو المورد..." class="w-72 px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-xs font-bold">
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" onclick="window.GherbiPrintStudioV45.setBridgeCategory('sales')" class="px-4 py-2 rounded-xl font-black text-xs transition cursor-pointer ${cat === 'sales' ? 'bg-blue-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}">
+                🧾 فواتير المبيعات والضمان (${this.liveDataRecords.sales.length})
+              </button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setBridgeCategory('purchases')" class="px-4 py-2 rounded-xl font-black text-xs transition cursor-pointer ${cat === 'purchases' ? 'bg-emerald-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}">
+                🛍️ فواتير المشتريات والتموين (${this.liveDataRecords.purchases.length})
+              </button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setBridgeCategory('proformas')" class="px-4 py-2 rounded-xl font-black text-xs transition cursor-pointer ${cat === 'proformas' ? 'bg-indigo-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}">
+                📋 الفواتير الشكلية (${this.liveDataRecords.proformas.length})
+              </button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setBridgeCategory('orders')" class="px-4 py-2 rounded-xl font-black text-xs transition cursor-pointer ${cat === 'orders' ? 'bg-amber-500 text-slate-950 shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}">
+                📦 طلبيات الزبائن (${this.liveDataRecords.orders.length})
+              </button>
+            </div>
+
+            <div class="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700 max-h-[480px]">
+              <table class="w-full text-right border-collapse">
+                <thead class="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-black border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-3">رقم المستند</th>
+                    <th class="py-3 px-3">التاريخ والتوقيت</th>
+                    <th class="py-3 px-3">الطرف (الزبون / المورد)</th>
+                    <th class="py-3 px-3">المبلغ الإجمالي</th>
+                    <th class="py-3 px-3 text-center">إجراءات الفتح والتعديل والطباعة</th>
+                  </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      } else if (this.activeSection === 'barcode_shelf_factory') {
+        const lCfg = cfg.labelCfg;
+        const products = this.liveDataRecords.products || [];
+        const previewProd =
+          products.find((p) => Number(p.id) === Number(lCfg.previewProductId)) ||
+          products[0] || { id: 1, name: 'غولد لاين (GOLD LINE)', barcode: '6134843000591', selling_price: 125 };
+
+        const labelPreviewHtml = this.buildSingleLabelOrShelfTagHtml(previewProd, lCfg);
+        const totalStickersInQueue = this.labelQueue.reduce((s, q) => s + Number(q.copies || 1), 0);
+
+        const queueRowsHtml =
+          this.labelQueue.length > 0
+            ? this.labelQueue
+                .map(
+                  (item, idx) => `
+                  <tr class="border-b border-slate-100 dark:border-slate-800 text-xs">
+                    <td class="py-2 px-3 font-black">${item.name}</td>
+                    <td class="py-2 px-3 font-mono text-slate-500">${item.barcode}</td>
+                    <td class="py-2 px-3 font-mono font-black text-blue-600">${this.fmtDzd(item.price)}</td>
+                    <td class="py-2 px-3">
+                      <input type="number" min="1" max="500" value="${item.copies}" onchange="window.GherbiPrintStudioV45.updateQueueItemCopies(${idx}, this.value)" class="w-20 px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-600 font-mono font-black text-center">
+                    </td>
+                    <td class="py-2 px-3 text-center">
+                      <button type="button" onclick="window.GherbiPrintStudioV45.removeQueueItem(${idx})" class="px-2 py-1 rounded-lg bg-rose-100 text-rose-600 font-black">✕</button>
+                    </td>
+                  </tr>`
+                )
+                .join('')
+            : `<tr><td colspan="5" class="py-6 text-center text-slate-400 font-bold">الطابور فارغ — أضف منتجات من الأعلى أو استورد فاتورة شراء كاملة.</td></tr>`;
+
+        sectionBodyHtml = `
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div class="lg:col-span-7 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 shadow-sm space-y-4 text-xs">
+              <h3 class="text-base font-black text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-700 pb-3">🏷️ مصنع ملصقات الباركود وبطاقات أسعار الرفوف</h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label class="block font-black mb-1">📐 قالب ومقاس الملصق:</label>
+                  <select onchange="window.GherbiPrintStudioV45.selectLabelPreset(this.value)" class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 font-black">
+                    ${LABEL_PRESETS.map((lp) => `<option value="${lp.id}" ${lCfg.presetId === lp.id ? 'selected' : ''}>${lp.name}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="block font-black mb-1">📦 اختر منتجاً:</label>
+                  <div class="flex gap-1.5">
+                    <select onchange="window.GherbiPrintStudioV45.selectPreviewProduct(this.value)" class="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 font-bold">
+                      ${products.slice(0, 200).map((p) => `<option value="${p.id}" ${Number(lCfg.previewProductId) === Number(p.id) ? 'selected' : ''}>${p.name} (${p.selling_price} د.ج)</option>`).join('')}
+                    </select>
+                    <button type="button" onclick="window.GherbiPrintStudioV45.addCurrentPreviewProductToQueue()" class="px-3.5 py-2 rounded-xl bg-blue-600 text-white font-black whitespace-nowrap">+ أضف</button>
+                  </div>
+                </div>
+              </div>
+              <div class="overflow-x-auto max-h-56 rounded-xl border border-slate-200 dark:border-slate-700">
+                <table class="w-full text-right border-collapse">
+                  <thead class="bg-slate-100 dark:bg-slate-800 text-[11px] font-black">
+                    <tr><th class="py-2 px-3">الصنف</th><th class="py-2 px-3">الباركود</th><th class="py-2 px-3">السعر</th><th class="py-2 px-3">العدد</th><th class="py-2 px-3">حذف</th></tr>
+                  </thead>
+                  <tbody>${queueRowsHtml}</tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="lg:col-span-5 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 shadow-sm flex flex-col justify-between space-y-4">
+              <div class="v45-studio-workspace min-h-[220px] items-center">${labelPreviewHtml}</div>
+              <div class="grid grid-cols-1 gap-2.5">
+                <button type="button" onclick="window.GherbiPrintStudioV45.printSinglePreviewLabelNow()" class="w-full py-3 rounded-2xl bg-blue-600 text-white font-black text-xs shadow-md cursor-pointer">🖨️ طباعة الملصق المعاين</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.printAllQueuedLabelsSheet()" class="w-full py-3 rounded-2xl bg-slate-900 text-amber-400 font-black text-xs shadow-md cursor-pointer">🚀 طباعة الطابور بالكامل (${totalStickersInQueue} ملصق)</button>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (this.activeSection === 'free_word_editor') {
+        const fd = this.freeDoc;
+        const shop = this.getShopIdentity();
+        const freeTotal = fd.items.reduce((s, it) => s + Number(it.qty || 1) * Number(it.price || 0), 0);
+
+        sectionBodyHtml = `
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div class="lg:col-span-4 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 shadow-sm space-y-3 text-xs">
+              <h3 class="text-sm font-black text-slate-900 dark:text-white border-b pb-2">📝 منشئ البونات والوثائق الحرة (Word)</h3>
+              <div><label class="block font-bold mb-1">عنوان الوثيقة:</label><input type="text" value="${fd.title}" oninput="window.GherbiPrintStudioV45.updateFreeDoc('title', this.value)" class="w-full px-3 py-2 rounded-xl border font-black"></div>
+              <div><label class="block font-bold mb-1">الطرف المعني:</label><input type="text" value="${fd.recipient}" oninput="window.GherbiPrintStudioV45.updateFreeDoc('recipient', this.value)" class="w-full px-3 py-2 rounded-xl border font-bold"></div>
+              <button type="button" onclick="window.GherbiPrintStudioV45.printFreeWordDocumentNow()" class="w-full py-3 rounded-2xl bg-blue-600 text-white font-black text-xs shadow-lg cursor-pointer">🖨️ طباعة الوثيقة الحرة الآن</button>
+            </div>
+            <div class="lg:col-span-8">
+              <div class="v45-studio-workspace max-h-[75vh]">
+                <div id="v45FreeWordPaperHost" class="v45-live-paper paper-a4" contenteditable="true" spellcheck="false">
+                  <h2 style="text-align:center;color:#1d4ed8;">${shop.name} — ${fd.title}</h2>
+                  <p><strong>${fd.recipient}</strong> | التاريخ: ${fd.date}</p>
+                  <p>${fd.introText}</p>
+                  <p><strong>الإجمالي: ${this.fmtDzd(freeTotal)}</strong></p>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        const cardsHtml = MASTER_DOC_TYPES.map((doc) => {
+          const def = cfg.defaultsByDocType[doc.id] || {
+            paperSize: doc.defaultPaper,
+            themeId: 'royal_blue',
+            lang: 'ar',
+            adopted: true
+          };
+          const sizeMeta = PAPER_SIZE_META[def.paperSize] || PAPER_SIZE_META.a4;
+          const themeObj = VISUAL_THEMES.find((t) => t.id === def.themeId) || VISUAL_THEMES[0];
+
+          return `
+            <div class="rounded-2xl p-4 bg-white dark:bg-slate-900/80 border-2 border-slate-200 dark:border-slate-700 hover:border-blue-500 transition shadow-sm flex flex-col justify-between space-y-3 text-xs">
+              <div class="flex items-start justify-between gap-2">
+                <div>
+                  <div class="font-black text-slate-900 dark:text-white text-sm leading-snug">${doc.name}</div>
+                  <button type="button" onclick="window.App.switchView('${doc.sourcePage}')" class="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline mt-1 inline-flex items-center gap-1 cursor-pointer">
+                    <span>🔗 مربوط مع: ${doc.sourceLabel} ⬅</span>
+                  </button>
+                </div>
+                <div onclick="window.GherbiPrintStudioV45.openMultiSizePreviewModal('${doc.id}')" class="cursor-pointer shrink-0 p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border">
+                  <div style="width:${sizeMeta.aspectW}px;height:${sizeMeta.aspectH}px;background:#ffffff;border:2px solid ${themeObj.primary};border-radius:3px;display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:8.5px;font-weight:900;color:${themeObj.primary};">
+                    ${sizeMeta.badge}
+                  </div>
+                </div>
+              </div>
+
+              <div class="px-2.5 py-1.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 text-[10.5px] font-black text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
+                <span>✅ أمر مطلق معتمد للطباعة</span>
+                <span class="font-mono">${sizeMeta.badge}</span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2">
+                <select onchange="window.GherbiPrintStudioV45.setDocDefaultPaper('${doc.id}', this.value)" class="w-full px-2 py-1.5 rounded-xl border bg-slate-50 dark:bg-slate-800 font-black text-xs cursor-pointer">
+                  <option value="a4" ${def.paperSize === 'a4' ? 'selected' : ''}>📄 A4</option>
+                  <option value="a5" ${def.paperSize === 'a5' ? 'selected' : ''}>📑 A5</option>
+                  <option value="2xa5" ${def.paperSize === '2xa5' ? 'selected' : ''}>✂️ 2×A5</option>
+                  <option value="80mm" ${def.paperSize === '80mm' ? 'selected' : ''}>🧾 80mm</option>
+                  <option value="58mm" ${def.paperSize === '58mm' ? 'selected' : ''}>🧾 58mm</option>
+                </select>
+                <select onchange="window.GherbiPrintStudioV45.setDocDefaultTheme('${doc.id}', this.value)" class="w-full px-2 py-1.5 rounded-xl border bg-slate-50 dark:bg-slate-800 font-bold text-xs cursor-pointer">
+                  ${VISUAL_THEMES.map((t) => `<option value="${t.id}" ${def.themeId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                </select>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <button type="button" onclick="window.GherbiPrintStudioV45.openMultiSizePreviewModal('${doc.id}')" class="py-2 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500 text-amber-800 hover:text-slate-950 border border-amber-400/40 font-black text-xs transition cursor-pointer">👁️ معاينة</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.customizeCardInStudioNow('${doc.id}')" class="py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-sm transition cursor-pointer">🎨 تخصيص</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        sectionBodyHtml = `
+          ${idealPresetsBarHtml}
+          <div class="rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 shadow-sm space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+              <div>
+                <h3 class="text-base font-black text-slate-900 dark:text-white">⚙️ قمرة القوالب الافتراضية المعتمدة لكل صفحات البرنامج (Par Défaut)</h3>
+                <p class="text-xs text-slate-500">أي قالب تعتمده هنا يصبح أمراً مطلقاً في الكاشير وجميع الصفحات المرتبطة به</p>
+              </div>
+              <button type="button" onclick="window.GherbiPrintStudioV45.adoptAllIdealPresetsAcrossAllPages()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow cursor-pointer">
+                🚀 اعتماد القوالب المثالية لكل الـ 12 مستنداً دفعة واحدة
+              </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">${cardsHtml}</div>
+          </div>
+        `;
+      }
+
+      targetRoot.innerHTML = `
+        <div id="v45MasterPrintStudio" data-gherbi-print-v2="1" class="space-y-4 text-right pb-8" dir="rtl">
+          <div class="rounded-3xl bg-gradient-to-l from-slate-900 via-blue-950 to-slate-900 text-white p-5 shadow-xl border border-blue-500/30">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-3.5">
+                <div class="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg">
+                  <span class="material-symbols-rounded" style="font-size:28px;">print</span>
+                </div>
+                <div>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-black text-[11px]">
+                      Gherbi.Ai Omni-Print V49 — اعتماد مطلق ومعاينة ذكية
+                    </span>
+                    <h1 class="text-lg md:text-xl font-black">
+                      مركز الطباعة الشامل واستوديو الفواتير والتذاكر الافتراضية لكل الصفحات
+                    </h1>
+                  </div>
+                  <p class="text-xs text-slate-300 mt-0.5">
+                    معاينة حرارية 80mm و A4 متناسقة 100% بدون انكسار الكلمات، مع فرض القالب المعتمد تلقائياً في شاشة المبيعات وكل الصفحات
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('visual_studio')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer ${this.activeSection === 'visual_studio' ? 'bg-blue-600 text-white shadow-md' : 'bg-white/10 hover:bg-white/20 text-slate-200'}">🎨 1. استوديو الفواتير والطبقات</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('cross_page_bridge')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer ${this.activeSection === 'cross_page_bridge' ? 'bg-blue-600 text-white shadow-md' : 'bg-white/10 hover:bg-white/20 text-slate-200'}">🔗 2. فواتير الصفحات (${this.liveDataRecords.sales.length + this.liveDataRecords.purchases.length})</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('barcode_shelf_factory')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer ${this.activeSection === 'barcode_shelf_factory' ? 'bg-amber-500 text-slate-950 shadow-md' : 'bg-white/10 hover:bg-white/20 text-slate-200'}">🏷️ 3. الباركود والرفوف</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('free_word_editor')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer ${this.activeSection === 'free_word_editor' ? 'bg-emerald-600 text-white shadow-md' : 'bg-white/10 hover:bg-white/20 text-slate-200'}">📝 4. محرر البونات (Word)</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('hardware_defaults')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer ${this.activeSection === 'hardware_defaults' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white/10 hover:bg-white/20 text-slate-200'}">⚙️ 5. القوالب الافتراضية (Par Défaut)</button>
+              </div>
+            </div>
+          </div>
+
+          <div>${sectionBodyHtml}</div>
+        </div>
+      `;
+    },
+
+    async switchSection(sec) {
+      this.activeSection = sec || 'visual_studio';
+      await this.renderStudioIntoRoot();
+    },
+
+    async selectDocType(docId) {
+      this.config.activeDocType = docId;
+      this.loadProfileForDocType(docId);
+      this.selectedRecordId = 'SAMPLE';
+      this.activeLoadedDocData = null;
+      this.saveConfigLocal();
+      await this.renderStudioIntoRoot();
+    },
+
+    async selectLiveRecord(recId) {
+      this.selectedRecordId = recId || 'SAMPLE';
+      this.activeLoadedDocData = null;
+      await this.renderStudioIntoRoot();
+    },
+
+    async setPaperSize(pSize) {
+      this.config.paperSize = pSize;
+      this.saveConfigLocal();
+      await this.renderStudioIntoRoot();
+    },
+
+    async updateCfg(key, val) {
+      this.config[key] = val;
+      this.saveConfigLocal();
+      await this.renderStudioIntoRoot();
+    },
+
+    async stepFontSize(delta) {
+      this.config.baseFontSizePx = Math.max(9, Math.min(18, Number((Number(this.config.baseFontSizePx || 11.5) + delta).toFixed(1))));
+      this.saveConfigLocal();
+      await this.renderStudioIntoRoot();
+    },
+
+    async toggleCfgBool(key) {
+      this.config[key] = !this.config[key];
+      this.saveConfigLocal();
+      await this.renderStudioIntoRoot();
+    },
+
+    async toggleColumn(colKey) {
+      this.config.columns[colKey] = !this.config.columns[colKey];
+      this.saveConfigLocal();
+      await this.renderStudioIntoRoot();
+    },
+
+    selectLayer(layerId) {
+      this.selectLayerDomOnly(layerId);
+    },
+
+    toggleLayerVisibility(layerId) {
+      const layer = this.config.layers.find((l) => l.id === layerId);
+      if (layer) {
+        layer.visible = !layer.visible;
+        this.saveConfigLocal();
+        this.renderStudioIntoRoot();
+      }
+    },
+
+    moveLayer(layerId, dir) {
+      const idx = this.config.layers.findIndex((l) => l.id === layerId);
+      if (idx < 0) return;
+      const targetIdx = idx + dir;
+      if (targetIdx < 0 || targetIdx >= this.config.layers.length) return;
+      const temp = this.config.layers[idx];
+      this.config.layers[idx] = this.config.layers[targetIdx];
+      this.config.layers[targetIdx] = temp;
+      this.saveConfigLocal();
+      this.renderStudioIntoRoot();
+    },
+
+    addCustomLayerBlock() {
+      const newId = 'custom_' + Date.now();
+      this.config.layers.push({
+        id: newId,
+        name: '📌 طبقة نصية / ملاحظة مخصصة',
+        visible: true,
+        align: 'center',
+        customNote: 'انقر هنا لكتابة أي نص أو ملاحظة إضافية مباشرة على التذكرة...'
+      });
+      this.selectedLayerId = newId;
+      this.saveConfigLocal();
+      this.renderStudioIntoRoot();
+    },
+
+    deleteCustomLayer(layerId) {
+      this.config.layers = this.config.layers.filter((l) => l.id !== layerId);
+      this.saveConfigLocal();
+      this.renderStudioIntoRoot();
+    },
+
+    async saveAsDefaultForDocType() {
+      const dt = this.config.activeDocType;
+      this.config.defaultsByDocType[dt] = {
+        paperSize: this.config.paperSize,
+        themeId: this.config.themeId,
+        lang: this.config.lang,
+        adopted: true
+      };
+      this.saveConfigLocal();
+
+      try {
+        if (window.api?.updateSettings) {
+          const settingsPatch = {
+            ['adopted_print_profile_' + dt]: JSON.stringify(this.config.adoptedProfiles[dt] || {})
+          };
+          if (dt === 'receipt_thermal') {
+            settingsPatch.receipt_paper_width_mm = this.config.paperSize === '58mm' ? '58' : '80';
+          }
+          await window.api.updateSettings(settingsPatch);
+        }
+        if (window.api?.saveCustomTemplate) {
+          await window.api.saveCustomTemplate({
+            name: `القالب المعتمد — ${dt} (${this.config.paperSize})`,
+            doc_type: dt,
+            paper: this.config.paperSize,
+            lang: this.config.lang,
+            layout_json: JSON.stringify(this.config.adoptedProfiles[dt] || this.config),
+            is_default: 1
+          });
+        }
+      } catch (_) {}
+
+      await this.renderStudioIntoRoot();
+      if (window.showToast) {
+        window.showToast('✅ تم اعتماد هذا التصميم كأمر مطلق! ستُطبع كل التذاكر والفواتير في البرنامج بهذا الشكل تماماً.', 'success');
+      }
+    },
+
+    async saveCustomTemplateToDb() {
+      await this.saveAsDefaultForDocType();
+    },
+
+    async printCurrentCanvasNow() {
+      const livePaperEl = document.querySelector('#v45LivePaperHost .v45-live-paper');
+      let bodyContent = '';
+      if (livePaperEl) {
+        const clone = livePaperEl.cloneNode(true);
+        clone.querySelectorAll('.v45-layer-handle-bar').forEach((el) => el.remove());
+        clone.querySelectorAll('[contenteditable]').forEach((el) => el.removeAttribute('contenteditable'));
+        clone.style.transform = 'none';
+        bodyContent = clone.outerHTML;
+      } else {
+        const docData = await this.resolveActiveDocumentData();
+        bodyContent = this.buildLiveDocumentPaperHtml(docData, true);
+      }
+
+      const isThermal = this.config.paperSize === '80mm' || this.config.paperSize === '58mm';
+      const pageCss = isThermal
+        ? `@page { size: ${this.config.paperSize} auto; margin: 1.5mm; }`
+        : this.config.paperSize === '2xa5'
+        ? `@page { size: A4 landscape; margin: 6mm; }`
+        : this.config.paperSize === 'a5'
+        ? `@page { size: A5 portrait; margin: 6mm; }`
+        : `@page { size: A4 portrait; margin: 8mm; }`;
+
+      const html = `<!DOCTYPE html><html lang="ar" dir="rtl" data-v49-adopted-master="1"><head><meta charset="UTF-8"><style>
+        ${pageCss}
+        * { box-sizing: border-box !important; }
+        body { margin: 0; padding: 0; font-family: '${this.config.fontFamily}', 'Cairo', Tahoma, sans-serif; color: #0f172a; background: #fff; }
+        .v45-live-paper { box-shadow: none !important; margin: 0 auto !important; width: 100% !important; min-height: auto !important; }
+        .v45-canvas-layer { border: none !important; box-shadow: none !important; }
+      </style></head><body>${bodyContent}</body></html>`;
+
+      window.api?.printSilent?.({ html, silent: false });
+    },
+
+    setBridgeCategory(cat) { this.bridgeCategory = cat; this.renderStudioIntoRoot(); },
+    setBridgeSearch(val) { this.bridgeSearch = val || ''; this.renderStudioIntoRoot(); },
+    selectLabelPreset(presetId) {
+      const pr = LABEL_PRESETS.find((x) => x.id === presetId);
+      if (pr) {
+        this.config.labelCfg.presetId = pr.id;
+        this.config.labelCfg.widthMm = pr.w;
+        this.config.labelCfg.heightMm = pr.h;
+        this.saveConfigLocal();
+        this.renderStudioIntoRoot();
+      }
+    },
+    selectPreviewProduct(prodId) {
+      this.config.labelCfg.previewProductId = Number(prodId);
+      this.saveConfigLocal();
+      this.renderStudioIntoRoot();
+    },
+    updateLabelCfg(key, val) {
+      this.config.labelCfg[key] = val;
+      this.saveConfigLocal();
+      this.renderStudioIntoRoot();
+    },
+    buildSingleLabelOrShelfTagHtml(prod, lCfg) {
+      const shop = this.getShopIdentity();
+      const price = Number(prod.selling_price || prod.price || 0);
+      const bc = prod.barcode || '613000000001';
+      const bcSvg = generateCrispBarcodeSvg(bc, lCfg.barcodeHeightMm || 10, true);
+      return `
+        <div class="v45-live-paper" style="width:${lCfg.widthMm}mm;height:${lCfg.heightMm}mm;min-height:auto;background:#ffffff;color:#000000;border:1.5px solid #0f172a;border-radius:6px;padding:2mm;display:flex;flex-direction:column;justify-content:space-between;text-align:center;overflow:hidden;">
+          ${lCfg.showShopName ? `<div contenteditable="true" style="font-size:8.5px;font-weight:900;border-bottom:1px solid #cbd5e1;">${shop.name}</div>` : ''}
+          ${lCfg.showProductName ? `<div contenteditable="true" style="font-size:10px;font-weight:900;line-height:1.15;max-height:2.2em;overflow:hidden;">${prod.name || 'منتج'}</div>` : ''}
+          <div>${bcSvg}</div>
+          ${lCfg.showPriceDzd ? `<div><span style="font-size:12.5px;font-weight:900;font-family:monospace;">${price.toFixed(2)} د.ج</span></div>` : ''}
+        </div>
+      `;
+    },
+    addProductToLabelQueue(prod, copies = 1) {
+      if (!prod) return;
+      const existing = this.labelQueue.find((x) => Number(x.id) === Number(prod.id));
+      if (existing) existing.copies += Math.max(1, Number(copies || 1));
+      else this.labelQueue.push({ id: prod.id, name: prod.name || 'منتج', barcode: prod.barcode || '6130001', price: Number(prod.selling_price || 0), copies: Math.max(1, Number(copies || 1)) });
+    },
+    addCurrentPreviewProductToQueue() {
+      const prod = (this.liveDataRecords.products || []).find((p) => Number(p.id) === Number(this.config.labelCfg.previewProductId));
+      if (prod) { this.addProductToLabelQueue(prod, 1); this.renderStudioIntoRoot(); }
+    },
+    updateQueueItemCopies(idx, val) { if (this.labelQueue[idx]) { this.labelQueue[idx].copies = Math.max(1, Number(val || 1)); this.renderStudioIntoRoot(); } },
+    removeQueueItem(idx) { this.labelQueue.splice(idx, 1); this.renderStudioIntoRoot(); },
+    clearLabelQueue() { this.labelQueue = []; this.renderStudioIntoRoot(); },
+    printSinglePreviewLabelNow() {
+      const prod = (this.liveDataRecords.products || []).find((p) => Number(p.id) === Number(this.config.labelCfg.previewProductId)) || (this.liveDataRecords.products || [])[0];
+      if (!prod) return;
+      const lCfg = this.config.labelCfg;
+      const stickerHtml = this.buildSingleLabelOrShelfTagHtml(prod, lCfg);
+      const html = `<!DOCTYPE html><html lang="ar" dir="rtl" data-v49-adopted-master="1"><head><meta charset="UTF-8"><style>@page { size: ${lCfg.widthMm}mm ${lCfg.heightMm}mm; margin: 0; } body { margin: 0; display: flex; justify-content: center; align-items: center; }</style></head><body>${stickerHtml}</body></html>`;
+      window.api?.printSilent?.({ html, silent: false });
+    },
+    printAllQueuedLabelsSheet() {
+      if (this.labelQueue.length === 0) return;
+      const lCfg = this.config.labelCfg;
+      const allStickers = [];
+      for (const qItem of this.labelQueue) {
+        for (let i = 0; i < Math.min(200, Math.max(1, Number(qItem.copies || 1))); i++) {
+          allStickers.push(this.buildSingleLabelOrShelfTagHtml({ name: qItem.name, barcode: qItem.barcode, selling_price: qItem.price }, lCfg));
+        }
+      }
+      const html = `<!DOCTYPE html><html lang="ar" dir="rtl" data-v49-adopted-master="1"><head><meta charset="UTF-8"><style>@page { margin: 5mm; } body { margin: 0; display: flex; flex-wrap: wrap; gap: 2.5mm; }</style></head><body>${allStickers.join('')}</body></html>`;
+      window.api?.printSilent?.({ html, silent: false });
+    },
+    updateFreeDoc(key, val) { this.freeDoc[key] = val; this.renderStudioIntoRoot(); },
+    printFreeWordDocumentNow() {
+      const host = document.getElementById('v45FreeWordPaperHost');
+      if (!host) return;
+      const html = `<!DOCTYPE html><html lang="ar" dir="rtl" data-v49-adopted-master="1"><head><meta charset="UTF-8"><style>@page { size: A4 portrait; margin: 10mm; } body { margin: 0; font-family: 'Cairo', sans-serif; }</style></head><body>${host.innerHTML}</body></html>`;
+      window.api?.printSilent?.({ html, silent: false });
+    },
+    setDocDefaultPaper(docId, paperVal) {
+      if (!this.config.defaultsByDocType[docId]) this.config.defaultsByDocType[docId] = { paperSize: paperVal, themeId: 'royal_blue', lang: 'ar', adopted: true };
+      else { this.config.defaultsByDocType[docId].paperSize = paperVal; this.config.defaultsByDocType[docId].adopted = true; }
+      if (this.config.adoptedProfiles[docId]) this.config.adoptedProfiles[docId].paperSize = paperVal;
+      this.saveConfigLocal();
+      this.renderStudioIntoRoot();
+    },
+    setDocDefaultTheme(docId, themeVal) {
+      if (!this.config.defaultsByDocType[docId]) this.config.defaultsByDocType[docId] = { paperSize: 'a4', themeId: themeVal, lang: 'ar', adopted: true };
+      else { this.config.defaultsByDocType[docId].themeId = themeVal; this.config.defaultsByDocType[docId].adopted = true; }
+      if (this.config.adoptedProfiles[docId]) this.config.adoptedProfiles[docId].themeId = themeVal;
+      this.saveConfigLocal();
+      this.renderStudioIntoRoot();
+    },
+    async saveAllDefaultsToSettings() { await this.saveAsDefaultForDocType(); }
+  };
+
+  window.GherbiPrintStudioV45 = MasterPrintStudio;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => MasterPrintStudio.init());
+  } else {
+    MasterPrintStudio.init();
+  }
+})();
+
+/* ==================== [V49 PART 2: FULL 12-DOC CROSS-PAGE BRIDGE & ADVANCED LAYOUT] ==================== */
+(function initV49Part2CrossPageAndAdvancedStudio() {
+  const COMPLETE_12_IDEAL_PRESETS = {
+    receipt_thermal: {
+      label: '🧾 تذكرة كاشير حرارية مثالية (80mm)',
+      paperSize: '80mm',
+      themeId: 'pure_mono',
+      fontSize: 11.5,
+      marginMode: 'normal',
+      densityMode: 'compact',
+      borderMode: 'dashed',
+      columns: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'loyalty_points_layer', 'footer_stamp_layer']
+    },
+    invoice_a4: {
+      label: '📄 فاتورة مبيعات رسمية كاملة (A4)',
+      paperSize: 'a4',
+      themeId: 'royal_blue',
+      fontSize: 12,
+      marginMode: 'normal',
+      densityMode: 'normal',
+      borderMode: 'grid',
+      columns: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: true, tva: false, subtotal: true },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'debt_ledger_layer', 'loyalty_points_layer', 'footer_stamp_layer']
+    },
+    invoice_a5: {
+      label: '📑 فاتورة مبيعات مدمجة (A5)',
+      paperSize: 'a5',
+      themeId: 'emerald_dz',
+      fontSize: 11.5,
+      marginMode: 'normal',
+      densityMode: 'compact',
+      borderMode: 'grid',
+      columns: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'debt_ledger_layer', 'footer_stamp_layer']
+    },
+    invoice_2xa5: {
+      label: '✂️ فاتورة مزدوجة اقتصادية (2×A5 في ورقة A4)',
+      paperSize: '2xa5',
+      themeId: 'royal_blue',
+      fontSize: 11,
+      marginMode: 'compact',
+      densityMode: 'compact',
+      borderMode: 'grid',
+      columns: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'footer_stamp_layer']
+    },
+    delivery_note: {
+      label: '🚚 وصل تسليم وتوصيل بضاعة (Bon de Livraison)',
+      paperSize: 'a4',
+      themeId: 'emerald_dz',
+      fontSize: 12,
+      marginMode: 'normal',
+      densityMode: 'normal',
+      borderMode: 'grid',
+      columns: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: false, discount: false, tva: false, subtotal: false },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'delivery_driver_layer', 'footer_stamp_layer']
+    },
+    proforma: {
+      label: '📋 فاتورة شكلية / عرض سعر رسمي (Proforma)',
+      paperSize: 'a4',
+      themeId: 'executive_dark',
+      fontSize: 12,
+      marginMode: 'normal',
+      densityMode: 'normal',
+      borderMode: 'grid',
+      columns: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: true, subtotal: true },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'tax_ifu_breakdown_layer', 'footer_stamp_layer']
+    },
+    customer_order: {
+      label: '📦 سند طلبية زبون مع العربون (Bon de Commande)',
+      paperSize: 'a4',
+      themeId: 'amber_gold',
+      fontSize: 12,
+      marginMode: 'normal',
+      densityMode: 'normal',
+      borderMode: 'grid',
+      columns: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'delivery_driver_layer', 'footer_stamp_layer']
+    },
+    credit_note: {
+      label: "↩️ إشعار دائن ومرتجع مبيعات (Facture d'Avoir)",
+      paperSize: 'a4',
+      themeId: 'crimson_bold',
+      fontSize: 12,
+      marginMode: 'normal',
+      densityMode: 'normal',
+      borderMode: 'grid',
+      columns: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'debt_ledger_layer', 'footer_stamp_layer']
+    },
+    payment_receipt: {
+      label: '💰 وصل قبض وتسديد دين (Reçu de Paiement)',
+      paperSize: 'a5',
+      themeId: 'emerald_dz',
+      fontSize: 12,
+      marginMode: 'normal',
+      densityMode: 'spacious',
+      borderMode: 'horizontal',
+      columns: { index: true, barcode: false, name: true, unit: false, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'debt_ledger_layer', 'totals_words_layer', 'footer_stamp_layer']
+    },
+    purchase_invoice: {
+      label: '🛍️ سند استلام وفاتورة شراء من مورد (Bon de Réception)',
+      paperSize: 'a4',
+      themeId: 'executive_dark',
+      fontSize: 12,
+      marginMode: 'normal',
+      densityMode: 'normal',
+      borderMode: 'grid',
+      columns: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'debt_ledger_layer', 'footer_stamp_layer']
+    },
+    warranty_cert: {
+      label: '🛡️ شهادة ضمان رسمية للأجهزة (Certificat de Garantie)',
+      paperSize: 'a5',
+      themeId: 'royal_blue',
+      fontSize: 12,
+      marginMode: 'normal',
+      densityMode: 'normal',
+      borderMode: 'grid',
+      columns: { index: true, barcode: true, name: true, unit: false, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'warranty_imei_layer', 'footer_stamp_layer']
+    },
+    installment_contract: {
+      label: '🗓️ عقد بيع بالتقسيط وجدول الأقساط (Vente par Facilité)',
+      paperSize: 'a4',
+      themeId: 'amber_gold',
+      fontSize: 12,
+      marginMode: 'normal',
+      densityMode: 'normal',
+      borderMode: 'grid',
+      columns: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      activeLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'installments_schedule_layer', 'debt_ledger_layer', 'footer_stamp_layer']
+    }
+  };
+
+  const waitStudio = setInterval(() => {
+    const studio = window.GherbiPrintStudioV45;
+    if (!studio || !window.App) return;
+    clearInterval(waitStudio);
+
+    // 1. إضافة خصائص التنسيق المتقدمة (الهوامش، كثافة الجدول، ونمط الحدود)
+    if (!studio.config.marginMode) studio.config.marginMode = 'normal';
+    if (!studio.config.densityMode) studio.config.densityMode = 'normal';
+    if (!studio.config.borderMode) studio.config.borderMode = 'grid';
+
+    // 2. ترقية resolveActiveDocumentData ليدعم جلب البيانات الحقيقية لجميع الـ 12 مستنداً من قاعدة البيانات
+    const origResolve = studio.resolveActiveDocumentData.bind(studio);
+    studio.resolveActiveDocumentData = async function (overrideDocType) {
+      if (!overrideDocType && this.activeLoadedDocData) {
+        return this.activeLoadedDocData;
+      }
+
+      const docType = overrideDocType || this.config.activeDocType;
+      const recId = this.selectedRecordId;
+
+      if (recId && recId !== 'SAMPLE') {
+        try {
+          // أ) الفواتير الشكلية (Proforma)
+          if (docType === 'proforma' && window.api?.getProformaDetails) {
+            const pf = await window.api.getProformaDetails(Number(recId));
+            if (pf) {
+              const loaded = this.enrichDocumentDataWithLoyaltyAndDebt({
+                docNumber: pf.doc_number || ('PRO-' + pf.id),
+                date: String(pf.created_at || '').replace('T', ' ').slice(0, 16),
+                customerId: pf.customer_id || null,
+                partyTitle: 'الزبون / المؤسسة:',
+                partyName: pf.customer_name || 'زبون محتمل',
+                partyPhone: pf.customer_phone || '-',
+                partyAddress: pf.customer_address || '-',
+                partyRc: pf.customer_rc || '-',
+                partyNif: pf.customer_nif || '-',
+                paymentMethod: `عرض سعر صالح لمدة ${pf.validity_days || 15} يوماً`,
+                previousBalance: 0,
+                items: (pf.items || []).map((it) => ({
+                  barcode: it.barcode || '-',
+                  name: it.product_name || it.custom_product_name || 'صنف',
+                  unit: it.unit || 'قطعة',
+                  qty: Number(it.quantity || 1),
+                  price: Number(it.price || 0),
+                  discount: 0,
+                  tva: Number(pf.tax_percentage || 19),
+                  subtotal: Number(it.subtotal || 0)
+                })),
+                subtotal: Number(pf.subtotal || pf.total || 0),
+                discount: Number(pf.discount || 0),
+                tvaAmount: Number(((Number(pf.subtotal || 0) * Number(pf.tax_percentage || 0)) / 100).toFixed(2)),
+                stampAmount: 0,
+                total: Number(pf.total || 0),
+                paidAmount: 0,
+                receivedAmount: 0,
+                remainingDebt: 0
+              });
+              if (!overrideDocType) this.activeLoadedDocData = loaded;
+              return loaded;
+            }
+          }
+
+          // ب) طلبيات الزبائن (Customer Orders - Bon de Commande)
+          if (docType === 'customer_order' && window.api?.getOrderDetails) {
+            const ord = await window.api.getOrderDetails(Number(recId));
+            if (ord) {
+              const tot = Number(ord.total || 0);
+              const dep = Number(ord.deposit_amount || 0);
+              const loaded = this.enrichDocumentDataWithLoyaltyAndDebt({
+                docNumber: ord.doc_number || ('BC-' + ord.id),
+                date: String(ord.created_at || '').replace('T', ' ').slice(0, 16),
+                customerId: ord.customer_id || null,
+                partyTitle: 'الزبون صاحب الطلبية:',
+                partyName: ord.customer_name || 'زبون طلبية',
+                partyPhone: ord.customer_phone || '-',
+                partyAddress: ord.customer_address || '-',
+                partyRc: ord.customer_rc || '-',
+                partyNif: ord.customer_nif || '-',
+                paymentMethod: ord.expected_delivery_date ? `تاريخ التسليم: ${ord.expected_delivery_date}` : 'طلبية محجوزة',
+                previousBalance: 0,
+                items: (ord.items || []).map((it) => ({
+                  barcode: it.barcode || '-',
+                  name: it.product_name || it.custom_product_name || 'صنف مطلوب',
+                  unit: it.unit || 'قطعة',
+                  qty: Number(it.quantity || 1),
+                  price: Number(it.price || 0),
+                  discount: 0,
+                  tva: 0,
+                  subtotal: Number(it.subtotal || 0)
+                })),
+                subtotal: Number(ord.subtotal || tot),
+                discount: Number(ord.discount || 0),
+                tvaAmount: 0,
+                stampAmount: 0,
+                total: tot,
+                paidAmount: dep,
+                receivedAmount: dep,
+                remainingDebt: Math.max(0, Number((tot - dep).toFixed(2)))
+              });
+              if (!overrideDocType) this.activeLoadedDocData = loaded;
+              return loaded;
+            }
+          }
+
+          // ج) وصل قبض / تسديد دين (Payment Receipt)
+          if (docType === 'payment_receipt' && window.api?.getPaymentDetails) {
+            const pay = await window.api.getPaymentDetails(Number(recId), 'sale').catch(() => null);
+            if (pay) {
+              const amt = Number(pay.amount || 0);
+              const loaded = this.enrichDocumentDataWithLoyaltyAndDebt({
+                docNumber: pay.receipt_number || ('REC-' + pay.id),
+                date: String(pay.date || pay.created_at || '').replace('T', ' ').slice(0, 16),
+                customerId: pay.customer_id || null,
+                partyTitle: 'استلمنا من السيد(ة) / المؤسسة:',
+                partyName: pay.party_name || pay.customer_name || 'زبون مسجل',
+                partyPhone: pay.party_phone || '-',
+                partyAddress: pay.party_address || '-',
+                partyRc: '-',
+                partyNif: '-',
+                paymentMethod: pay.payment_method || 'نقداً (Espèces)',
+                previousBalance: Number(pay.previous_debt || amt),
+                items: [
+                  {
+                    barcode: '-',
+                    name: pay.notes || `دفعة تسديد على الحساب ${pay.doc_number ? '(فاتورة ' + pay.doc_number + ')' : ''}`,
+                    unit: 'دفعة',
+                    qty: 1,
+                    price: amt,
+                    discount: 0,
+                    tva: 0,
+                    subtotal: amt
+                  }
+                ],
+                subtotal: amt,
+                discount: 0,
+                tvaAmount: 0,
+                stampAmount: 0,
+                total: amt,
+                paidAmount: amt,
+                receivedAmount: amt,
+                remainingDebt: Math.max(0, Number(pay.remaining_debt || 0))
+              });
+              if (!overrideDocType) this.activeLoadedDocData = loaded;
+              return loaded;
+            }
+          }
+        } catch (_) {}
+      }
+
+      return await origResolve(overrideDocType);
+    };
+
+    // 3. تطبيق القالب المثالي الخاص بأي مستند من المستندات الـ 12
+    studio.applyIdealPresetForDocType = async function (docType) {
+      const targetDoc = docType || this.config.activeDocType;
+      const pr = COMPLETE_12_IDEAL_PRESETS[targetDoc] || COMPLETE_12_IDEAL_PRESETS.receipt_thermal;
+
+      this.config.activeDocType = targetDoc;
+      this.config.paperSize = pr.paperSize;
+      this.config.themeId = pr.themeId;
+      this.config.baseFontSizePx = pr.fontSize;
+      this.config.marginMode = pr.marginMode || 'normal';
+      this.config.densityMode = pr.densityMode || 'normal';
+      this.config.borderMode = pr.borderMode || 'grid';
+      this.config.columns = { ...this.config.columns, ...pr.columns };
+
+      const activeSet = new Set(pr.activeLayers);
+      for (const l of this.config.layers) {
+        l.visible = activeSet.has(l.id);
+      }
+
+      await this.saveAsDefaultForDocType();
+      if (window.showToast) {
+        window.showToast(`✨ تم تطبيق واعتماد (${pr.label}) كقالب رسمي!`, 'success');
+      }
+    };
+
+    // ترقية adoptAllIdealPresetsAcrossAllPages لتشمل الـ 12 مستنداً بالكامل
+    studio.adoptAllIdealPresetsAcrossAllPages = async function () {
+      for (const [docId, pr] of Object.entries(COMPLETE_12_IDEAL_PRESETS)) {
+        const activeSet = new Set(pr.activeLayers);
+        const layersList = this.config.layers.map((l) => ({
+          ...l,
+          visible: activeSet.has(l.id)
+        }));
+
+        this.config.defaultsByDocType[docId] = {
+          paperSize: pr.paperSize,
+          themeId: pr.themeId,
+          lang: 'ar',
+          adopted: true
+        };
+
+        this.config.adoptedProfiles[docId] = {
+          paperSize: pr.paperSize,
+          themeId: pr.themeId,
+          fontFamily: 'Cairo',
+          baseFontSizePx: pr.fontSize,
+          marginMode: pr.marginMode || 'normal',
+          densityMode: pr.densityMode || 'normal',
+          borderMode: pr.borderMode || 'grid',
+          watermarkText: '',
+          customHeaderTitle: '',
+          customFooterTerms: this.config.customFooterTerms,
+          showCentimesEquivalent: true,
+          showAmountInWords: true,
+          showCustomerBalance: true,
+          showBaridimobQr: true,
+          showDocBarcode: true,
+          showStampSignature: true,
+          customTexts: JSON.parse(JSON.stringify(this.config.customTexts)),
+          columns: { ...pr.columns },
+          layers: layersList
+        };
+      }
+
+      await this.applyIdealPresetForDocType(this.config.activeDocType);
+      if (window.showToast) {
+        window.showToast('🚀 تم اعتماد القوالب المثالية الـ 12 لجميع صفحات ونوافذ البرنامج بنجاح!', 'success');
+      }
+    };
+
+    // 4. إضافة كلاسات الهوامش وكثافة الجدول ونمط الحدود إلى الورقة المولدة
+    const origBuildPaper = studio.buildLiveDocumentPaperHtml.bind(studio);
+    studio.buildLiveDocumentPaperHtml = function (docData, forPrintOutput = false, customOverrides = null) {
+      const html = origBuildPaper(docData, forPrintOutput, customOverrides);
+      const cfg = customOverrides ? { ...this.config, ...customOverrides } : this.config;
+      const mCls = `margin-${cfg.marginMode || 'normal'}`;
+      const dCls = `density-${cfg.densityMode || 'normal'}`;
+      const bCls = `border-style-${cfg.borderMode || 'grid'}`;
+      return html.replace(
+        /class="v45-live-paper\s+([^"]+)"/g,
+        `class="v45-live-paper $1 ${mCls} ${dCls} ${bCls}"`
+      );
+    };
+
+    // 5. اعتراض أوامر الطباعة في النوافذ المنبثقة لبقية صفحات البرنامج
+    function installCrossPageModalPrintInterceptors() {
+      // أ) نافذة طباعة وصل التوصيل (#deliveryNoteModal)
+      if (typeof window.App.confirmPrintDeliveryNote === 'function' && !window.App._v49DelivHooked) {
+        window.App._v49DelivHooked = true;
+        window.App.confirmPrintDeliveryNote = async function () {
+          const saleId = document.getElementById('deliveryNoteSaleId')?.value || window.App.currentPrintingSaleId || 'SAMPLE';
+          const driver = document.getElementById('delivDriverInput')?.value?.trim() || '';
+          const vehicle = document.getElementById('delivVehicleInput')?.value?.trim() || '';
+          const fmt = document.getElementById('delivFormatSelect')?.value || 'a4';
+
+          if (fmt === 'thermal') studio.setDocDefaultPaper('delivery_note', '80mm');
+          else if (fmt === 'a5') studio.setDocDefaultPaper('delivery_note', 'a5');
+          else studio.setDocDefaultPaper('delivery_note', 'a4');
+
+          studio.setLayerVisibleQuiet('delivery_driver_layer', true);
+          let html = await studio.generateAdoptedHtmlForDocument('delivery_note', saleId);
+          if (driver || vehicle) {
+            html = html.replace('• السائق: ...................', `• السائق: ${driver || '—'} ${vehicle ? '(' + vehicle + ')' : ''}`);
+          }
+          window.App.closeModal('deliveryNoteModal');
+          await window.api?.printSilent?.({ html, silent: false });
+          if (window.showToast) window.showToast('🚚 تمت طباعة وصل التوصيل (BL) وفق القالب المعتمد!', 'success');
+        };
+      }
+
+      // ب) نافذة إصدار إشعار دائن (#creditNoteModal)
+      if (typeof window.App.confirmIssueCreditNote === 'function' && !window.App._v49CreditNoteHooked) {
+        const origIssueCN = window.App.confirmIssueCreditNote.bind(window.App);
+        window.App._v49CreditNoteHooked = true;
+        window.App.confirmIssueCreditNote = async function (...args) {
+          const saleId = document.getElementById('creditNoteSaleId')?.value;
+          const reason = document.getElementById('creditNoteReasonInput')?.value || 'إرجاع بضاعة من الزبون';
+          try {
+            if (saleId && window.api?.issueCreditNote) {
+              await window.api.issueCreditNote({ saleId: Number(saleId), reason });
+            }
+            window.App.closeModal('creditNoteModal');
+            const html = await studio.generateAdoptedHtmlForDocument('credit_note', saleId || 'SAMPLE');
+            await window.api?.printSilent?.({ html, silent: false });
+            if (window.showToast) window.showToast("↩️ تم إصدار وطباعة إشعار الدائن (Facture d'Avoir) بالقالب المعتمد!", 'success');
+            if (typeof window.App.loadSalesView === 'function') window.App.loadSalesView();
+            return;
+          } catch (_) {
+            return await origIssueCN(...args);
+          }
+        };
+      }
+
+      // ج) نافذة تسديد دين الزبون (#customerPaymentModal)
+      if (typeof window.App.submitCustomerPaymentModal === 'function' && !window.App._v49CustPayHooked) {
+        const origCustPay = window.App.submitCustomerPaymentModal.bind(window.App);
+        window.App._v49CustPayHooked = true;
+        window.App.submitCustomerPaymentModal = async function (shouldPrint, ...rest) {
+          const cid = Number(document.getElementById('custPayCustomerId')?.value || 0);
+          const amt = Number(document.getElementById('custPayAmountInput')?.value || 0);
+          const method = document.getElementById('custPayMethodSelect')?.value || 'cash';
+          const notes = document.getElementById('custPayNotesInput')?.value || 'دفعة تسديد حساب زبون';
+
+          const res = await origCustPay(false, ...rest);
+          if (shouldPrint && amt > 0) {
+            const cust = (studio.liveDataRecords.customers || window.AppState?.customers || []).find((c) => Number(c.id) === cid);
+            const html = await studio.generateAdoptedHtmlForDocument('payment_receipt', null, {
+              doc_number: (res && res.receiptNumber) || ('REC-' + Date.now().toString().slice(-4)),
+              customer_id: cid,
+              customer_name: cust ? cust.name : 'زبون مسجل',
+              customer_phone: cust ? cust.phone : '-',
+              payment_method: method,
+              previous_debt: cust ? Number(cust.total_debt || amt) : amt,
+              items: [{ name: notes, unit: 'دفعة', quantity: 1, price: amt, subtotal: amt }],
+              subtotal: amt,
+              total: amt,
+              paid_amount: amt,
+              received_amount: amt
+            });
+            await window.api?.printSilent?.({ html, silent: false });
+          }
+          return res;
+        };
+      }
+
+      // د) تم توحيد اعتراض القوالب داخل جسر GherbiPrintBridge الآمن بدون لمس الكائن المجمد window.api
+    }
+
+    installCrossPageModalPrintInterceptors();
+
+    // 6. زرع شريط "🎨 تخصيص قالب الطباعة لهذه الصفحة" في الصفحات الأخرى ونوافذ التفاصيل
+    function injectCrossPageCustomizeBars() {
+      const pageMappings = [
+        { viewId: 'sales-view-root', docType: 'invoice_a4', label: '🎨 تخصيص قالب الفواتير وتذاكر المبيعات' },
+        { viewId: 'purchases-view-root', docType: 'purchase_invoice', label: '🎨 تخصيص قالب فواتير الشراء والاستلام (BR)' },
+        { viewId: 'proformas-view-root', docType: 'proforma', label: '🎨 تخصيص قالب الفاتورة الشكلية (Proforma)' },
+        { viewId: 'orders-view-root', docType: 'customer_order', label: '🎨 تخصيص قالب سند طلبية الزبون (BC)' },
+        { viewId: 'customers-view-root', docType: 'payment_receipt', label: '🎨 تخصيص قالب وصل تسديد الديون وعقد التقسيط' }
+      ];
+
+      setInterval(() => {
+        for (const pm of pageMappings) {
+          const root = document.getElementById(pm.viewId);
+          if (!root || root.children.length === 0) continue;
+          if (root.querySelector('.v49-cross-page-studio-btn')) continue;
+
+          const firstHeader = root.querySelector('h1, h2, h3')?.parentElement?.parentElement || root.firstElementChild;
+          if (firstHeader) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'v49-cross-page-studio-btn px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-sm transition inline-flex items-center gap-1.5 cursor-pointer';
+            btn.innerHTML = `<span>${pm.label}</span>`;
+            btn.onclick = () => {
+              window.App.openDocumentInPrintStudio(pm.docType, 'SAMPLE');
+            };
+            firstHeader.appendChild(btn);
+          }
+        }
+
+        // إضافة زر داخل نافذة تفاصيل الفاتورة (#saleDetailsModal) ونافذة تفاصيل الشراء (#purchaseDetailsModal)
+        const saleModal = document.getElementById('saleDetailsModal');
+        if (saleModal && saleModal.classList.contains('active') && !saleModal.querySelector('#v49SaleModalStudioBtn')) {
+          const hdr = saleModal.querySelector('.border-b');
+          if (hdr) {
+            const b = document.createElement('button');
+            b.id = 'v49SaleModalStudioBtn';
+            b.type = 'button';
+            b.className = 'px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs mr-auto ml-2 cursor-pointer';
+            b.textContent = '🎨 فتح وتعديل هذه الفاتورة في الاستوديو';
+            b.onclick = () => {
+              const titleTxt = document.getElementById('saleDetailsModalTitle')?.textContent || '';
+              const numM = titleTxt.match(/(\d+)/);
+              const sId = numM ? numM[1] : 'SAMPLE';
+              window.App.closeModal('saleDetailsModal');
+              window.App.openDocumentInPrintStudio('invoice_a4', sId);
+            };
+            hdr.insertBefore(b, hdr.lastElementChild);
+          }
+        }
+      }, 700);
+    }
+
+    injectCrossPageCustomizeBars();
+
+    // 7. حقن شريط أدوات التنسيق المتقدم (الهوامش، كثافة الجدول، ونمط الحدود) داخل استوديو الفواتير
+    const origRenderRoot = studio.renderStudioIntoRoot.bind(studio);
+    studio.renderStudioIntoRoot = async function (rootEl) {
+      await origRenderRoot(rootEl);
+      if (this.activeSection !== 'visual_studio') return;
+
+      const host = document.getElementById('v45LivePaperHost');
+      if (!host || !host.parentElement) return;
+
+      let advBar = document.getElementById('v49AdvancedLayoutToolbar');
+      if (!advBar) {
+        advBar = document.createElement('div');
+        advBar.id = 'v49AdvancedLayoutToolbar';
+        advBar.className = 'mb-3 p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2 text-xs';
+        host.parentElement.insertBefore(advBar, host.parentElement.firstChild);
+      }
+
+      const cfg = this.config;
+      const curIdeal = COMPLETE_12_IDEAL_PRESETS[cfg.activeDocType] || COMPLETE_12_IDEAL_PRESETS.receipt_thermal;
+
+      advBar.innerHTML = `
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="font-black text-slate-600 dark:text-slate-300">🛠️ أدوات التخطيط الدقيق:</span>
+
+          <div class="inline-flex items-center gap-1 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-xl border border-slate-300 dark:border-slate-600">
+            <span class="font-bold text-slate-500">الهوامش:</span>
+            <select onchange="window.GherbiPrintStudioV45.updateCfg('marginMode', this.value)" class="bg-transparent font-black outline-none cursor-pointer">
+              <option value="compact" ${cfg.marginMode === 'compact' ? 'selected' : ''}>ضيقة (اقتصادية)</option>
+              <option value="normal" ${(!cfg.marginMode || cfg.marginMode === 'normal') ? 'selected' : ''}>قياسية متوازنة</option>
+              <option value="wide" ${cfg.marginMode === 'wide' ? 'selected' : ''}>واسعة رسمية</option>
+            </select>
+          </div>
+
+          <div class="inline-flex items-center gap-1 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-xl border border-slate-300 dark:border-slate-600">
+            <span class="font-bold text-slate-500">كثافة السطور:</span>
+            <select onchange="window.GherbiPrintStudioV45.updateCfg('densityMode', this.value)" class="bg-transparent font-black outline-none cursor-pointer">
+              <option value="compact" ${cfg.densityMode === 'compact' ? 'selected' : ''}>مدمجة (توفير الورق)</option>
+              <option value="normal" ${(!cfg.densityMode || cfg.densityMode === 'normal') ? 'selected' : ''}>قياسية</option>
+              <option value="spacious" ${cfg.densityMode === 'spacious' ? 'selected' : ''}>مريحة وواسعة</option>
+            </select>
+          </div>
+
+          <div class="inline-flex items-center gap-1 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-xl border border-slate-300 dark:border-slate-600">
+            <span class="font-bold text-slate-500">حدود الجدول:</span>
+            <select onchange="window.GherbiPrintStudioV45.updateCfg('borderMode', this.value)" class="bg-transparent font-black outline-none cursor-pointer">
+              <option value="grid" ${(!cfg.borderMode || cfg.borderMode === 'grid') ? 'selected' : ''}>شبكي كامل</option>
+              <option value="horizontal" ${cfg.borderMode === 'horizontal' ? 'selected' : ''}>خطوط أفقية عصرية</option>
+              <option value="dashed" ${cfg.borderMode === 'dashed' ? 'selected' : ''}>حراري منقط (كاشير)</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="button" onclick="window.GherbiPrintStudioV45.applyIdealPresetForDocType('${cfg.activeDocType}')" class="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-sm transition cursor-pointer">
+          ⚡ ضبط التصميم المثالي لـ (${curIdeal.label})
+        </button>
+      `;
+    };
+
+    if (document.getElementById('view-print')?.classList.contains('active')) {
+      studio.renderStudioIntoRoot();
+    }
+
+    console.log('🏆 [Gherbi V49 Part 2]: اكتمل ربط المستندات الـ 12 بجميع الصفحات والنوافذ المنبثقة وتفعيل أدوات التخطيط المتقدمة.');
+  }, 160);
+})();
