@@ -4954,3 +4954,34 @@ app.on('before-quit', () => {
     origHandle('print-silent', handleV55PrintSilent);
   } catch (_) {}
 })();
+
+/* === [V56_MAIN_CUSTOMER_CREDIT_AND_PARTIAL_PAY_ENGINE] === */
+(function installV56MainCustomerCreditHandlers() {
+  const { ipcMain } = require('electron');
+  const db = require('./database');
+
+  // قناة سريعة لتحديث إعدادات الكريدي والوفاء للزبون + جلب الملخص المالي الفوري
+  try {
+    ipcMain.removeHandler('save-customer-vip-credit-meta');
+    ipcMain.handle('save-customer-vip-credit-meta', async (_e, payload = {}) => {
+      const cid = Number(payload.id || payload.customerId || 0);
+      if (!cid) return { success: false };
+      await db.dbRun(
+        `UPDATE customers
+         SET is_vip = COALESCE(?, is_vip),
+             is_credit_blocked = COALESCE(?, is_credit_blocked),
+             credit_limit = COALESCE(?, credit_limit),
+             initial_debt = COALESCE(?, initial_debt)
+         WHERE id = ?`,
+        [
+          payload.is_vip !== undefined ? (payload.is_vip ? 1 : 0) : null,
+          payload.is_credit_blocked !== undefined ? (payload.is_credit_blocked ? 1 : 0) : null,
+          payload.credit_limit !== undefined ? Number(payload.credit_limit) : null,
+          payload.initial_debt !== undefined ? Number(payload.initial_debt) : null,
+          cid
+        ]
+      );
+      return { success: true, id: cid };
+    });
+  } catch (_) {}
+})();

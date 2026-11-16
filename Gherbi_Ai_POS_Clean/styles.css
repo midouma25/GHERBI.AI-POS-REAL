@@ -2289,3 +2289,137 @@ html[dir="rtl"] .v45-live-paper {
 .v45-live-paper bdi {
   unicode-bidi: isolate !important;
 }
+
+/* === [GHERBI V56: ZERO-BLOCK POS & VIP RETAIL CREDIT WIDGET] === */
+/* تسريع رسم بطاقات المنتجات والسلة عبر عزل التخطيط (CSS Containment) لمنع أي توقف */
+#posProductsGrid {
+  contain: content;
+  will-change: scroll-position;
+}
+#posProductsGrid .product-card {
+  contain: layout style;
+  transition: transform 0.08s ease, border-color 0.08s ease !important;
+}
+#posCartItems {
+  contain: content;
+}
+
+/* بطاقة وضعية الكريدي والوفاء الحية داخل سلة الكاشير */
+.v56-pos-vip-credit-bar {
+  border-radius: 0.85rem;
+  padding: 0.55rem 0.7rem;
+  font-size: 11px;
+  line-height: 1.35;
+  transition: all 0.12s ease;
+}
+.v56-pos-vip-credit-bar.is-vip-clean {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border: 1.5px solid #f59e0b;
+  color: #78350f;
+}
+html.dark .v56-pos-vip-credit-bar.is-vip-clean {
+  background: rgba(120, 53, 15, 0.28);
+  border-color: #d97706;
+  color: #fde68a;
+}
+.v56-pos-vip-credit-bar.is-vip-debt {
+  background: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%);
+  border: 1.5px solid #f43f5e;
+  color: #881337;
+}
+html.dark .v56-pos-vip-credit-bar.is-vip-debt {
+  background: rgba(136, 19, 55, 0.32);
+  border-color: #fb7185;
+  color: #fecdd3;
+}
+
+/* === [GHERBI V59: FULL-WIDTH PRINT CENTER & 28 PRO CARDS GRID] === */
+#view-print.view-section.active {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+#print-view-root,
+#v45MasterPrintStudio {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* شبكة البطاقات الـ 28 في قمرة القوالب الافتراضية — مضمونة العرض الكامل وعدم انكسار النصوص */
+.v59-defaults-cards-grid {
+  display: grid !important;
+  width: 100% !important;
+  grid-template-columns: repeat(auto-fill, minmax(295px, 1fr)) !important;
+  gap: 16px !important;
+  align-items: stretch !important;
+}
+
+.v59-template-card {
+  background: var(--bg-surface);
+  border: 2px solid var(--border-color);
+  border-radius: 1.15rem;
+  padding: 1rem;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  gap: 0.75rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+}
+.v59-template-card:hover {
+  border-color: #2563eb;
+  box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.15);
+  transform: translateY(-2px);
+}
+
+/* تخطيط استوديو الفواتير والطبقات (التبويب 1) بعرض كامل متوازن */
+.v59-studio-main-grid {
+  display: grid !important;
+  width: 100% !important;
+  grid-template-columns: 430px minmax(0, 1fr) !important;
+  gap: 18px !important;
+  align-items: start !important;
+}
+@media (max-width: 1100px) {
+  .v59-studio-main-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* === [GHERBI V61: ZERO-JUMP STICKY PRINT STUDIO & INLINE INSPECTOR] === */
+#view-print,
+#v61LeftScrollContainer,
+.v45-studio-workspace {
+  overflow-anchor: none !important;
+  scroll-behavior: auto !important;
+}
+
+.v61-studio-split-layout {
+  display: grid !important;
+  width: 100% !important;
+  grid-template-columns: 460px minmax(0, 1fr) !important;
+  gap: 18px !important;
+  align-items: start !important;
+}
+@media (max-width: 1150px) {
+  .v61-studio-split-layout {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.v61-inline-inspector-drawer {
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+  border-top: 2px dashed #3b82f6;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-radius: 0 0 0.75rem 0.75rem;
+}
+html.dark .v61-inline-inspector-drawer {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border-top-color: #3b82f6;
+}

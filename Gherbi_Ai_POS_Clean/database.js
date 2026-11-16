@@ -1874,3 +1874,14 @@ module.exports = db;
     }
   } catch (_) {}
 })();
+
+/* [V56_CUSTOMER_VIP_AND_CREDIT_BLOCK_COLUMNS] */
+(function ensureV56CustomerCreditColumns() {
+  try {
+    if (typeof db !== 'undefined' && db && typeof db.safeAddColumn === 'function') {
+      db.safeAddColumn('customers', 'is_vip INTEGER DEFAULT 1');
+      db.safeAddColumn('customers', 'is_credit_blocked INTEGER DEFAULT 0');
+      db.safeAddColumn('customers', "loyalty_card_code TEXT DEFAULT ''");
+    }
+  } catch (_) {}
+})();

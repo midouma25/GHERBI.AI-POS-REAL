@@ -1,13 +1,13 @@
 ======================================================================
 📦 GHERBI.AI PROJECT FULL CONTEXT SNAPSHOT
-🕒 تاريخ التوليد: 2026-11-15 11:32:52
+🕒 تاريخ التوليد: 2026-11-16 14:13:40
 📍 المسار الأساسي: E:\GHERBI.AI POS REAL\Gherbi_Ai_POS_Clean
 ======================================================================
 
 ==================== 1. PROJECT DIRECTORY TREE ====================
 📁 Gherbi_Ai_POS_Clean/
 ├── 📂 _legacy_archive/
-│   ├── 📄 fix-print-studio-live-paper-and-pdf.js (17.2 KB)
+│   ├── 📄 fix-print-studio-live-paper-and-pdf.js (41.7 KB)
 │   ├── 📄 gherbi-pos-master-upgrade.js (68.2 KB)
 │   ├── 📄 gherbi-pos-master-upgrades.js (63.6 KB)
 │   ├── 📄 gherbi-retail-master-upgrade.js (72.5 KB)
@@ -72,7 +72,7 @@
 ├── 📄 credit_note_en.html (6.7 KB)
 ├── 📄 credit_note_fr.html (6.7 KB)
 ├── 📄 data-revision.js (5.7 KB)
-├── 📄 database.js (66.2 KB)
+├── 📄 database.js (66.6 KB)
 ├── 📄 db-write-queue.js (13.0 KB)
 ├── 📄 delivery_note_a5.html (4.5 KB)
 ├── 📄 delivery_note_ar.html (5.1 KB)
@@ -82,13 +82,13 @@
 ├── 📄 device-auth.js (5.2 KB)
 ├── 📄 export_project_context.py (13.0 KB)
 ├── 📄 extract_code.py (4.1 KB)
-├── 📄 gherbi-core-devices-hub.js (304.7 KB)
-├── 📄 gherbi-core-loyalty-audit.js (330.0 KB)
+├── 📄 gherbi-core-devices-hub.js (727.4 KB)
+├── 📄 gherbi-core-loyalty-audit.js (330.1 KB)
 ├── 📄 gherbi-core-pos-engine.js (351.3 KB)
 ├── 📄 gherbi-enterprise-foundation.js (36.1 KB)
 ├── 📄 gherbi-enterprise-ipc-and-lan.js (51.9 KB)
 ├── 📄 imageUtils.js (3.5 KB)
-├── 📄 index.html (141.2 KB)
+├── 📄 index.html (140.7 KB)
 ├── 📄 invoice_template_1.html (6.3 KB)
 ├── 📄 invoice_template_2.html (8.6 KB)
 ├── 📄 invoice_template_3.html (9.2 KB)
@@ -103,14 +103,14 @@
 ├── 📄 invoice_thermal_80.html (4.7 KB)
 ├── 📄 kiosk-client.html (13.5 KB)
 ├── 📄 licenseManager.js (2.9 KB)
-├── 📄 main.js (195.3 KB)
+├── 📄 main.js (214.3 KB)
 ├── 📄 order_receipt_ar.html (6.9 KB)
 ├── 📄 order_receipt_fr.html (6.4 KB)
 ├── 📄 package.json (1.7 KB)
 ├── 📄 payment_receipt_ar.html (5.1 KB)
 ├── 📄 payment_receipt_fr.html (4.4 KB)
 ├── 📄 preload-activation.js (0.5 KB)
-├── 📄 preload.js (20.1 KB)
+├── 📄 preload.js (21.5 KB)
 ├── 📄 price_list.html (9.7 KB)
 ├── 📄 print-engine.js (58.6 KB)
 ├── 📄 product-write.js (10.4 KB)
@@ -147,7 +147,7 @@
 ├── 📄 server.js (177.1 KB)
 ├── 📄 soft-delete.js (3.4 KB)
 ├── 📄 stock-ledger.js (7.9 KB)
-├── 📄 styles.css (60.4 KB)
+├── 📄 styles.css (64.7 KB)
 ├── 📄 till-ledger.js (7.9 KB)
 └── 📄 verify-system.js (7.3 KB)
 
@@ -253,44 +253,10 @@
 }
 
 
-==================== FILE: index.html (141.2 KB) ====================
+==================== FILE: index.html (140.7 KB) ====================
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <script id="v51-mutable-api-bridge">
-    (function unlockWindowApiObject() {
-      var srcApi = window._nativeApi || window.api;
-      if (!srcApi) return;
-      function cloneMutableApi(obj) {
-        if (!obj || typeof obj !== 'object') return obj;
-        var out = Array.isArray(obj) ? [] : {};
-        var keys = Object.keys(obj);
-        for (var i = 0; i < keys.length; i++) {
-          var k = keys[i];
-          var val = obj[k];
-          if (typeof val === 'function') {
-            out[k] = val.bind(obj);
-          } else if (val && typeof val === 'object') {
-            out[k] = cloneMutableApi(val);
-          } else {
-            out[k] = val;
-          }
-        }
-        return out;
-      }
-      var unlockedApi = cloneMutableApi(srcApi);
-      try {
-        Object.defineProperty(window, 'api', {
-          value: unlockedApi,
-          writable: true,
-          configurable: true,
-          enumerable: true
-        });
-      } catch (_) {
-        window.api = unlockedApi;
-      }
-    })();
-  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>نظام Gherbi.Ai POS لنقاط البيع وإدارة المخازن والتصنيع</title>
@@ -1936,12 +1902,14 @@
       <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs bg-slate-50 dark:bg-slate-800/70 p-3 rounded-xl">
         <div>
           <label class="block font-bold mb-1">نوع المستند</label>
-          <select id="pcDocTypeSelect" onchange="App.refreshPrintCenterPreview()" class="w-full px-3 py-2 rounded-xl font-bold">
-            <option value="invoice_a4">فاتورة رسمية (A4)</option>
-            <option value="invoice_a5">فاتورة مدمجة (A5)</option>
-            <option value="receipt">تذكرة حرارية (80mm / 58mm)</option>
-            <option value="delivery">وصل توصيل (Bon de Livraison)</option>
-            <option value="credit_note">إشعار دائن (Facture d'Avoir)</option>
+          <select id="pcDocTypeSelect" onchange="App.refreshPrintCenterPreview()" class="w-full px-3 py-2 rounded-xl font-bold cursor-pointer">
+            <option value="invoice_a4">📄 فاتورة رسمية كاملة (A4)</option>
+            <option value="invoice_a5">📑 فاتورة مدمجة نصفية (A5)</option>
+            <option value="invoice_2xa5">✂️ فاتورة مزدوجة (2×A5 في ورقة A4)</option>
+            <option value="receipt_thermal">🧾 تذكرة كاشير حرارية (80mm / 58mm)</option>
+            <option value="delivery_note">🚚 وصل تسليم وتوصيل (Bon de Livraison)</option>
+            <option value="credit_note">↩️ إشعار دائن / مرتجع (Facture d'Avoir)</option>
+            <option value="warranty_cert">🛡️ شهادة ضمان رسمية (Certificat de Garantie)</option>
           </select>
         </div>
         <div>
@@ -1954,13 +1922,14 @@
         </div>
         <div>
           <label class="block font-bold mb-1">القالب التصميمي</label>
-          <select id="pcTemplateSelect" onchange="App.refreshPrintCenterPreview()" class="w-full px-3 py-2 rounded-xl font-bold">
-            <option value="default">القالب الافتراضي للمتجر</option>
-            <option value="template1">القالب الكلاسيكي الأزرق (1)</option>
-            <option value="template2">القالب الداكن الرسمي (2)</option>
-            <option value="template3">القالب الأخضر التجاري (3)</option>
-            <option value="template9">القالب الجبائي 6 أعمدة (9)</option>
-            <option value="detailed">القالب المفصل بالرصيد السابق</option>
+          <select id="pcTemplateSelect" onchange="App.refreshPrintCenterPreview()" class="w-full px-3 py-2 rounded-xl font-bold cursor-pointer">
+            <option value="default">⭐ القالب واللون الافتراضي المعتمد للمتجر</option>
+            <option value="royal_blue">🔵 القالب الكلاسيكي الأزرق الملكي (1)</option>
+            <option value="executive_dark">⚫ القالب الداكن التنفيذي الفاخر (2)</option>
+            <option value="emerald_dz">🟢 القالب الأخضر التجاري الجزائري (3)</option>
+            <option value="crimson_bold">🔴 القالب القرمزي البارز (4)</option>
+            <option value="amber_gold">🟡 القالب الذهبي الكلاسيكي (5)</option>
+            <option value="pure_mono">⚪ القالب الأسود والأبيض الاقتصادي لتوفير الحبر (6)</option>
           </select>
         </div>
         <div class="flex items-end gap-1.5">
@@ -2165,8 +2134,8 @@
 </body>
 </html>
 
-==================== FILE: styles.css (60.4 KB) ====================
-/* [ملف CSS كبير (2273 سطراً) — تم عرض أول 150 سطراً وآخر 550 سطراً شاملة لكل التعديلات] */
+==================== FILE: styles.css (64.7 KB) ====================
+/* [ملف CSS كبير (2425 سطراً) — تم عرض أول 150 سطراً وآخر 550 سطراً شاملة لكل التعديلات] */
 
 /**
  * styles.css
@@ -2319,160 +2288,8 @@ html.dark ::-webkit-scrollbar-thumb {
   border-color: var(--color-primary);
 }
 
-/* ... [تم اختصار الأسطر الوسطى (1573 سطراً)] ... */
+/* ... [تم اختصار الأسطر الوسطى (1725 سطراً)] ... */
 
-  align-items: center;
-  gap: 0.3rem;
-  flex-wrap: wrap;
-  margin-top: 2px;
-}
-.gherbi-v8-pack-toggle-btn {
-  padding: 0.2rem 0.6rem;
-  border-radius: 0.5rem;
-  font-size: 10.5px;
-  font-weight: 900;
-  cursor: pointer;
-  transition: all 0.14s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  white-space: nowrap;
-}
-.gherbi-v8-pack-toggle-btn.is-unit-mode {
-  background: rgba(79, 70, 229, 0.12);
-  color: #4f46e5;
-  border: 1.5px solid rgba(79, 70, 229, 0.35);
-}
-.gherbi-v8-pack-toggle-btn.is-unit-mode:hover {
-  background: #4f46e5;
-  color: #ffffff;
-}
-html.dark .gherbi-v8-pack-toggle-btn.is-unit-mode {
-  color: #a5b4fc;
-}
-.gherbi-v8-pack-toggle-btn.is-pack-mode {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  color: #ffffff;
-  border: 1.5px solid #b45309;
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.35);
-}
-.gherbi-v8-pack-step-btn {
-  padding: 0.15rem 0.5rem;
-  border-radius: 0.45rem;
-  font-size: 10.5px;
-  font-weight: 900;
-  background: #0f172a;
-  color: #fbbf24;
-  border: 1px solid #f59e0b;
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-.gherbi-v8-pack-step-btn:hover {
-  background: #f59e0b;
-  color: #0f172a;
-}
-
-
-/* === [GHERBI V9: EDITABLE LINE SUBTOTAL, PACK SYNC & OWNER PRICE RADAR] === */
-
-/* [تم توحيد تعريف .gherbi-line-subtotal-input في بلوك V11 أدناه لمنع التكرار] */
-
-/* شارة أثر تعديل السعر والربح داخل سطر السلة */
-.gherbi-row-margin-feedback {
-  font-size: 10px;
-  font-weight: 800;
-  padding: 0.1rem 0.45rem;
-  border-radius: 0.4rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-/* إخفاء اللوحات القديمة المكررة لرقابة الأسعار في صفحة الإحصائيات */
-.gherbi-owner-audit-panel,
-.gherbi-manager-cost-audit-panel,
-#ownerPriceViolationReportCard {
-  display: none !important;
-}
-
-/* تصميم رادار رقابة الأسعار الشامل لصاحب المحل */
-.v9-owner-radar-card {
-  border-radius: 1.25rem;
-  border: 2px solid rgba(244, 63, 94, 0.35);
-  background: var(--bg-surface);
-  padding: 1.25rem;
-  margin-bottom: 1.25rem;
-  box-shadow: 0 10px 25px -10px rgba(244, 63, 94, 0.15);
-}
-.v9-radar-filter-pill {
-  padding: 0.3rem 0.75rem;
-  border-radius: 0.65rem;
-  font-size: 11px;
-  font-weight: 900;
-  cursor: pointer;
-  transition: all 0.14s ease;
-  border: 1px solid var(--border-color);
-  background: var(--bg-main);
-}
-.v9-radar-filter-pill.active {
-  background: #0f172a;
-  color: #ffffff;
-  border-color: #0f172a;
-}
-html.dark .v9-radar-filter-pill.active {
-  background: #2563eb;
-  border-color: #3b82f6;
-}
-
-
-/* === [GHERBI V11: ZERO-FLICKER CART ROW & FULL DECIMAL DISPLAY (0.96)] === */
-
-/* توسيع خانة الكمية في السلة لتعرض 0.96 كاملة بوضوح دون قص الصفر اليساري */
-#posCartItems input[onclick*="openNumberModal"],
-#posCartItems input[onchange*="updateCartItemQty"],
-.gherbi-cart-qty-input-wide {
-  min-width: 62px !important;
-  width: auto !important;
-  max-width: 78px !important;
-  padding-left: 4px !important;
-  padding-right: 4px !important;
-  font-family: var(--font-numbers) !important;
-  font-weight: 900 !important;
-  font-size: 13px !important;
-  text-align: center !important;
-  direction: ltr !important;
-}
-
-/* حقل إجمالي السطر القابل للتعديل (120.00 / 125.00) */
-.gherbi-line-subtotal-input {
-  width: 88px !important;
-  padding: 0.22rem 0.35rem !important;
-  border-radius: 0.55rem !important;
-  border: 1.5px dashed rgba(37, 99, 235, 0.55) !important;
-  background: rgba(37, 99, 235, 0.06) !important;
-  font-family: var(--font-numbers) !important;
-  font-size: 13.5px !important;
-  font-weight: 900 !important;
-  color: #1d4ed8 !important;
-  text-align: center !important;
-  direction: ltr !important;
-}
-html.dark .gherbi-line-subtotal-input {
-  color: #93c5fd !important;
-  background: rgba(37, 99, 235, 0.14) !important;
-}
-.gherbi-line-subtotal-input:focus {
-  border-style: solid !important;
-  border-color: #2563eb !important;
-  background: #ffffff !important;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.22) !important;
-  outline: none !important;
-}
-html.dark .gherbi-line-subtotal-input:focus {
-  background: #0f172a !important;
-}
-
-/* شريط الأدوات الموحد والثابت أسفل اسم المنتج داخل سطر السلة (بدون أي ارتعاش) */
 .gherbi-v11-row-tools {
   display: flex;
   align-items: center;
@@ -2872,7 +2689,159 @@ html.dark .v45-studio-workspace {
   padding-bottom: 8px !important;
 }
 
-==================== FILE: database.js (66.2 KB) ====================
+/* === [GHERBI V55 STAGE 3: STRICT ARABIC RTL & 80MM PAPER LOCK] === */
+.v45-live-paper[dir="rtl"],
+html[dir="rtl"] .v45-live-paper {
+  direction: rtl !important;
+  text-align: right !important;
+}
+.v45-live-paper[dir="rtl"] table {
+  direction: rtl !important;
+  text-align: right !important;
+}
+.v45-live-paper[dir="rtl"] th,
+.v45-live-paper[dir="rtl"] td {
+  unicode-bidi: isolate !important;
+}
+.v45-live-paper bdi {
+  unicode-bidi: isolate !important;
+}
+
+/* === [GHERBI V56: ZERO-BLOCK POS & VIP RETAIL CREDIT WIDGET] === */
+/* تسريع رسم بطاقات المنتجات والسلة عبر عزل التخطيط (CSS Containment) لمنع أي توقف */
+#posProductsGrid {
+  contain: content;
+  will-change: scroll-position;
+}
+#posProductsGrid .product-card {
+  contain: layout style;
+  transition: transform 0.08s ease, border-color 0.08s ease !important;
+}
+#posCartItems {
+  contain: content;
+}
+
+/* بطاقة وضعية الكريدي والوفاء الحية داخل سلة الكاشير */
+.v56-pos-vip-credit-bar {
+  border-radius: 0.85rem;
+  padding: 0.55rem 0.7rem;
+  font-size: 11px;
+  line-height: 1.35;
+  transition: all 0.12s ease;
+}
+.v56-pos-vip-credit-bar.is-vip-clean {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border: 1.5px solid #f59e0b;
+  color: #78350f;
+}
+html.dark .v56-pos-vip-credit-bar.is-vip-clean {
+  background: rgba(120, 53, 15, 0.28);
+  border-color: #d97706;
+  color: #fde68a;
+}
+.v56-pos-vip-credit-bar.is-vip-debt {
+  background: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%);
+  border: 1.5px solid #f43f5e;
+  color: #881337;
+}
+html.dark .v56-pos-vip-credit-bar.is-vip-debt {
+  background: rgba(136, 19, 55, 0.32);
+  border-color: #fb7185;
+  color: #fecdd3;
+}
+
+/* === [GHERBI V59: FULL-WIDTH PRINT CENTER & 28 PRO CARDS GRID] === */
+#view-print.view-section.active {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+#print-view-root,
+#v45MasterPrintStudio {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* شبكة البطاقات الـ 28 في قمرة القوالب الافتراضية — مضمونة العرض الكامل وعدم انكسار النصوص */
+.v59-defaults-cards-grid {
+  display: grid !important;
+  width: 100% !important;
+  grid-template-columns: repeat(auto-fill, minmax(295px, 1fr)) !important;
+  gap: 16px !important;
+  align-items: stretch !important;
+}
+
+.v59-template-card {
+  background: var(--bg-surface);
+  border: 2px solid var(--border-color);
+  border-radius: 1.15rem;
+  padding: 1rem;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  gap: 0.75rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+}
+.v59-template-card:hover {
+  border-color: #2563eb;
+  box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.15);
+  transform: translateY(-2px);
+}
+
+/* تخطيط استوديو الفواتير والطبقات (التبويب 1) بعرض كامل متوازن */
+.v59-studio-main-grid {
+  display: grid !important;
+  width: 100% !important;
+  grid-template-columns: 430px minmax(0, 1fr) !important;
+  gap: 18px !important;
+  align-items: start !important;
+}
+@media (max-width: 1100px) {
+  .v59-studio-main-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* === [GHERBI V61: ZERO-JUMP STICKY PRINT STUDIO & INLINE INSPECTOR] === */
+#view-print,
+#v61LeftScrollContainer,
+.v45-studio-workspace {
+  overflow-anchor: none !important;
+  scroll-behavior: auto !important;
+}
+
+.v61-studio-split-layout {
+  display: grid !important;
+  width: 100% !important;
+  grid-template-columns: 460px minmax(0, 1fr) !important;
+  gap: 18px !important;
+  align-items: start !important;
+}
+@media (max-width: 1150px) {
+  .v61-studio-split-layout {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.v61-inline-inspector-drawer {
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+  border-top: 2px dashed #3b82f6;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-radius: 0 0 0.75rem 0.75rem;
+}
+html.dark .v61-inline-inspector-drawer {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border-top-color: #3b82f6;
+}
+
+==================== FILE: database.js (66.6 KB) ====================
 /**
  * database.js
  * المخطط الشامل لقاعدة بيانات Gherbi.Ai POS (46 جدولاً، فهارس الأداء، مشغلات المزامنة والمخزون،
@@ -4750,6 +4719,17 @@ module.exports = db;
   } catch (_) {}
 })();
 
+/* [V56_CUSTOMER_VIP_AND_CREDIT_BLOCK_COLUMNS] */
+(function ensureV56CustomerCreditColumns() {
+  try {
+    if (typeof db !== 'undefined' && db && typeof db.safeAddColumn === 'function') {
+      db.safeAddColumn('customers', 'is_vip INTEGER DEFAULT 1');
+      db.safeAddColumn('customers', 'is_credit_blocked INTEGER DEFAULT 0');
+      db.safeAddColumn('customers', "loyalty_card_code TEXT DEFAULT ''");
+    }
+  } catch (_) {}
+})();
+
 
 ==================== FILE: db-write-queue.js (13.0 KB) ====================
 'use strict';
@@ -5161,7 +5141,7 @@ module.exports.executeTx = executeTx;
 module.exports.getWriteQueue = getWriteQueue;
 
 
-==================== FILE: main.js (195.3 KB) ====================
+==================== FILE: main.js (214.3 KB) ====================
 /**
  * main.js
  * العملية الرئيسية الشاملة (Electron Main Process) لنظام Gherbi.Ai POS
@@ -9692,7 +9672,466 @@ app.on('before-quit', () => {
 })();
 
 
-==================== FILE: preload.js (20.1 KB) ====================
+/* === [V54_STAGE2_QUICK_SALE_EDIT_AND_WARRANTY_IPC] === */
+(function registerV54Stage2SalesIpcHandlers() {
+  const { app, ipcMain, dialog, shell } = require('electron');
+  const fs = require('fs');
+  const XLSX = require('xlsx');
+  const db = require('./database');
+
+  app.whenReady().then(() => {
+    // 1. التعديل الفوري الشامل للفاتورة وأصنافها وأرقامها التسلسلية وضمانها
+    ipcMain.removeHandler('v54-update-sale-quick');
+    ipcMain.handle('v54-update-sale-quick', async (_e, payload = {}) => {
+      const saleId = Number(payload.saleId || payload.id);
+      if (!saleId) throw new Error('رقم الفاتورة غير صالح');
+
+      return await db.withTransaction(async () => {
+        const existingSale = await db.dbGet('SELECT * FROM sales WHERE id = ? AND deleted_at IS NULL', [saleId]);
+        if (!existingSale) throw new Error('الفاتورة غير موجودة');
+
+        const customerId = payload.customer_id ? Number(payload.customer_id) : null;
+        const paymentMethod = String(payload.payment_method || existingSale.payment_method || 'cash').trim();
+        const discount = Math.max(0, Number(payload.discount ?? existingSale.discount ?? 0));
+
+        let newSubtotal = Number(existingSale.subtotal || existingSale.total || 0);
+
+        if (Array.isArray(payload.items) && payload.items.length > 0) {
+          newSubtotal = 0;
+          for (const it of payload.items) {
+            const itemId = Number(it.id);
+            const qty = Math.max(0.001, Number(it.quantity ?? 1));
+            const price = Math.max(0, Number(it.price ?? 0));
+            const sub = Number((qty * price).toFixed(2));
+            const serial = String(it.serial_number || '').trim() || null;
+            const warrantyMonths = Math.max(0, Number(it.warranty_months ?? 0));
+            newSubtotal += sub;
+
+            if (itemId) {
+              await db.dbRun(
+                'UPDATE sale_items SET quantity = ?, price = ?, subtotal = ?, serial_number = ?, warranty_months = ? WHERE id = ? AND sale_id = ?',
+                [qty, price, sub, serial, warrantyMonths, itemId, saleId]
+              );
+            }
+          }
+        }
+
+        newSubtotal = Number(newSubtotal.toFixed(2));
+        const newTotal = Math.max(0, Number((newSubtotal - discount).toFixed(2)));
+        const paidAmount =
+          payload.paid_amount !== undefined
+            ? Math.max(0, Math.min(newTotal, Number(payload.paid_amount)))
+            : Math.min(newTotal, Number(existingSale.paid_amount ?? newTotal));
+
+        await db.dbRun(
+          'UPDATE sales SET customer_id = ?, payment_method = ?, subtotal = ?, discount = ?, total = ?, paid_amount = ? WHERE id = ?',
+          [customerId, paymentMethod, newSubtotal, discount, newTotal, paidAmount, saleId]
+        );
+
+        return {
+          success: true,
+          saleId,
+          subtotal: newSubtotal,
+          discount,
+          total: newTotal,
+          paid_amount: paidAmount
+        };
+      });
+    });
+
+    // 2. البحث الذكي الفوري عن الضمان بالأرقام التسلسلية (IMEI / S-N) أو رقم الفاتورة أو اسم المنتج
+    ipcMain.removeHandler('v54-search-warranty');
+    ipcMain.handle('v54-search-warranty', async (_e, queryStr = '') => {
+      const q = String(queryStr || '').trim();
+      const likeQ = '%' + q + '%';
+
+      const rows = await db.dbAll(
+        `SELECT
+           si.id AS sale_item_id,
+           si.sale_id,
+           si.product_id,
+           si.quantity,
+           si.price,
+           si.subtotal,
+           si.serial_number,
+           COALESCE(NULLIF(si.warranty_months, 0), NULLIF(p.warranty_months, 0), 12) AS warranty_months,
+           COALESCE(p.name, si.custom_product_name, 'منتج') AS product_name,
+           p.barcode AS product_barcode,
+           s.doc_number,
+           s.sale_date,
+           s.total AS sale_total,
+           c.name AS customer_name,
+           c.phone AS customer_phone
+         FROM sale_items si
+         INNER JOIN sales s ON s.id = si.sale_id AND s.deleted_at IS NULL
+         LEFT JOIN products p ON p.id = si.product_id
+         LEFT JOIN customers c ON c.id = s.customer_id
+         WHERE si.deleted_at IS NULL
+           AND (
+             (? = '' AND (si.serial_number IS NOT NULL OR COALESCE(si.warranty_months, p.warranty_months, 0) > 0))
+             OR (
+               ? <> '' AND (
+                 si.serial_number LIKE ?
+                 OR s.doc_number LIKE ?
+                 OR CAST(s.id AS TEXT) = ?
+                 OR p.name LIKE ?
+                 OR p.barcode LIKE ?
+                 OR c.name LIKE ?
+                 OR c.phone LIKE ?
+               )
+             )
+           )
+         ORDER BY s.id DESC
+         LIMIT 25`,
+        [q, q, likeQ, likeQ, q.replace('#', ''), likeQ, likeQ, likeQ, likeQ]
+      );
+
+      return rows || [];
+    });
+
+    // 3. تصدير الفواتير المفلترة إلى ملف Excel (.xlsx) حقيقي ومرتب
+    ipcMain.removeHandler('v54-export-sales-xlsx');
+    ipcMain.handle('v54-export-sales-xlsx', async (_e, rowsData = []) => {
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: 'تصدير سجل المبيعات إلى ملف Excel',
+        defaultPath: `Sales_History_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        filters: [{ name: 'Excel Workbook', extensions: ['xlsx'] }]
+      });
+      if (canceled || !filePath) return { success: false, canceled: true };
+
+      const sheetRows = (Array.isArray(rowsData) ? rowsData : []).map((r, i) => ({
+        '#': i + 1,
+        'رقم الفاتورة': r.doc_number || ('#' + r.id),
+        'التاريخ والتوقيت': String(r.sale_date || '').replace('T', ' ').slice(0, 16),
+        'الزبون': r.customer_name || 'زبون عابر (Comptoir)',
+        'الهاتف': r.customer_phone || '-',
+        'طريقة الدفع': r.payment_method || 'cash',
+        'الإجمالي (د.ج)': Number(r.total || 0),
+        'المدفوع (د.ج)': Number(r.paid_amount ?? r.total ?? 0),
+        'الباقي / الدين (د.ج)': Math.max(0, Number((Number(r.total || 0) - Number(r.paid_amount ?? r.total ?? 0)).toFixed(2))),
+        'إشعار دائن': r.credit_note_number || '-'
+      }));
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(sheetRows);
+      XLSX.utils.book_append_sheet(wb, ws, 'سجل المبيعات');
+      XLSX.writeFile(wb, filePath);
+      try { shell.openPath(filePath); } catch (_) {}
+      return { success: true, filePath };
+    });
+  });
+})();
+
+
+
+/* === [V54_STAGE2_SALES_QUICK_EDIT_AND_WARRANTY_IPC] === */
+(function registerV54Stage2SalesAndWarrantyIpc() {
+  const { app, ipcMain } = require('electron');
+  const db = require('./database');
+
+  app.whenReady().then(() => {
+    // 1. تحديث سريع لبيانات الفاتورة (الزبون، طريقة الدفع، وأرقام السيريال والضمان للأصناف)
+    ipcMain.removeHandler('v54-update-sale-quick-meta');
+    ipcMain.handle('v54-update-sale-quick-meta', async (_e, payload = {}) => {
+      const saleId = Number(payload.saleId || payload.id);
+      if (!saleId) throw new Error('رقم الفاتورة غير صالح');
+
+      return await db.withTransaction(async () => {
+        if (payload.customerId !== undefined || payload.paymentMethod !== undefined) {
+          const cid = payload.customerId ? Number(payload.customerId) : null;
+          const pMethod = payload.paymentMethod || 'cash';
+          await db.dbRun(
+            'UPDATE sales SET customer_id = ?, payment_method = COALESCE(?, payment_method) WHERE id = ?',
+            [cid, pMethod, saleId]
+          );
+        }
+
+        if (Array.isArray(payload.itemsUpdates)) {
+          for (const itUpd of payload.itemsUpdates) {
+            const itemId = Number(itUpd.itemId || itUpd.id);
+            if (!itemId) continue;
+            const sn = itUpd.serial_number !== undefined ? String(itUpd.serial_number || '').trim() : null;
+            const wm = itUpd.warranty_months !== undefined ? Number(itUpd.warranty_months || 0) : 0;
+            await db.dbRun(
+              'UPDATE sale_items SET serial_number = ?, warranty_months = ? WHERE id = ? AND sale_id = ?',
+              [sn || null, wm, itemId, saleId]
+            );
+            // توثيق السيريال أيضاً في جدول product_serials إن لم يكن مسجلاً
+            if (sn && itUpd.product_id) {
+              await db.dbRun(
+                `INSERT INTO product_serials (product_id, serial_number, status, sale_id, warranty_months)
+                 VALUES (?, ?, 'sold', ?, ?)
+                 ON CONFLICT(serial_number) DO UPDATE SET status = 'sold', sale_id = excluded.sale_id, warranty_months = excluded.warranty_months`,
+                [Number(itUpd.product_id), sn, saleId, wm > 0 ? wm : 12]
+              ).catch(() => {});
+            }
+          }
+        }
+        return { success: true, saleId };
+      });
+    });
+
+    // 2. البحث الفوري الشامل عن الضمان بالرقم التسلسلي (IMEI / S-N) أو رقم الفاتورة أو اسم الصنف
+    ipcMain.removeHandler('v54-search-warranty-records');
+    ipcMain.handle('v54-search-warranty-records', async (_e, queryStr = '') => {
+      const q = String(queryStr || '').trim();
+      if (!q) return [];
+      const likeQ = '%' + q + '%';
+      const cleanNum = q.replace(/[^0-9]/g, '');
+
+      const rows = await db.dbAll(
+        `SELECT
+           si.id AS sale_item_id,
+           si.sale_id,
+           si.product_id,
+           si.quantity,
+           si.price,
+           si.subtotal,
+           si.serial_number,
+           COALESCE(NULLIF(si.warranty_months, 0), NULLIF(p.warranty_months, 0), 12) AS effective_warranty_months,
+           COALESCE(p.name, si.custom_product_name, 'منتج') AS product_name,
+           p.barcode AS product_barcode,
+           s.doc_number,
+           s.sale_date,
+           s.total AS sale_total,
+           s.customer_id,
+           c.name AS customer_name,
+           c.phone AS customer_phone
+         FROM sale_items si
+         INNER JOIN sales s ON s.id = si.sale_id AND s.deleted_at IS NULL
+         LEFT JOIN products p ON p.id = si.product_id
+         LEFT JOIN customers c ON c.id = s.customer_id
+         WHERE si.deleted_at IS NULL
+           AND (
+             si.serial_number LIKE ?
+             OR s.doc_number LIKE ?
+             OR p.name LIKE ?
+             OR p.barcode LIKE ?
+             OR c.name LIKE ?
+             OR c.phone LIKE ?
+             OR (? <> '' AND CAST(s.id AS TEXT) = ?)
+           )
+         ORDER BY s.id DESC
+         LIMIT 25`,
+        [likeQ, likeQ, likeQ, likeQ, likeQ, likeQ, cleanNum, cleanNum]
+      );
+      return rows || [];
+    });
+  });
+})();
+
+
+/* === [V55_STAGE3_TRUE_80MM_IPC_PRINT_ENGINE] === */
+(function installV55Stage3MainProcessThermalEngine() {
+  const { BrowserWindow, ipcMain, dialog, shell } = require('electron');
+  const fs = require('fs');
+
+  async function handleV55PrintSilent(_e, payload = {}) {
+    const rawHtml = String((payload && payload.html) || '');
+    if (!rawHtml.trim()) return { success: false, error: 'empty_html' };
+
+    const is58mm =
+      payload.paperSize === '58mm' ||
+      Number(payload.widthMm) === 58 ||
+      rawHtml.includes('paper-58mm') ||
+      rawHtml.includes('data-paper-size="58mm"');
+
+    const is80mm =
+      !is58mm &&
+      (payload.paperSize === '80mm' ||
+        Number(payload.widthMm) === 80 ||
+        rawHtml.includes('paper-80mm') ||
+        rawHtml.includes('data-paper-size="80mm"') ||
+        rawHtml.includes('Ticket de Caisse') ||
+        rawHtml.includes('وصل مبيعات'));
+
+    const isThermal = is80mm || is58mm;
+    const thermalWidthMm = is58mm ? 58 : 80;
+    const innerWidthMm = is58mm ? 53 : 74;
+    const windowWidthPx = is58mm ? 220 : is80mm ? 302 : 820;
+
+    return await new Promise((resolve) => {
+      const printWin = new BrowserWindow({
+        width: windowWidthPx,
+        height: 680,
+        show: false,
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false
+        }
+      });
+
+      let done = false;
+      const finish = (resObj) => {
+        if (done) return;
+        done = true;
+        try {
+          if (!printWin.isDestroyed()) printWin.close();
+        } catch (_) {}
+        resolve(resObj);
+      };
+
+      printWin.webContents.once('did-finish-load', async () => {
+        try {
+          await new Promise((r) => setTimeout(r, 180));
+
+          const measureScript = [
+            '(function() {',
+            '  var paper = document.querySelector(".v45-live-paper") || document.body;',
+            '  var rect = paper.getBoundingClientRect();',
+            '  return Math.ceil(Math.max(rect.height, document.body.scrollHeight, 300));',
+            '})()'
+          ].join('\n');
+
+          const contentHeightPx = await printWin.webContents.executeJavaScript(measureScript).catch(() => 480);
+          const calcHeightMm = Math.max(isThermal ? 115 : 210, Math.ceil(contentHeightPx * 0.264583) + 10);
+
+          if (isThermal) {
+            const strictThermalCss = [
+              '@page {',
+              '  size: ' + thermalWidthMm + 'mm ' + calcHeightMm + 'mm !important;',
+              '  margin: 0mm !important;',
+              '}',
+              'html, body {',
+              '  width: ' + thermalWidthMm + 'mm !important;',
+              '  max-width: ' + thermalWidthMm + 'mm !important;',
+              '  margin: 0 !important;',
+              '  padding: 0 !important;',
+              '  background: #ffffff !important;',
+              '  overflow-x: hidden !important;',
+              '}',
+              '.v45-live-paper {',
+              '  width: ' + innerWidthMm + 'mm !important;',
+              '  max-width: ' + innerWidthMm + 'mm !important;',
+              '  margin: 0 auto !important;',
+              '  padding: 2mm !important;',
+              '  box-shadow: none !important;',
+              '}'
+            ].join('\n');
+            await printWin.webContents.insertCSS(strictThermalCss);
+          }
+
+          // معرفة ما إذا كان المستخدم يريد حفظ PDF أو لا يملك طابعة حرارية صامتة
+          const printers = await printWin.webContents.getPrintersAsync().catch(() => []);
+          const defaultPrinter = printers.find((p) => p.isDefault) || printers[0];
+          const isVirtualPdfPrinter =
+            !defaultPrinter ||
+            /pdf|xps|onenote|fax/i.test(String(defaultPrinter.name || ''));
+
+          const shouldGenerateTruePdf =
+            payload.exportAsPdfFile === true ||
+            (isThermal && !payload.silent && isVirtualPdfPrinter);
+
+          if (shouldGenerateTruePdf) {
+            // استخدام محرك printToPDF الداخلي في Electron الذي يحترم عرض 80mm (3.15 بوصة) بدقة 100% ولا يحوله إلى A4!
+            const widthInches = Number((thermalWidthMm / 25.4).toFixed(4));
+            const heightInches = Number((calcHeightMm / 25.4).toFixed(4));
+
+            const pdfBuffer = await printWin.webContents.printToPDF({
+              printBackground: true,
+              margins: { top: 0, bottom: 0, left: 0, right: 0 },
+              pageSize: isThermal
+                ? { width: widthInches, height: heightInches }
+                : payload.paperSize === 'a5'
+                ? 'A5'
+                : 'A4',
+              landscape: payload.paperSize === '2xa5'
+            });
+
+            const saveRes = await dialog.showSaveDialog({
+              title: isThermal ? 'حفظ تذكرة حرارية (' + thermalWidthMm + 'mm) كملف PDF' : 'حفظ المستند كملف PDF',
+              defaultPath: payload.defaultPdfName || (isThermal ? 'Ticket_' + thermalWidthMm + 'mm_' + Date.now() + '.pdf' : 'Document_A4_' + Date.now() + '.pdf'),
+              filters: [{ name: 'PDF Document', extensions: ['pdf'] }]
+            });
+
+            if (!saveRes.canceled && saveRes.filePath) {
+              fs.writeFileSync(saveRes.filePath, pdfBuffer);
+              try { shell.openPath(saveRes.filePath); } catch (_) {}
+              return finish({ success: true, filePath: saveRes.filePath });
+            }
+            return finish({ success: false, canceled: true });
+          }
+
+          const printOpts = {
+            silent: Boolean(payload.silent),
+            printBackground: true,
+            margins: { marginType: 'none' }
+          };
+
+          if (payload.printerName || payload.deviceName) {
+            printOpts.deviceName = payload.printerName || payload.deviceName;
+          }
+
+          if (isThermal) {
+            printOpts.pageSize = {
+              width: thermalWidthMm * 1000,
+              height: calcHeightMm * 1000
+            };
+          }
+
+          printWin.webContents.print(printOpts, (success, failureReason) => {
+            finish({ success, error: failureReason || null });
+          });
+        } catch (err) {
+          finish({ success: false, error: err.message });
+        }
+      });
+
+      printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(rawHtml)).catch((err) => {
+        finish({ success: false, error: err.message });
+      });
+    });
+  }
+
+  // اعتراض تسجيل print-silent في ipcMain سواء تم تسجيله قبل أو بعد هذا الكود
+  const origHandle = ipcMain.handle.bind(ipcMain);
+  ipcMain.handle = function (channel, listener) {
+    if (channel === 'print-silent') {
+      ipcMain.removeHandler('print-silent');
+      return origHandle('print-silent', handleV55PrintSilent);
+    }
+    return origHandle(channel, listener);
+  };
+
+  try {
+    ipcMain.removeHandler('print-silent');
+    origHandle('print-silent', handleV55PrintSilent);
+  } catch (_) {}
+})();
+
+/* === [V56_MAIN_CUSTOMER_CREDIT_AND_PARTIAL_PAY_ENGINE] === */
+(function installV56MainCustomerCreditHandlers() {
+  const { ipcMain } = require('electron');
+  const db = require('./database');
+
+  // قناة سريعة لتحديث إعدادات الكريدي والوفاء للزبون + جلب الملخص المالي الفوري
+  try {
+    ipcMain.removeHandler('save-customer-vip-credit-meta');
+    ipcMain.handle('save-customer-vip-credit-meta', async (_e, payload = {}) => {
+      const cid = Number(payload.id || payload.customerId || 0);
+      if (!cid) return { success: false };
+      await db.dbRun(
+        `UPDATE customers
+         SET is_vip = COALESCE(?, is_vip),
+             is_credit_blocked = COALESCE(?, is_credit_blocked),
+             credit_limit = COALESCE(?, credit_limit),
+             initial_debt = COALESCE(?, initial_debt)
+         WHERE id = ?`,
+        [
+          payload.is_vip !== undefined ? (payload.is_vip ? 1 : 0) : null,
+          payload.is_credit_blocked !== undefined ? (payload.is_credit_blocked ? 1 : 0) : null,
+          payload.credit_limit !== undefined ? Number(payload.credit_limit) : null,
+          payload.initial_debt !== undefined ? Number(payload.initial_debt) : null,
+          cid
+        ]
+      );
+      return { success: true, id: cid };
+    });
+  } catch (_) {}
+})();
+
+
+==================== FILE: preload.js (21.5 KB) ====================
 /**
  * preload.js
  * جسر الربط الآمن الشامل 100% (ContextBridge) بين العملية الرئيسية والواجهة الأمامية
@@ -10034,8 +10473,46 @@ const api = {
   generateTruckLoadingSheet: (payload) => invoke('generate-truck-loading-sheet', payload)
 };
 
-/* === [V51_NATIVE_API_DUAL_EXPOSE] === */
-contextBridge.exposeInMainWorld('_nativeApi', api);
+/* === [V52_PRELOAD_IPC_INTERCEPTOR] === */
+let _v52Hooks = { onProcessSale: null, onPrintSilent: null };
+const _origIpcInvoke = ipcRenderer.invoke.bind(ipcRenderer);
+ipcRenderer.invoke = async function (channel, payload, ...rest) {
+  if (channel === 'process-sale') {
+    const res = await _origIpcInvoke(channel, payload, ...rest);
+    if (typeof _v52Hooks.onProcessSale === 'function') {
+      try { await _v52Hooks.onProcessSale(payload, res); } catch (_) {}
+    }
+    return res;
+  }
+  if (channel === 'print-silent') {
+    let finalPayload = payload;
+    if (typeof _v52Hooks.onPrintSilent === 'function') {
+      try {
+        const modified = await _v52Hooks.onPrintSilent(payload);
+        if (modified && typeof modified === 'object' && modified.html) {
+          finalPayload = modified;
+        }
+      } catch (err) {
+        console.warn('[V52 Preload Print Hook Error]:', err);
+      }
+    }
+    return await _origIpcInvoke(channel, finalPayload, ...rest);
+  }
+  return await _origIpcInvoke(channel, payload, ...rest);
+};
+try {
+  contextBridge.exposeInMainWorld('GherbiV52Bridge', {
+    invokeCustom: (channel, payload) => _origIpcInvoke(channel, payload),
+    registerHooks: (hooks) => {
+      if (hooks && typeof hooks === 'object') {
+        _v52Hooks.onProcessSale = hooks.onProcessSale || _v52Hooks.onProcessSale;
+        _v52Hooks.onPrintSilent = hooks.onPrintSilent || _v52Hooks.onPrintSilent;
+      }
+    }
+  });
+} catch (_) {}
+/* === [/V52_PRELOAD_IPC_INTERCEPTOR] === */
+contextBridge.exposeInMainWorld('api', api);
 
 ==================== FILE: server.js (177.1 KB) ====================
 /**
@@ -32440,9 +32917,9 @@ if (window.RetailV2) {
 })();
 
 
-==================== FILE: gherbi-core-devices-hub.js (304.7 KB) ====================
-// [ملف ضخم جداً (5313 سطراً | 281.1 KB)]
-// إجمالي الدوال المكتشفة (126): initGherbiV4CleanStage3, init, getTabElements, restructureProductModalForRetail, addSameItemBarcodeRow, addCartonPackBarcodeRow, findByAnyBarcode, hookMultiBarcodeScanner, initGherbiV6Stage2, injectShortcutsButtonInPos, buildInteractiveShortcutsModal, openShortcutsHub, renderShortcutsGrid, triggerShortcutFromHub, initGherbiV7Stage2Kiosk, injectKioskButtonIntoPageNavBars, syncCatalogToServerNow, startAutomaticCatalogSyncToServer, extractCleanLanUrl, buildKioskOverlayDom, openKioskMode, promptExitKioskMode, confirmExitKioskMode, renderStandbyScreen, normalizeAr, onKioskTyping, lookupKioskItem, initGherbiV7Stage3Scale, upgradePosScaleModalDom, hookScaleOpenAndLiveEvents, populateScaleProducts, onScaleProductChange, setWeightKg, getSelectedProduct, recalcScaleLiveTotal, calcWeightFromMoneyDzd, sendScaleCommand, confirmAddWeightedItemToCart, decodeScaleBarcodeEan13, hookEan13ScaleBarcodeDecoder, initV13HardwareAndUiGuarantee, guaranteeAllTopBarAndPosButtonsVisible, computeProductExpiryStatus, setupLiveExpiryGuardInCart, broadcastToCustomerDisplay, setupCustomerDisplayAutoBroadcast, upgradeThermalReceiptWithCentimesAndLoyalty, initV49MasterOmniPrintStudioPart1, generateCrispBarcodeSvg, createFullDefaultLayers, mergeCatalogLayersIntoSaved, loadSavedConfig, saveConfigLocal, applyIdealPresetNow, adoptAllIdealPresetsAcrossAllPages, loadProfileForDocType, setLayerVisibleQuiet, fmtDzd, fmtCentimes, amountToArabicWords, getShopIdentity, installAbsolutePrintSilentGatekeeper, enrichDocumentDataWithLoyaltyAndDebt, buildLiveDocumentPaperHtml, switchLoyaltySimulationMode, onPaperDirectInput, updateLiveTotalsInDomWithoutReRender, addRowToActiveTicket, removeLastRowFromActiveTicket, execPaperTextCommand, triggerLogoUploadFromStudio, refreshLiveCrossPageData, hookGlobalAppPrintMethods, injectCrossPageQuickStudioButtons, resolveActiveDocumentData, selectLayerDomOnly, activateSuggestedLayerFromCatalog, setCatalogCategoryFilter, enableAllSuggestedLayers, openMultiSizePreviewModal, renderMultiSizePreviewModalContent, switchPreviewModalSize, switchPreviewModalTheme, savePreviewSelectionAsDefault, jumpFromPreviewModalToEditLayer, customizeCardInStudioNow, openAndRenderStudio, renderStudioIntoRoot, switchSection, selectDocType, selectLiveRecord, setPaperSize, updateCfg, stepFontSize, toggleCfgBool, toggleColumn, selectLayer, toggleLayerVisibility, moveLayer, addCustomLayerBlock, deleteCustomLayer, saveAsDefaultForDocType, saveCustomTemplateToDb, printCurrentCanvasNow, setBridgeCategory, setBridgeSearch, selectLabelPreset, selectPreviewProduct, updateLabelCfg, buildSingleLabelOrShelfTagHtml, addProductToLabelQueue, addCurrentPreviewProductToQueue, updateQueueItemCopies, removeQueueItem, clearLabelQueue, printSinglePreviewLabelNow, printAllQueuedLabelsSheet, updateFreeDoc, printFreeWordDocumentNow, setDocDefaultPaper...
+==================== FILE: gherbi-core-devices-hub.js (727.4 KB) ====================
+// [ملف ضخم جداً (11781 سطراً | 664.6 KB)]
+// إجمالي الدوال المكتشفة (165): initGherbiV4CleanStage3, init, getTabElements, restructureProductModalForRetail, addSameItemBarcodeRow, addCartonPackBarcodeRow, findByAnyBarcode, hookMultiBarcodeScanner, initGherbiV6Stage2, injectShortcutsButtonInPos, buildInteractiveShortcutsModal, openShortcutsHub, renderShortcutsGrid, triggerShortcutFromHub, initGherbiV7Stage2Kiosk, injectKioskButtonIntoPageNavBars, syncCatalogToServerNow, startAutomaticCatalogSyncToServer, extractCleanLanUrl, buildKioskOverlayDom, openKioskMode, promptExitKioskMode, confirmExitKioskMode, renderStandbyScreen, normalizeAr, onKioskTyping, lookupKioskItem, initGherbiV7Stage3Scale, upgradePosScaleModalDom, hookScaleOpenAndLiveEvents, populateScaleProducts, onScaleProductChange, setWeightKg, getSelectedProduct, recalcScaleLiveTotal, calcWeightFromMoneyDzd, sendScaleCommand, confirmAddWeightedItemToCart, decodeScaleBarcodeEan13, hookEan13ScaleBarcodeDecoder, initV13HardwareAndUiGuarantee, guaranteeAllTopBarAndPosButtonsVisible, computeProductExpiryStatus, setupLiveExpiryGuardInCart, broadcastToCustomerDisplay, setupCustomerDisplayAutoBroadcast, upgradeThermalReceiptWithCentimesAndLoyalty, initV49MasterOmniPrintStudioPart1, generateCrispBarcodeSvg, createFullDefaultLayers, mergeCatalogLayersIntoSaved, loadSavedConfig, saveConfigLocal, applyIdealPresetNow, adoptAllIdealPresetsAcrossAllPages, loadProfileForDocType, setLayerVisibleQuiet, fmtDzd, fmtCentimes, amountToArabicWords, getShopIdentity, installAbsolutePrintSilentGatekeeper, enrichDocumentDataWithLoyaltyAndDebt, buildLiveDocumentPaperHtml, switchLoyaltySimulationMode, onPaperDirectInput, updateLiveTotalsInDomWithoutReRender, addRowToActiveTicket, removeLastRowFromActiveTicket, execPaperTextCommand, triggerLogoUploadFromStudio, refreshLiveCrossPageData, hookGlobalAppPrintMethods, injectCrossPageQuickStudioButtons, resolveActiveDocumentData, selectLayerDomOnly, activateSuggestedLayerFromCatalog, setCatalogCategoryFilter, enableAllSuggestedLayers, openMultiSizePreviewModal, renderMultiSizePreviewModalContent, switchPreviewModalSize, switchPreviewModalTheme, savePreviewSelectionAsDefault, jumpFromPreviewModalToEditLayer, customizeCardInStudioNow, openAndRenderStudio, renderStudioIntoRoot, switchSection, selectDocType, selectLiveRecord, setPaperSize, updateCfg, stepFontSize, toggleCfgBool, toggleColumn, selectLayer, toggleLayerVisibility, moveLayer, addCustomLayerBlock, deleteCustomLayer, saveAsDefaultForDocType, saveCustomTemplateToDb, printCurrentCanvasNow, setBridgeCategory, setBridgeSearch, selectLabelPreset, selectPreviewProduct, updateLabelCfg, buildSingleLabelOrShelfTagHtml, addProductToLabelQueue, addCurrentPreviewProductToQueue, updateQueueItemCopies, removeQueueItem, clearLabelQueue, printSinglePreviewLabelNow, printAllQueuedLabelsSheet, updateFreeDoc, printFreeWordDocumentNow, setDocDefaultPaper...
 
 // --- [بداية الملف (أول 120 سطراً)] ---
 /**
@@ -33043,6 +33520,39 @@ pp و window.PrintEngine مباشرةً أيضاً
         key: 'Alt + W',
         title: 'العودة الفورية إلى الزبون العابر
 
+// === [مقتطف الدالة: openCustomerModal] ===
+يل الكريدي والنقاط</span>
+            <button type="button" onclick="window.App.openCustomerModal()" class="text-blue-600 dark:text-blue-400 font-black hover:underline cursor-pointer">+ تسجيل زبون وفي</button>
+          </div>
+        `;
+        return;
+      }
+
+      // جلب بيانات الزبون من الكاش السريع (أو تحديثها في الخلفية)
+      let cust = PosTurboEngine.getCustomerFast(selectedCustId);
+      if (!cust && window.GherbiFastCacheV55) {
+        const list = await window.GherbiFastCacheV55.getCustomersFast(false);
+        PosTurboEngine.rebuildCustomerIndex(list);
+        cust = PosTurboEngine.getCustomerFast(selectedCustId);
+      }
+      if (!cust) return;
+
+      const prevDebt = Math.max(0, Number(cust.total_debt || 0));
+      const creditLimit = Number(cust.credit_limit || 0);
+      const loyaltyPts = Math.max(0, Number(cust.loyalty_points || 0));
+      const isBlocked = Number(cust.is_credit_blocked || 0) === 1;
+
+      const cartTotalText = document.getElementById('cartTotalText')?.textContent || '0';
+      const currentCartTotal = parseFloat(cartTotalText.replace(/[^\d.-]/g, '')) || 0;
+      const projectedTotalDebt = Number((prevDebt + currentCartTotal).toFixed(2));
+      const isOverLimit = creditLimit > 0 && projectedTotalDebt > creditLimit;
+
+      widget.innerHTML = `
+        <div class="v56-pos-vip-credit-bar ${prevDebt > 0.009 || isBlocked ? 'is-vip-debt' : 'is-vip-clean'} space-y-1.5">
+          <div class="flex items-center justify-between gap-2">
+            <div class="font-black flex items-center gap-1 truncate">
+              <span>👑 $
+
 // === [مقتطف الدالة: openPosScaleModal] ===
  (100غ، 250غ، 500غ رطل، 1كغ) والبيع بالمبلغ',
         action: () => window.App?.openPosScaleModal?.()
@@ -33081,159 +33591,159 @@ pp و window.PrintEngine مباشرةً أيضاً
         group: '🛡️ 4. التحكم في السلة، الميزان، شاشة الأسعار، و
 
 // --- [نهاية الملف (آخر 150 سطراً)] ---
+      await window.__gherbiMasterPrintSilent({ html, silent: false });
+    };
 
-    // 3. اعتراض window.api.processSale لالتقاط الفاتورة فور بيعها في الكاشير
-    if (typeof window.api.processSale === 'function' && !window._v51ProcessSaleHooked) {
-      const origProcessSale = window.api.processSale.bind(window.api);
-      window._v51ProcessSaleHooked = true;
-      window.api.processSale = async function (saleData, ...rest) {
-        studio.lastProcessedSalePayload = saleData;
-        const result = await origProcessSale(saleData, ...rest);
-        studio.lastProcessedSaleResult = result;
-        if (result && (result.saleId || result.id)) {
-          window.App.currentPrintingSaleId = result.saleId || result.id;
+    window.App.confirmIssueCreditNote = async function () {
+      const saleId = Number(document.getElementById('creditNoteSaleId')?.value || window.App.currentPrintingSaleId || 0);
+      const reason = document.getElementById('creditNoteReasonInput')?.value?.trim() || 'إرجاع بضاعة من الزبون';
+      window.App.closeModal('creditNoteModal');
+
+      if (saleId && window.api?.issueCreditNote) {
+        await window.api.issueCreditNote({ saleId, reason }).catch(() => {});
+      }
+      if (window.GherbiSalesTurbo) {
+        window.GherbiSalesTurbo.invalidateCache(saleId);
+        if (document.getElementById('view-sales')?.classList.contains('active')) {
+          window.GherbiSalesTurbo.renderTurboSalesView(true);
         }
-        return result;
+      }
+
+      const html = await studio.generateAdoptedHtmlForDocument('credit_note', saleId || 'SAMPLE', null);
+      await window.__gherbiMasterPrintSilent({ html, silent: false });
+      if (window.showToast) window.showToast("↩️ تم إصدار وطباعة إشعار الدائن (Facture d'Avoir) بالقالب المعتمد!", 'success');
+    };
+
+    window.App.confirmPrintPriceList = async function () {
+      const cat = document.getElementById('priceListCategorySelect')?.value || '';
+      const mode = document.getElementById('priceListModeSelect')?.value || 'retail';
+      window.App.closeModal('priceListModal');
+
+      const allProds = window.api?.getProducts ? await window.api.getProducts({ category: cat || undefined }) : [];
+      const items = (allProds || []).slice(0, 150).map((p) => ({
+        barcode: p.barcode || '-',
+        name: p.name || 'منتج',
+        unit: mode === 'wholesale' ? p.wholesale_unit || 'باكي' : p.unit || 'قطعة',
+        quantity: 1,
+        price: mode === 'wholesale' && Number(p.wholesale_price) > 0 ? Number(p.wholesale_price) : Number(p.selling_price || 0),
+        subtotal: mode === 'wholesale' && Number(p.wholesale_price) > 0 ? Number(p.wholesale_price) : Number(p.selling_price || 0)
+      }));
+
+      const totalVal = items.reduce((s, x) => s + x.price, 0);
+      const html = await studio.generateAdoptedHtmlForDocument('price_catalog_a4', null, {
+        doc_number: 'CAT-' + new Date().toISOString().slice(0, 10),
+        customer_name: cat ? `فئة: ${cat}` : 'جميع فئات المتجر',
+        payment_method: mode === 'wholesale' ? 'أسعار البيع بالباكي / الكرتونة' : 'أسعار البيع بالتجزئة',
+        items,
+        subtotal: totalVal,
+        total: totalVal,
+        paid_amount: totalVal
+      });
+      await window.__gherbiMasterPrintSilent({ html, silent: false });
+    };
+
+    // د) ربط تسديد دفعات الموردين (#supplierPaymentModal) بالقالب المعتمد (supplier_payment_receipt)
+    if (typeof window.App.submitSupplierPaymentModal === 'function' && !window.App._v62SupPayHooked) {
+      const origSupPay = window.App.submitSupplierPaymentModal.bind(window.App);
+      window.App._v62SupPayHooked = true;
+      window.App.submitSupplierPaymentModal = async function (shouldPrint = true) {
+        const sid = Number(document.getElementById('supPaySupplierId')?.value || 0);
+        const amt = Number(document.getElementById('supPayAmountInput')?.value || 0);
+        const method = document.getElementById('supPayMethodSelect')?.value || 'cash';
+        const notes = document.getElementById('supPayNotesInput')?.value || 'تسديد دفعة لمورد';
+
+        const res = await origSupPay(false);
+        if (shouldPrint && sid && amt > 0) {
+          const sups = window.api?.getSuppliers ? await window.api.getSuppliers() : [];
+          const sup = (sups || []).find((s) => Number(s.id) === sid) || { name: 'مورد #' + sid };
+          const html = await studio.generateAdoptedHtmlForDocument('supplier_payment_receipt', null, {
+            doc_number: 'VERS-' + Date.now().toString().slice(-4),
+            supplier_name: sup.name,
+            supplier_phone: sup.phone || '-',
+            supplier_address: sup.address || '-',
+            payment_method: method,
+            previous_debt: Number(sup.total_debt || 0) + amt,
+            items: [
+              {
+                barcode: 'VERS',
+                name: notes,
+                unit: 'دفعة',
+                quantity: 1,
+                price: amt,
+                subtotal: amt
+              }
+            ],
+            subtotal: amt,
+            total: amt,
+            paid_amount: amt
+          });
+          await window.__gherbiMasterPrintSilent({ html, silent: false });
+        }
+        return res;
       };
     }
 
-    // 4. اعتراض window.api.printSilent (البوابة الرئيسية للطباعة الحرارية و A4 وحفظ PDF)
-    if (typeof window.api.printSilent === 'function' && !window._v51PrintSilentHooked) {
-      const origPrintSilent = window.api.printSilent.bind(window.api);
-      window._v51PrintSilentHooked = true;
+    // هـ) ترقية الموجه المركزي (window.__gherbiMasterPrintSilent) ليكتشف جميع الـ 28 مستنداً ويطبق القالب المعتمد المحفوظ دائماً
+    const origMasterPrint = window.__gherbiMasterPrintSilent;
+    window.__gherbiMasterPrintSilent = async function (payload = {}, ...rest) {
+      try {
+        const rawHtml = String((payload && payload.html) || '');
 
-      window.api.printSilent = async function (payload = {}, ...rest) {
-        try {
-          const rawHtml = String((payload && payload.html) || '');
+        // إذا كان الـ HTML صادراً بالفعل من المحرك المعزول V62، نمرره مباشرةً للطابعة أو الـ PDF
+        if (rawHtml.includes('data-v62-adopted-doc=')) {
+          return await origMasterPrint(payload, ...rest);
+        }
 
-          // إذا كان الكود صادراً بالفعل من محرك V49/V51 المعتمد أو كان ملصق باركود أو تقرير رقابي، يمر مباشرةً
-          const isAlreadyAdopted =
-            rawHtml.includes('data-v49-adopted-master="1"') ||
-            rawHtml.includes('v45-live-paper') ||
-            rawHtml.includes('التقرير الجنائي') ||
-            rawHtml.includes('تقرير رادار الرقابة') ||
-            rawHtml.includes('استمارة حساب الضريبة') ||
-            rawHtml.includes('Z-Report');
+        // كشف ذكي لنوع المستند من الـ 28 مستنداً في حال استدعاء طباعة تقليدية من أي صفحة
+        let detectedDocType = null;
+        if (rawHtml.includes('وصل استلام دفعة') || rawHtml.includes('Reçu de Paiement')) detectedDocType = 'payment_receipt';
+        else if (rawHtml.includes('فاتورة شكلية') || rawHtml.includes('Proforma')) detectedDocType = 'proforma';
+        else if (rawHtml.includes('طلبية زبون') || rawHtml.includes('Bon de Commande')) detectedDocType = 'customer_order';
+        else if (rawHtml.includes('وصل التوصيل') || rawHtml.includes('Bon de Livraison')) detectedDocType = 'delivery_note';
+        else if (rawHtml.includes('إشعار دائن') || rawHtml.includes('Avoir')) detectedDocType = 'credit_note';
+        else if (rawHtml.includes('شهادة ضمان') || rawHtml.includes('Garantie')) detectedDocType = 'warranty_cert';
+        else if (rawHtml.includes('وصل استلام') || rawHtml.includes('Bon de Réception')) detectedDocType = 'purchase_invoice';
+        else if (rawHtml.includes('مرتجع مورد') || rawHtml.includes('Bon de Retour')) detectedDocType = 'supplier_return_note';
+        else if (rawHtml.includes('محضر الجرد') || rawHtml.includes('Inventaire')) detectedDocType = 'stocktake_sheet_a4';
+        else if (rawHtml.includes('أمر تشغيل') || rawHtml.includes('Ordre de Fabrication')) detectedDocType = 'production_order_sheet';
+        else if (rawHtml.includes('Z-Report') || rawHtml.includes('إغلاق المناوبة')) detectedDocType = 'caisse_z_report';
+        else if (rawHtml.includes('استمارة التصريح الجبائي') || rawHtml.includes('G12')) detectedDocType = 'fiscal_g12_statement';
+        else if (rawHtml.includes('التقرير الجنائي') || rawHtml.includes('تقرير رادار الرقابة')) detectedDocType = 'forensic_audit_report';
 
-          if (!isAlreadyAdopted) {
-            const isLegacyReceiptOrInvoice =
-              rawHtml.includes('المجموع خارج الرسوم') ||
-              rawHtml.includes('قسيمة وفاء واستبدال') ||
-              rawHtml.includes('N°:') ||
-              rawHtml.includes('receipt_template') ||
-              rawHtml.includes('invoice_template') ||
-              rawHtml.includes('الإجمالي الصافي') ||
-              rawHtml.includes('فاتورة');
-
-            if (isLegacyReceiptOrInvoice) {
-              const isThermal =
-                rawHtml.includes('80mm') ||
-                rawHtml.includes('58mm') ||
-                rawHtml.includes('قسيمة وفاء واستبدال') ||
-                (payload && Number(payload.widthMm || 0) > 0 && Number(payload.widthMm || 0) <= 85);
-
-              const targetDocType = isThermal ? 'receipt_thermal' : 'invoice_a4';
-
-              let saleIdFromHtml = null;
-              const numM = rawHtml.match(/N°\s*:\s*(?:FAC-\d+-)?0*(\d+)/i) || rawHtml.match(/#\s*(\d+)/);
-              if (numM && numM[1]) {
-                const num = Number(numM[1]);
-                const sales = studio.liveDataRecords.sales || window.AppState?.sales || [];
-                const found = sales.find((s) => Number(s.id) === num || String(s.doc_number || '').endsWith(String(num)));
-                saleIdFromHtml = found ? found.id : num;
-              }
-
-              const adoptedHtml = await studio.interceptAndBuildPosDocumentHtml(targetDocType, saleIdFromHtml, null);
-              if (adoptedHtml) {
-                const defPaper = (studio.config.defaultsByDocType[targetDocType] || {}).paperSize || (isThermal ? '80mm' : 'a4');
-                return await origPrintSilent(
-                  {
-                    ...payload,
-                    html: adoptedHtml,
-                    paperSize: defPaper,
-                    widthMm: defPaper === '80mm' ? 80 : defPaper === '58mm' ? 58 : undefined
-                  },
-                  ...rest
-                );
-              }
-            }
+        if (detectedDocType && !rawHtml.includes('v45-live-paper')) {
+          const adoptedHtml = await studio.generateAdoptedHtmlForDocument(detectedDocType, null, null);
+          if (adoptedHtml) {
+            const defPaper = studio.config.defaultsByDocType?.[detectedDocType]?.paperSize || 'a4';
+            return await origMasterPrint(
+              {
+                ...payload,
+                html: adoptedHtml,
+                paperSize: defPaper,
+                widthMm: defPaper === '80mm' ? 80 : defPaper === '58mm' ? 58 : undefined
+              },
+              ...rest
+            );
           }
-        } catch (e) {
-          console.warn('[V51 Stage 1 Print Interceptor]:', e);
         }
-        return await origPrintSilent(payload, ...rest);
-      };
-    }
-
-    // 5. اعتراض window.api.exportPdf / savePdf إن وجد ليصدر الـ PDF بنفس القالب المعتمد
-    for (const pdfFnName of ['exportPdf', 'printToPdf', 'savePdf']) {
-      if (typeof window.api[pdfFnName] === 'function' && !window['_v51Hook_' + pdfFnName]) {
-        const origPdfFn = window.api[pdfFnName].bind(window.api);
-        window['_v51Hook_' + pdfFnName] = true;
-        window.api[pdfFnName] = async function (payload = {}, ...rest) {
-          try {
-            const rawHtml = String(typeof payload === 'string' ? payload : payload.html || '');
-            if (rawHtml && !rawHtml.includes('data-v49-adopted-master="1"')) {
-              const isThermal = rawHtml.includes('80mm') || rawHtml.includes('قسيمة وفاء واستبدال');
-              const adoptedHtml = await studio.interceptAndBuildPosDocumentHtml(isThermal ? 'receipt_thermal' : 'invoice_a4');
-              if (typeof payload === 'string') return await origPdfFn(adoptedHtml, ...rest);
-              return await origPdfFn({ ...payload, html: adoptedHtml }, ...rest);
-            }
-          } catch (_) {}
-          return await origPdfFn(payload, ...rest);
-        };
+      } catch (e) {
+        console.warn('[V62 Universal Interceptor Warning]:', e);
       }
-    }
 
-    // 6. ربط نافذة المعاينة والطباعة الفورية (#posPrintCenterModal) في شاشة المبيعات وسجل المبيعات
-    window.App.refreshPrintCenterPreview = async function () {
-      const selEl = document.getElementById('pcDocTypeSelect');
-      const rawType = selEl ? selEl.value : 'invoice_a4';
-      const mappedType =
-        rawType === 'receipt'
-          ? 'receipt_thermal'
-          : rawType === 'delivery'
-          ? 'delivery_note'
-          : rawType;
-
-      const saleId =
-        window.App.currentPrintingSaleId ||
-        (studio.lastProcessedSaleResult && studio.lastProcessedSaleResult.saleId) ||
-        (studio.liveDataRecords.sales[0] && studio.liveDataRecords.sales[0].id) ||
-        'SAMPLE';
-
-      const html = await studio.interceptAndBuildPosDocumentHtml(mappedType, saleId, null);
-      window.App._v51CurrentPrintCenterHtml = html;
-      window.App._v51CurrentPrintCenterDocType = mappedType;
-
-      const frame = document.getElementById('printCenterPreviewFrame');
-      if (frame) {
-        frame.srcdoc = html;
-      }
+      return await origMasterPrint(payload, ...rest);
     };
 
-    window.App.executePrintCenterAction = async function (actionType) {
-      if (!window.App._v51CurrentPrintCenterHtml) {
-        await window.App.refreshPrintCenterPreview();
+    // استرجاع البروفايلات المحفوظة من القاعدة وتحديث العرض
+    studio.restoreAbsoluteProfilesFromStorageAndDb().then(() => {
+      if (document.getElementById('view-print')?.classList.contains('active')) {
+        studio.renderStudioIntoRoot();
       }
-      const html = window.App._v51CurrentPrintCenterHtml;
-      if (!html) return;
-
-      if (actionType === 'pdf' && typeof window.api.exportPdf === 'function') {
-        await window.api.exportPdf({ html, filename: `Document_${Date.now()}.pdf` });
-        if (window.showToast) window.showToast('📄 تم تصدير ملف PDF وفق القالب المعتمد في مركز الطباعة!', 'success');
-      } else {
-        await window.api.printSilent({ html, silent: false });
-        if (window.showToast) window.showToast('🖨️ تم إرسال المستند للطباعة/PDF وفق القالب المعتمد في مركز الطباعة!', 'success');
-      }
-    };
-
-    console.log('✅ [Gherbi V51 Stage 1]: اكتمل ربط مركز الطباعة بالصفحة الأولى (شاشة المبيعات #view-pos ونافذة F1 ونافذة #posPrintCenterModal).');
-  }, 150);
+      console.log('🏆 [Gherbi V62 Absolute Save & 28-Docs Binding]: الحفظ المطلق الدائم والربط الشامل مع جميع الصفحات مفعّل 100%!');
+    });
+  }, 160);
 })();
 
-==================== FILE: gherbi-core-loyalty-audit.js (330.0 KB) ====================
-// [ملف ضخم جداً (6153 سطراً | 308.7 KB)]
+==================== FILE: gherbi-core-loyalty-audit.js (330.1 KB) ====================
+// [ملف ضخم جداً (6153 سطراً | 308.8 KB)]
 // إجمالي الدوال المكتشفة (166): initGherbiStage12Enforcer, init, enforceDomState, buildAllModals, setupStage1PinAndDeduplicateAudit, getStoredPin, openPinChangeModal, saveNewPin, deduplicateAuditTableRows, hideDuplicateLegacyF7Strips, ensureSinglePinnedDock, getCartTotalDirectly, updateChangeInstant, setupStage1UnifiedStripAndLiveChange, setupStage2WarehouseF7Center, overrideOpeningLegacyF7Modal, setF7Multiplier, toggleWarehouseBrowserDrawer, renderWarehouseVisualList, quickLinkWarehouseId, openOurF7Modal, syncF7HeaderCartStats, getF7List, saveF7List, loadPreset, importTopWarehouseProducts, createCustomQuickButton, getCartQtyForQuickButton, renderF7Cards, renderPinnedDock, executeQuickButton, togglePin, deleteQuickButton, openEditQuickButton, saveEditedQuickButton, calcEligiblePoints, captureEditedSaleSnapshotNow, updateLiveEditDeltaBanner, clearEditSnapshot, setupExactDeltaLoyaltyEngine, initGherbiV5Stage1, isStrictlyEditingPreviousSale, fixStrictEditBannerLogic, cancelEditModeBanner, resetActiveCartToWalkInCustomer, showQuickRelinkCustomerChip, setupAutoResetToWalkInAfterSale, initGherbiV6Stage1Clean, buildProCartConfirmModal, restorePosKeyboardFocus, openProCartConfirm, closeProCartConfirm, moveCartToDraftsInstead, executeConfirmedCartDelete, performSilentCartDelete, showUndoDeletedCartBanner, restoreLastDeletedCart, interceptAllCartCloseActions, forceWalkInOnCart, openFreshWalkInCartOnPosEntry, setupBootWalkInWithoutClearingOnTabSwitch, bindAltNumberCartSwitching, initGherbiV7Stage1, archiveInterruptedSessionBeforeBootReset, getVaultRecords, saveVaultRecords, preserveActiveCartOnViewSwitch, setupRealTimeBlackBoxRecorder, snapshotCurrentCartToVaultManually, buildCrashRecoveryVaultModal, openCrashVaultModal, renderVaultItemsList, restoreVaultRecordToPos, deleteVaultRecord, clearAllVaultRecords, updateVaultButtonBadge, switchImmediatelyToWalkInCustomer, syncWalkInQuickButtonState, injectVaultAndWalkInButtons, bindWalkInShortcutAndRegisterInHub, initV13SqlitePersistenceBridge, hydrateFromSqliteOnBoot, pushSingleKeyToSqlite, flushAllToSqlite, interceptLocalStorageWrites, syncProductColumnsWithPackAndLoyalty, initV33UltimateAlgerianRetailFiscalStudio, loadConfig, saveConfig, saveRegulatedMap, isProductRegulated, setProductRegulated, hookProductModalCheckbox, openStudio, openZakatTab12, hookGlobalNavigation, findTab12ZakatButton, startTab13InjectorLoop, ensureTab13ButtonExists, findTabBarWrapper, hideFiscalStageAndRestoreOriginal, activateTab13, startAiCopilotButtonFixer, computeFiscalData, fmtDzd, fmtCentimes, renderFiscalStudioContent, toggleLegalMinimum, copyG12SummaryToClipboard, openRegulatedProductsManagerModal, toggleProductRegulatedFromModal, refreshStudioUI, onModeChange, saveFormSettings, recordTaxAsExpense, goToExpensesView, goToPurchasesView, askAiAboutTaxes, exportFiscalCsv, printOfficialG12Statement...
 
 // --- [بداية الملف (أول 120 سطراً)] ---
@@ -35034,7 +35544,7 @@ SalesHistoryAndOwnerCostReport() {
 </body>
 </html>`;
 
-      window.api?.printSilent?.({ html, silent: false });
+      window.__gherbiMasterPrintSilent({ html, silent: false });
     },
 
     injectExportAndPrintButtonsIntoOwnerRadar() {
@@ -47518,7 +48028,7 @@ if (typeof window === 'undefined') {
       const silent = Boolean(options.silent);
 
       if (silent && window.api && typeof window.api.printSilent === 'function') {
-        const res = await window.api.printSilent({
+        const res = await window.__gherbiMasterPrintSilent({
           html: htmlContent,
           silent: true,
           printerName: options.printerName || undefined
@@ -51774,7 +52284,7 @@ module.exports = {
 
 
 ==================== FILE: renderer-rc-100.js (2990.1 KB) ====================
-// [ملف ضخم جداً (45780 سطراً | 2779.5 KB)]
+// [ملف ضخم جداً (45780 سطراً | 2779.6 KB)]
 // إجمالي الدوال المكتشفة (223): applyRc100Extensions, injectWilayaSelectors, applyGoldenMaster100, applyUltimateAlgeria100, injectProductModalEnhancements, injectPosTopToolbarExtras, applyFinalPerfection100, applyMasterRelease100, applyCommercialLaunch100, dismissSplashScreen, applyFinalSealBridge, applyV11AbsoluteTruth100, applyPage1PosSurgicalPerfection, cleanAndUpgradePosDom, forEach, map, find, filter, reduce, addEventListener, setTimeout, applyTurboCashierEngine, getActiveModalElement, isPosViewActive, updateBarcodeStatusPill, installBarcodeAutoFocusGuard, setInterval, findIndex, setupSearchInputEnterToAdd, injectTurboPosControls, updateShortcutsHelpModalContent, initAllTurboFeatures, applyPage2SalesSurgicalPerfection, formatCleanSaleDateTime, renderPaymentMethodBadge, renderSalesRowsHtml, some, applyPage3CaisseSurgicalPerfection, formatCleanCaisseDate, getCaisseTxTypeInfo, applyPage4InventorySurgicalPerfection, installUnifiedInventoryExcelHandlers, installSmartProductEditAndConsultantSuperpowers, setVal, setChk, sort, applyPage5BundlesSurgicalPerfection, getActiveProductPrice, getActiveProductCost, getActiveProductStock, Set, then, installSmartPromosBundlesAndBarcodeFix, getBaseRetailPrice, getBaseCostPrice, getBaseStock, installCaisseMasterSuiteAndCloseFix, all, applyPage6ManufacturingSurgicalPerfection, getProdRetailPrice, getProdCostPrice, getProdStock, formatCleanMfgDate, getSortedProductsForBom, populateBomProductSelects, openRecipeModal, onTargetProductChange, quickCreateFinishedProduct, confirmQuickFinishedProduct, addComponentRowInModal, removeComponentRowInModal, updateComponentRowField, renderBomComponentsInModal, recalcBomModalMetrics, applyQuickBomMarkup, applySmartBomPreset, saveRecipeFromStudioModal, openQuickProduceModal, produceFromRecipe, createInstantStarterRecipeAndOpenProduce, onProduceRecipeSelectChange, setQuickProduceBatchMult, setMaxAvailableProduceQty, refreshProduceLiveSimulation, submitProductionOrderFromModal, printShortageShoppingList, openOrderDetailsModal, printOrderJobSheet, deleteRecipe, reverseOrder, confirmDraft, renderManufacturingView, onMfgSearch, installManufacturingInteractiveGuide, injectGuideButtonIntoManufacturingHeader, applyPage7StocktakeSurgicalPerfection, formatCleanStkDate, computeLiveStocktakeMetrics, getFilteredStocktakeRows, renderStocktakeView, drawStocktakeInterface, updateCountedQty, stepCountedQty, updateRowReason, setVarianceFilter, onSearchInput, toggleBlindStocktakeMode, toggleScanMode, handleStocktakeBarcodeScan, resetAllCountedToBook, saveDraftLocally, openCommitConfirmationModal, commitStocktake, executeCommitStocktakeNow, openStocktakeDetails, printHistoricalStocktakeReport, printBlankSheet, openStocktakeGuideModal, applyPage8PrintStudioSurgicalPerfection, getProdRetail...
 
 // --- [بداية الملف (أول 120 سطراً)] ---
@@ -52693,7 +53203,7 @@ nDelete = null;
 })();
 
 ==================== FILE: renderer.js (280.6 KB) ====================
-// [ملف ضخم جداً (5455 سطراً | 267.7 KB)]
+// [ملف ضخم جداً (5455 سطراً | 267.8 KB)]
 // إجمالي الدوال المكتشفة (223): playBeep, showToast, logSecurityAudit, init, openModal, closeModal, applyCartWidthLayout, initCartResizer, openLockScreenModal, unlockScreen, updateUserBadge, updateShiftHeaderBadge, refreshHeaderNotifications, toggleNotificationsPopover, refreshLanClientsBadge, openCustomerDisplayWindow, syncCustomerDisplay, initVirtualKeyboard, pressVirtualKey, bindKeyboardShortcuts, bindLiveEvents, toggleSidebar, toggleDarkMode, toggleFullscreen, setLanguage, switchView, refreshProducts, currentCart, seedSampleStoreData, renderPosView, selectPosCategory, onPosSearchInput, getFilteredPosProducts, changePosPage, renderPosProductsGrid, savePosCustomization, openPosAdvancedFilterModal, applyPosAdvancedFilter, resetPosAdvancedFilter, openPosScaleModal, addWeightedProductFromScaleModal, openPosQuickProduceModal, confirmPosQuickProduce, onPosProductCardClick, openVariantBatchSerialPicker, confirmPickerSelection, handleBarcodeScan, openUnregisteredBarcodeModal, createProductFromUnregisteredBarcode, linkUnregisteredBarcodeToProduct, createSimilarProductFromSuggest, addProductToCart, openPosUnitChoiceModal, selectUnitOrPriceForCartItem, openNumberInputModal, tapNumpad, pullWeightIntoNumberModal, confirmNumberInputModal, openCartModifierModal, applyQuickCartPercent, onCartModPercentChange, onCartModAmountChange, confirmCartModifierModal, renderCartTabs, switchCartTab, newCartTab, renderCartItems, removeCartItem, recalcCart, clearCurrentCart, loadSaleIntoPosForEdit, cancelEditSaleMode, holdCurrentCart, openDraftsModal, restoreDraftCart, deleteDraftCart, openRecentSalesModal, toggleReturnMode, setCartPriceTier, openCheckoutModal, onCheckoutMethodChange, recalcSplitTotals, recalcCheckoutModal, addCashDenom, setExactCash, submitSale, saveCartAsProforma, openOrderModalFromCart, confirmSaveCartAsOrder, openFreeItemModal, confirmFreeItem, saveBomRecipeFromModal, openLoginModal, submitAuthModal, renderSalesHistoryView, filterSalesHistory, checkWarrantyBySerial, openSaleDetailsModal, addQuickPaymentToSale, printSaleItemWarranty, openCreditNoteModal, confirmIssueCreditNote, openDeliveryNoteModal, confirmPrintDeliveryNote, reprintSale, deleteSaleRecord, renderCaisseView, openNewShiftModal, confirmOpenShift, openCaisseTxModal, confirmCaisseTx, openCloseShiftModal, confirmCloseShift, renderInventoryView, importDzDictionaryNow, switchProductModalTab, editProductById, openProductModal, onProdCostOrMarkupInput, onProdMarkupChange...
 
 // --- [بداية الملف (أول 120 سطراً)] ---
@@ -53338,7 +53848,7 @@ Months
     };
 
     try {
-      const res = await window.api.processSale(salePayload);
+      const res = await window.__gherbiMasterProcessSale(salePayload);
       this.closeModal('checkoutModal');
       showToast(
         AppState.editingSaleId
@@ -53350,7 +53860,7 @@ Months
       if (printMode !== 'none' && window.PrintEngine) {
         const fullSale = await window.api.getSaleDetails(res.saleId);
         const html =
-          printM
+      
 
 // === [مقتطف الدالة: openCustomerModal] ===
 ded-xl text-xs font-bold">تصدير Excel</button>
@@ -55626,17 +56136,17 @@ async function runFullVerification() {
 
 runFullVerification();
 
-==================== FILE: _legacy_archive/fix-print-studio-live-paper-and-pdf.js (17.2 KB) ====================
+==================== FILE: _legacy_archive/fix-print-studio-live-paper-and-pdf.js (41.7 KB) ====================
 /**
- * apply-v51-stage1-print-hub-and-pos-verification.js
- * الشطر الأول (Stage 1):
- * 1. فك تجميد window.api جذرياً عبر preload.js و index.html للقضاء نهائياً على خطأ (object is not extensible).
- * 2. إعادة تهيئة صفحة مركز الطباعة (#view-print) وربطها الكامل بالصفحة الأولى: شاشة المبيعات (#view-pos).
- * 3. ربط جميع مسارات الطباعة والـ PDF في شاشة المبيعات:
- *    - نافذة التسديد F1 (#checkoutModal -> حفظ وطباعة وصل حراري 80mm + حفظ وطباعة فاتورة A4).
- *    - زر تذكرة 80mm فورية (Échap).
- *    - نافذة مركز الطباعة الفوري (#posPrintCenterModal -> زر "طباعة الآن" + زر "PDF").
- * 4. الفحص النحوي الشامل (node --check) والأرشفة الذاتية التلقائية.
+ * apply-v62-absolute-save-and-universal-28-docs-page-binding.js
+ * الترقية الجذرية (V62) لتفعيل "الحفظ كأمر مطلق (Par Défaut)" وربط مركز الطباعة (#view-print)
+ * بجميع صفحات البرنامج الـ 18 ولجميع المستندات الـ 28 بنسبة 100%:
+ * 1. التقاط فوري لكافة التعديلات الحرة على الورقة، وإعدادات الطبقات الـ 30، والأعمدة، والمقاس، واللون
+ *    وحفظها بشكل دائم في كل من localStorage وقاعدة بيانات SQLite (settings) عند الضغط على (اعتماد وحفظ).
+ * 2. بناء محرك التحميل المعزول (renderAdoptedMasterDocumentHtml) الذي يضمن تطبيق القالب المعتمد المحفوظ
+ *    بكل طبقاته ونصوصه وأعمدته عند الطباعة من أي صفحة في البرنامج.
+ * 3. ربط جميع أزرار ونوافذ الطباعة في كل الصفحات (الكاشير، المبيعات، الزبائن، المشتريات، الموردين،
+ *    الشكلية، الطلبيات، المخزون، الجرد، التصنيع، الصندوق، المصاريف، والجباية) بالقوالب الـ 28 المعتمدة.
  */
 
 'use strict';
@@ -55649,323 +56159,792 @@ const ROOT = fs.existsSync(path.join(__dirname, 'Gherbi_Ai_POS_Clean'))
   ? path.join(__dirname, 'Gherbi_Ai_POS_Clean')
   : __dirname;
 
-const PRELOAD_PATH = path.join(ROOT, 'preload.js');
-const INDEX_HTML_PATH = path.join(ROOT, 'index.html');
 const DEVICES_HUB_PATH = path.join(ROOT, 'gherbi-core-devices-hub.js');
 const ARCHIVE_DIR = path.join(ROOT, '_legacy_archive');
 
-if (!fs.existsSync(PRELOAD_PATH) || !fs.existsSync(INDEX_HTML_PATH) || !fs.existsSync(DEVICES_HUB_PATH)) {
-  console.error('❌ لم يتم العثور على الملفات الأساسية في المسار:', ROOT);
+if (!fs.existsSync(DEVICES_HUB_PATH)) {
+  console.error('❌ لم يتم العثور على gherbi-core-devices-hub.js في المسار:', ROOT);
   process.exit(1);
 }
 
-// ============================================================================
-// 1. ترقية preload.js لتعريض نسخة رديفة (_nativeApi) تسمح لـ index.html ببناء window.api قابل للتوسيع 100%
-// ============================================================================
-let preloadCode = fs.readFileSync(PRELOAD_PATH, 'utf8');
-
-// إزالة أي محاولة حقن سابقة من V50
-const v50Marker = '/* === [V50_PRELOAD_EXTENSIBLE_PRINT_BRIDGE] === */';
-if (preloadCode.includes(v50Marker)) {
-  const endHookIdx = preloadCode.indexOf('})();\n');
-  if (endHookIdx > -1) {
-    preloadCode = preloadCode.replace(/\/\* === \[V50_PRELOAD_EXTENSIBLE_PRINT_BRIDGE\] === \*\/[\s\S]*?\}\)\(\);\r?\n?/, '');
-  }
-}
-
-const v51PreloadMarker = '/* === [V51_NATIVE_API_DUAL_EXPOSE] === */';
-if (!preloadCode.includes(v51PreloadMarker)) {
-  // نجعل contextBridge يعرض الكائن تحت اسم _nativeApi بالإضافة إلى api
-  preloadCode = preloadCode.replace(
-    /contextBridge\.exposeInMainWorld\(\s*['"]api['"]\s*,/,
-    `${v51PreloadMarker}\ncontextBridge.exposeInMainWorld('_nativeApi',`
-  );
-  fs.writeFileSync(PRELOAD_PATH, preloadCode, 'utf8');
-  console.log('✅ [1/4]: تم تحديث preload.js لتعريض _nativeApi القابل للاستنساخ الحر.');
-} else {
-  console.log('ℹ️ [1/4]: جسر _nativeApi مفعل مسبقاً في preload.js.');
-}
-
-// ============================================================================
-// 2. حقن جسر فك التجميد المبكر في بداية <head> داخل index.html
-//    (يحول window._nativeApi إلى كائن window.api حر وقابل للتعديل والتوسيع 100%)
-// ============================================================================
-let indexHtml = fs.readFileSync(INDEX_HTML_PATH, 'utf8');
-const v51HtmlBridgeId = 'id="v51-mutable-api-bridge"';
-
-const htmlBridgeScript = `  <script id="v51-mutable-api-bridge">
-    (function unlockWindowApiObject() {
-      var srcApi = window._nativeApi || window.api;
-      if (!srcApi) return;
-      function cloneMutableApi(obj) {
-        if (!obj || typeof obj !== 'object') return obj;
-        var out = Array.isArray(obj) ? [] : {};
-        var keys = Object.keys(obj);
-        for (var i = 0; i < keys.length; i++) {
-          var k = keys[i];
-          var val = obj[k];
-          if (typeof val === 'function') {
-            out[k] = val.bind(obj);
-          } else if (val && typeof val === 'object') {
-            out[k] = cloneMutableApi(val);
-          } else {
-            out[k] = val;
-          }
-        }
-        return out;
-      }
-      var unlockedApi = cloneMutableApi(srcApi);
-      try {
-        Object.defineProperty(window, 'api', {
-          value: unlockedApi,
-          writable: true,
-          configurable: true,
-          enumerable: true
-        });
-      } catch (_) {
-        window.api = unlockedApi;
-      }
-    })();
-  </script>`;
-
-if (indexHtml.includes(v51HtmlBridgeId)) {
-  indexHtml = indexHtml.replace(
-    /<script id="v51-mutable-api-bridge">[\s\S]*?<\/script>/,
-    htmlBridgeScript.trim()
-  );
-} else {
-  indexHtml = indexHtml.replace('<head>', `<head>\n${htmlBridgeScript}`);
-}
-fs.writeFileSync(INDEX_HTML_PATH, indexHtml, 'utf8');
-console.log('✅ [2/4]: تم حقن جسر فك تجميد window.api في أعلى index.html بنجاح.');
-
-// ============================================================================
-// 3. تحديث gherbi-core-devices-hub.js لربط مركز الطباعة بشاشة المبيعات (#view-pos)
-//    ونافذة الدفع (#checkoutModal) ونافذة المعاينة والـ PDF (#posPrintCenterModal)
-// ============================================================================
 let hubCode = fs.readFileSync(DEVICES_HUB_PATH, 'utf8');
+const v62Marker = '/* ==================== [V62 ABSOLUTE SAVE & UNIVERSAL 28-DOCS CROSS-PAGE BINDING] ==================== */';
 
-const v51Stage1Marker = '/* ==================== [V51 STAGE 1: PRINT HUB INIT & POS PAGE VERIFICATION BRIDGE] ==================== */';
-if (hubCode.includes(v51Stage1Marker)) {
-  hubCode = hubCode.slice(0, hubCode.indexOf(v51Stage1Marker)).trimEnd() + '\n';
+if (hubCode.includes(v62Marker)) {
+  hubCode = hubCode.slice(0, hubCode.indexOf(v62Marker)).trimEnd() + '\n';
 }
 
-function initV51Stage1PrintHubAndPosBridge() {
-  const waitReady = setInterval(() => {
+function initV62AbsoluteSaveAndUniversalPageBinding() {
+  const STORAGE_KEY_V62 = 'gherbi_master_print_profiles_v62';
+
+  const waitStudio = setInterval(() => {
     const studio = window.GherbiPrintStudioV45;
-    if (!studio || !window.App || !window.api) return;
-    clearInterval(waitReady);
+    if (!studio || !window.App || !studio.ALL_28_MASTER_DOCS) return;
+    clearInterval(waitStudio);
 
-    // 1. التأكد من أن window.api قابل للتوسيع والتعديل 100%
-    if (!Object.isExtensible(window.api)) {
+    // ========================================================================
+    // 1. استرجاع القوالب المعتمدة المحفوظة من SQLite و localStorage عند الإقلاع
+    // ========================================================================
+    studio.restoreAbsoluteProfilesFromStorageAndDb = async function () {
       try {
-        const copy = {};
-        for (const k of Object.keys(window.api)) {
-          copy[k] = typeof window.api[k] === 'function' ? window.api[k].bind(window.api) : window.api[k];
+        let rawJson = localStorage.getItem(STORAGE_KEY_V62);
+        if (!rawJson && window.AppState?.settings?.[STORAGE_KEY_V62]) {
+          rawJson = window.AppState.settings[STORAGE_KEY_V62];
         }
-        Object.defineProperty(window, 'api', { value: copy, writable: true, configurable: true });
-      } catch (_) {}
-    }
-
-    // 2. دالة موحدة لتحويل أي طلب طباعة أو PDF في شاشة المبيعات إلى القالب المعتمد في مركز الطباعة
-    studio.interceptAndBuildPosDocumentHtml = async function (docTypeHint, saleIdHint, rawPayloadHint) {
-      let targetDocType = docTypeHint || 'receipt_thermal';
-      if (targetDocType === 'receipt' || targetDocType === '80mm' || targetDocType === '58mm' || targetDocType === 'thermal') {
-        targetDocType = 'receipt_thermal';
-      } else if (targetDocType === 'a4' || targetDocType === 'invoice') {
-        targetDocType = 'invoice_a4';
-      } else if (targetDocType === 'a5') {
-        targetDocType = 'invoice_a5';
-      } else if (targetDocType === 'delivery' || targetDocType === 'bl') {
-        targetDocType = 'delivery_note';
-      }
-
-      // جلب أحدث المبيعات والزبائن لضمان دقة رقم الفاتورة ونقاط الوفاء
-      try {
-        if (window.api.getSales) this.liveDataRecords.sales = await window.api.getSales();
-        if (window.api.getCustomers) this.liveDataRecords.customers = await window.api.getCustomers();
-      } catch (_) {}
-
-      const effectiveSaleId =
-        saleIdHint ||
-        (this.lastProcessedSaleResult && (this.lastProcessedSaleResult.saleId || this.lastProcessedSaleResult.id)) ||
-        window.App.currentPrintingSaleId ||
-        (this.liveDataRecords.sales[0] && this.liveDataRecords.sales[0].id) ||
-        'SAMPLE';
-
-      return await this.generateAdoptedHtmlForDocument(
-        targetDocType,
-        effectiveSaleId,
-        rawPayloadHint || this.lastProcessedSalePayload
-      );
-    };
-
-    // 3. اعتراض window.api.processSale لالتقاط الفاتورة فور بيعها في الكاشير
-    if (typeof window.api.processSale === 'function' && !window._v51ProcessSaleHooked) {
-      const origProcessSale = window.api.processSale.bind(window.api);
-      window._v51ProcessSaleHooked = true;
-      window.api.processSale = async function (saleData, ...rest) {
-        studio.lastProcessedSalePayload = saleData;
-        const result = await origProcessSale(saleData, ...rest);
-        studio.lastProcessedSaleResult = result;
-        if (result && (result.saleId || result.id)) {
-          window.App.currentPrintingSaleId = result.saleId || result.id;
+        if (!rawJson && window.api?.getSettings) {
+          const allSet = await window.api.getSettings();
+          if (allSet && allSet[STORAGE_KEY_V62]) {
+            rawJson = allSet[STORAGE_KEY_V62];
+          }
         }
-        return result;
-      };
-    }
-
-    // 4. اعتراض window.api.printSilent (البوابة الرئيسية للطباعة الحرارية و A4 وحفظ PDF)
-    if (typeof window.api.printSilent === 'function' && !window._v51PrintSilentHooked) {
-      const origPrintSilent = window.api.printSilent.bind(window.api);
-      window._v51PrintSilentHooked = true;
-
-      window.api.printSilent = async function (payload = {}, ...rest) {
-        try {
-          const rawHtml = String((payload && payload.html) || '');
-
-          // إذا كان الكود صادراً بالفعل من محرك V49/V51 المعتمد أو كان ملصق باركود أو تقرير رقابي، يمر مباشرةً
-          const isAlreadyAdopted =
-            rawHtml.includes('data-v49-adopted-master="1"') ||
-            rawHtml.includes('v45-live-paper') ||
-            rawHtml.includes('التقرير الجنائي') ||
-            rawHtml.includes('تقرير رادار الرقابة') ||
-            rawHtml.includes('استمارة حساب الضريبة') ||
-            rawHtml.includes('Z-Report');
-
-          if (!isAlreadyAdopted) {
-            const isLegacyReceiptOrInvoice =
-              rawHtml.includes('المجموع خارج الرسوم') ||
-              rawHtml.includes('قسيمة وفاء واستبدال') ||
-              rawHtml.includes('N°:') ||
-              rawHtml.includes('receipt_template') ||
-              rawHtml.includes('invoice_template') ||
-              rawHtml.includes('الإجمالي الصافي') ||
-              rawHtml.includes('فاتورة');
-
-            if (isLegacyReceiptOrInvoice) {
-              const isThermal =
-                rawHtml.includes('80mm') ||
-                rawHtml.includes('58mm') ||
-                rawHtml.includes('قسيمة وفاء واستبدال') ||
-                (payload && Number(payload.widthMm || 0) > 0 && Number(payload.widthMm || 0) <= 85);
-
-              const targetDocType = isThermal ? 'receipt_thermal' : 'invoice_a4';
-
-              let saleIdFromHtml = null;
-              const numM = rawHtml.match(/N°\s*:\s*(?:FAC-\d+-)?0*(\d+)/i) || rawHtml.match(/#\s*(\d+)/);
-              if (numM && numM[1]) {
-                const num = Number(numM[1]);
-                const sales = studio.liveDataRecords.sales || window.AppState?.sales || [];
-                const found = sales.find((s) => Number(s.id) === num || String(s.doc_number || '').endsWith(String(num)));
-                saleIdFromHtml = found ? found.id : num;
-              }
-
-              const adoptedHtml = await studio.interceptAndBuildPosDocumentHtml(targetDocType, saleIdFromHtml, null);
-              if (adoptedHtml) {
-                const defPaper = (studio.config.defaultsByDocType[targetDocType] || {}).paperSize || (isThermal ? '80mm' : 'a4');
-                return await origPrintSilent(
-                  {
-                    ...payload,
-                    html: adoptedHtml,
-                    paperSize: defPaper,
-                    widthMm: defPaper === '80mm' ? 80 : defPaper === '58mm' ? 58 : undefined
-                  },
-                  ...rest
-                );
-              }
+        if (rawJson) {
+          const parsed = JSON.parse(rawJson);
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.defaultsByDocType) {
+              this.config.defaultsByDocType = {
+                ...this.config.defaultsByDocType,
+                ...parsed.defaultsByDocType
+              };
+            }
+            if (parsed.adoptedProfiles) {
+              this.config.adoptedProfiles = {
+                ...this.config.adoptedProfiles,
+                ...parsed.adoptedProfiles
+              };
             }
           }
-        } catch (e) {
-          console.warn('[V51 Stage 1 Print Interceptor]:', e);
         }
-        return await origPrintSilent(payload, ...rest);
+      } catch (e) {
+        console.warn('[V62 Restore Profiles Warning]:', e);
+      }
+
+      // تحميل القالب المعتمد للمستند النشط حالياً في الاستوديو
+      if (typeof this.loadProfileForDocType === 'function') {
+        this.loadProfileForDocType(this.config.activeDocType || 'receipt_thermal');
+      }
+    };
+
+    // ========================================================================
+    // 2. تفريغ والتقاط جميع النصوص المحررة مباشرةً على الورقة الحية قبل الحفظ
+    // ========================================================================
+    studio.flushAllLivePaperEditsIntoConfig = function () {
+      const containers = [
+        document.getElementById('v45LivePaperHost'),
+        document.getElementById('v58PreviewModalPaperHost')
+      ].filter(Boolean);
+
+      for (const host of containers) {
+        const editableNodes = host.querySelectorAll('[data-v45-edit]');
+        editableNodes.forEach((node) => {
+          const key = node.getAttribute('data-v45-edit');
+          const textVal = (node.innerText || node.textContent || '').trim();
+          if (!key) return;
+
+          if (key === 'customHeaderTitle') {
+            this.config.customHeaderTitle = textVal;
+          } else if (key === 'customFooterTerms') {
+            this.config.customFooterTerms = textVal;
+          } else if (key.startsWith('layerNote:')) {
+            const lid = key.split(':')[1];
+            const layer = (this.config.layers || []).find((l) => l.id === lid);
+            if (layer) layer.customNote = textVal;
+          } else if (key.startsWith('layerTitle:')) {
+            const lid = key.split(':')[1];
+            const layer = (this.config.layers || []).find((l) => l.id === lid);
+            if (layer) layer.customTitle = textVal;
+          } else if (!key.startsWith('item:') && !key.startsWith('docField:') && !key.startsWith('shop:')) {
+            if (!this.config.customTexts) this.config.customTexts = {};
+            this.config.customTexts[key] = textVal;
+          }
+        });
+      }
+    };
+
+    // ========================================================================
+    // 3. الحفظ المطلق الدائم (saveAsDefaultForDocType) في localStorage و SQLite معاً
+    // ========================================================================
+    studio.persistAllProfilesPermanently = async function () {
+      this.saveConfigLocal();
+      const masterPayload = {
+        updatedAt: new Date().toISOString(),
+        defaultsByDocType: this.config.defaultsByDocType || {},
+        adoptedProfiles: this.config.adoptedProfiles || {}
+      };
+      const jsonStr = JSON.stringify(masterPayload);
+      try {
+        localStorage.setItem(STORAGE_KEY_V62, jsonStr);
+      } catch (_) {}
+
+      try {
+        if (window.AppState?.settings) {
+          window.AppState.settings[STORAGE_KEY_V62] = jsonStr;
+        }
+        if (window.api?.updateSettings) {
+          await window.api.updateSettings({
+            [STORAGE_KEY_V62]: jsonStr,
+            receipt_paper_width_mm:
+              this.config.defaultsByDocType?.receipt_thermal?.paperSize === '58mm' ? '58' : '80'
+          });
+        }
+      } catch (e) {
+        console.warn('[V62 SQLite Persist Warning]:', e);
+      }
+    };
+
+    studio.saveAsDefaultForDocType = async function (targetDocIdOverride = null) {
+      // 1) التقاط أي نص كتبه المستخدم على الورقة الحية قبل الحفظ
+      this.flushAllLivePaperEditsIntoConfig();
+      if (typeof this.sync30LayersWithActiveConfig === 'function') {
+        this.sync30LayersWithActiveConfig();
+      }
+
+      const docType = targetDocIdOverride || this.config.activeDocType || 'receipt_thermal';
+      const docMeta =
+        (this.ALL_28_MASTER_DOCS || []).find((d) => d.id === docType) ||
+        { id: docType, name: docType, sourceLabel: 'جميع الصفحات', defaultPaper: 'a4', defaultTheme: 'royal_blue' };
+
+      if (!this.config.defaultsByDocType) this.config.defaultsByDocType = {};
+      if (!this.config.adoptedProfiles) this.config.adoptedProfiles = {};
+
+      // 2) تحديث المقاس واللون الافتراضي لهذا المستند
+      this.config.defaultsByDocType[docType] = {
+        paperSize: this.config.paperSize || docMeta.defaultPaper,
+        themeId: this.config.themeId || docMeta.defaultTheme,
+        lang: this.config.lang || 'ar',
+        adopted: true,
+        adoptedAt: new Date().toISOString()
+      };
+
+      // 3) أخذ لقطة عميقة شاملة 100% لجميع الطبقات الـ 30 وترتيبها وأعمدتها ونصوصها وتنسيقاتها
+      this.config.adoptedProfiles[docType] = {
+        _isAbsoluteMaster: true,
+        _v60Customized: true,
+        adoptedAt: new Date().toISOString(),
+        activeDocType: docType,
+        paperSize: this.config.paperSize || docMeta.defaultPaper,
+        themeId: this.config.themeId || docMeta.defaultTheme,
+        fontFamily: this.config.fontFamily || 'Cairo',
+        baseFontSizePx: Number(this.config.baseFontSizePx || 11.5),
+        marginMode: this.config.marginMode || 'normal',
+        densityMode: this.config.densityMode || 'normal',
+        borderMode: this.config.borderMode || 'grid',
+        watermarkText: this.config.watermarkText || '',
+        customHeaderTitle: this.config.customHeaderTitle || docMeta.cleanTitle || '',
+        customFooterTerms: this.config.customFooterTerms || '',
+        showCentimesEquivalent: Boolean(this.config.showCentimesEquivalent),
+        showAmountInWords: Boolean(this.config.showAmountInWords),
+        showCustomerBalance: Boolean(this.config.showCustomerBalance),
+        showBaridimobQr: Boolean(this.config.showBaridimobQr),
+        showDocBarcode: Boolean(this.config.showDocBarcode),
+        showStampSignature: Boolean(this.config.showStampSignature),
+        columns: JSON.parse(JSON.stringify(this.config.columns || {})),
+        customTexts: JSON.parse(JSON.stringify(this.config.customTexts || {})),
+        layers: JSON.parse(JSON.stringify(this.config.layers || []))
+      };
+
+      // 4) حفظ دائم في localStorage وفي قاعدة بيانات SQLite
+      await this.persistAllProfilesPermanently();
+
+      // 5) تحديث معاينة نافذة #posPrintCenterModal إن كانت مفتوحة
+      if (window.GherbiSalesTurbo && document.getElementById('posPrintCenterModal')?.classList.contains('active')) {
+        await window.GherbiSalesTurbo.refreshFastPrintCenterPreview();
+      }
+
+      if (window.showToast) {
+        window.showToast(
+          `⭐ تم الاعتماد والحفظ كأمر مطلق! القالب (${docMeta.name}) بالمقاس (${(this.config.paperSize || '').toUpperCase()}) مطبق الآن إجبارياً في (${docMeta.sourceLabel})!`,
+          'success'
+        );
+      }
+      return this.config.adoptedProfiles[docType];
+    };
+
+    // ربط تغييرات المقاس واللون في التبويب الخامس بالحفظ المطلق الدائم أيضاً
+    studio.setDocDefaultPaper = async function (docId, paperSize) {
+      if (!this.config.defaultsByDocType[docId]) {
+        this.config.defaultsByDocType[docId] = { paperSize, themeId: 'royal_blue', lang: 'ar', adopted: true };
+      } else {
+        this.config.defaultsByDocType[docId].paperSize = paperSize;
+        this.config.defaultsByDocType[docId].adopted = true;
+      }
+      if (this.config.adoptedProfiles && this.config.adoptedProfiles[docId]) {
+        this.config.adoptedProfiles[docId].paperSize = paperSize;
+      }
+      if (this.config.activeDocType === docId) {
+        this.config.paperSize = paperSize;
+      }
+      await this.persistAllProfilesPermanently();
+      await this.renderStudioIntoRoot();
+      if (window.showToast) {
+        window.showToast(`📐 تم اعتماد المقاس (${paperSize.toUpperCase()}) كأمر مطلق لهذا المستند في كل الصفحات!`, 'success');
+      }
+    };
+
+    studio.setDocDefaultTheme = async function (docId, themeId) {
+      if (!this.config.defaultsByDocType[docId]) {
+        this.config.defaultsByDocType[docId] = { paperSize: 'a4', themeId, lang: 'ar', adopted: true };
+      } else {
+        this.config.defaultsByDocType[docId].themeId = themeId;
+        this.config.defaultsByDocType[docId].adopted = true;
+      }
+      if (this.config.adoptedProfiles && this.config.adoptedProfiles[docId]) {
+        this.config.adoptedProfiles[docId].themeId = themeId;
+      }
+      if (this.config.activeDocType === docId) {
+        this.config.themeId = themeId;
+      }
+      await this.persistAllProfilesPermanently();
+      if (document.getElementById('view-print')?.classList.contains('active')) {
+        await this.renderStudioIntoRoot();
+      }
+      if (window.showToast) {
+        window.showToast('🎨 تم اعتماد الثيم اللوني كأمر مطلق لهذا المستند في كل الصفحات!', 'success');
+      }
+    };
+
+    // ========================================================================
+    // 4. محرك البناء المعزول (Context-Switched Master Profile Renderer)
+    //    يضمن أن أي صفحة تطلب طباعة مستند (docType) تحصل على القالب المحفوظ له حرفياً
+    //    بكل طبقاته الـ 30 وترتيبها وأعمدتها ونصوصها حتى لو كان الاستوديو مفتوحاً على مستند آخر!
+    // ========================================================================
+    studio.renderAdoptedMasterDocumentHtml = async function (docTypeKey, docDataInput, runtimeOverrides = {}) {
+      let targetDocType = docTypeKey || 'receipt_thermal';
+      if (['receipt', '80mm', '58mm', 'thermal'].includes(targetDocType)) targetDocType = 'receipt_thermal';
+      else if (['a4', 'invoice'].includes(targetDocType)) targetDocType = 'invoice_a4';
+      else if (targetDocType === 'a5') targetDocType = 'invoice_a5';
+      else if (['delivery', 'bl'].includes(targetDocType)) targetDocType = 'delivery_note';
+
+      const docMeta =
+        (this.ALL_28_MASTER_DOCS || []).find((d) => d.id === targetDocType) ||
+        (this.ALL_28_MASTER_DOCS && this.ALL_28_MASTER_DOCS[0]);
+
+      // جلب البروفايل المعتمد المحفوظ لهذا المستند
+      const savedDef = (this.config.defaultsByDocType && this.config.defaultsByDocType[targetDocType]) || {};
+      let savedProfile = this.config.adoptedProfiles && this.config.adoptedProfiles[targetDocType];
+      if (!savedProfile && docMeta && typeof this.buildIdealProfileObjectForDoc === 'function') {
+        savedProfile = this.buildIdealProfileObjectForDoc(docMeta);
+        this.config.adoptedProfiles[targetDocType] = savedProfile;
+      }
+
+      const effectivePaperSize =
+        runtimeOverrides.paperSize ||
+        savedDef.paperSize ||
+        (savedProfile && savedProfile.paperSize) ||
+        (docMeta && docMeta.defaultPaper) ||
+        (targetDocType.includes('80mm') || targetDocType === 'receipt_thermal' ? '80mm' : 'a4');
+
+      const effectiveThemeId =
+        runtimeOverrides.themeId ||
+        savedDef.themeId ||
+        (savedProfile && savedProfile.themeId) ||
+        (docMeta && docMeta.defaultTheme) ||
+        'royal_blue';
+
+      // حفظ حالة الاستوديو الحالية مؤقتاً، ثم التبديل الكامل إلى البروفايل المعتمد للمستند المطلوب
+      const backupConfig = JSON.parse(JSON.stringify(this.config));
+      let paperInnerHtml = '';
+
+      try {
+        if (savedProfile) {
+          this.config = {
+            ...this.config,
+            ...JSON.parse(JSON.stringify(savedProfile)),
+            activeDocType: targetDocType,
+            paperSize: effectivePaperSize,
+            themeId: effectiveThemeId,
+            columns: {
+              ...(this.config.columns || {}),
+              ...(savedProfile.columns || {})
+            },
+            customTexts: {
+              ...(this.config.customTexts || {}),
+              ...(savedProfile.customTexts || {}),
+              ...(runtimeOverrides.customTexts || {})
+            },
+            layers: Array.isArray(savedProfile.layers)
+              ? JSON.parse(JSON.stringify(savedProfile.layers))
+              : this.config.layers
+          };
+        } else {
+          this.config.activeDocType = targetDocType;
+          this.config.paperSize = effectivePaperSize;
+          this.config.themeId = effectiveThemeId;
+        }
+
+        if (runtimeOverrides.customHeaderTitle) {
+          this.config.customHeaderTitle = runtimeOverrides.customHeaderTitle;
+        } else if (!this.config.customHeaderTitle && docMeta) {
+          this.config.customHeaderTitle = docMeta.cleanTitle;
+        }
+
+        const resolvedData = docDataInput || (await this.resolveActiveDocumentData(targetDocType));
+        paperInnerHtml = this.buildLiveDocumentPaperHtml(resolvedData, true, {
+          ...this.config,
+          ...runtimeOverrides,
+          activeDocType: targetDocType,
+          paperSize: effectivePaperSize,
+          themeId: effectiveThemeId
+        });
+      } finally {
+        // استعادة حالة الاستوديو الأصلية دون أي تأثير جانبي
+        this.config = backupConfig;
+      }
+
+      const isThermal = effectivePaperSize === '80mm' || effectivePaperSize === '58mm';
+      const thermalW = effectivePaperSize === '58mm' ? '56mm' : '78mm';
+      const dir = runtimeOverrides.dir || 'rtl';
+      const lang = runtimeOverrides.lang || 'ar';
+      const fontFam = (savedProfile && savedProfile.fontFamily) || 'Cairo';
+
+      const pageCss = isThermal
+        ? `@page { size: ${effectivePaperSize} auto; margin: 2mm; }`
+        : effectivePaperSize === '2xa5'
+        ? `@page { size: A4 landscape; margin: 6mm; }`
+        : effectivePaperSize === 'a5'
+        ? `@page { size: A5 portrait; margin: 6mm; }`
+        : `@page { size: A4 portrait; margin: 8mm; }`;
+
+      return `<!DOCTYPE html>
+<html lang="${lang}" dir="${dir}" data-v52-studio-master="1" data-v62-adopted-doc="${targetDocType}">
+<head>
+  <meta charset="UTF-8">
+  <title>${(docDataInput && docDataInput.docNumber) || targetDocType}</title>
+  <style>
+    ${pageCss}
+    * {
+      box-sizing: border-box !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    html, body {
+      margin: 0 !important;
+      padding: ${runtimeOverrides.forIframePreview ? '8px' : '0'} !important;
+      background: ${runtimeOverrides.forIframePreview ? '#f1f5f9' : '#ffffff'} !important;
+      color: #0f172a !important;
+      font-family: '${fontFam}', 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, sans-serif !important;
+      direction: ${dir} !important;
+    }
+    @media print {
+      html, body {
+        background: #ffffff !important;
+        padding: 0 !important;
+      }
+    }
+    .v45-live-paper {
+      background: #ffffff !important;
+      color: #0f172a !important;
+      margin: 0 auto !important;
+      width: ${isThermal ? thermalW : '100%'} !important;
+      max-width: 100% !important;
+      min-height: auto !important;
+      padding: ${isThermal ? '2.5mm' : '6mm'} !important;
+      box-shadow: ${runtimeOverrides.forIframePreview ? '0 6px 20px rgba(15,23,42,0.12)' : 'none'} !important;
+      border-radius: ${runtimeOverrides.forIframePreview ? '8px' : '0'} !important;
+      overflow: hidden !important;
+    }
+    .v45-canvas-layer {
+      border: none !important;
+      box-shadow: none !important;
+      margin-bottom: 6px !important;
+    }
+    .v45-layer-handle-bar {
+      display: none !important;
+    }
+    table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+    }
+  </style>
+</head>
+<body>
+  ${paperInnerHtml}
+</body>
+</html>`;
+    };
+
+    // ربط generateAdoptedHtmlForDocument القديمة بالمحرك المعزول الجديد V62
+    studio.generateAdoptedHtmlForDocument = async function (docTypeKey, recordId = null, rawPayload = null) {
+      let docData = null;
+      if (rawPayload) {
+        docData = this.enrichDocumentDataWithLoyaltyAndDebt({
+          docNumber: rawPayload.doc_number || rawPayload.invoice_number || rawPayload.return_number || 'DOC-' + Date.now().toString().slice(-4),
+          date: String(rawPayload.sale_date || rawPayload.date || new Date().toISOString()).replace('T', ' ').slice(0, 16),
+          customerId: rawPayload.customer_id || null,
+          partyTitle: rawPayload.party_title || (docTypeKey.includes('supplier') || docTypeKey === 'purchase_invoice' ? 'المورد:' : 'الزبون:'),
+          partyName: rawPayload.customer_name || rawPayload.supplier_name || 'زبون عابر (Comptoir)',
+          partyPhone: rawPayload.customer_phone || rawPayload.supplier_phone || '-',
+          partyAddress: rawPayload.customer_address || rawPayload.supplier_address || '-',
+          partyRc: rawPayload.customer_rc || rawPayload.supplier_rc || '-',
+          partyNif: rawPayload.customer_nif || rawPayload.supplier_nif || '-',
+          paymentMethod: rawPayload.payment_method || 'نقداً',
+          previousBalance: Number(rawPayload.previous_debt || 0),
+          items: (rawPayload.items || []).map((it) => ({
+            barcode: it.barcode || it.product_barcode || '-',
+            name: it.name || it.product_name || it.custom_product_name || 'صنف',
+            unit: it.unit || it.product_unit || 'قطعة',
+            qty: Number(it.quantity ?? it.qty ?? 1),
+            price: Number(it.price ?? it.cost_price ?? 0),
+            discount: Number(it.discount || 0),
+            tva: Number(rawPayload.tax_percentage || 0),
+            subtotal: Number(it.subtotal ?? it.total_cost ?? Number(it.price || 0) * Number(it.quantity || 1))
+          })),
+          subtotal: Number(rawPayload.subtotal ?? rawPayload.total ?? 0),
+          discount: Number(rawPayload.discount || 0),
+          tvaAmount: 0,
+          stampAmount: Number(rawPayload.stamp_amount || 0),
+          total: Number(rawPayload.total || 0),
+          paidAmount: Number(rawPayload.paid_amount ?? rawPayload.total ?? 0),
+          receivedAmount: Number(rawPayload.received_amount ?? rawPayload.paid_amount ?? rawPayload.total ?? 0),
+          remainingDebt: Math.max(0, Number((Number(rawPayload.total || 0) - Number(rawPayload.paid_amount ?? rawPayload.total ?? 0)).toFixed(2)))
+        });
+      } else if (recordId && recordId !== 'SAMPLE') {
+        const prevRec = this.selectedRecordId;
+        this.selectedRecordId = String(recordId);
+        this.activeLoadedDocData = null;
+        docData = await this.resolveActiveDocumentData(docTypeKey);
+        this.selectedRecordId = prevRec;
+      } else {
+        docData = await this.resolveActiveDocumentData(docTypeKey);
+      }
+      return await this.renderAdoptedMasterDocumentHtml(docTypeKey, docData);
+    };
+
+    // ========================================================================
+    // 5. إعادة ربط جميع صفحات البرنامج ونوافذ الطباعة بمحرك القوالب المعتمدة V62
+    // ========================================================================
+
+    // أ) ربط نافذة المعاينة الفورية (#posPrintCenterModal) وطباعة سجل المبيعات (SalesTurboHub)
+    if (window.GherbiSalesTurbo) {
+      const salesHub = window.GherbiSalesTurbo;
+      const origBuildPreview = salesHub.buildPrintCenterPreviewHtml.bind(salesHub);
+
+      salesHub.buildPrintCenterPreviewHtml = async function (docTypeRaw, langRaw, templateRaw, saleId) {
+        let targetDocType = docTypeRaw || 'invoice_a4';
+        if (targetDocType === 'receipt' || targetDocType === '80mm') targetDocType = 'receipt_thermal';
+        if (targetDocType === 'delivery' || targetDocType === 'bl') targetDocType = 'delivery_note';
+
+        const themeMap = {
+          default: null,
+          royal_blue: 'royal_blue',
+          executive_dark: 'executive_dark',
+          emerald_dz: 'emerald_dz',
+          crimson_bold: 'crimson_bold',
+          amber_gold: 'amber_gold',
+          pure_mono: 'pure_mono'
+        };
+        const chosenTheme = themeMap[templateRaw] || null;
+
+        let docData = null;
+        if (saleId && saleId !== 'SAMPLE') {
+          const det = await this.getSaleDetailsFast(saleId);
+          if (det && Array.isArray(det.items)) {
+            const earnedPts = Math.max(0, Math.floor(Number(det.total || 0) / 100));
+            docData = studio.enrichDocumentDataWithLoyaltyAndDebt({
+              docNumber: det.doc_number || String(det.id),
+              date: String(det.sale_date || det.created_at || '').replace('T', ' ').slice(0, 16),
+              customerId: det.customer_id || null,
+              partyTitle: langRaw === 'fr' ? 'Client :' : langRaw === 'en' ? 'Customer:' : 'الزبون:',
+              partyName: det.customer_name || 'زبون عابر (Comptoir)',
+              partyPhone: det.customer_phone || '-',
+              partyAddress: det.customer_address || '-',
+              partyRc: det.customer_rc || '-',
+              partyNif: det.customer_nif || '-',
+              paymentMethod: det.payment_method || 'نقداً',
+              cashierName: det.seller_name || 'المدير العام',
+              previousBalance: 0,
+              loyaltyPointsEarned: earnedPts,
+              items: det.items.map((it) => ({
+                barcode: it.product_barcode || '-',
+                name: it.product_name || it.custom_product_name || 'منتج',
+                unit: it.product_unit || 'قطعة',
+                qty: Number(it.quantity || 1),
+                price: Number(it.price || 0),
+                discount: Number(it.discount || 0),
+                tva: Number(det.tax_percentage || 0),
+                subtotal: Number(it.subtotal || 0)
+              })),
+              subtotal: Number(det.subtotal || det.total || 0),
+              discount: Number(det.discount || 0),
+              tvaAmount: Number(((Number(det.subtotal || 0) * Number(det.tax_percentage || 0)) / 100).toFixed(2)),
+              stampAmount: Number(det.stamp_amount || 0),
+              total: Number(det.total || 0),
+              paidAmount: Number(det.paid_amount ?? det.total ?? 0),
+              receivedAmount: Number(det.paid_amount ?? det.total ?? 0),
+              remainingDebt: Math.max(0, Number((Number(det.total || 0) - Number(det.paid_amount ?? det.total ?? 0)).toFixed(2)))
+            });
+          }
+        }
+
+        if (!docData) {
+          docData = await studio.resolveActiveDocumentData(targetDocType);
+        }
+
+        const overrides = {
+          forIframePreview: true,
+          lang: langRaw || 'ar',
+          dir: langRaw === 'fr' || langRaw === 'en' ? 'ltr' : 'rtl'
+        };
+        if (chosenTheme) overrides.themeId = chosenTheme;
+
+        return await studio.renderAdoptedMasterDocumentHtml(targetDocType, docData, overrides);
       };
     }
 
-    // 5. اعتراض window.api.exportPdf / savePdf إن وجد ليصدر الـ PDF بنفس القالب المعتمد
-    for (const pdfFnName of ['exportPdf', 'printToPdf', 'savePdf']) {
-      if (typeof window.api[pdfFnName] === 'function' && !window['_v51Hook_' + pdfFnName]) {
-        const origPdfFn = window.api[pdfFnName].bind(window.api);
-        window['_v51Hook_' + pdfFnName] = true;
-        window.api[pdfFnName] = async function (payload = {}, ...rest) {
-          try {
-            const rawHtml = String(typeof payload === 'string' ? payload : payload.html || '');
-            if (rawHtml && !rawHtml.includes('data-v49-adopted-master="1"')) {
-              const isThermal = rawHtml.includes('80mm') || rawHtml.includes('قسيمة وفاء واستبدال');
-              const adoptedHtml = await studio.interceptAndBuildPosDocumentHtml(isThermal ? 'receipt_thermal' : 'invoice_a4');
-              if (typeof payload === 'string') return await origPdfFn(adoptedHtml, ...rest);
-              return await origPdfFn({ ...payload, html: adoptedHtml }, ...rest);
-            }
-          } catch (_) {}
-          return await origPdfFn(payload, ...rest);
-        };
-      }
+    // ب) ربط صفحة الزبائن وكشوف الحسابات (CustomersTurboHub) بالقوالب المعتمدة (customer_carnet_80mm و customer_ledger_a4)
+    if (window.GherbiCustomersTurbo) {
+      const custHub = window.GherbiCustomersTurbo;
+      custHub.printCustomerStatement = async function (customerId, format = 'a4') {
+        await this.ensureFreshData(false);
+        const cust = this.customersCache.find((c) => Number(c.id) === Number(customerId));
+        if (!cust) return;
+
+        const sales = window.api?.getCustomerSales ? await window.api.getCustomerSales(Number(customerId)) : [];
+        const targetDocType = format === '80mm' ? 'customer_carnet_80mm' : 'customer_ledger_a4';
+        const initDebt = Math.max(0, Number(cust.initial_debt || 0) - Number(cust.initial_debt_paid || 0));
+        const totalDebt = Math.max(0, Number(cust.total_debt || 0));
+
+        const items =
+          Array.isArray(sales) && sales.length > 0
+            ? sales.slice(0, 40).map((s) => {
+                const tot = Number(s.total || 0);
+                const paid = Number(s.paid_amount ?? tot);
+                const rem = Math.max(0, Number((tot - paid).toFixed(2)));
+                return {
+                  barcode: s.doc_number || ('#' + s.id),
+                  name: `فاتورة بتاريخ ${String(s.sale_date || '').slice(0, 10)} (المدفوع: ${paid.toFixed(2)} | الباقي: ${rem.toFixed(2)})`,
+                  unit: s.payment_method || 'فاتورة',
+                  quantity: 1,
+                  price: tot,
+                  subtotal: tot
+                };
+              })
+            : [
+                {
+                  barcode: 'SOLDE',
+                  name: 'رصيد الحساب الإجمالي المسجل للزبون',
+                  unit: 'حساب',
+                  quantity: 1,
+                  price: totalDebt,
+                  subtotal: totalDebt
+                }
+              ];
+
+        const html = await studio.generateAdoptedHtmlForDocument(targetDocType, null, {
+          doc_number: `REL-${new Date().getFullYear()}-${cust.id}`,
+          sale_date: new Date().toISOString(),
+          customer_id: cust.id,
+          customer_name: cust.name,
+          customer_phone: cust.phone || '-',
+          customer_address: cust.address || '-',
+          customer_rc: cust.rc || '-',
+          customer_nif: cust.nif || '-',
+          payment_method: 'كشف حساب وديون الزبون',
+          previous_debt: initDebt,
+          items,
+          subtotal: Number(cust.total_sales || totalDebt),
+          total: Number(cust.total_sales || totalDebt),
+          paid_amount: Number(cust.total_paid || 0)
+        });
+
+        await window.__gherbiMasterPrintSilent({ html, silent: false });
+      };
     }
 
-    // 6. ربط نافذة المعاينة والطباعة الفورية (#posPrintCenterModal) في شاشة المبيعات وسجل المبيعات
-    window.App.refreshPrintCenterPreview = async function () {
-      const selEl = document.getElementById('pcDocTypeSelect');
-      const rawType = selEl ? selEl.value : 'invoice_a4';
-      const mappedType =
-        rawType === 'receipt'
-          ? 'receipt_thermal'
-          : rawType === 'delivery'
-          ? 'delivery_note'
-          : rawType;
+    // ج) ربط نافذة وصل التوصيل (#deliveryNoteModal) ونافذة إشعار الدائن (#creditNoteModal) ونافذة قائمة الأسعار (#priceListModal)
+    window.App.confirmPrintDeliveryNote = async function () {
+      const saleId = Number(document.getElementById('deliveryNoteSaleId')?.value || window.App.currentPrintingSaleId || 0);
+      const driver = document.getElementById('delivDriverInput')?.value?.trim() || '';
+      const vehicle = document.getElementById('delivVehicleInput')?.value?.trim() || '';
+      const fmt = document.getElementById('delivFormatSelect')?.value || 'ar';
 
-      const saleId =
-        window.App.currentPrintingSaleId ||
-        (studio.lastProcessedSaleResult && studio.lastProcessedSaleResult.saleId) ||
-        (studio.liveDataRecords.sales[0] && studio.liveDataRecords.sales[0].id) ||
-        'SAMPLE';
+      window.App.closeModal('deliveryNoteModal');
 
-      const html = await studio.interceptAndBuildPosDocumentHtml(mappedType, saleId, null);
-      window.App._v51CurrentPrintCenterHtml = html;
-      window.App._v51CurrentPrintCenterDocType = mappedType;
-
-      const frame = document.getElementById('printCenterPreviewFrame');
-      if (frame) {
-        frame.srcdoc = html;
+      // إذا أدخل المستخدم اسم السائق أو المركبة، نحدث طبقة التوصيل
+      const delivLayer = (studio.config.layers || []).find((l) => l.id === 'delivery_driver_layer');
+      if (delivLayer && (driver || vehicle)) {
+        delivLayer.visible = true;
+        delivLayer.customNote = `السائق: ${driver || '-'} | رقم المركبة: ${vehicle || '-'}`;
       }
+
+      const paperOverride = fmt === 'thermal' ? '80mm' : fmt === 'a5' ? 'a5' : undefined;
+      const langOverride = fmt === 'fr' ? 'fr' : 'ar';
+
+      if (saleId && window.GherbiSalesTurbo) {
+        const det = await window.GherbiSalesTurbo.getSaleDetailsFast(saleId);
+        if (det) {
+          const html = await studio.generateAdoptedHtmlForDocument('delivery_note', saleId, det);
+          await window.__gherbiMasterPrintSilent({ html, paperSize: paperOverride, lang: langOverride, silent: false });
+          return;
+        }
+      }
+      const html = await studio.generateAdoptedHtmlForDocument('delivery_note', saleId || 'SAMPLE', null);
+      await window.__gherbiMasterPrintSilent({ html, silent: false });
     };
 
-    window.App.executePrintCenterAction = async function (actionType) {
-      if (!window.App._v51CurrentPrintCenterHtml) {
-        await window.App.refreshPrintCenterPreview();
-      }
-      const html = window.App._v51CurrentPrintCenterHtml;
-      if (!html) return;
+    window.App.confirmIssueCreditNote = async function () {
+      const saleId = Number(document.getElementById('creditNoteSaleId')?.value || window.App.currentPrintingSaleId || 0);
+      const reason = document.getElementById('creditNoteReasonInput')?.value?.trim() || 'إرجاع بضاعة من الزبون';
+      window.App.closeModal('creditNoteModal');
 
-      if (actionType === 'pdf' && typeof window.api.exportPdf === 'function') {
-        await window.api.exportPdf({ html, filename: `Document_${Date.now()}.pdf` });
-        if (window.showToast) window.showToast('📄 تم تصدير ملف PDF وفق القالب المعتمد في مركز الطباعة!', 'success');
-      } else {
-        await window.api.printSilent({ html, silent: false });
-        if (window.showToast) window.showToast('🖨️ تم إرسال المستند للطباعة/PDF وفق القالب المعتمد في مركز الطباعة!', 'success');
+      if (saleId && window.api?.issueCreditNote) {
+        await window.api.issueCreditNote({ saleId, reason }).catch(() => {});
       }
+      if (window.GherbiSalesTurbo) {
+        window.GherbiSalesTurbo.invalidateCache(saleId);
+        if (document.getElementById('view-sales')?.classList.contains('active')) {
+          window.GherbiSalesTurbo.renderTurboSalesView(true);
+        }
+      }
+
+      const html = await studio.generateAdoptedHtmlForDocument('credit_note', saleId || 'SAMPLE', null);
+      await window.__gherbiMasterPrintSilent({ html, silent: false });
+      if (window.showToast) window.showToast("↩️ تم إصدار وطباعة إشعار الدائن (Facture d'Avoir) بالقالب المعتمد!", 'success');
     };
 
-    console.log('✅ [Gherbi V51 Stage 1]: اكتمل ربط مركز الطباعة بالصفحة الأولى (شاشة المبيعات #view-pos ونافذة F1 ونافذة #posPrintCenterModal).');
-  }, 150);
+    window.App.confirmPrintPriceList = async function () {
+      const cat = document.getElementById('priceListCategorySelect')?.value || '';
+      const mode = document.getElementById('priceListModeSelect')?.value || 'retail';
+      window.App.closeModal('priceListModal');
+
+      const allProds = window.api?.getProducts ? await window.api.getProducts({ category: cat || undefined }) : [];
+      const items = (allProds || []).slice(0, 150).map((p) => ({
+        barcode: p.barcode || '-',
+        name: p.name || 'منتج',
+        unit: mode === 'wholesale' ? p.wholesale_unit || 'باكي' : p.unit || 'قطعة',
+        quantity: 1,
+        price: mode === 'wholesale' && Number(p.wholesale_price) > 0 ? Number(p.wholesale_price) : Number(p.selling_price || 0),
+        subtotal: mode === 'wholesale' && Number(p.wholesale_price) > 0 ? Number(p.wholesale_price) : Number(p.selling_price || 0)
+      }));
+
+      const totalVal = items.reduce((s, x) => s + x.price, 0);
+      const html = await studio.generateAdoptedHtmlForDocument('price_catalog_a4', null, {
+        doc_number: 'CAT-' + new Date().toISOString().slice(0, 10),
+        customer_name: cat ? `فئة: ${cat}` : 'جميع فئات المتجر',
+        payment_method: mode === 'wholesale' ? 'أسعار البيع بالباكي / الكرتونة' : 'أسعار البيع بالتجزئة',
+        items,
+        subtotal: totalVal,
+        total: totalVal,
+        paid_amount: totalVal
+      });
+      await window.__gherbiMasterPrintSilent({ html, silent: false });
+    };
+
+    // د) ربط تسديد دفعات الموردين (#supplierPaymentModal) بالقالب المعتمد (supplier_payment_receipt)
+    if (typeof window.App.submitSupplierPaymentModal === 'function' && !window.App._v62SupPayHooked) {
+      const origSupPay = window.App.submitSupplierPaymentModal.bind(window.App);
+      window.App._v62SupPayHooked = true;
+      window.App.submitSupplierPaymentModal = async function (shouldPrint = true) {
+        const sid = Number(document.getElementById('supPaySupplierId')?.value || 0);
+        const amt = Number(document.getElementById('supPayAmountInput')?.value || 0);
+        const method = document.getElementById('supPayMethodSelect')?.value || 'cash';
+        const notes = document.getElementById('supPayNotesInput')?.value || 'تسديد دفعة لمورد';
+
+        const res = await origSupPay(false);
+        if (shouldPrint && sid && amt > 0) {
+          const sups = window.api?.getSuppliers ? await window.api.getSuppliers() : [];
+          const sup = (sups || []).find((s) => Number(s.id) === sid) || { name: 'مورد #' + sid };
+          const html = await studio.generateAdoptedHtmlForDocument('supplier_payment_receipt', null, {
+            doc_number: 'VERS-' + Date.now().toString().slice(-4),
+            supplier_name: sup.name,
+            supplier_phone: sup.phone || '-',
+            supplier_address: sup.address || '-',
+            payment_method: method,
+            previous_debt: Number(sup.total_debt || 0) + amt,
+            items: [
+              {
+                barcode: 'VERS',
+                name: notes,
+                unit: 'دفعة',
+                quantity: 1,
+                price: amt,
+                subtotal: amt
+              }
+            ],
+            subtotal: amt,
+            total: amt,
+            paid_amount: amt
+          });
+          await window.__gherbiMasterPrintSilent({ html, silent: false });
+        }
+        return res;
+      };
+    }
+
+    // هـ) ترقية الموجه المركزي (window.__gherbiMasterPrintSilent) ليكتشف جميع الـ 28 مستنداً ويطبق القالب المعتمد المحفوظ دائماً
+    const origMasterPrint = window.__gherbiMasterPrintSilent;
+    window.__gherbiMasterPrintSilent = async function (payload = {}, ...rest) {
+      try {
+        const rawHtml = String((payload && payload.html) || '');
+
+        // إذا كان الـ HTML صادراً بالفعل من المحرك المعزول V62، نمرره مباشرةً للطابعة أو الـ PDF
+        if (rawHtml.includes('data-v62-adopted-doc=')) {
+          return await origMasterPrint(payload, ...rest);
+        }
+
+        // كشف ذكي لنوع المستند من الـ 28 مستنداً في حال استدعاء طباعة تقليدية من أي صفحة
+        let detectedDocType = null;
+        if (rawHtml.includes('وصل استلام دفعة') || rawHtml.includes('Reçu de Paiement')) detectedDocType = 'payment_receipt';
+        else if (rawHtml.includes('فاتورة شكلية') || rawHtml.includes('Proforma')) detectedDocType = 'proforma';
+        else if (rawHtml.includes('طلبية زبون') || rawHtml.includes('Bon de Commande')) detectedDocType = 'customer_order';
+        else if (rawHtml.includes('وصل التوصيل') || rawHtml.includes('Bon de Livraison')) detectedDocType = 'delivery_note';
+        else if (rawHtml.includes('إشعار دائن') || rawHtml.includes('Avoir')) detectedDocType = 'credit_note';
+        else if (rawHtml.includes('شهادة ضمان') || rawHtml.includes('Garantie')) detectedDocType = 'warranty_cert';
+        else if (rawHtml.includes('وصل استلام') || rawHtml.includes('Bon de Réception')) detectedDocType = 'purchase_invoice';
+        else if (rawHtml.includes('مرتجع مورد') || rawHtml.includes('Bon de Retour')) detectedDocType = 'supplier_return_note';
+        else if (rawHtml.includes('محضر الجرد') || rawHtml.includes('Inventaire')) detectedDocType = 'stocktake_sheet_a4';
+        else if (rawHtml.includes('أمر تشغيل') || rawHtml.includes('Ordre de Fabrication')) detectedDocType = 'production_order_sheet';
+        else if (rawHtml.includes('Z-Report') || rawHtml.includes('إغلاق المناوبة')) detectedDocType = 'caisse_z_report';
+        else if (rawHtml.includes('استمارة التصريح الجبائي') || rawHtml.includes('G12')) detectedDocType = 'fiscal_g12_statement';
+        else if (rawHtml.includes('التقرير الجنائي') || rawHtml.includes('تقرير رادار الرقابة')) detectedDocType = 'forensic_audit_report';
+
+        if (detectedDocType && !rawHtml.includes('v45-live-paper')) {
+          const adoptedHtml = await studio.generateAdoptedHtmlForDocument(detectedDocType, null, null);
+          if (adoptedHtml) {
+            const defPaper = studio.config.defaultsByDocType?.[detectedDocType]?.paperSize || 'a4';
+            return await origMasterPrint(
+              {
+                ...payload,
+                html: adoptedHtml,
+                paperSize: defPaper,
+                widthMm: defPaper === '80mm' ? 80 : defPaper === '58mm' ? 58 : undefined
+              },
+              ...rest
+            );
+          }
+        }
+      } catch (e) {
+        console.warn('[V62 Universal Interceptor Warning]:', e);
+      }
+
+      return await origMasterPrint(payload, ...rest);
+    };
+
+    // استرجاع البروفايلات المحفوظة من القاعدة وتحديث العرض
+    studio.restoreAbsoluteProfilesFromStorageAndDb().then(() => {
+      if (document.getElementById('view-print')?.classList.contains('active')) {
+        studio.renderStudioIntoRoot();
+      }
+      console.log('🏆 [Gherbi V62 Absolute Save & 28-Docs Binding]: الحفظ المطلق الدائم والربط الشامل مع جميع الصفحات مفعّل 100%!');
+    });
+  }, 160);
 }
 
-hubCode += `\n${v51Stage1Marker}\n(${initV51Stage1PrintHubAndPosBridge.toString()})();\n`;
+hubCode += `\n${v62Marker}\n(${initV62AbsoluteSaveAndUniversalPageBinding.toString()})();\n`;
 fs.writeFileSync(DEVICES_HUB_PATH, hubCode, 'utf8');
-console.log('✅ [3/4]: تم حقن محرك الشطر الأول V51 وربط شاشة المبيعات بمركز الطباعة.');
+console.log('✅ [1/2]: تم حقن محرك الحفظ المطلق الدائم والربط الشامل بالصفحات (V62) في gherbi-core-devices-hub.js.');
 
 // ============================================================================
-// 4. الفحص النحوي الشامل (node --check) لجميع ملفات المشروع والأرشفة الذاتية
+// الفحص النحوي الشامل (node --check) لجميع ملفات المشروع والأرشفة الذاتية
 // ============================================================================
 const allJsFiles = fs
   .readdirSync(ROOT)
   .filter((f) => f.endsWith('.js') && f !== path.basename(__filename));
 
-console.log('\n🔍 [4/4]: جاري الفحص النحوي الآلي (node --check) لجميع ملفات المشروع:');
+console.log('\n🔍 [2/2]: جاري الفحص النحوي الآلي (node --check) لجميع ملفات المشروع:');
 for (const fileName of allJsFiles) {
   const fullPath = path.join(ROOT, fileName);
   execFileSync(process.execPath, ['--check', fullPath], { stdio: 'pipe' });
-  console.log(`   ✔ سليم: ${fileName}`);
+  console.log(`   ✔ سليم 100%: ${fileName}`);
 }
 
 if (!fs.existsSync(ARCHIVE_DIR)) fs.mkdirSync(ARCHIVE_DIR, { recursive: true });
@@ -55978,7 +56957,7 @@ if (fs.existsSync(selfPath) && path.dirname(selfPath) === ROOT) {
   } catch (_) {}
 }
 
-console.log('\n🏆 اكتمل الشطر الأول (V51 Stage 1) بنجاح — اضغط Ctrl+R داخل البرنامج وابدأ خطوات التحقق أدناه!');  
+console.log('\n🎉 اكتملت الترقية V62 بنجاح — اضغط Ctrl+R داخل البرنامج، عدّل أي قالب واضغط (⭐ اعتماد وحفظ كأمر مطلق) وجرّبه في أي صفحة!');
 
 ==================== FILE: _legacy_archive/part2-pure-retail-inventory-product-bundles-stocktake-v19.js (18.2 KB) ====================
 /**

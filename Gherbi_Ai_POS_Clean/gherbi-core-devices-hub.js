@@ -2505,7 +2505,7 @@
             rawHtml.includes('التقرير الجنائي') ||
             rawHtml.includes('تقرير رادار الرقابة') ||
             rawHtml.includes('استمارة حساب الضريبة') ||
-            rawHtml.includes('Z-Report');
+            rawHtml.includes('data-classic-caisse-zreport="1"');
 
           if (isAlreadyV49) return payload;
 
@@ -4210,11 +4210,11 @@
           <div class="rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 shadow-sm space-y-4">
             <div class="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
               <div>
-                <h3 class="text-base font-black text-slate-900 dark:text-white">⚙️ قمرة القوالب الافتراضية المعتمدة لكل صفحات البرنامج (Par Défaut)</h3>
+                <h3 class="text-base font-black text-slate-900 dark:text-white"><span id="v63CockpitTitleAnchor">⚙️ قمرة القوالب الافتراضية المعتمدة لكل صفحات البرنامج</span> (Par Défaut)</h3>
                 <p class="text-xs text-slate-500">أي قالب تعتمده هنا يصبح أمراً مطلقاً في الكاشير وجميع الصفحات المرتبطة به</p>
               </div>
               <button type="button" onclick="window.GherbiPrintStudioV45.adoptAllIdealPresetsAcrossAllPages()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow cursor-pointer">
-                🚀 اعتماد القوالب المثالية لكل الـ 12 مستنداً دفعة واحدة
+                🚀 اعتماد القوالب المثالية لكل الـ 28 مستنداً دفعة واحدة
               </button>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">${cardsHtml}</div>
@@ -4820,7 +4820,7 @@
         rawHtml.includes('التقرير الجنائي') ||
         rawHtml.includes('تقرير رادار الرقابة') ||
         rawHtml.includes('استمارة حساب الضريبة') ||
-        rawHtml.includes('Z-Report');
+        rawHtml.includes('data-classic-caisse-zreport="1"');
 
       if (isAlreadyStudioMaster) {
         return await nativePrint(payload, ...rest);
@@ -5115,7 +5115,7 @@
         rawHtml.includes('التقرير الجنائي') ||
         rawHtml.includes('تقرير رادار الرقابة') ||
         rawHtml.includes('استمارة حساب الضريبة') ||
-        rawHtml.includes('Z-Report')
+        rawHtml.includes('data-classic-caisse-zreport="1"')
       ) {
         return payload;
       }
@@ -6717,4 +6717,6089 @@
 
     console.log('🏆 [Gherbi V55 Stage 3]: تم تفعيل مقاس 80mm الحراري الحقيقي ومحاذاة اللغة العربية لليمين (RTL) بنجاح 100%!');
   }, 160);
+})();
+
+/* ==================== [V56 TURBO POS ZERO-BLOCK & VIP RETAIL CREDIT SYSTEM] ==================== */
+(function initV56TurboPosAndVipRetailCreditSystem() {
+  // فهرس الذاكرة اللحظي O(1) لمنع أي توقف أو انتظار أثناء البيع أو البحث أو مسح الباركود
+  const PosTurboEngine = {
+    productsById: new Map(),
+    productByBarcode: new Map(),
+    productsByCategory: new Map(),
+    customersById: new Map(),
+    lastIndexedCount: 0,
+    searchDebounceTimer: null,
+
+    rebuildMemoryIndex() {
+      const prods = window.AppState?.products || [];
+      if (prods.length === 0) return;
+
+      this.productsById.clear();
+      this.productByBarcode.clear();
+      this.productsByCategory.clear();
+
+      for (let i = 0; i < prods.length; i++) {
+        const p = prods[i];
+        if (!p || p.hide_from_pos) continue;
+        const pid = Number(p.id);
+        this.productsById.set(pid, p);
+
+        if (p.barcode) {
+          this.productByBarcode.set(String(p.barcode).trim(), p);
+        }
+        if (p.plu_code) {
+          this.productByBarcode.set(String(p.plu_code).trim(), p);
+        }
+        if (Array.isArray(p.extra_barcodes)) {
+          for (const eb of p.extra_barcodes) {
+            const bcStr = String((typeof eb === 'object' ? eb.barcode : eb) || '').trim();
+            if (bcStr) this.productByBarcode.set(bcStr, p);
+          }
+        }
+        if (Array.isArray(p.variants)) {
+          for (const v of p.variants) {
+            if (v && v.barcode) this.productByBarcode.set(String(v.barcode).trim(), p);
+          }
+        }
+
+        const cat = String(p.category || 'عام').trim();
+        if (!this.productsByCategory.has(cat)) {
+          this.productsByCategory.set(cat, []);
+        }
+        this.productsByCategory.get(cat).push(p);
+      }
+      this.lastIndexedCount = prods.length;
+    },
+
+    rebuildCustomerIndex(customersList) {
+      const list = customersList || window.AppState?.customers || [];
+      this.customersById.clear();
+      for (const c of list) {
+        if (c && c.id) {
+          this.customersById.set(Number(c.id), c);
+        }
+      }
+    },
+
+    getCustomerFast(customerId) {
+      const cid = Number(customerId || 0);
+      if (!cid) return null;
+      if (this.customersById.has(cid)) return this.customersById.get(cid);
+      const list = window.AppState?.customers || [];
+      const found = list.find((c) => Number(c.id) === cid) || null;
+      if (found) this.customersById.set(cid, found);
+      return found;
+    }
+  };
+
+  const waitReady = setInterval(() => {
+    const studio = window.GherbiPrintStudioV45;
+    if (!studio || !window.App) return;
+    clearInterval(waitReady);
+
+    window.GherbiPosTurboV56 = PosTurboEngine;
+
+    // 1. تفعيل طبقة كشف الديون والكريدي التراكمي (debt_ledger_layer) تلقائياً في مركز الطباعة
+    //    حتى تظهر دائماً في المعاينة وفي التذاكر عندما يكون للزبون الوفي كريدي!
+    studio.setLayerVisibleQuiet('debt_ledger_layer', true);
+    studio.setLayerVisibleQuiet('loyalty_points_layer', true);
+    for (const docKey of ['receipt_thermal', 'invoice_a4', 'invoice_a5', 'invoice_2xa5', 'payment_receipt']) {
+      if (studio.config.adoptedProfiles && studio.config.adoptedProfiles[docKey] && Array.isArray(studio.config.adoptedProfiles[docKey].layers)) {
+        const dl = studio.config.adoptedProfiles[docKey].layers.find((l) => l.id === 'debt_ledger_layer');
+        if (dl) dl.visible = true;
+      }
+    }
+    studio.saveConfigLocal();
+
+    // 2. ترقية enrichDocumentDataWithLoyaltyAndDebt لحساب الكريدي السابق + كريدي الفاتورة الحالية + إجمالي الكريدي الجديد بدقة 100%
+    const origEnrich = studio.enrichDocumentDataWithLoyaltyAndDebt.bind(studio);
+    studio.enrichDocumentDataWithLoyaltyAndDebt = function (rawDoc) {
+      const d = origEnrich(rawDoc);
+      const customers = window.GherbiFastCacheV55?.customers || this.liveDataRecords.customers || window.AppState?.customers || [];
+      const custId = d.customerId ? Number(d.customerId) : null;
+      const pName = String(d.partyName || '').trim();
+      const isWalkinName = !pName || pName.includes('زبون عابر') || pName.toLowerCase().includes('comptoir');
+
+      const matchedCust = customers.find(
+        (c) =>
+          (custId && Number(c.id) === custId) ||
+          (!isWalkinName && pName.length > 2 && String(c.name || '').trim() === pName)
+      );
+
+      const docTotal = Number(d.total || 0);
+      const docPaid = Number(d.paidAmount ?? docTotal);
+      // كريدي هذه الفاتورة (الباقي غير المدفوع من فاتورة اليوم)
+      const currentInvoiceCredit = Math.max(0, Number((docTotal - docPaid).toFixed(2)));
+      d.remainingDebt = currentInvoiceCredit;
+
+      if (matchedCust) {
+        const totalCurrentCustDebtInDb = Math.max(0, Number(matchedCust.total_debt || 0));
+        // إذا كانت الفاتورة محفوظة للتو في قاعدة البيانات، فإن total_debt يشمل بالفعل currentInvoiceCredit
+        // لذا نحسب الدين السابق قبل هذه الفاتورة بدقة:
+        const calcPrevDebt =
+          rawDoc.previousBalance !== undefined && Number(rawDoc.previousBalance) > 0
+            ? Number(rawDoc.previousBalance)
+            : Math.max(0, Number((totalCurrentCustDebtInDb - currentInvoiceCredit).toFixed(2)));
+
+        d.previousBalance = calcPrevDebt;
+        d.cumulativeTotalDebt = Number((calcPrevDebt + currentInvoiceCredit).toFixed(2));
+        d.creditLimitDzd = Number(matchedCust.credit_limit || 0);
+      } else {
+        const prevB = Number(d.previousBalance || 0);
+        d.previousBalance = prevB;
+        d.cumulativeTotalDebt = Number((prevB + currentInvoiceCredit).toFixed(2));
+      }
+
+      return d;
+    };
+
+    // 3. تحسين تصميم طبقة الكريدي (debt_ledger_layer) في التذكرة الحرارية 80mm وفاتورة A4
+    //    لتعرض بوضوح: (الكريدي السابق | فاتورة اليوم | المدفوع اليوم | كريدي اليوم | إجمالي الكريدي المتبقي بالسنتيم)
+    const origBuildPaper = studio.buildLiveDocumentPaperHtml.bind(studio);
+    studio.buildLiveDocumentPaperHtml = function (docData, forPrintOutput = false, customOverrides = null) {
+      let html = origBuildPaper(docData, forPrintOutput, customOverrides);
+      if (!docData) return html;
+
+      const prevDebt = Number(docData.previousBalance || 0);
+      const currTotal = Number(docData.total || 0);
+      const currPaid = Number(docData.paidAmount ?? currTotal);
+      const currCredit = Math.max(0, Number((currTotal - currPaid).toFixed(2)));
+      const totalCumulativeCredit = Number((prevDebt + currCredit).toFixed(2));
+
+      // إذا كان الزبون عابراً وليس عليه أي دين سابق أو حالي ومخرج للطباعة، نخفي صندوق الكريدي لتبقى التذكرة رشيقة
+      if (forPrintOutput && docData.isWalkinCustomer && totalCumulativeCredit <= 0.009) {
+        return html;
+      }
+
+      const enhancedCreditBoxHtml = `
+        <div style="border:1.5px solid ${totalCumulativeCredit > 0.009 ? '#e11d48' : '#047857'};border-radius:8px;padding:6px 8px;background:${totalCumulativeCredit > 0.009 ? '#fff1f2' : '#f0fdf4'};font-size:10px;direction:rtl;text-align:right;margin-top:4px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-weight:900;color:${totalCumulativeCredit > 0.009 ? '#9f1239' : '#065f46'};border-bottom:1px dashed ${totalCumulativeCredit > 0.009 ? '#fda4af' : '#86efac'};padding-bottom:3px;margin-bottom:4px;">
+            <span>💳 كشف حساب الكريدي للزبون (Carnet de Crédit)</span>
+            <span style="font-family:monospace;font-size:9.5px;background:#ffffff;padding:0 6px;border-radius:99px;border:1px solid #cbd5e1;">
+              ${currCredit > 0.009 ? '📝 بيع بالكريدي' : totalCumulativeCredit > 0.009 ? '⚖️ ذمة مدينة' : '✅ حساب خالص (0 دين)'}
+            </span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;font-weight:800;color:#0f172a;">
+            <div>• الكريدي السابق: <strong style="font-family:monospace;"><bdi>${this.fmtDzd(prevDebt)}</bdi></strong></div>
+            <div>• فاتورة اليوم: <strong style="font-family:monospace;"><bdi>${this.fmtDzd(currTotal)}</bdi></strong></div>
+            <div style="color:#047857;">• المدفوع اليوم: <strong style="font-family:monospace;"><bdi>${this.fmtDzd(currPaid)}</bdi></strong></div>
+            <div style="color:${currCredit > 0.009 ? '#be123c' : '#475569'};">• كريدي اليوم: <strong style="font-family:monospace;"><bdi>${this.fmtDzd(currCredit)}</bdi></strong></div>
+          </div>
+          <div style="margin-top:4px;padding-top:3px;border-top:1px solid ${totalCumulativeCredit > 0.009 ? '#fecdd3' : '#bbf7d0'};display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:11px;color:${totalCumulativeCredit > 0.009 ? '#be123c' : '#047857'};">
+            <span>إجمالي الكريدي المتبقي:</span>
+            <span style="font-family:monospace;"><bdi>${this.fmtDzd(totalCumulativeCredit)}</bdi> (${this.fmtCentimes(totalCumulativeCredit)})</span>
+          </div>
+        </div>
+      `;
+
+      // استبدال صندوق debt_ledger_layer التقليدي بالصندوق المفصل الجديد
+      html = html.replace(
+        /<div[^>]*>\s*<div[^>]*>\s*⚖️ كشف وضعية الحساب والديون للزبون[\s\S]*?<\/div>\s*<\/div>/,
+        enhancedCreditBoxHtml
+      );
+
+      return html;
+    };
+
+    // ========================================================================
+    // 4. تسريع شاشة المبيعات (#view-pos) وإضافة شريط "الكريدي والوفاء الحي" في السلة
+    // ========================================================================
+    PosTurboEngine.rebuildMemoryIndex();
+    PosTurboEngine.rebuildCustomerIndex();
+
+    // أ) تسريع البحث في الكاشير (Debounce 60ms) لمنع أي تجميد أثناء الكتابة السريعة
+    if (typeof window.App.onPosSearchInput === 'function' && !window.App._v56FastSearchHooked) {
+      const origSearch = window.App.onPosSearchInput.bind(window.App);
+      window.App._v56FastSearchHooked = true;
+      window.App.onPosSearchInput = function (val) {
+        clearTimeout(PosTurboEngine.searchDebounceTimer);
+        PosTurboEngine.searchDebounceTimer = setTimeout(() => {
+          requestAnimationFrame(() => origSearch(val));
+        }, 55);
+      };
+    }
+
+    // ب) بناء وتحديث شريط الكريدي والوفاء الحي تحت اختيار الزبون في سلة المبيعات (#posCustomerSelect)
+    async function renderPosCustomerVipCreditWidget() {
+      const custSelect = document.getElementById('posCustomerSelect');
+      if (!custSelect || !custSelect.parentElement) return;
+
+      let widget = document.getElementById('v56PosVipCreditWidget');
+      if (!widget) {
+        widget = document.createElement('div');
+        widget.id = 'v56PosVipCreditWidget';
+        custSelect.parentElement.insertAdjacentElement('afterend', widget);
+      }
+
+      const selectedCustId = Number(custSelect.value || 0);
+      if (!selectedCustId) {
+        widget.innerHTML = `
+          <div class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-[11px] text-slate-500">
+            <span>🚶 <strong>زبون عابر (Comptoir)</strong> — اختر زبوناً وفياً لتفعيل الكريدي والنقاط</span>
+            <button type="button" onclick="window.App.openCustomerModal()" class="text-blue-600 dark:text-blue-400 font-black hover:underline cursor-pointer">+ تسجيل زبون وفي</button>
+          </div>
+        `;
+        return;
+      }
+
+      // جلب بيانات الزبون من الكاش السريع (أو تحديثها في الخلفية)
+      let cust = PosTurboEngine.getCustomerFast(selectedCustId);
+      if (!cust && window.GherbiFastCacheV55) {
+        const list = await window.GherbiFastCacheV55.getCustomersFast(false);
+        PosTurboEngine.rebuildCustomerIndex(list);
+        cust = PosTurboEngine.getCustomerFast(selectedCustId);
+      }
+      if (!cust) return;
+
+      const prevDebt = Math.max(0, Number(cust.total_debt || 0));
+      const creditLimit = Number(cust.credit_limit || 0);
+      const loyaltyPts = Math.max(0, Number(cust.loyalty_points || 0));
+      const isBlocked = Number(cust.is_credit_blocked || 0) === 1;
+
+      const cartTotalText = document.getElementById('cartTotalText')?.textContent || '0';
+      const currentCartTotal = parseFloat(cartTotalText.replace(/[^\d.-]/g, '')) || 0;
+      const projectedTotalDebt = Number((prevDebt + currentCartTotal).toFixed(2));
+      const isOverLimit = creditLimit > 0 && projectedTotalDebt > creditLimit;
+
+      widget.innerHTML = `
+        <div class="v56-pos-vip-credit-bar ${prevDebt > 0.009 || isBlocked ? 'is-vip-debt' : 'is-vip-clean'} space-y-1.5">
+          <div class="flex items-center justify-between gap-2">
+            <div class="font-black flex items-center gap-1 truncate">
+              <span>👑 ${cust.name}</span>
+              ${isBlocked ? '<span class="px-1.5 py-0.2 rounded bg-rose-600 text-white text-[9.5px]">🚫 الكريدي مجمد</span>' : ''}
+            </div>
+            <span class="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 font-mono font-black text-[10.5px] shrink-0">
+              ⭐ ${loyaltyPts} نقطة (${(loyaltyPts * 2).toFixed(0)} د.ج)
+            </span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-1.5 text-[10.5px] font-bold pt-1 border-t border-black/10 dark:border-white/10">
+            <div>
+              <span>💳 الكريدي السابق: </span>
+              <strong class="font-mono font-black ${prevDebt > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}">${prevDebt.toFixed(2)} د.ج</strong>
+            </div>
+            <div class="text-left">
+              <span>سقف الكريدي: </span>
+              <strong class="font-mono">${creditLimit > 0 ? creditLimit.toFixed(0) + ' د.ج' : 'مفتوح ∞'}</strong>
+            </div>
+          </div>
+
+          ${
+            isOverLimit
+              ? `<div class="p-1.5 rounded-lg bg-rose-600 text-white font-black text-[10px] text-center">
+                  ⚠️ تنبيه: إجمالي الكريدي مع هذه السلة (${projectedTotalDebt.toFixed(2)} د.ج) يتجاوز السقف المسموح (${creditLimit.toFixed(2)} د.ج)!
+                </div>`
+              : ''
+          }
+
+          <!-- أزرار الكريدي السريعة للزبون الوفي مباشرة من السلة -->
+          <div class="grid grid-cols-3 gap-1 pt-1">
+            <button type="button" onclick="window.GherbiVipCreditV56.quickSellFullCreditFromCart()"
+                    class="py-1.5 px-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black text-[10.5px] shadow-sm cursor-pointer transition flex items-center justify-center gap-1"
+                    title="تسجيل السلة الحالية بالكامل كريدي على حساب هذا الزبون وطباعة التذكرة (Alt+D)">
+              <span>📝 بيع كريدي (Alt+D)</span>
+            </button>
+            <button type="button" onclick="window.GherbiVipCreditV56.openPartialCreditCheckout()"
+                    class="py-1.5 px-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-black text-[10.5px] shadow-sm cursor-pointer transition flex items-center justify-center gap-1"
+                    title="الزبون يدفع جزءاً فقط والباقي يُسجل كريدي على حسابه (Alt+A)">
+              <span>⚖️ جزئي+كريدي (Ctrl+D)</span>
+            </button>
+            <button type="button" onclick="window.GherbiVipCreditV56.openQuickPayOldDebtModal(${cust.id})"
+                    class="py-1.5 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10.5px] shadow-sm cursor-pointer transition flex items-center justify-center gap-1"
+                    title="استلام دفعة لتسديد الكريدي القديم مع طباعة وصل">
+              <span>💵 تسديد (Alt+V)</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    // ========================================================================
+    // 5. متحكم عمليات الكريدي في التجزئة (GherbiVipCreditV56)
+    // ========================================================================
+    const VipCreditController = {
+      refreshWidget() {
+        requestAnimationFrame(() => renderPosCustomerVipCreditWidget());
+      },
+
+      // أ) بيع السلة بالكامل بالكريدي (آجل 100%) بضغطة زر واحدة أو F9
+      async quickSellFullCreditFromCart() {
+        const custId = Number(document.getElementById('posCustomerSelect')?.value || 0);
+        if (!custId) {
+          if (window.showToast) {
+            window.showToast('⚠️ يرجى اختيار الزبون الوفي من القائمة أولاً لتسجيل الكريدي على حسابه!', 'warning');
+          }
+          document.getElementById('posCustomerSelect')?.focus();
+          return;
+        }
+
+        const cust = PosTurboEngine.getCustomerFast(custId);
+        if (cust && Number(cust.is_credit_blocked || 0) === 1) {
+          if (window.showToast) {
+            window.showToast(`🚫 الكريدي مجمد للزبون (${cust.name})! يمكنك تفعيله من بطاقة الزبون.`, 'error');
+          }
+          return;
+        }
+
+        window.App.openCheckoutModal();
+        setTimeout(() => {
+          const methodSel = document.getElementById('chkPaymentMethod');
+          const paidInp = document.getElementById('chkPaidAmount');
+          if (methodSel) {
+            methodSel.value = 'credit';
+            if (typeof window.App.onCheckoutMethodChange === 'function') {
+              window.App.onCheckoutMethodChange('credit');
+            }
+          }
+          if (paidInp) {
+            paidInp.value = '0';
+          }
+          this.updateCheckoutModalCreditBanner();
+        }, 30);
+      },
+
+      // ب) فتح نافذة التسديد في وضع "دفع جزئي والباقي كريدي"
+      openPartialCreditCheckout() {
+        const custId = Number(document.getElementById('posCustomerSelect')?.value || 0);
+        if (!custId) {
+          if (window.showToast) {
+            window.showToast('⚠️ اختر الزبون الوفي أولاً حتى يُسجل باقي المبلغ في حساب الكريدي الخاص به!', 'warning');
+          }
+          document.getElementById('posCustomerSelect')?.focus();
+          return;
+        }
+        window.App.openCheckoutModal();
+        setTimeout(() => {
+          const paidInp = document.getElementById('chkPaidAmount');
+          if (paidInp) {
+            paidInp.focus();
+            paidInp.select();
+          }
+          this.updateCheckoutModalCreditBanner();
+        }, 40);
+      },
+
+      // ج) فتح نافذة تسديد دفعة من الكريدي القديم مباشرة من الكاشير
+      openQuickPayOldDebtModal(customerId) {
+        const cid = Number(customerId || document.getElementById('posCustomerSelect')?.value || 0);
+        if (!cid) return;
+        const cust = PosTurboEngine.getCustomerFast(cid);
+        const hidInput = document.getElementById('custPayCustomerId');
+        const titleEl = document.getElementById('custPayModalTitle');
+        const amtInp = document.getElementById('custPayAmountInput');
+        if (hidInput) hidInput.value = String(cid);
+        if (titleEl && cust) {
+          titleEl.innerHTML = `💵 تسديد (Alt+V) الزبون: <span class="text-blue-600">${cust.name}</span> (الدين: ${Number(cust.total_debt || 0).toFixed(2)} د.ج)`;
+        }
+        if (amtInp && cust) {
+          amtInp.value = String(Math.max(0, Number(cust.total_debt || 0)));
+        }
+        window.App.openModal('customerPaymentModal');
+      },
+
+      // د) تحديث نافذة التسديد (F1 - #checkoutModal) لعرض شريط الكريدي التلقائي (عندما يدفع الزبون أقل من المجموع أو أكثر منه)
+      updateCheckoutModalCreditBanner() {
+        const chkModal = document.getElementById('checkoutModal');
+        if (!chkModal || !chkModal.classList.contains('active')) return;
+
+        const custId = Number(document.getElementById('posCustomerSelect')?.value || 0);
+        const cust = PosTurboEngine.getCustomerFast(custId);
+
+        const totalDueEl = document.getElementById('chkTotalDue');
+        const totalDue = parseFloat(String(totalDueEl?.textContent || '0').replace(/[^\d.-]/g, '')) || 0;
+        const paidInp = document.getElementById('chkPaidAmount');
+        const rawPaid = paidInp && paidInp.value !== '' ? Number(paidInp.value) : totalDue;
+        const changeEl = document.getElementById('chkChangeAmount');
+
+        let banner = document.getElementById('v56CheckoutRetailCreditBox');
+        if (!banner && changeEl && changeEl.parentElement && changeEl.parentElement.parentElement) {
+          banner = document.createElement('div');
+          banner.id = 'v56CheckoutRetailCreditBox';
+          changeEl.parentElement.parentElement.insertAdjacentElement('afterend', banner);
+        }
+        if (!banner) return;
+
+        const prevDebt = cust ? Math.max(0, Number(cust.total_debt || 0)) : 0;
+        const shortageCredit = Math.max(0, Number((totalDue - rawPaid).toFixed(2)));
+        const extraCashOverTotal = Math.max(0, Number((rawPaid - totalDue).toFixed(2)));
+        const newCumulativeDebt = Number((prevDebt + shortageCredit).toFixed(2));
+
+        // 1. إذا كان المبلغ المدفوع أقل من إجمالي الفاتورة (تخلية الباقي كريدي!)
+        if (shortageCredit > 0.009) {
+          if (changeEl) {
+            changeEl.textContent = `كريدي: ${shortageCredit.toFixed(2)} د.ج`;
+            changeEl.className = 'w-full px-3 py-2.5 rounded-xl bg-rose-500/15 text-rose-600 font-mono font-black text-sm text-center';
+          }
+
+          if (!cust) {
+            banner.innerHTML = `
+              <div class="p-3 rounded-2xl bg-amber-500/15 border-2 border-amber-500 text-amber-900 dark:text-amber-300 text-xs font-black space-y-1.5 mt-2">
+                <div>⚠️ المبلغ المستلم (${rawPaid.toFixed(2)} د.ج) أقل من الفاتورة بـ (${shortageCredit.toFixed(2)} د.ج)!</div>
+                <div class="text-[11px] font-bold">اختر الزبون الوفي من السلة لتسجيل الـ (${shortageCredit.toFixed(2)} د.ج) كـ كريدي على حسابه.</div>
+              </div>
+            `;
+          } else {
+            banner.innerHTML = `
+              <div class="p-3 rounded-2xl bg-rose-500/10 border-2 border-rose-500/40 text-xs space-y-1.5 mt-2">
+                <div class="flex items-center justify-between font-black text-rose-700 dark:text-rose-300">
+                  <span>📝 سيتم تسجيل الباقي كريدي على حساب (${cust.name}):</span>
+                  <span class="font-mono text-sm">${shortageCredit.toFixed(2)} د.ج</span>
+                </div>
+                <div class="grid grid-cols-3 gap-1 pt-1 border-t border-rose-500/20 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                  <div>السابق: <strong class="font-mono">${prevDebt.toFixed(2)}</strong></div>
+                  <div>كريدي اليوم: <strong class="font-mono text-rose-600">+${shortageCredit.toFixed(2)}</strong></div>
+                  <div>الإجمالي الجديد: <strong class="font-mono text-rose-700 dark:text-rose-300">${newCumulativeDebt.toFixed(2)} د.ج</strong></div>
+                </div>
+                <div class="flex gap-1.5 pt-1">
+                  <button type="button" onclick="document.getElementById('chkPaidAmount').value='0'; window.App.recalcCheckoutModal();" class="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-black text-[10.5px] cursor-pointer">كريدي كلي (0 د.ج مدفوع)</button>
+                  <button type="button" onclick="window.App.setExactCash()" class="px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 font-black text-[10.5px] cursor-pointer">دفع كامل (${totalDue.toFixed(2)} د.ج)</button>
+                </div>
+              </div>
+            `;
+          }
+        } else if (cust && prevDebt > 0.009 && extraCashOverTotal > 0.009) {
+          // 2. إذا أعطى الزبون الوفي مبلغاً أكبر من فاتورة اليوم وكان عليه كريدي قديم!
+          const deductable = Math.min(prevDebt, extraCashOverTotal);
+          const remainingChangeToHandBack = Math.max(0, Number((extraCashOverTotal - deductable).toFixed(2)));
+          banner.innerHTML = `
+            <div class="p-3 rounded-2xl bg-emerald-500/15 border-2 border-emerald-500/40 text-xs space-y-1.5 mt-2">
+              <div class="font-black text-emerald-800 dark:text-emerald-300">
+                💡 الزبون (${cust.name}) عليه كريدي سابق قدره (${prevDebt.toFixed(2)} د.ج) والصرف المتبقي له (${extraCashOverTotal.toFixed(2)} د.ج):
+              </div>
+              <button type="button" onclick="window.GherbiVipCreditV56.applyChangeToOldCustomerDebt(${cust.id}, ${deductable}, ${remainingChangeToHandBack})"
+                      class="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow cursor-pointer transition">
+                ✅ خصم (${deductable.toFixed(2)} د.ج) من الكريدي القديم فوراً ${remainingChangeToHandBack > 0 ? `(وإرجاع صرف ${remainingChangeToHandBack.toFixed(2)} د.ج)` : ''}
+              </button>
+            </div>
+          `;
+        } else if (cust) {
+          // 3. زبون وفي يدفع المبلغ الكامل
+          banner.innerHTML = `
+            <div class="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs mt-2">
+              <span class="font-black text-amber-800 dark:text-amber-300">👑 ${cust.name} — الكريدي السابق: <strong class="font-mono">${prevDebt.toFixed(2)} د.ج</strong></span>
+              <button type="button" onclick="document.getElementById('chkPaidAmount').value='0'; document.getElementById('chkPaymentMethod').value='credit'; window.App.recalcCheckoutModal();"
+                      class="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-black text-[10.5px] cursor-pointer">
+                📝 تحويل إلى كريدي كلي
+              </button>
+            </div>
+          `;
+        } else {
+          banner.innerHTML = '';
+        }
+      },
+
+      // خصم الصرف المتبقي من الكريدي القديم للزبون الوفي بضغطة زر
+      async applyChangeToOldCustomerDebt(customerId, deductAmount, remainingChange) {
+        if (!customerId || deductAmount <= 0) return;
+        try {
+          await window.api?.addCustomerPayment?.(Number(customerId), Number(deductAmount), new Date().toISOString(), {
+            payment_method: 'cash',
+            notes: 'تسديد من الصرف المتبقي عند الشراء في الكاشير'
+          });
+          if (window.GherbiFastCacheV55) {
+            window.GherbiFastCacheV55.invalidate();
+            const updatedCusts = await window.GherbiFastCacheV55.getCustomersFast(true);
+            PosTurboEngine.rebuildCustomerIndex(updatedCusts);
+          }
+          const totalDue = parseFloat(String(document.getElementById('chkTotalDue')?.textContent || '0').replace(/[^\d.-]/g, '')) || 0;
+          const paidInp = document.getElementById('chkPaidAmount');
+          if (paidInp) paidInp.value = String(Number((totalDue + remainingChange).toFixed(2)));
+          window.App.recalcCheckoutModal();
+          this.refreshWidget();
+          if (window.showToast) {
+            window.showToast(`✅ تم خصم ${Number(deductAmount).toFixed(2)} د.ج من الكريدي القديم للزبون بنجاح!`, 'success');
+          }
+        } catch (err) {
+          if (window.showToast) window.showToast(err.message || 'تعذر خصم الكريدي', 'error');
+        }
+      }
+    };
+
+    window.GherbiVipCreditV56 = VipCreditController;
+
+    // 6. ربط recalcCheckoutModal و openCheckoutModal و recalcCart بشريط الكريدي الحي
+    if (typeof window.App.recalcCheckoutModal === 'function' && !window.App._v56RecalcChkHooked) {
+      const origRecalcChk = window.App.recalcCheckoutModal.bind(window.App);
+      window.App._v56RecalcChkHooked = true;
+      window.App.recalcCheckoutModal = function (...args) {
+        const res = origRecalcChk(...args);
+        VipCreditController.updateCheckoutModalCreditBanner();
+        return res;
+      };
+    }
+
+    if (typeof window.App.openCheckoutModal === 'function' && !window.App._v56OpenChkHooked) {
+      const origOpenChk = window.App.openCheckoutModal.bind(window.App);
+      window.App._v56OpenChkHooked = true;
+      window.App.openCheckoutModal = function (...args) {
+        const res = origOpenChk(...args);
+        setTimeout(() => VipCreditController.updateCheckoutModalCreditBanner(), 25);
+        return res;
+      };
+    }
+
+    if (typeof window.App.recalcCart === 'function' && !window.App._v56RecalcCartHooked) {
+      const origRecalcCart = window.App.recalcCart.bind(window.App);
+      window.App._v56RecalcCartHooked = true;
+      window.App.recalcCart = function (...args) {
+        const res = origRecalcCart(...args);
+        VipCreditController.refreshWidget();
+        return res;
+      };
+    }
+
+    // 7. ترقية submitSale لدعم "الدفع الجزئي وتخلية الباقي كريدي" للزبون الوفي تلقائياً
+    //    وإرسال البيانات الدقيقة (الدين السابق + المدفوع اليوم + كريدي اليوم + الإجمالي الجديد) إلى التذكرة!
+    const prevSubmitSale = window.App.submitSale.bind(window.App);
+    window.App.submitSale = async function (printMode = 'receipt', ...rest) {
+      const custSelect = document.getElementById('posCustomerSelect');
+      const custId = Number(custSelect?.value || 0);
+      const cust = PosTurboEngine.getCustomerFast(custId);
+
+      const totalDueEl = document.getElementById('chkTotalDue');
+      const totalDue = parseFloat(String(totalDueEl?.textContent || '0').replace(/[^\d.-]/g, '')) || 0;
+      const paidInp = document.getElementById('chkPaidAmount');
+      const methodSel = document.getElementById('chkPaymentMethod');
+
+      let rawPaid = paidInp && paidInp.value !== '' ? Number(paidInp.value) : totalDue;
+      if (methodSel && methodSel.value === 'credit' && rawPaid >= totalDue) {
+        rawPaid = 0;
+        if (paidInp) paidInp.value = '0';
+      }
+
+      const shortageCredit = Math.max(0, Number((totalDue - rawPaid).toFixed(2)));
+
+      // إذا كان هناك مبلغ متبقٍ غير مدفوع (كريدي كلي أو جزئي):
+      if (shortageCredit > 0.009) {
+        if (!custId) {
+          if (window.showToast) {
+            window.showToast('⚠️ لتسجيل الباقي (' + shortageCredit.toFixed(2) + ' د.ج) كريدي، يرجى اختيار الزبون الوفي أولاً!', 'warning');
+          }
+          return;
+        }
+        if (cust && Number(cust.is_credit_blocked || 0) === 1) {
+          if (window.showToast) {
+            window.showToast(`🚫 عذراً، الكريدي مجمد لهذا الزبون (${cust.name})!`, 'error');
+          }
+          return;
+        }
+        // إذا كان الدفع نقدياً ولكن المبلغ المدفوع أقل من الفاتورة، نحوله إلى بيع آجل/جزئي ليحفظ الباقي كدين في SQLite
+        if (methodSel && methodSel.value === 'cash' && rawPaid < totalDue) {
+          methodSel.value = 'credit';
+        }
+      }
+
+      const prevDebtBeforeSale = cust ? Math.max(0, Number(cust.total_debt || 0)) : 0;
+
+      // تنفيذ البيع والطباعة المعتمدة
+      const res = await prevSubmitSale(printMode, ...rest);
+
+      // تحديث فهرس الزبائن في الذاكرة فوراً بعد البيع ليظهر الرصيد الجديد مباشرة
+      if (window.GherbiFastCacheV55) {
+        window.GherbiFastCacheV55.invalidate();
+        const freshCusts = await window.GherbiFastCacheV55.getCustomersFast(true);
+        PosTurboEngine.rebuildCustomerIndex(freshCusts);
+      }
+      VipCreditController.refreshWidget();
+
+      if (shortageCredit > 0.009 && cust && window.showToast) {
+        const newDebt = Number((prevDebtBeforeSale + shortageCredit).toFixed(2));
+        window.showToast(
+          `📝 تم تسجيل كريدي (${shortageCredit.toFixed(2)} د.ج) على حساب (${cust.name}) — إجمالي الكريدي الآن: ${newDebt.toFixed(2)} د.ج`,
+          'info'
+        );
+      }
+
+      return res;
+    };
+
+    // 8. مراقبة تغيير الزبون المختار في الكاشير (#posCustomerSelect) واختصار لوحة المفاتيح F9 للبيع بالكريدي
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.id === 'posCustomerSelect') {
+        VipCreditController.refreshWidget();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      const viewPos = document.getElementById('view-pos');
+      if (viewPos && viewPos.classList.contains('active') && e.altKey && !e.ctrlKey && !e.shiftKey) {
+        if (e.code === 'KeyD' || e.key === 'd' || e.key === 'D' || e.key === 'ي') {
+          e.preventDefault();
+          VipCreditController.quickSellFullCreditFromCart();
+        } else if (e.code === 'KeyV' || e.key === 'v' || e.key === 'V' || e.key === 'ر') {
+          e.preventDefault();
+          VipCreditController.openQuickPayOldDebtModal();
+        }
+      }
+    });
+
+    // رسم الويدجت فوراً عند الإقلاع وتحديثه عند إضافة زبون جديد
+    setTimeout(() => {
+      PosTurboEngine.rebuildMemoryIndex();
+      PosTurboEngine.rebuildCustomerIndex();
+      VipCreditController.refreshWidget();
+    }, 300);
+
+    console.log('🚀 [Gherbi V56 Turbo POS & VIP Retail Credit]: شاشة المبيعات فائقة السرعة + نظام الكريدي الكلي والجزئي للزبون الوفي جاهز 100%!');
+  }, 140);
+})();
+
+/* ==================== [V59 CLEAN-ROOM 28 PRO TEMPLATES & FULL-WIDTH PRINT STUDIO] ==================== */
+(function initV59CleanRoom28ProTemplatesPrintStudio() {
+  // ==========================================================================
+  // القوالب الـ 28 الاحترافية الجاهزة (Tailor-Made Professional Par Défaut Templates)
+  // كل قالب مصمم خصيصاً لوظيفته ومرتبط بصفحته وجاهز للاستعمال المباشر بدون أي تعديل!
+  // ==========================================================================
+  const PRO_28_TEMPLATES = [
+    // ── المجموعة 1: المبيعات والكاشير (9 قوالب) ──
+    {
+      id: 'receipt_thermal',
+      num: 1,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '🧾 تذكرة كاشير حرارية (80mm / 58mm)',
+      cleanTitle: 'وصل مبيعات / Ticket de Caisse',
+      defaultPaper: '80mm',
+      defaultTheme: 'executive_dark',
+      sourcePage: 'pos',
+      sourceLabel: 'شاشة المبيعات والكاشير',
+      proDesc: 'تذكرة سوبرماركت حرارية متناسقة مع السنتيم وبطاقة الوفاء',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'loyalty_points_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'TIC-2026-0088',
+      samplePartyTitle: 'الزبون:',
+      samplePartyName: 'أمين بن يحيى (زبون وفي 👑)',
+      samplePaymentMethod: 'نقداً (Espèces)',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'مناديل مبللة ألترا جوي جوي (ULTRA JOY)', unit: 'علبة', qty: 1, price: 70, discount: 0, tva: 0, subtotal: 70 },
+        { barcode: '6130002000011', name: 'حفاضات أطفال جوي 72 قطعة (JOY BB 72)', unit: 'كيس', qty: 1, price: 145, discount: 0, tva: 0, subtotal: 145 },
+        { barcode: '6130006000017', name: 'غولد لاين ممتاز (GOLD LINE)', unit: 'قطعة', qty: 1, price: 125, discount: 0, tva: 0, subtotal: 125 }
+      ],
+      sampleTotal: 340,
+      samplePaid: 340,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'invoice_a4',
+      num: 2,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '📄 فاتورة مبيعات رسمية (A4)',
+      cleanTitle: 'فاتورة مبيعات تجارية / Facture Commerciale',
+      defaultPaper: 'a4',
+      defaultTheme: 'royal_blue',
+      sourcePage: 'sales',
+      sourceLabel: 'سجل المبيعات والضمان',
+      proDesc: 'فاتورة مؤسسات كاملة بالبيانات الجبائية والتفقيط بالحروف والختم',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'debt_ledger_layer', 'loyalty_points_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: true, tva: false, subtotal: true },
+      sampleDocNum: 'FAC-2026-0088',
+      samplePartyTitle: 'الزبون / المؤسسة:',
+      samplePartyName: 'مؤسسة الأمل للتجارة والتوزيع',
+      samplePaymentMethod: 'نقداً / بشيك',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'زيت مائدة إيليو 5 لتر (Elio Cevital)', unit: 'قارورة', qty: 10, price: 650, discount: 0, tva: 19, subtotal: 6500 },
+        { barcode: '6130002000011', name: 'حليب كانديا نصف دسم 1 لتر (Candia)', unit: 'كرتونة', qty: 5, price: 1800, discount: 0, tva: 19, subtotal: 9000 },
+        { barcode: '6130006000017', name: 'قهوة مطحونة بونال 250غ (Bonal)', unit: 'علبة', qty: 10, price: 320, discount: 0, tva: 19, subtotal: 3200 }
+      ],
+      sampleTotal: 18700,
+      samplePaid: 18700,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'invoice_a5',
+      num: 3,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '📑 فاتورة مبيعات مدمجة (A5)',
+      cleanTitle: 'فاتورة مبيعات مدمجة / Facture A5',
+      defaultPaper: 'a5',
+      defaultTheme: 'emerald_dz',
+      sourcePage: 'sales',
+      sourceLabel: 'سجل المبيعات',
+      proDesc: 'فاتورة نصف ورقة أنيقة وسريعة لتجارة التجزئة والجملة',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'debt_ledger_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'FA5-2026-0041',
+      samplePartyTitle: 'الزبون:',
+      samplePartyName: 'أمين بن يحيى (زبون وفي 👑)',
+      samplePaymentMethod: 'نقداً (Espèces)',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'مناديل مبللة ألترا جوي جوي', unit: 'علبة', qty: 2, price: 70, discount: 0, tva: 0, subtotal: 140 },
+        { barcode: '6130002000011', name: 'حفاضات أطفال جوي 72 قطعة', unit: 'كيس', qty: 2, price: 145, discount: 0, tva: 0, subtotal: 290 }
+      ],
+      sampleTotal: 430,
+      samplePaid: 430,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'invoice_2xa5',
+      num: 4,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '✂️ فاتورة مزدوجة (2×A5 في ورقة A4 — نسختان)',
+      cleanTitle: 'فاتورة مبيعات / Facture',
+      defaultPaper: '2xa5',
+      defaultTheme: 'royal_blue',
+      sourcePage: 'sales',
+      sourceLabel: 'سجل المبيعات (توفير 50% ورق)',
+      proDesc: 'نسخة للزبون ونسخة للأرشيف في ورقة A4 واحدة بالعرض',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'FAC-2026-0088',
+      samplePartyTitle: 'الزبون:',
+      samplePartyName: 'مؤسسة الأمل للتجارة',
+      samplePaymentMethod: 'نقداً',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'زيت مائدة إيليو 5 لتر', unit: 'قارورة', qty: 4, price: 650, discount: 0, tva: 0, subtotal: 2600 },
+        { barcode: '6130006000017', name: 'قهوة مطحونة بونال 250غ', unit: 'علبة', qty: 5, price: 320, discount: 0, tva: 0, subtotal: 1600 }
+      ],
+      sampleTotal: 4200,
+      samplePaid: 4200,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'delivery_note',
+      num: 5,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '🚚 وصل تسليم وتوصيل (Bon de Livraison)',
+      cleanTitle: 'وصل تسليم بضاعة / Bon de Livraison (BL)',
+      defaultPaper: 'a4',
+      defaultTheme: 'emerald_dz',
+      sourcePage: 'sales',
+      sourceLabel: 'سجل المبيعات والتوصيل',
+      proDesc: 'يركز على الكميات والوحدات وبيانات السائق والمركبة وإمضاء الاستلام',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'delivery_driver_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: false, discount: false, tva: false, subtotal: false },
+      sampleDocNum: 'BL-2026-0054',
+      samplePartyTitle: 'المرسل إليه (الزبون):',
+      samplePartyName: 'مؤسسة الأمل للتجارة — قسنطينة',
+      samplePaymentMethod: 'تسليم بضاعة بالمخزن',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'زيت مائدة إيليو 5 لتر (صندوق 4 قارورات)', unit: 'صندوق', qty: 15, price: 2600, discount: 0, tva: 0, subtotal: 39000 },
+        { barcode: '6130002000011', name: 'حليب كانديا نصف دسم 1 لتر (كرتونة 12 علبة)', unit: 'كرتونة', qty: 20, price: 1800, discount: 0, tva: 0, subtotal: 36000 }
+      ],
+      sampleTotal: 75000,
+      samplePaid: 75000,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'proforma',
+      num: 6,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '📋 فاتورة شكلية / عرض سعر (Proforma)',
+      cleanTitle: 'فاتورة شكلية (عرض سعر) / Facture Proforma',
+      defaultPaper: 'a4',
+      defaultTheme: 'royal_blue',
+      sourcePage: 'proformas',
+      sourceLabel: 'الفواتير الشكلية',
+      proDesc: 'عرض سعر رسمي للشركات والصفقات مع تفصيل HT و TVA ومدة الصلاحية',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'tax_ifu_breakdown_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: true, subtotal: true },
+      sampleDocNum: 'PRO-2026-0018',
+      samplePartyTitle: 'الجهة الطالبة للعرض:',
+      samplePartyName: 'مديرية الخدمات الجامعية — قسنطينة',
+      samplePaymentMethod: 'عرض سعر صالح لمدة 15 يوماً',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'تموين مواد غذائية أساسية (زيت مائدة 5 لتر)', unit: 'قارورة', qty: 50, price: 650, discount: 0, tva: 19, subtotal: 32500 },
+        { barcode: '6130008000022', name: 'كسكس ماما ممتاز 1 كغ', unit: 'كيس', qty: 100, price: 160, discount: 0, tva: 19, subtotal: 16000 }
+      ],
+      sampleTotal: 48500,
+      samplePaid: 0,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'customer_order',
+      num: 7,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '📦 سند طلبية زبون (Bon de Commande)',
+      cleanTitle: 'سند طلبية زبون / Bon de Commande (BC)',
+      defaultPaper: 'a4',
+      defaultTheme: 'amber_gold',
+      sourcePage: 'orders',
+      sourceLabel: 'طلبيات الزبائن',
+      proDesc: 'يوثق الأصناف المحجوزة للزبون، العربون المدفوع (Acompte)، والباقي عند التسليم',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'delivery_driver_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'BC-2026-0029',
+      samplePartyTitle: 'الزبون صاحب الطلبية:',
+      samplePartyName: 'فارس بوزيد (طلبية محجوزة)',
+      samplePaymentMethod: 'عربون مسبق + الباقي عند الاستلام',
+      sampleItems: [
+        { barcode: '6130007000030', name: 'شوكولاتة الطلاء ماكسون 350غ (كرتونة 24 علبة)', unit: 'كرتونة', qty: 2, price: 8000, discount: 0, tva: 0, subtotal: 16000 }
+      ],
+      sampleTotal: 16000,
+      samplePaid: 6000,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'credit_note',
+      num: 8,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: "↩️ إشعار دائن / مرتجع (Facture d'Avoir)",
+      cleanTitle: "إشعار دائن (مرتجع مبيعات) / Facture d'Avoir",
+      defaultPaper: 'a4',
+      defaultTheme: 'crimson_bold',
+      sourcePage: 'sales',
+      sourceLabel: 'سجل المبيعات والمرتجعات',
+      proDesc: 'وثيقة رسمية لإرجاع البضاعة وتخفيض دين الزبون أو رد المبلغ نقداً',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'debt_ledger_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'AV-2026-0009',
+      samplePartyTitle: 'الزبون المستفيد من الإشعار:',
+      samplePartyName: 'أمين بن يحيى (إرجاع من الفاتورة #76)',
+      samplePaymentMethod: 'خصم من رصيد الدين / استرداد',
+      sampleItems: [
+        { barcode: '6130006000017', name: 'مرتجع: غولد لاين (GOLD LINE) — استرجاع سليم للمخزن', unit: 'قطعة', qty: 1, price: 125, discount: 0, tva: 0, subtotal: 125 }
+      ],
+      sampleTotal: 125,
+      samplePaid: 125,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'warranty_cert',
+      num: 9,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '🛡️ شهادة ضمان رسمية (Certificat de Garantie)',
+      cleanTitle: 'شهادة ضمان رسمية / Certificat de Garantie',
+      defaultPaper: 'a5',
+      defaultTheme: 'royal_blue',
+      sourcePage: 'sales',
+      sourceLabel: 'سجل المبيعات والضمان',
+      proDesc: 'شهادة ضمان مختومة تتضمن الرقم التسلسلي S/N أو IMEI ومدة الضمان وشروطه',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'warranty_imei_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: true, name: true, unit: false, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'GAR-2026-0063',
+      samplePartyTitle: 'المستفيد من الضمان:',
+      samplePartyName: 'أمين بن يحيى',
+      samplePaymentMethod: 'ضمان رسمي لمدة 12 شهراً',
+      sampleItems: [
+        { barcode: 'SN-869412005478', name: 'جهاز إلكتروني / كهرومنزلي — مشمول بضمان المصنع لمدة 12 شهراً', unit: 'جهاز', qty: 1, price: 14500, discount: 0, tva: 0, subtotal: 14500 }
+      ],
+      sampleTotal: 14500,
+      samplePaid: 14500,
+      samplePrevDebt: 0
+    },
+
+    // ── المجموعة 2: الكريدي والديون والوفاء (7 قوالب) ──
+    {
+      id: 'payment_receipt',
+      num: 10,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (7)',
+      name: '💵 وصل قبض / تسديد دين (Reçu de Paiement 80mm)',
+      cleanTitle: 'وصل استلام دفعة / Reçu de Paiement',
+      defaultPaper: '80mm',
+      defaultTheme: 'royal_blue',
+      sourcePage: 'customers',
+      sourceLabel: 'الزبائن والديون والأقساط + الكاشير (Alt+V)',
+      proDesc: 'يوثق المبلغ المقبوض من الزبون، الدين السابق قبل الدفع، والرصيد المتبقي الجديد',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'credit_carnet_layer', 'totals_words_layer', 'footer_stamp_layer'],
+      idealCols: { index: false, barcode: false, name: true, unit: false, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'REC-2026-0112',
+      samplePartyTitle: 'استلمنا من الزبون:',
+      samplePartyName: 'أمين بن يحيى (زبون وفي 👑)',
+      samplePaymentMethod: 'دفعة نقدية لتسديد الكريدي',
+      sampleItems: [
+        { barcode: 'REC-112', name: 'دفعة تسديد نقدية على حساب الكريدي (خصم مباشر من الرصيد)', unit: 'دفعة', qty: 1, price: 200, discount: 0, tva: 0, subtotal: 200 }
+      ],
+      sampleTotal: 200,
+      samplePaid: 200,
+      samplePrevDebt: 460
+    },
+    {
+      id: 'customer_carnet_80mm',
+      num: 11,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (7)',
+      name: '📒 كشف حساب وديون الزبون حراري (Carnet 80mm)',
+      cleanTitle: 'كشف حساب الكريدي / Carnet de Crédit',
+      defaultPaper: '80mm',
+      defaultTheme: 'crimson_bold',
+      sourcePage: 'customers',
+      sourceLabel: 'مركز الديون (Ctrl+K) + بطاقة الزبون الوفي',
+      proDesc: 'تذكرة حرارية سريعة تلخص للزبون فواتيره الآجلة ودفعاته وصافي الكريدي المتبقي',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'credit_carnet_layer', 'loyalty_points_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: false, name: true, unit: false, qty: true, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'CARNET-0045',
+      samplePartyTitle: 'صاحب الكرني (الزبون):',
+      samplePartyName: 'أمين بن يحيى (FID-00003)',
+      samplePaymentMethod: 'كشف حساب الكريدي التراكمي',
+      sampleItems: [
+        { barcode: 'FAC-071', name: 'رصيد الفاتورة السابقة #71 (باقي غير مسدد)', unit: 'فاتورة', qty: 1, price: 320, discount: 0, tva: 0, subtotal: 320 },
+        { barcode: 'FAC-076', name: 'فاتورة مشتريات اليوم #76 (إجمالي 340 د.ج — دفع 200 د.ج)', unit: 'فاتورة', qty: 1, price: 140, discount: 0, tva: 0, subtotal: 140 }
+      ],
+      sampleTotal: 340,
+      samplePaid: 200,
+      samplePrevDebt: 320
+    },
+    {
+      id: 'pos_partial_credit_80mm',
+      num: 12,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (7)',
+      name: '💸 تذكرة بيع بالدفع الجزئي والباقي كريدي (80mm)',
+      cleanTitle: 'وصل بيع (دفع جزئي + الباقي كريدي)',
+      defaultPaper: '80mm',
+      defaultTheme: 'crimson_bold',
+      sourcePage: 'pos',
+      sourceLabel: 'شاشة المبيعات (دفع جزئي + كريدي Ctrl+D)',
+      proDesc: 'تذكرة كاشير تبرز السلع المشتراة اليوم، المبلغ المدفوع، والباقي المضاف لكرني الكريدي',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'credit_carnet_layer', 'loyalty_points_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'FAC-2026-0076',
+      samplePartyTitle: 'الزبون:',
+      samplePartyName: 'أمين بن يحيى (زبون وفي 👑)',
+      samplePaymentMethod: 'دفع جزئي والباقي كريدي',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'مناديل مبللة ألترا جوي جوي', unit: 'علبة', qty: 1, price: 70, discount: 0, tva: 0, subtotal: 70 },
+        { barcode: '6130002000011', name: 'حفاضات أطفال جوي 72 قطعة', unit: 'كيس', qty: 1, price: 145, discount: 0, tva: 0, subtotal: 145 },
+        { barcode: '6130006000017', name: 'غولد لاين ممتاز', unit: 'قطعة', qty: 1, price: 125, discount: 0, tva: 0, subtotal: 125 }
+      ],
+      sampleTotal: 340,
+      samplePaid: 200,
+      samplePrevDebt: 320
+    },
+    {
+      id: 'customer_ledger_a4',
+      num: 13,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (7)',
+      name: '📊 كشف حساب الزبون المفصل (Relevé de Compte A4)',
+      cleanTitle: 'كشف حساب زبون مفصل / Relevé de Compte Client',
+      defaultPaper: 'a4',
+      defaultTheme: 'royal_blue',
+      sourcePage: 'customers',
+      sourceLabel: 'الزبائن والديون وكشف الحساب',
+      proDesc: 'تقرير A4 رسمي يعرض جميع فواتير الزبون ودفعاته ورصيده الإجمالي بالدينار والسنتيم',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'debt_ledger_layer', 'items_table_layer', 'totals_words_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'REL-2026-0012',
+      samplePartyTitle: 'كشف حساب السيد / المؤسسة:',
+      samplePartyName: 'مؤسسة الأمل للتجارة (أمين بن يحيى)',
+      samplePaymentMethod: 'كشف حساب شامل للفواتير والمدفوعات',
+      sampleItems: [
+        { barcode: 'FAC-071', name: 'فاتورة مبيعات رقم #71 بتاريخ 2026-11-10', unit: 'فاتورة', qty: 1, price: 1500, discount: 0, tva: 0, subtotal: 1500 },
+        { barcode: 'REC-098', name: 'دفعة تسديد نقدية رقم #98 بتاريخ 2026-11-12 (مدفوع: 1180 د.ج)', unit: 'تسديد', qty: 1, price: -1180, discount: 0, tva: 0, subtotal: -1180 },
+        { barcode: 'FAC-076', name: 'فاتورة مبيعات رقم #76 بتاريخ 2026-11-16 (مدفوع جزئياً: 200 د.ج)', unit: 'فاتورة', qty: 1, price: 340, discount: 0, tva: 0, subtotal: 340 }
+      ],
+      sampleTotal: 660,
+      samplePaid: 200,
+      samplePrevDebt: 320
+    },
+    {
+      id: 'recap_invoice_a4',
+      num: 14,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (7)',
+      name: '📑 فاتورة مجمعة للزبون (Facture Récapitulative A4)',
+      cleanTitle: 'فاتورة مبيعات مجمعة / Facture Récapitulative',
+      defaultPaper: 'a4',
+      defaultTheme: 'executive_dark',
+      sourcePage: 'customers',
+      sourceLabel: 'الزبائن والفواتير المجمعة',
+      proDesc: 'تجمع كافة مسحوبات الزبون خلال شهر أو فترة محددة في فاتورة ضريبية موحدة',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'debt_ledger_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'FR-2026-0005',
+      samplePartyTitle: 'الزبون / المؤسسة:',
+      samplePartyName: 'مؤسسة الأمل للتجارة والتوزيع',
+      samplePaymentMethod: 'تجميع فواتير الشهر (Facture Récapitulative)',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'إجمالي مسحوبات: زيت مائدة إيليو 5 لتر (خلال الفترة)', unit: 'قارورة', qty: 24, price: 650, discount: 0, tva: 0, subtotal: 15600 },
+        { barcode: '6130002000011', name: 'إجمالي مسحوبات: حليب كانديا 1 لتر (خلال الفترة)', unit: 'علبة', qty: 60, price: 150, discount: 0, tva: 0, subtotal: 9000 }
+      ],
+      sampleTotal: 24600,
+      samplePaid: 20000,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'installment_contract',
+      num: 15,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (7)',
+      name: '🗓️ عقد بيع بالتقسيط وجدول الأقساط (A4)',
+      cleanTitle: 'عقد بيع بالتقسيط / Contrat de Vente par Facilité',
+      defaultPaper: 'a4',
+      defaultTheme: 'amber_gold',
+      sourcePage: 'customers',
+      sourceLabel: 'الزبائن والأقساط الشهرية',
+      proDesc: 'عقد التزام كامل يوضح السلعة، التسبيق، وجدول تواريخ ومبالغ الأقساط الشهرية',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'installments_schedule_layer', 'totals_words_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'INST-2026-0014',
+      samplePartyTitle: 'المشتري بالتقسيط:',
+      samplePartyName: 'أمين بن يحيى (ب.ت.و: 109845210)',
+      samplePaymentMethod: 'بيع بالتقسيط على 3 أشهر (تسبيق: 6,000 د.ج)',
+      sampleItems: [
+        { barcode: '6130099001122', name: 'جهاز كهرومنزلي ممتاز — بيع بالتقسيط المريح', unit: 'جهاز', qty: 1, price: 15000, discount: 0, tva: 0, subtotal: 15000 }
+      ],
+      sampleTotal: 15000,
+      samplePaid: 6000,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'loyalty_vip_card_80mm',
+      num: 16,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (7)',
+      name: '👑 قسيمة وبطاقة نقاط الوفاء للزبون (Ticket VIP 80mm)',
+      cleanTitle: 'بطاقة وقسيمة نقاط الوفاء (Club Fidélité VIP)',
+      defaultPaper: '80mm',
+      defaultTheme: 'amber_gold',
+      sourcePage: 'pos',
+      sourceLabel: 'شاشة المبيعات ونادي الولاء (F8)',
+      proDesc: 'تذكرة مكافآت خاصة توضح للزبون رصيد نقاطه وما تعادله من تخفيض نقدي بالدينار',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'loyalty_points_layer', 'savings_promo_layer', 'qr_social_wifi_layer', 'footer_stamp_layer'],
+      idealCols: { index: false, barcode: false, name: true, unit: false, qty: true, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'VIP-00003',
+      samplePartyTitle: 'العضو الوفي:',
+      samplePartyName: 'أمين بن يحيى (بطاقة: FID-00003)',
+      samplePaymentMethod: 'قسيمة ولاء ومكافآت',
+      sampleItems: [
+        { barcode: 'VIP-PTS', name: 'رصيد نقاط الوفاء المتاح للاستبدال الفوري في المتجر', unit: 'نقطة', qty: 43, price: 2, discount: 0, tva: 0, subtotal: 86 }
+      ],
+      sampleTotal: 86,
+      samplePaid: 86,
+      samplePrevDebt: 0
+    },
+
+    // ── المجموعة 3: المشتريات والموردين (4 قوالب) ──
+    {
+      id: 'purchase_invoice',
+      num: 17,
+      cat: 'PURCHASES',
+      catLabel: '🛍️ المشتريات والموردين (4)',
+      name: '🛍️ سند استلام وفاتورة شراء (Bon de Réception A4)',
+      cleanTitle: 'سند استلام ومشتريات / Bon de Réception (BR)',
+      defaultPaper: 'a4',
+      defaultTheme: 'executive_dark',
+      sourcePage: 'purchases',
+      sourceLabel: 'المشتريات والفواتير',
+      proDesc: 'يوثق البضاعة المستلمة من المورد، كمياتها، تكلفة الشراء، والمدفوع للمورد',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'debt_ledger_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'BR-2026-0032',
+      samplePartyTitle: 'المورد / الشركة الممونة:',
+      samplePartyName: 'شركة التوزيع الغذائي الكبرى (Fournisseur)',
+      samplePaymentMethod: 'فاتورة تموين مخزني',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'زيت مائدة إيليو 5 لتر (دفعة تموين جديدة)', unit: 'قارورة', qty: 100, price: 580, discount: 0, tva: 0, subtotal: 58000 },
+        { barcode: '6130002000011', name: 'حليب كانديا نصف دسم 1 لتر', unit: 'علبة', qty: 200, price: 130, discount: 0, tva: 0, subtotal: 26000 }
+      ],
+      sampleTotal: 84000,
+      samplePaid: 50000,
+      samplePrevDebt: 15000
+    },
+    {
+      id: 'supplier_payment_receipt',
+      num: 18,
+      cat: 'PURCHASES',
+      catLabel: '🛍️ المشتريات والموردين (4)',
+      name: '💳 سند صرف وتسديد دفعة لمورد (Bon de Versement)',
+      cleanTitle: 'سند تسديد دفعة لمورد / Bon de Versement Fournisseur',
+      defaultPaper: 'a5',
+      defaultTheme: 'emerald_dz',
+      sourcePage: 'suppliers',
+      sourceLabel: 'إدارة الموردين والدفعات',
+      proDesc: 'يوثق المبلغ المسدد للمورد، الدين السابق، والرصيد المتبقي للمورد بعد الدفعة',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'debt_ledger_layer', 'totals_words_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: false, name: true, unit: false, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'VERS-2026-0019',
+      samplePartyTitle: 'المورد المستفيد:',
+      samplePartyName: 'شركة التوزيع الغذائي الكبرى',
+      samplePaymentMethod: 'دفعة نقدية من الصندوق',
+      sampleItems: [
+        { barcode: 'VERS-19', name: 'تسديد دفعة على حساب فواتير التوريد (خصم من دين المورد)', unit: 'دفعة', qty: 1, price: 30000, discount: 0, tva: 0, subtotal: 30000 }
+      ],
+      sampleTotal: 30000,
+      samplePaid: 30000,
+      samplePrevDebt: 49000
+    },
+    {
+      id: 'supplier_return_note',
+      num: 19,
+      cat: 'PURCHASES',
+      catLabel: '🛍️ المشتريات والموردين (4)',
+      name: '↩️ سند إرجاع بضاعة للمورد (Bon de Retour Fournisseur)',
+      cleanTitle: 'سند إرجاع بضاعة للمورد / Bon de Retour Fournisseur',
+      defaultPaper: 'a4',
+      defaultTheme: 'crimson_bold',
+      sourcePage: 'purchases',
+      sourceLabel: 'مرتجعات الموردين',
+      proDesc: 'يوثق الأصناف المرجعة للمورد وسبب الإرجاع وقيمتها المخصومة من حساب المورد',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'RF-2026-0004',
+      samplePartyTitle: 'المورد المرجعة إليه البضاعة:',
+      samplePartyName: 'شركة التوزيع الغذائي الكبرى',
+      samplePaymentMethod: 'خصم من رصيد دين المورد (Avoir)',
+      sampleItems: [
+        { barcode: '6130003000010', name: 'إرجاع: ياغورت الصومام (قريب انتهاء الصلاحية — استبدال)', unit: 'علبة', qty: 40, price: 28, discount: 0, tva: 0, subtotal: 1120 }
+      ],
+      sampleTotal: 1120,
+      samplePaid: 1120,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'supplier_ledger_a4',
+      num: 20,
+      cat: 'PURCHASES',
+      catLabel: '🛍️ المشتريات والموردين (4)',
+      name: '📒 كشف حساب المورد والفواتير (Relevé Fournisseur A4)',
+      cleanTitle: 'كشف حساب مورد مفصل / Relevé de Compte Fournisseur',
+      defaultPaper: 'a4',
+      defaultTheme: 'royal_blue',
+      sourcePage: 'suppliers',
+      sourceLabel: 'إدارة الموردين وكشف الحساب',
+      proDesc: 'تقرير A4 شامل يعرض فواتير الشراء والدفعات المسددة وصافي المستحقات للمورد',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'debt_ledger_layer', 'items_table_layer', 'totals_words_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'RELF-2026-0007',
+      samplePartyTitle: 'كشف حساب المورد:',
+      samplePartyName: 'شركة التوزيع الغذائي الكبرى',
+      samplePaymentMethod: 'كشف حساب شامل للمشتريات والدفعات',
+      sampleItems: [
+        { barcode: 'BR-0032', name: 'فاتورة شراء وتوريد رقم #BR-0032 بتاريخ 2026-11-10', unit: 'فاتورة', qty: 1, price: 84000, discount: 0, tva: 0, subtotal: 84000 },
+        { barcode: 'VERS-019', name: 'دفعة تسديد للمورد رقم #VERS-019 بتاريخ 2026-11-14', unit: 'دفعة', qty: 1, price: -50000, discount: 0, tva: 0, subtotal: -50000 }
+      ],
+      sampleTotal: 84000,
+      samplePaid: 50000,
+      samplePrevDebt: 0
+    },
+
+    // ── المجموعة 4: المخزون والتصنيع (4 قوالب) ──
+    {
+      id: 'stocktake_sheet_a4',
+      num: 21,
+      cat: 'INVENTORY',
+      catLabel: '📦 المخزون والتصنيع (4)',
+      name: '📋 محضر الجرد المخزني وفوارق الكميات (A4)',
+      cleanTitle: "محضر الجرد المخزني الرسمي / Procès-Verbal d'Inventaire",
+      defaultPaper: 'a4',
+      defaultTheme: 'executive_dark',
+      sourcePage: 'stocktake',
+      sourceLabel: 'الجرد المخزني',
+      proDesc: 'محضر مطابقة المخزون يعرض الرصيد الدفتري، الرصيد الفعلي المعدود، والفوارق',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'INV-2026-0006',
+      samplePartyTitle: 'نطاق الجرد والمسؤول:',
+      samplePartyName: 'المخزن الرئيسي — إشراف: المدير العام',
+      samplePaymentMethod: 'محضر جرد وتسوية فوارق',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'مناديل مبللة ألترا جوي (الدفتري: 25 | المعدود: 25 | الفارق: 0)', unit: 'علبة', qty: 25, price: 70, discount: 0, tva: 0, subtotal: 1750 },
+        { barcode: '6130002000011', name: 'حفاضات أطفال جوي 72 (الدفتري: 14 | المعدود: 13 | الفارق: -1)', unit: 'كيس', qty: 13, price: 145, discount: 0, tva: 0, subtotal: 1885 }
+      ],
+      sampleTotal: 3635,
+      samplePaid: 3635,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'price_catalog_a4',
+      num: 22,
+      cat: 'INVENTORY',
+      catLabel: '📦 المخزون والتصنيع (4)',
+      name: '🏷️ كتالوج وقائمة أسعار المنتجات (Catalogue des Prix A4)',
+      cleanTitle: 'قائمة الأسعار والكتالوج التجاري / Catalogue des Prix',
+      defaultPaper: 'a4',
+      defaultTheme: 'royal_blue',
+      sourcePage: 'inventory',
+      sourceLabel: 'إدارة المخزون وقائمة الأسعار',
+      proDesc: 'قائمة أسعار مطبوعة للزبائن والموزعين توضح الباركود والوحدة والسعر بالدينار والسنتيم',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'items_table_layer', 'qr_social_wifi_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: false, unitPrice: true, discount: false, tva: false, subtotal: false },
+      sampleDocNum: 'CAT-2026-01',
+      samplePartyTitle: 'قائمة الأسعار:',
+      samplePartyName: 'الأسعار الرسمية المعتمدة للزبائن',
+      samplePaymentMethod: 'أسعار التجزئة والباكي بالدينار الجزائري',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'زيت مائدة إيليو 5 لتر (Elio Cevital)', unit: 'قارورة', qty: 1, price: 650, discount: 0, tva: 0, subtotal: 650 },
+        { barcode: '6130002000011', name: 'حليب كانديا نصف دسم 1 لتر (Candia)', unit: 'علبة', qty: 1, price: 150, discount: 0, tva: 0, subtotal: 150 },
+        { barcode: '6130006000017', name: 'قهوة مطحونة بونال 250غ (Bonal)', unit: 'علبة', qty: 1, price: 320, discount: 0, tva: 0, subtotal: 320 }
+      ],
+      sampleTotal: 1120,
+      samplePaid: 1120,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'production_order_sheet',
+      num: 23,
+      cat: 'INVENTORY',
+      catLabel: '📦 المخزون والتصنيع (4)',
+      name: '🏭 أمر تشغيل وتصنيع (Ordre de Fabrication BOM)',
+      cleanTitle: 'أمر تشغيل وتصنيع داخلي / Ordre de Fabrication (BOM)',
+      defaultPaper: 'a4',
+      defaultTheme: 'emerald_dz',
+      sourcePage: 'manufacturing',
+      sourceLabel: 'التصنيع والإنتاج',
+      proDesc: 'يوثق وصفة التصنيع، المواد الأولية المسحوبة، تكلفة الوحدة، والمنتج النهائي الناتج',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'PRD-2026-0011',
+      samplePartyTitle: 'ورشة الإنتاج / الوصفة:',
+      samplePartyName: 'إنتاج حزمة ترويجية / منتج مصنع جاهز',
+      samplePaymentMethod: 'أمر إنتاج داخلي معتمد',
+      sampleItems: [
+        { barcode: 'RAW-001', name: 'مادة أولية مستهلكة رقم 1 (سحب من المخزون)', unit: 'كغ', qty: 10, price: 120, discount: 0, tva: 0, subtotal: 1200 },
+        { barcode: 'RAW-002', name: 'مواد تغليف وتعبئة', unit: 'قطعة', qty: 20, price: 15, discount: 0, tva: 0, subtotal: 300 }
+      ],
+      sampleTotal: 1500,
+      samplePaid: 1500,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'low_stock_order_a4',
+      num: 24,
+      cat: 'INVENTORY',
+      catLabel: '📦 المخزون والتصنيع (4)',
+      name: '🚨 كشف النواقص وطلب التموين (Bon de Commande Interne)',
+      cleanTitle: 'كشف النواقص المخزنية وطلب التموين / État des Ruptures',
+      defaultPaper: 'a4',
+      defaultTheme: 'amber_gold',
+      sourcePage: 'inventory',
+      sourceLabel: 'إدارة المخزون والتنبيهات',
+      proDesc: 'قائمة الأصناف التي وصلت للحد الأدنى في المخزن لتسليمها للمورد أو المشتريات',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'RUP-2026-0003',
+      samplePartyTitle: 'موجه إلى قسم:',
+      samplePartyName: 'المشتريات والتموين — طلبية تعويض النواقص',
+      samplePaymentMethod: 'نواقص حرجة تحت الحد الأدنى',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'مناديل مبللة ألترا جوي (المتبقي بالسطوك: 2 — الحد الأدنى: 10)', unit: 'علبة', qty: 30, price: 55, discount: 0, tva: 0, subtotal: 1650 },
+        { barcode: '6130006000017', name: 'غولد لاين (المتبقي بالسطوك: 1 — الحد الأدنى: 12)', unit: 'قطعة', qty: 24, price: 100, discount: 0, tva: 0, subtotal: 2400 }
+      ],
+      sampleTotal: 4050,
+      samplePaid: 0,
+      samplePrevDebt: 0
+    },
+
+    // ── المجموعة 5: الصندوق والجباية والرقابة (4 قوالب) ──
+    {
+      id: 'caisse_z_report',
+      num: 25,
+      cat: 'FINANCE',
+      catLabel: '🏦 الصندوق والجباية والرقابة (4)',
+      name: '🔒 تقرير إغلاق المناوبة وجرد الصندوق (Z-Report 80mm)',
+      cleanTitle: 'تقرير إغلاق المناوبة وجرد الصندوق (Z-Report)',
+      defaultPaper: '80mm',
+      defaultTheme: 'executive_dark',
+      sourcePage: 'caisse',
+      sourceLabel: 'إدارة الصندوق والمناوبات',
+      proDesc: 'ملخص إغلاق الصندوق الحراري: الرصيد الافتتاحي، المبيعات، المصاريف، والفارق النقدي',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'footer_stamp_layer'],
+      idealCols: { index: false, barcode: false, name: true, unit: false, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'Z-SHIFT-0007',
+      samplePartyTitle: 'المناوبة / الكاشير:',
+      samplePartyName: 'مناوبة الصندوق #7 — المدير العام',
+      samplePaymentMethod: 'جرد فعلي للدرج عند الإغلاق',
+      sampleItems: [
+        { barcode: 'OPEN', name: '1. الرصيد الافتتاحي في الدرج (Fond de Caisse)', unit: 'د.ج', qty: 1, price: 5000, discount: 0, tva: 0, subtotal: 5000 },
+        { barcode: 'SALES', name: '2. إجمالي المبيعات النقدية المحصلة (+)', unit: 'د.ج', qty: 1, price: 17759, discount: 0, tva: 0, subtotal: 17759 },
+        { barcode: 'EXP', name: '3. إجمالي المصاريف والمسحوبات النقدية (-)', unit: 'د.ج', qty: 1, price: -1500, discount: 0, tva: 0, subtotal: -1500 }
+      ],
+      sampleTotal: 21259,
+      samplePaid: 21259,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'expense_voucher',
+      num: 26,
+      cat: 'FINANCE',
+      catLabel: '🏦 الصندوق والجباية والرقابة (4)',
+      name: '💸 سند صرف مصروف أو حركة صندوق (Bon de Sortie 80mm)',
+      cleanTitle: 'سند صرف نقدي من الصندوق / Bon de Sortie Caisse',
+      defaultPaper: '80mm',
+      defaultTheme: 'crimson_bold',
+      sourcePage: 'expenses',
+      sourceLabel: 'المصاريف ورأس المال والصندوق',
+      proDesc: 'وصل إثبات سحب مبلغ نقدي من الدرج لمصروف تشغيلي مع توقيع المستلم',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'footer_stamp_layer'],
+      idealCols: { index: false, barcode: false, name: true, unit: false, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'EXP-2026-0035',
+      samplePartyTitle: 'فئة المصروف / المستفيد:',
+      samplePartyName: 'مصاريف نقل وشحن البضاعة',
+      samplePaymentMethod: 'سحب نقدي من مناوبة الصندوق',
+      sampleItems: [
+        { barcode: 'EXP-35', name: 'دفع مصاريف نقل وتفريغ البضاعة (خصم من صندوق الكاشير)', unit: 'سند', qty: 1, price: 1500, discount: 0, tva: 0, subtotal: 1500 }
+      ],
+      sampleTotal: 1500,
+      samplePaid: 1500,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'fiscal_g12_statement',
+      num: 27,
+      cat: 'FINANCE',
+      catLabel: '🏦 الصندوق والجباية والرقابة (4)',
+      name: '🇩🇿 استمارة التصريح الجبائي (IFU G12 / G50 A4)',
+      cleanTitle: 'استمارة التصريح الجبائي الجزائري (IFU G12 / G50)',
+      defaultPaper: 'a4',
+      defaultTheme: 'emerald_dz',
+      sourcePage: 'analytics',
+      sourceLabel: 'الإحصائيات واستوديو الجباية (التبويب 13)',
+      proDesc: 'كشف جبائي يفصل رقم أعمال المواد المقننة المعفاة والسلع العادية الخاضعة لـ 5%',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'tax_ifu_breakdown_layer', 'totals_words_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: false, name: true, unit: true, qty: false, unitPrice: false, discount: false, tva: true, subtotal: true },
+      sampleDocNum: 'G12-2026-DZ',
+      samplePartyTitle: 'المكلف بالضريبة الجزافية الوحيدة (IFU):',
+      samplePartyName: 'Gherbi.Ai POS — تجارة بالتجزئة',
+      samplePaymentMethod: 'تصريح سنوي IFU G12 (معدل 5%)',
+      sampleItems: [
+        { barcode: 'IFU-EX', name: 'رقم الأعمال للمواد المقننة السعر (حليب، خبز، سميد، زيت — هامش الربح الخاضع)', unit: 'جزافي', qty: 1, price: 45000, discount: 0, tva: 0, subtotal: 45000 },
+        { barcode: 'IFU-5P', name: 'رقم الأعمال للسلع التجارية العادية الخاضعة لمعدل 5% (IFU)', unit: 'سنوي', qty: 1, price: 185000, discount: 0, tva: 5, subtotal: 185000 }
+      ],
+      sampleTotal: 230000,
+      samplePaid: 230000,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'forensic_audit_report',
+      num: 28,
+      cat: 'FINANCE',
+      catLabel: '🏦 الصندوق والجباية والرقابة (4)',
+      name: '🛡️ التقرير الجنائي لرقابة الكاشير وحماية الأرباح (A4)',
+      cleanTitle: 'التقرير الجنائي الرسمي لرقابة الكاشير ومنع التلاعب',
+      defaultPaper: 'a4',
+      defaultTheme: 'crimson_bold',
+      sourcePage: 'analytics',
+      sourceLabel: 'رادار الرقابة الجنائية (التبويب 14)',
+      proDesc: 'تقرير رقابي لصاحب المحل يوثق السطور المحذوفة بعد المسح، تفريغ السلة، والبيع بالخسارة',
+      idealLayers: ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'footer_stamp_layer'],
+      idealCols: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'AUDIT-2026-14',
+      samplePartyTitle: 'نطاق الفحص الرقابي:',
+      samplePartyName: 'جميع البائعين ومناوبات الكاشير',
+      samplePaymentMethod: 'تقرير رقابي جنائي لحماية الأرباح',
+      sampleItems: [
+        { barcode: 'VOID-LINE', name: 'سطور محذوفة من السلة بعد قراءة الباركود (إلغاء قبل التسديد)', unit: 'حركة', qty: 3, price: 125, discount: 0, tva: 0, subtotal: 375 },
+        { barcode: 'BELOW-COST', name: 'عمليات بيع بسعر التكلفة أو بأقل من سعر الشراء', unit: 'حركة', qty: 0, price: 0, discount: 0, tva: 0, subtotal: 0 }
+      ],
+      sampleTotal: 375,
+      samplePaid: 0,
+      samplePrevDebt: 0
+    }
+  ];
+
+  const FULL_16_LAYERS = [
+    { id: 'header_layer', cat: 'CORE', name: '🏢 ترويسة المتجر والشعار والبيانات الجبائية', desc: 'اسم المتجر، الشعار، الهاتف، العنوان، وأرقام RC / NIF / AI / NIS.', defaultVisible: true },
+    { id: 'doc_banner_layer', cat: 'CORE', name: '🏷️ شريط عنوان ورقم المستند والباركود', desc: 'عنوان التذكرة/الفاتورة، رقمها التسلسلي، تاريخ وساعة الإصدار، والباركود.', defaultVisible: true },
+    { id: 'customer_box_layer', cat: 'CORE', name: '👤 بطاقة بيانات الزبون / المورد والرصيد', desc: 'اسم الزبون أو المورد، رقم هاتفه، عنوانه، وبياناته الجبائية.', defaultVisible: true },
+    { id: 'items_table_layer', cat: 'CORE', name: '📋 جدول الأصناف والكميات والأسعار', desc: 'جدول السلع أو البنود بتخطيط ذكي يتكيف تلقائياً مع 80mm و A4.', defaultVisible: true },
+    { id: 'totals_words_layer', cat: 'CORE', name: '💰 شلال المجاميع بالدينار والسنتيم والتفقيط', desc: 'المجموع الفرعي، التخفيض، الصافي بالدينار والسنتيم، والمبلغ بالحروف.', defaultVisible: true },
+    { id: 'loyalty_points_layer', cat: 'LOYALTY', name: '👑 بطاقة نقاط الوفاء والمخصوم من البطاقة (VIP & عابر)', desc: 'تعرض نوع الزبون، الرصيد السابق، المكتسب (+)، المخصوم (-)، والرصيد الجديد.', defaultVisible: true },
+    { id: 'credit_carnet_layer', cat: 'FINANCE', name: '💳 كشف حساب الكريدي للزبون (Carnet de Crédit)', desc: 'صندوق أحمر يوضح الكريدي السابق، فاتورة اليوم، المدفوع اليوم، وإجمالي الكريدي المتبقي.', defaultVisible: false },
+    { id: 'savings_promo_layer', cat: 'LOYALTY', name: '🎉 شريط "كم وفّرت اليوم؟" وعداد القطع الإجمالي', desc: 'يبرز للزبون إجمالي ما وفّره في الفاتورة وإجمالي عدد القطع المستلمة.', defaultVisible: false },
+    { id: 'debt_ledger_layer', cat: 'FINANCE', name: '⚖️ كشف وضعية الديون والحساب التراكمي للزبون (A4)', desc: 'جدول يوضح الدين السابق + دين الفاتورة الحالية - المدفوع اليوم = إجمالي الدين المتبقي.', defaultVisible: false },
+    { id: 'payment_breakdown_layer', cat: 'FINANCE', name: '💵 تفصيل المقبوض، الصرف المرجع (Rendu)، والبائع', desc: 'يعرض المبلغ المستلم من الزبون، الصرف المرجع له، طريقة الدفع، واسم الكاشير.', defaultVisible: false },
+    { id: 'tax_ifu_breakdown_layer', cat: 'FINANCE', name: '🇩🇿 جدول تفصيل الضرائب (TVA / الطابع / المواد المقننة)', desc: 'يفصل المبلغ خارج الرسم HT، ضريبة TVA، الطابع الجبائي، والسلع المقننة.', defaultVisible: false },
+    { id: 'warranty_imei_layer', cat: 'LOGISTICS', name: '🛡️ شهادة الضمان والأرقام التسلسلية (IMEI / S-N)', desc: 'صندوق مخصص لمدة الضمان، شروط الصيانة، والأرقام التسلسلية للأجهزة.', defaultVisible: false },
+    { id: 'installments_schedule_layer', cat: 'LOGISTICS', name: '🗓️ جدول الأقساط الشهرية ومواعيد الاستحقاق', desc: 'يعرض الدفعة الأولى (التسبيق)، عدد الأقساط الشهرية، قيمة كل قسط، وتواريخ الاستحقاق.', defaultVisible: false },
+    { id: 'delivery_driver_layer', cat: 'LOGISTICS', name: '🚚 بطاقة التوصيل، السائق، عدد الطرود، وإمضاء الاستلام', desc: 'اسم السائق، رقم المركبة، عدد الكراتين/الطرود (Colis)، وخانة إمضاء الاستلام.', defaultVisible: false },
+    { id: 'qr_social_wifi_layer', cat: 'LOYALTY', name: '📱 رمز QR، حسابات التواصل، وكود Wi-Fi الزبائن', desc: 'رمز استجابة سريعة للمتجر مع صفحات فيسبوك/واتساب أو كود Wi-Fi الزبائن.', defaultVisible: false },
+    { id: 'footer_stamp_layer', cat: 'CORE', name: '✒️ التذييل، شروط الاستبدال، رمز RIP، والختم', desc: 'شروط الإرجاع والاستبدال خلال 48 ساعة، رقم حساب BaridiMob RIP، ومربع الختم.', defaultVisible: true }
+  ];
+
+  const VISUAL_THEMES = [
+    { id: 'royal_blue', name: 'الأزرق الملكي التجاري', primary: '#1d4ed8', accent: '#eff6ff', border: '#93c5fd' },
+    { id: 'emerald_dz', name: 'الأخضر الجزائري الرسمي', primary: '#047857', accent: '#ecfdf5', border: '#6ee7b7' },
+    { id: 'executive_dark', name: 'الكحلي التنفيذي الفاخر', primary: '#0f172a', accent: '#f1f5f9', border: '#94a3b8' },
+    { id: 'crimson_bold', name: 'القرمزي البارز للعروض', primary: '#be123c', accent: '#fff1f2', border: '#fda4af' },
+    { id: 'amber_gold', name: 'الذهبي الكلاسيكي', primary: '#b45309', accent: '#fffbeb', border: '#fcd34d' },
+    { id: 'pure_mono', name: 'الأسود والأبيض الاقتصادي', primary: '#000000', accent: '#ffffff', border: '#000000' }
+  ];
+
+  const PAPER_SIZE_META = {
+    a4: { label: 'مقاس A4 رسمي كامل (210×297 mm)', badge: 'A4', aspectW: 26, aspectH: 36 },
+    a5: { label: 'مقاس A5 نصفي مدمج (148×210 mm)', badge: 'A5', aspectW: 22, aspectH: 30 },
+    '2xa5': { label: 'مقاس 2×A5 مزدوج (نسختان في ورقة A4)', badge: '2×A5', aspectW: 38, aspectH: 26 },
+    '80mm': { label: 'رول حراري 80mm قياسي للكاشير', badge: '80MM', aspectW: 18, aspectH: 36 },
+    '58mm': { label: 'رول حراري 58mm صغير', badge: '58MM', aspectW: 14, aspectH: 32 }
+  };
+
+  const waitStudio = setInterval(() => {
+    const studio = window.GherbiPrintStudioV45;
+    if (!studio || !window.App) return;
+    clearInterval(waitStudio);
+
+    studio.ALL_28_MASTER_DOCS = PRO_28_TEMPLATES;
+    studio.FULL_16_LAYERS_CATALOG = FULL_16_LAYERS;
+    studio.defaultsCategoryFilter = studio.defaultsCategoryFilter || 'ALL';
+    studio.defaultsSearchQuery = studio.defaultsSearchQuery || '';
+
+    // 1. بناء وحقن القالب الاحترافي الافتراضي (Tailor-Made Par Défaut) لأي مستند أو لكل الـ 28 مستنداً
+    studio.buildIdealProfileObjectForDoc = function (docMeta) {
+      const activeSet = new Set(docMeta.idealLayers || ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'footer_stamp_layer']);
+      const layersList = FULL_16_LAYERS.map((cat) => ({
+        id: cat.id,
+        name: cat.name,
+        visible: activeSet.has(cat.id),
+        align: 'between',
+        customNote: ''
+      }));
+
+      return {
+        paperSize: docMeta.defaultPaper,
+        themeId: docMeta.defaultTheme,
+        fontFamily: 'Cairo',
+        baseFontSizePx: docMeta.defaultPaper === '80mm' || docMeta.defaultPaper === '58mm' ? 11.5 : 12,
+        marginMode: 'normal',
+        densityMode: 'normal',
+        borderMode: docMeta.defaultPaper === '80mm' ? 'dashed' : 'grid',
+        watermarkText: '',
+        customHeaderTitle: docMeta.cleanTitle,
+        customFooterTerms: this.config.customFooterTerms || 'البضاعة المباعة تستبدل خلال 48 ساعة بشرط سلامة الغلاف الأصلي وإحضار التذكرة. شكراً لزيارتكم!',
+        showCentimesEquivalent: true,
+        showAmountInWords: true,
+        showCustomerBalance: true,
+        showBaridimobQr: true,
+        showDocBarcode: true,
+        showStampSignature: true,
+        customTexts: JSON.parse(JSON.stringify(this.config.customTexts || {})),
+        columns: { ...(docMeta.idealCols || { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true }) },
+        layers: layersList
+      };
+    };
+
+    // تهيئة القوالب الاحترافية الـ 28 تلقائياً عند الإقلاع إذا لم تكن مهيأة أو إذا كان جدول الأصناف مخفياً بالخطأ
+    function ensureAll28ProProfilesInitialized() {
+      if (!studio.config.defaultsByDocType) studio.config.defaultsByDocType = {};
+      if (!studio.config.adoptedProfiles) studio.config.adoptedProfiles = {};
+
+      for (const docMeta of PRO_28_TEMPLATES) {
+        if (!studio.config.defaultsByDocType[docMeta.id]) {
+          studio.config.defaultsByDocType[docMeta.id] = {
+            paperSize: docMeta.defaultPaper,
+            themeId: docMeta.defaultTheme,
+            lang: 'ar',
+            adopted: true
+          };
+        }
+        const existingProf = studio.config.adoptedProfiles[docMeta.id];
+        if (!existingProf || !Array.isArray(existingProf.layers) || existingProf.layers.length < 10) {
+          studio.config.adoptedProfiles[docMeta.id] = studio.buildIdealProfileObjectForDoc(docMeta);
+        } else {
+          // ضمان أن جدول الأصناف (items_table_layer) مفعل دائماً
+          const tblLayer = existingProf.layers.find((x) => x.id === 'items_table_layer');
+          if (tblLayer) tblLayer.visible = true;
+        }
+      }
+      studio.loadProfileForDocType(studio.config.activeDocType || 'receipt_thermal');
+      studio.saveConfigLocal();
+    }
+
+    // 2. تحميل القالب المخصص لأي مستند من الـ 28 مستنداً
+    studio.loadProfileForDocType = function (docId) {
+      const docMeta = PRO_28_TEMPLATES.find((d) => d.id === docId) || PRO_28_TEMPLATES[0];
+      const def = this.config.defaultsByDocType[docMeta.id] || {
+        paperSize: docMeta.defaultPaper,
+        themeId: docMeta.defaultTheme
+      };
+      let prof = this.config.adoptedProfiles && this.config.adoptedProfiles[docMeta.id];
+      if (!prof) {
+        prof = this.buildIdealProfileObjectForDoc(docMeta);
+        this.config.adoptedProfiles[docMeta.id] = prof;
+      }
+
+      this.config.activeDocType = docMeta.id;
+      this.config.paperSize = def.paperSize || prof.paperSize || docMeta.defaultPaper;
+      this.config.themeId = def.themeId || prof.themeId || docMeta.defaultTheme;
+      this.config.baseFontSizePx = prof.baseFontSizePx || 11.5;
+      this.config.watermarkText = prof.watermarkText || '';
+      this.config.customHeaderTitle = prof.customHeaderTitle || docMeta.cleanTitle;
+      this.config.columns = { ...this.config.columns, ...(prof.columns || docMeta.idealCols) };
+
+      // دمج الطبقات الـ 16 مع الحفاظ على ترتيب وتفعيل القالب
+      const savedMap = new Map((prof.layers || []).map((l) => [l.id, l]));
+      const mergedLayers = [];
+      for (const cat of FULL_16_LAYERS) {
+        if (savedMap.has(cat.id)) {
+          const lObj = savedMap.get(cat.id);
+          if (cat.id === 'items_table_layer' || cat.id === 'header_layer') lObj.visible = true;
+          mergedLayers.push(lObj);
+          savedMap.delete(cat.id);
+        } else {
+          mergedLayers.push({
+            id: cat.id,
+            name: cat.name,
+            visible: (docMeta.idealLayers || []).includes(cat.id),
+            align: 'between',
+            customNote: ''
+          });
+        }
+      }
+      for (const customL of savedMap.values()) {
+        mergedLayers.push(customL);
+      }
+      this.config.layers = mergedLayers;
+    };
+
+    // استعادة/تطبيق القالب الاحترافي المثالي (Par Défaut) لمستند واحد بضغطة زر
+    studio.applySingleProDefaultTemplate = async function (docId) {
+      const docMeta = PRO_28_TEMPLATES.find((d) => d.id === docId) || PRO_28_TEMPLATES[0];
+      const idealProf = this.buildIdealProfileObjectForDoc(docMeta);
+
+      this.config.defaultsByDocType[docMeta.id] = {
+        paperSize: docMeta.defaultPaper,
+        themeId: docMeta.defaultTheme,
+        lang: 'ar',
+        adopted: true
+      };
+      this.config.adoptedProfiles[docMeta.id] = idealProf;
+
+      if (this.config.activeDocType === docMeta.id) {
+        this.loadProfileForDocType(docMeta.id);
+        this.activeLoadedDocData = null;
+      }
+
+      this.saveConfigLocal();
+      await this.renderStudioIntoRoot();
+      if (window.showToast) {
+        window.showToast(`⚡ تم تفعيل واعتماد القالب الاحترافي المثالي لـ (${docMeta.name}) بنجاح!`, 'success');
+      }
+    };
+
+    // اعتماد القوالب الاحترافية المثالية لجميع الـ 28 مستنداً دفعة واحدة
+    studio.adoptAllIdealPresetsAcrossAllPages = async function () {
+      for (const docMeta of PRO_28_TEMPLATES) {
+        this.config.defaultsByDocType[docMeta.id] = {
+          paperSize: docMeta.defaultPaper,
+          themeId: docMeta.defaultTheme,
+          lang: 'ar',
+          adopted: true
+        };
+        this.config.adoptedProfiles[docMeta.id] = this.buildIdealProfileObjectForDoc(docMeta);
+      }
+      this.loadProfileForDocType(this.config.activeDocType || 'receipt_thermal');
+      this.activeLoadedDocData = null;
+      this.saveConfigLocal();
+      await this.renderStudioIntoRoot();
+      if (window.showToast) {
+        window.showToast('🚀 تم شحن واعتماد القوالب الاحترافية الـ 28 (Par Défaut) لجميع صفحات البرنامج بنجاح!', 'success');
+      }
+    };
+
+    // 3. بناء القائمة المنسدلة للـ 28 مستنداً مقسمة في 5 مجموعات واضحة
+    studio.build28DocsGroupedOptionsHtml = function (selectedDocId) {
+      const groups = ['POS', 'CREDIT', 'PURCHASES', 'INVENTORY', 'FINANCE'];
+      return groups
+        .map((gKey) => {
+          const docsInGroup = PRO_28_TEMPLATES.filter((d) => d.cat === gKey);
+          if (docsInGroup.length === 0) return '';
+          const groupLabel = docsInGroup[0].catLabel;
+          const opts = docsInGroup
+            .map(
+              (d) =>
+                `<option value="${d.id}" ${selectedDocId === d.id ? 'selected' : ''}>${d.num}. ${d.name}</option>`
+            )
+            .join('');
+          return `<optgroup label="${groupLabel}">${opts}</optgroup>`;
+        })
+        .join('');
+    };
+
+    // 4. توفير البيانات النموذجية الواقعية لكل واحد من الـ 28 مستنداً
+    const baseResolveData = studio.resolveActiveDocumentData.bind(studio);
+    studio.resolveActiveDocumentData = async function (overrideDocType) {
+      if (!overrideDocType && this.activeLoadedDocData) {
+        return this.activeLoadedDocData;
+      }
+
+      const docType = overrideDocType || this.config.activeDocType || 'receipt_thermal';
+      const docMeta = PRO_28_TEMPLATES.find((d) => d.id === docType) || PRO_28_TEMPLATES[0];
+
+      if (this.selectedRecordId && this.selectedRecordId !== 'SAMPLE') {
+        const real = await baseResolveData(overrideDocType);
+        if (real) return real;
+      }
+
+      const isWalkinSim = this.loyaltySimMode === 'walkin';
+      const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+
+      const builtData = this.enrichDocumentDataWithLoyaltyAndDebt({
+        docNumber: docMeta.sampleDocNum || 'DOC-2026-001',
+        date: nowStr,
+        isWalkinCustomer: isWalkinSim,
+        partyTitle: docMeta.samplePartyTitle || 'الزبون:',
+        partyName: isWalkinSim && docMeta.cat === 'POS' ? 'زبون عابر (Comptoir)' : docMeta.samplePartyName,
+        partyPhone: isWalkinSim ? '-' : '0550 12 34 56',
+        partyAddress: 'حي البدر، قسنطينة — الجزائر',
+        partyRc: '21/00-4589210B19',
+        partyNif: '002104589210045',
+        paymentMethod: docMeta.samplePaymentMethod || 'نقداً',
+        previousBalance: isWalkinSim ? 0 : Number(docMeta.samplePrevDebt || 0),
+        items: JSON.parse(JSON.stringify(docMeta.sampleItems)),
+        subtotal: Number(docMeta.sampleTotal || 0),
+        discount: 0,
+        tvaAmount: 0,
+        stampAmount: 0,
+        total: Number(docMeta.sampleTotal || 0),
+        paidAmount: Number(docMeta.samplePaid ?? docMeta.sampleTotal ?? 0),
+        receivedAmount: Number(docMeta.samplePaid ?? docMeta.sampleTotal ?? 0),
+        remainingDebt: Math.max(0, Number((Number(docMeta.sampleTotal || 0) - Number(docMeta.samplePaid ?? docMeta.sampleTotal ?? 0)).toFixed(2)))
+      });
+
+      if (!overrideDocType) {
+        this.activeLoadedDocData = JSON.parse(JSON.stringify(builtData));
+      }
+      return builtData;
+    };
+
+    // 5. بناء الواجهة الكاملة لمركز الطباعة (V59) بعرض كامل 100% وبدون أي تداخل
+    studio.renderStudioIntoRoot = async function (rootEl) {
+      const targetRoot = rootEl || document.getElementById('print-view-root');
+      if (!targetRoot) return;
+
+      const cfg = this.config;
+      const activeDocMeta = PRO_28_TEMPLATES.find((d) => d.id === cfg.activeDocType) || PRO_28_TEMPLATES[0];
+      const docData = await this.resolveActiveDocumentData();
+
+      let sectionBodyHtml = '';
+
+      if (this.activeSection === 'visual_studio') {
+        const paperHtml = this.buildLiveDocumentPaperHtml(docData, false);
+
+        let recordsList = [];
+        if (activeDocMeta.sourcePage === 'purchases') recordsList = this.liveDataRecords.purchases || [];
+        else if (activeDocMeta.sourcePage === 'proformas') recordsList = this.liveDataRecords.proformas || [];
+        else if (activeDocMeta.sourcePage === 'orders') recordsList = this.liveDataRecords.orders || [];
+        else recordsList = this.liveDataRecords.sales || [];
+
+        const recordOptionsHtml = [
+          `<option value="SAMPLE" ${this.selectedRecordId === 'SAMPLE' ? 'selected' : ''}>✨ بيانات نموذجية احترافية جاهزة للتعديل الحر</option>`,
+          ...recordsList.slice(0, 50).map((r) => {
+            const num = r.doc_number || r.invoice_number || ('#' + r.id);
+            const party = r.customer_name || r.supplier_name || 'زبون عابر';
+            const tot = Number(r.total || 0).toFixed(2);
+            return `<option value="${r.id}" ${String(this.selectedRecordId) === String(r.id) ? 'selected' : ''}>📄 ${num} — ${party} (${tot} د.ج)</option>`;
+          })
+        ].join('');
+
+        const filteredCatalog = FULL_16_LAYERS.filter(
+          (c) => this.catalogCategoryFilter === 'ALL' || c.cat === this.catalogCategoryFilter
+        );
+
+        const suggestedCatalogHtml = filteredCatalog
+          .map((catItem) => {
+            const layerState = cfg.layers.find((l) => l.id === catItem.id);
+            const isVis = Boolean(layerState && layerState.visible);
+            return `
+              <div class="p-2.5 rounded-xl border transition flex items-start justify-between gap-2 ${
+                isVis
+                  ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-400'
+                  : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+              }">
+                <div class="space-y-0.5">
+                  <div class="font-black text-xs text-slate-900 dark:text-white">${catItem.name}</div>
+                  <div class="text-[10.5px] text-slate-500 dark:text-slate-400 leading-snug">${catItem.desc}</div>
+                </div>
+                <button type="button" onclick="window.GherbiPrintStudioV45.activateSuggestedLayerFromCatalog('${catItem.id}')" class="shrink-0 px-2.5 py-1.5 rounded-xl font-black text-[11px] transition cursor-pointer ${
+                  isVis
+                    ? 'bg-emerald-600 text-white shadow-sm hover:bg-rose-600'
+                    : 'bg-blue-600 text-white shadow-sm hover:bg-blue-500'
+                }">
+                  ${isVis ? '✅ مفعّلة' : '➕ إضافة'}
+                </button>
+              </div>
+            `;
+          })
+          .join('');
+
+        sectionBodyHtml = `
+          <!-- شريط Word العلوي للتحكم في المستند من الـ 28 قالباً والمقاس واللون والاعتماد -->
+          <div class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3.5 shadow-sm space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 pb-3">
+              <div class="flex flex-wrap items-center gap-2">
+                <label class="text-xs font-black text-slate-700 dark:text-slate-200">📑 اختر من الـ 28 مستنداً:</label>
+                <select onchange="window.GherbiPrintStudioV45.selectDocType(this.value)" class="px-3 py-2 rounded-xl bg-blue-50 dark:bg-slate-900 border-2 border-blue-400 dark:border-blue-600 text-blue-950 dark:text-blue-200 font-black text-xs cursor-pointer min-w-[270px]">
+                  ${this.build28DocsGroupedOptionsHtml(cfg.activeDocType)}
+                </select>
+
+                <select onchange="window.GherbiPrintStudioV45.selectLiveRecord(this.value)" class="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-bold text-xs max-w-xs cursor-pointer">
+                  ${recordOptionsHtml}
+                </select>
+
+                <button type="button" onclick="window.GherbiPrintStudioV45.applySingleProDefaultTemplate('${cfg.activeDocType}')" class="px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-900 dark:text-amber-300 hover:text-slate-950 border border-amber-400 font-black text-xs transition cursor-pointer" title="تطبيق التصميم الافتراضي الاحترافي الجاهز لهذا المستند">
+                  ⚡ استعادة القالب الاحترافي الجاهز
+                </button>
+
+                <button type="button" onclick="window.App.switchView('${activeDocMeta.sourcePage}')" class="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-indigo-600 hover:text-white text-slate-700 dark:text-slate-200 font-black text-xs transition cursor-pointer">
+                  🔗 افتح (${activeDocMeta.sourceLabel}) ⬅
+                </button>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="window.GherbiPrintStudioV45.saveAsDefaultForDocType()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md transition cursor-pointer flex items-center gap-1.5">
+                  <span>⭐ اعتماد وحفظ كأمر مطلق للطباعة (Par Défaut)</span>
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.printCurrentCanvasNow()" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-md transition cursor-pointer">
+                  🖨️ طباعة / PDF الآن
+                </button>
+              </div>
+            </div>
+
+            <!-- الصف الثاني من شريط الأدوات -->
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="font-black text-slate-500 text-[11px]">📐 المقاس:</span>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('a4')" class="v45-word-ribbon-btn ${cfg.paperSize === 'a4' ? 'active' : ''}">A4 رسمي</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('a5')" class="v45-word-ribbon-btn ${cfg.paperSize === 'a5' ? 'active' : ''}">A5 نصفي</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('2xa5')" class="v45-word-ribbon-btn ${cfg.paperSize === '2xa5' ? 'active' : ''}">2×A5 مزدوج</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('80mm')" class="v45-word-ribbon-btn ${cfg.paperSize === '80mm' ? 'active' : ''}">80mm حراري</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('58mm')" class="v45-word-ribbon-btn ${cfg.paperSize === '58mm' ? 'active' : ''}">58mm حراري</button>
+
+                <span class="mx-1 text-slate-300">|</span>
+                <span class="font-black text-slate-500 text-[11px]">🎨 الثيم:</span>
+                <select onchange="window.GherbiPrintStudioV45.updateCfg('themeId', this.value)" class="px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-bold text-xs cursor-pointer">
+                  ${VISUAL_THEMES.map((t) => `<option value="${t.id}" ${cfg.themeId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                </select>
+
+                <span class="mx-1 text-slate-300">|</span>
+                <span class="font-black text-slate-500 text-[11px]">🔤 الخط:</span>
+                <button type="button" onclick="window.GherbiPrintStudioV45.stepFontSize(-0.5)" class="v45-word-ribbon-btn">-A</button>
+                <span class="font-mono font-black px-1">${cfg.baseFontSizePx}px</span>
+                <button type="button" onclick="window.GherbiPrintStudioV45.stepFontSize(0.5)" class="v45-word-ribbon-btn">+A</button>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                <div class="inline-flex items-center rounded-xl bg-amber-50 dark:bg-slate-900 border border-amber-300 p-0.5 text-[11px]">
+                  <button type="button" onclick="window.GherbiPrintStudioV45.switchLoyaltySimulationMode('vip')" class="px-2 py-1 rounded-lg font-black cursor-pointer ${this.loyaltySimMode === 'vip' ? 'bg-amber-500 text-slate-950' : 'text-amber-800'}">👑 زبون وفي</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.switchLoyaltySimulationMode('walkin')" class="px-2 py-1 rounded-lg font-black cursor-pointer ${this.loyaltySimMode === 'walkin' ? 'bg-slate-800 text-white' : 'text-slate-600'}">🚶 زبون عابر (0 ن)</button>
+                </div>
+                <button type="button" onclick="window.GherbiPrintStudioV45.addRowToActiveTicket()" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] cursor-pointer">➕ سطر جديد</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.removeLastRowFromActiveTicket()" class="px-2.5 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 font-black text-[11px] cursor-pointer">➖ حذف سطر</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.triggerLogoUploadFromStudio()" class="px-2.5 py-1 rounded-lg bg-indigo-100 text-indigo-800 font-black text-[11px] cursor-pointer">📷 الشعار</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.toggleCfgBool('showCentimesEquivalent')" class="v45-word-ribbon-btn ${cfg.showCentimesEquivalent ? 'active' : ''}">🇩🇿 السنتيم</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.toggleCfgBool('showCustomerBalance')" class="v45-word-ribbon-btn ${cfg.showCustomerBalance ? 'active' : ''}">⚖️ الباقي</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.toggleCfgBool('showDocBarcode')" class="v45-word-ribbon-btn ${cfg.showDocBarcode ? 'active' : ''}">||| باركود</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- تخطيط استوديو التصميم المضمون بعرض 100% (يمين: الطبقات والأعمدة | يسار: الورقة الحية) -->
+          <div class="v59-studio-main-grid">
+            <div class="space-y-3.5 max-h-[78vh] overflow-y-auto pl-1">
+              <!-- 1. مكتبة الطبقات الذكية المقترحة (16 طبقة) -->
+              <div class="rounded-2xl bg-white dark:bg-slate-800 border-2 border-indigo-400/60 dark:border-indigo-600/60 p-4 shadow-sm space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 pb-2">
+                  <div>
+                    <h3 class="font-black text-xs text-indigo-900 dark:text-indigo-300">🧩 مكتبة الطبقات الذكية المقترحة (16 طبقة)</h3>
+                    <p class="text-[10.5px] text-slate-500 mt-0.5">أضف أو أخفِ أي طبقة بضغطة زر على التذكرة أو الفاتورة</p>
+                  </div>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.enableAllSuggestedLayers()" class="px-2.5 py-1 rounded-lg bg-indigo-100 hover:bg-indigo-600 text-indigo-800 hover:text-white font-black text-[10.5px] transition cursor-pointer">
+                    ✨ تفعيل الكل
+                  </button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-1 text-[11px]">
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('ALL')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${this.catalogCategoryFilter === 'ALL' ? 'bg-slate-900 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}">الكل (${FULL_16_LAYERS.length})</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('LOYALTY')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${this.catalogCategoryFilter === 'LOYALTY' ? 'bg-amber-500 text-slate-950' : 'bg-amber-50 dark:bg-slate-700 text-amber-800 dark:text-amber-300'}">👑 الوفاء</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('FINANCE')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${this.catalogCategoryFilter === 'FINANCE' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 dark:bg-slate-700 text-emerald-800 dark:text-emerald-300'}">💳 الكريدي والمالية</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('LOGISTICS')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${this.catalogCategoryFilter === 'LOGISTICS' ? 'bg-blue-600 text-white' : 'bg-blue-50 dark:bg-slate-700 text-blue-800 dark:text-blue-300'}">🚚 الضمان والتوصيل</button>
+                </div>
+
+                <div class="space-y-2 max-h-60 overflow-y-auto pr-0.5">
+                  ${suggestedCatalogHtml}
+                </div>
+              </div>
+
+              <!-- 2. ترتيب طبقات المستند (Photoshop Layers) -->
+              <div class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 shadow-sm space-y-2.5">
+                <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+                  <h3 class="font-black text-xs text-slate-900 dark:text-white">🗂️ ترتيب طبقات المستند (Photoshop Layers)</h3>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.addCustomLayerBlock()" class="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-black text-[11px] hover:bg-blue-500 cursor-pointer">
+                    + طبقة نصية حرة
+                  </button>
+                </div>
+
+                <div class="space-y-1.5 max-h-56 overflow-y-auto">
+                  ${cfg.layers
+                    .map(
+                      (l, idx) => `
+                      <div data-v47-sidebar-layer-id="${l.id}" onclick="window.GherbiPrintStudioV45.selectLayerDomOnly('${l.id}')" class="flex items-center justify-between p-2 rounded-xl border text-xs cursor-pointer transition ${
+                        this.selectedLayerId === l.id
+                          ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-500 font-black'
+                          : 'bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-700 font-bold'
+                      }">
+                        <div class="flex items-center gap-2 truncate">
+                          <input type="checkbox" ${l.visible ? 'checked' : ''} onclick="event.stopPropagation(); window.GherbiPrintStudioV45.toggleLayerVisibility('${l.id}')" class="w-4 h-4 accent-blue-600 rounded cursor-pointer">
+                          <span class="truncate ${l.visible ? '' : 'line-through text-slate-400'}">${l.name}</span>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0">
+                          <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.moveLayer('${l.id}', -1)" ${idx === 0 ? 'disabled' : ''} class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-[10px] hover:bg-blue-600 hover:text-white disabled:opacity-30">▲</button>
+                          <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.moveLayer('${l.id}', 1)" ${idx === cfg.layers.length - 1 ? 'disabled' : ''} class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-[10px] hover:bg-blue-600 hover:text-white disabled:opacity-30">▼</button>
+                          ${
+                            l.id.startsWith('custom_')
+                              ? `<button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.deleteCustomLayer('${l.id}')" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 text-[10px] hover:bg-rose-600 hover:text-white">✕</button>`
+                              : ''
+                          }
+                        </div>
+                      </div>`
+                    )
+                    .join('')}
+                </div>
+              </div>
+
+              <!-- 3. تخصيص أعمدة الجدول -->
+              <div class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 shadow-sm space-y-2.5 text-xs">
+                <h3 class="font-black text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-700 pb-2">
+                  📊 تخصيص أعمدة وبيانات جدول التذكرة / الفاتورة
+                </h3>
+                <div class="grid grid-cols-2 gap-2 font-bold">
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.index ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('index')" class="accent-blue-600"> <span>رقم السطر (#)</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.barcode ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('barcode')" class="accent-blue-600"> <span>الباركود</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.name ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('name')" class="accent-blue-600"> <span>اسم الصنف</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.unit ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('unit')" class="accent-blue-600"> <span>الوحدة</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.qty ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('qty')" class="accent-blue-600"> <span>الكمية</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.unitPrice ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('unitPrice')" class="accent-blue-600"> <span>سعر الوحدة</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.discount ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('discount')" class="accent-blue-600"> <span>الخصم</span></label>
+                  <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.tva ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('tva')" class="accent-blue-600"> <span>ضريبة TVA</span></label>
+                </div>
+              </div>
+            </div>
+
+            <!-- يسار: الورقة التفاعلية الحية القابلة للكتابة والتعديل المباشر -->
+            <div class="w-full min-w-0">
+              <div class="v45-studio-workspace max-h-[78vh] w-full">
+                <div id="v45LivePaperHost">
+                  ${paperHtml}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (this.activeSection === 'cross_page_bridge') {
+        const cat = this.bridgeCategory || 'sales';
+        const q = (this.bridgeSearch || '').trim().toLowerCase();
+        let list = this.liveDataRecords[cat] || [];
+        if (q) {
+          list = list.filter((item) => JSON.stringify(item).toLowerCase().includes(q));
+        }
+
+        const rowsHtml =
+          list.length > 0
+            ? list
+                .slice(0, 50)
+                .map((r) => {
+                  const num = r.doc_number || r.invoice_number || ('#' + r.id);
+                  const dt = String(r.sale_date || r.date || r.created_at || '').replace('T', ' ').slice(0, 16);
+                  const party = r.customer_name || r.supplier_name || r.name || 'زبون عابر';
+                  const tot = Number(r.total ?? r.total_debt ?? r.selling_price ?? 0);
+                  const targetDocType =
+                    cat === 'purchases'
+                      ? 'purchase_invoice'
+                      : cat === 'proformas'
+                      ? 'proforma'
+                      : cat === 'orders'
+                      ? 'customer_order'
+                      : 'invoice_a4';
+
+                  return `
+                    <tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-blue-50/40 dark:hover:bg-slate-800/50 text-xs">
+                      <td class="py-3 px-3 font-mono font-black text-blue-600">${num}</td>
+                      <td class="py-3 px-3 font-mono text-slate-500">${dt}</td>
+                      <td class="py-3 px-3 font-black text-slate-900 dark:text-white">${party}</td>
+                      <td class="py-3 px-3 font-mono font-black text-emerald-600">${this.fmtDzd(tot)}</td>
+                      <td class="py-3 px-3 text-center">
+                        <div class="flex items-center justify-center gap-1.5">
+                          <button type="button" onclick="window.App.openDocumentInPrintStudio('${targetDocType}', '${r.id}')" class="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-[11px] shadow-sm cursor-pointer">
+                            🎨 فتح وتعديل الفاتورة (A4/A5)
+                          </button>
+                          <button type="button" onclick="window.App.openDocumentInPrintStudio('receipt_thermal', '${r.id}')" class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-[11px] cursor-pointer">
+                            🧾 فتح كتذكرة كاشير (80mm)
+                          </button>
+                          <button type="button" onclick="window.App.openDocumentInPrintStudio('delivery_note', '${r.id}')" class="px-2.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-black text-[11px] cursor-pointer">
+                            🚚 وصل BL
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                })
+                .join('')
+            : `<tr><td colspan="5" class="py-10 text-center text-slate-400 font-bold">لا توجد سجلات مطابقة في هذا القسم حالياً.</td></tr>`;
+
+        sectionBodyHtml = `
+          <div class="rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 shadow-sm space-y-4 w-full">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-700 pb-3">
+              <div>
+                <h3 class="text-base font-black text-slate-900 dark:text-white">🔗 جسر الربط الحي مع جميع صفحات البرنامج</h3>
+                <p class="text-xs text-slate-500">اختر أي فاتورة أو تذكرة من أقسام البرنامج بالأسفل لفتحها وتعديلها أو طباعتها فوراً</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <input type="text" value="${this.bridgeSearch}" oninput="window.GherbiPrintStudioV45.setBridgeSearch(this.value)" placeholder="🔎 ابحث برقم الفاتورة أو اسم الزبون..." class="w-64 px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-xs font-bold">
+                <button type="button" onclick="window.GherbiSalesTurbo && window.GherbiSalesTurbo.exportFilteredSalesPdfReport()" class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-sm cursor-pointer">📄 تصدير PDF</button>
+                <button type="button" onclick="window.GherbiSalesTurbo && window.GherbiSalesTurbo.exportFilteredSalesExcel()" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-sm cursor-pointer">📊 تصدير Excel</button>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" onclick="window.GherbiPrintStudioV45.setBridgeCategory('sales')" class="px-4 py-2 rounded-xl font-black text-xs transition cursor-pointer ${cat === 'sales' ? 'bg-blue-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}">
+                🧾 فواتير المبيعات والضمان (${(this.liveDataRecords.sales || []).length})
+              </button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setBridgeCategory('purchases')" class="px-4 py-2 rounded-xl font-black text-xs transition cursor-pointer ${cat === 'purchases' ? 'bg-emerald-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}">
+                🛍️ فواتير المشتريات والتموين (${(this.liveDataRecords.purchases || []).length})
+              </button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setBridgeCategory('proformas')" class="px-4 py-2 rounded-xl font-black text-xs transition cursor-pointer ${cat === 'proformas' ? 'bg-indigo-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}">
+                📋 الفواتير الشكلية (${(this.liveDataRecords.proformas || []).length})
+              </button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setBridgeCategory('orders')" class="px-4 py-2 rounded-xl font-black text-xs transition cursor-pointer ${cat === 'orders' ? 'bg-amber-500 text-slate-950 shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}">
+                📦 طلبيات الزبائن (${(this.liveDataRecords.orders || []).length})
+              </button>
+            </div>
+
+            <div class="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700 max-h-[480px]">
+              <table class="w-full text-right border-collapse">
+                <thead class="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-black border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-3">رقم المستند</th>
+                    <th class="py-3 px-3">التاريخ والتوقيت</th>
+                    <th class="py-3 px-3">الطرف (الزبون / المورد)</th>
+                    <th class="py-3 px-3">المبلغ الإجمالي</th>
+                    <th class="py-3 px-3 text-center">إجراءات الفتح والتعديل والطباعة</th>
+                  </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      } else if (this.activeSection === 'barcode_shelf_factory') {
+        const lCfg = cfg.labelCfg;
+        const products = this.liveDataRecords.products || [];
+        const previewProd =
+          products.find((p) => Number(p.id) === Number(lCfg.previewProductId)) ||
+          products[0] || { id: 1, name: 'غولد لاين (GOLD LINE)', barcode: '6134843000591', selling_price: 125 };
+
+        const labelPreviewHtml = this.buildSingleLabelOrShelfTagHtml(previewProd, lCfg);
+        const totalStickersInQueue = this.labelQueue.reduce((s, q) => s + Number(q.copies || 1), 0);
+
+        const queueRowsHtml =
+          this.labelQueue.length > 0
+            ? this.labelQueue
+                .map(
+                  (item, idx) => `
+                  <tr class="border-b border-slate-100 dark:border-slate-800 text-xs">
+                    <td class="py-2 px-3 font-black">${item.name}</td>
+                    <td class="py-2 px-3 font-mono text-slate-500">${item.barcode}</td>
+                    <td class="py-2 px-3 font-mono font-black text-blue-600">${this.fmtDzd(item.price)}</td>
+                    <td class="py-2 px-3">
+                      <input type="number" min="1" max="500" value="${item.copies}" onchange="window.GherbiPrintStudioV45.updateQueueItemCopies(${idx}, this.value)" class="w-20 px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-600 font-mono font-black text-center">
+                    </td>
+                    <td class="py-2 px-3 text-center">
+                      <button type="button" onclick="window.GherbiPrintStudioV45.removeQueueItem(${idx})" class="px-2 py-1 rounded-lg bg-rose-100 text-rose-600 font-black">✕</button>
+                    </td>
+                  </tr>`
+                )
+                .join('')
+            : `<tr><td colspan="5" class="py-6 text-center text-slate-400 font-bold">الطابور فارغ — أضف منتجات من الأعلى لطباعة الملصقات.</td></tr>`;
+
+        sectionBodyHtml = `
+          <div class="v59-studio-main-grid">
+            <div class="rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 shadow-sm space-y-4 text-xs">
+              <h3 class="text-base font-black text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-700 pb-3">🏷️ مصنع ملصقات الباركود وبطاقات أسعار الرفوف</h3>
+              <div class="space-y-3">
+                <div>
+                  <label class="block font-black mb-1">📦 اختر منتجاً للمعاينة أو الإضافة للطابور:</label>
+                  <div class="flex gap-1.5">
+                    <select onchange="window.GherbiPrintStudioV45.selectPreviewProduct(this.value)" class="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 font-bold">
+                      ${products.slice(0, 200).map((p) => `<option value="${p.id}" ${Number(lCfg.previewProductId) === Number(p.id) ? 'selected' : ''}>${p.name} (${p.selling_price} د.ج)</option>`).join('')}
+                    </select>
+                    <button type="button" onclick="window.GherbiPrintStudioV45.addCurrentPreviewProductToQueue()" class="px-3.5 py-2 rounded-xl bg-blue-600 text-white font-black whitespace-nowrap cursor-pointer">+ أضف</button>
+                  </div>
+                </div>
+              </div>
+              <div class="overflow-x-auto max-h-56 rounded-xl border border-slate-200 dark:border-slate-700">
+                <table class="w-full text-right border-collapse">
+                  <thead class="bg-slate-100 dark:bg-slate-800 text-[11px] font-black">
+                    <tr><th class="py-2 px-3">الصنف</th><th class="py-2 px-3">الباركود</th><th class="py-2 px-3">السعر</th><th class="py-2 px-3">العدد</th><th class="py-2 px-3">حذف</th></tr>
+                  </thead>
+                  <tbody>${queueRowsHtml}</tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 shadow-sm flex flex-col justify-between space-y-4">
+              <div class="v45-studio-workspace min-h-[240px] items-center">${labelPreviewHtml}</div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                <button type="button" onclick="window.GherbiPrintStudioV45.printSinglePreviewLabelNow()" class="w-full py-3 rounded-2xl bg-blue-600 text-white font-black text-xs shadow-md cursor-pointer">🖨️ طباعة الملصق المعاين</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.printAllQueuedLabelsSheet()" class="w-full py-3 rounded-2xl bg-slate-900 text-amber-400 font-black text-xs shadow-md cursor-pointer">🚀 طباعة الطابور بالكامل (${totalStickersInQueue} ملصق)</button>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (this.activeSection === 'free_word_editor') {
+        const fd = this.freeDoc;
+        const shop = this.getShopIdentity();
+        const freeTotal = fd.items.reduce((s, it) => s + Number(it.qty || 1) * Number(it.price || 0), 0);
+
+        sectionBodyHtml = `
+          <div class="v59-studio-main-grid">
+            <div class="rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 shadow-sm space-y-3 text-xs">
+              <h3 class="text-sm font-black text-slate-900 dark:text-white border-b pb-2">📝 منشئ البونات والوثائق الحرة (Word)</h3>
+              <div><label class="block font-bold mb-1">عنوان الوثيقة:</label><input type="text" value="${fd.title}" oninput="window.GherbiPrintStudioV45.updateFreeDoc('title', this.value)" class="w-full px-3 py-2 rounded-xl border font-black"></div>
+              <div><label class="block font-bold mb-1">الطرف المعني:</label><input type="text" value="${fd.recipient}" oninput="window.GherbiPrintStudioV45.updateFreeDoc('recipient', this.value)" class="w-full px-3 py-2 rounded-xl border font-bold"></div>
+              <button type="button" onclick="window.GherbiPrintStudioV45.printFreeWordDocumentNow()" class="w-full py-3 rounded-2xl bg-blue-600 text-white font-black text-xs shadow-lg cursor-pointer">🖨️ طباعة الوثيقة الحرة الآن</button>
+            </div>
+            <div class="w-full min-w-0">
+              <div class="v45-studio-workspace max-h-[75vh]">
+                <div id="v45FreeWordPaperHost" class="v45-live-paper paper-a4" contenteditable="true" spellcheck="false">
+                  <h2 style="text-align:center;color:#1d4ed8;">${shop.name} — ${fd.title}</h2>
+                  <p><strong>${fd.recipient}</strong> | التاريخ: ${fd.date}</p>
+                  <p>${fd.introText}</p>
+                  <p><strong>الإجمالي: ${this.fmtDzd(freeTotal)}</strong></p>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        // ====================================================================
+        // التبويب الخامس المصلح بالكامل (V59): قمرة الـ 28 قالباً احترافياً جاهزاً (Par Défaut)
+        // بعرض الشاشة الكامل 100% وشبكة بطاقات مريحة وواضحة!
+        // ====================================================================
+        const catFilter = this.defaultsCategoryFilter || 'ALL';
+        const q = (this.defaultsSearchQuery || '').trim().toLowerCase();
+
+        const filteredDocs = PRO_28_TEMPLATES.filter((doc) => {
+          if (catFilter !== 'ALL' && doc.cat !== catFilter) return false;
+          if (q && !`${doc.name} ${doc.sourceLabel} ${doc.proDesc} ${doc.id}`.toLowerCase().includes(q)) return false;
+          return true;
+        });
+
+        const cardsHtml = filteredDocs
+          .map((doc) => {
+            const def = this.config.defaultsByDocType[doc.id] || {
+              paperSize: doc.defaultPaper,
+              themeId: doc.defaultTheme,
+              lang: 'ar',
+              adopted: true
+            };
+            const sizeMeta = PAPER_SIZE_META[def.paperSize] || PAPER_SIZE_META.a4;
+            const themeObj = VISUAL_THEMES.find((t) => t.id === def.themeId) || VISUAL_THEMES[0];
+
+            return `
+              <div class="v59-template-card">
+                <!-- أعلى البطاقة: اسم المستند + أيقونة المقاس -->
+                <div class="space-y-2">
+                  <div class="flex items-start justify-between gap-2.5">
+                    <div class="flex-1 min-w-0">
+                      <div class="font-black text-slate-900 dark:text-white text-sm leading-snug">
+                        <span class="text-blue-600 font-mono">#${doc.num}</span> ${doc.name}
+                      </div>
+                      <button type="button" onclick="window.App.switchView('${doc.sourcePage}')" class="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline mt-1 inline-flex items-center gap-1 cursor-pointer">
+                        <span>🔗 مربوط مع: ${doc.sourceLabel} ⬅</span>
+                      </button>
+                    </div>
+
+                    <div onclick="window.GherbiPrintStudioV45.openMultiSizePreviewModal('${doc.id}')" title="اضغط لمعاينة هذا القالب الاحترافي" class="cursor-pointer shrink-0 p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-blue-500">
+                      <div style="width:${sizeMeta.aspectW}px;height:${sizeMeta.aspectH}px;background:#ffffff;border:2px solid ${themeObj.primary};border-radius:4px;display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:8.5px;font-weight:900;color:${themeObj.primary};">
+                        ${sizeMeta.badge}
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- وصف القالب الاحترافي الجاهز -->
+                  <div class="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-[11px] font-bold text-slate-600 dark:text-slate-300 leading-relaxed">
+                    ✨ ${doc.proDesc}
+                  </div>
+                </div>
+
+                <!-- أسفل البطاقة: حالة الاعتماد + اختيار المقاس واللون + أزرار المعاينة والتخصيص -->
+                <div class="space-y-2.5 pt-1">
+                  <div class="px-3 py-1.5 rounded-xl bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-[11px] font-black text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
+                    <span>✅ قالب احترافي جاهز ومعتمد (Par Défaut)</span>
+                    <span class="font-mono">${sizeMeta.badge}</span>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-2">
+                    <select onchange="window.GherbiPrintStudioV45.setDocDefaultPaper('${doc.id}', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 font-black text-xs cursor-pointer">
+                      <option value="a4" ${def.paperSize === 'a4' ? 'selected' : ''}>📄 مقاس A4</option>
+                      <option value="a5" ${def.paperSize === 'a5' ? 'selected' : ''}>📑 مقاس A5</option>
+                      <option value="2xa5" ${def.paperSize === '2xa5' ? 'selected' : ''}>✂️ مقاس 2×A5</option>
+                      <option value="80mm" ${def.paperSize === '80mm' ? 'selected' : ''}>🧾 حراري 80mm</option>
+                      <option value="58mm" ${def.paperSize === '58mm' ? 'selected' : ''}>🧾 حراري 58mm</option>
+                    </select>
+                    <select onchange="window.GherbiPrintStudioV45.setDocDefaultTheme('${doc.id}', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 font-bold text-xs cursor-pointer">
+                      ${VISUAL_THEMES.map((t) => `<option value="${t.id}" ${def.themeId === t.id ? 'selected' : ''}>🎨 ${t.name}</option>`).join('')}
+                    </select>
+                  </div>
+
+                  <div class="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800">
+                    <button type="button" onclick="window.GherbiPrintStudioV45.openMultiSizePreviewModal('${doc.id}')" class="py-2 px-2 rounded-xl bg-amber-500/15 hover:bg-amber-500 text-amber-900 dark:text-amber-300 hover:text-slate-950 border border-amber-400/50 font-black text-xs transition cursor-pointer flex items-center justify-center gap-1">
+                      <span>👁️ معاينة</span>
+                    </button>
+                    <button type="button" onclick="window.GherbiPrintStudioV45.customizeCardInStudioNow('${doc.id}')" class="py-2 px-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-sm transition cursor-pointer flex items-center justify-center gap-1">
+                      <span>🎨 تخصيص</span>
+                    </button>
+                    <button type="button" onclick="window.GherbiPrintStudioV45.applySingleProDefaultTemplate('${doc.id}')" title="تفعيل القالب الاحترافي الافتراضي الجاهز لهذا المستند" class="py-2 px-2 rounded-xl bg-emerald-100 hover:bg-emerald-600 text-emerald-900 hover:text-white border border-emerald-300 font-black text-[11px] transition cursor-pointer flex items-center justify-center gap-1">
+                      <span>⚡ جاهز</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            `;
+          })
+          .join('');
+
+        sectionBodyHtml = `
+          <div class="rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 shadow-sm space-y-4 w-full">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-700 pb-3.5">
+              <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h3 class="text-base md:text-lg font-black text-slate-900 dark:text-white">
+                    ⚙️ قمرة القوالب الاحترافية الافتراضية الجاهزة لكل صفحات البرنامج (28 مستنداً — Par Défaut)
+                  </h3>
+                  <span class="px-3 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-black text-xs border border-emerald-300">
+                    28 قالباً احترافياً جاهزاً للعمل مباشرةً
+                  </span>
+                </div>
+                <p class="text-xs text-slate-500 mt-1">
+                  كل مستند من الـ 28 مستنداً مزود بقالب احترافي مثالي جاهز للاستعمال فوراً بدون أي تعديل — اضغط <strong>(👁️ معاينة)</strong> لرؤيته، أو <strong>(🎨 تخصيص)</strong> لتعديله في الاستوديو، أو <strong>(⚡ جاهز)</strong> لاستعادة تصميمه المثالي!
+                </p>
+              </div>
+
+              <button type="button" onclick="window.GherbiPrintStudioV45.adoptAllIdealPresetsAcrossAllPages()" class="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-lg transition cursor-pointer flex items-center gap-2">
+                <span>🚀 اعتماد القوالب الاحترافية الجاهزة لكل الـ 28 مستنداً دفعة واحدة</span>
+              </button>
+            </div>
+
+            <!-- شريط تصنيف القوالب الـ 28 + البحث الفوري -->
+            <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-200 dark:border-slate-700">
+              <div class="flex flex-wrap items-center gap-1.5 text-xs">
+                <button type="button" onclick="window.GherbiPrintStudioV45.setDefaultsCatFilter('ALL')" class="px-3.5 py-2 rounded-xl font-black transition cursor-pointer ${catFilter === 'ALL' ? 'bg-blue-600 text-white shadow' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600'}">
+                  🌐 كل المستندات (28)
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setDefaultsCatFilter('POS')" class="px-3.5 py-2 rounded-xl font-black transition cursor-pointer ${catFilter === 'POS' ? 'bg-blue-600 text-white shadow' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600'}">
+                  🧾 المبيعات والكاشير (9)
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setDefaultsCatFilter('CREDIT')" class="px-3.5 py-2 rounded-xl font-black transition cursor-pointer ${catFilter === 'CREDIT' ? 'bg-rose-600 text-white shadow' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600'}">
+                  💳 الكريدي والديون والوفاء (7)
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setDefaultsCatFilter('PURCHASES')" class="px-3.5 py-2 rounded-xl font-black transition cursor-pointer ${catFilter === 'PURCHASES' ? 'bg-emerald-600 text-white shadow' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600'}">
+                  🛍️ المشتريات والموردين (4)
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setDefaultsCatFilter('INVENTORY')" class="px-3.5 py-2 rounded-xl font-black transition cursor-pointer ${catFilter === 'INVENTORY' ? 'bg-amber-500 text-slate-950 shadow' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600'}">
+                  📦 المخزون والتصنيع (4)
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setDefaultsCatFilter('FINANCE')" class="px-3.5 py-2 rounded-xl font-black transition cursor-pointer ${catFilter === 'FINANCE' ? 'bg-indigo-600 text-white shadow' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600'}">
+                  🏦 الصندوق والجباية والرقابة (4)
+                </button>
+              </div>
+
+              <input type="text" value="${this.defaultsSearchQuery || ''}" oninput="window.GherbiPrintStudioV45.setDefaultsSearch(this.value)" placeholder="🔎 ابحث في الـ 28 مستنداً (كريدي، وصل، جرد...)" class="w-72 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-xs font-bold outline-none focus:border-blue-500">
+            </div>
+
+            <!-- شبكة البطاقات الـ 28 العريضة والمريحة (Full-Width CSS Grid) -->
+            <div class="v59-defaults-cards-grid">
+              ${cardsHtml}
+            </div>
+          </div>
+        `;
+      }
+
+      targetRoot.innerHTML = `
+        <div id="v45MasterPrintStudio" data-gherbi-print-v2="1" class="space-y-4 text-right pb-8 w-full" dir="rtl">
+          <div class="rounded-3xl bg-gradient-to-l from-slate-900 via-blue-950 to-slate-900 text-white p-5 shadow-xl border border-blue-500/30 w-full">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-3.5">
+                <div class="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg">
+                  <span class="material-symbols-rounded" style="font-size:28px;">print</span>
+                </div>
+                <div>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-black text-[11px]">
+                      Gherbi.Ai Omni-Print V59 — 28 قالباً احترافياً جاهزاً (Par Défaut)
+                    </span>
+                    <h1 class="text-lg md:text-xl font-black">
+                      مركز الطباعة الشامل واستوديو القوالب الاحترافية الجاهزة لكل الصفحات
+                    </h1>
+                  </div>
+                  <p class="text-xs text-slate-300 mt-0.5">
+                    28 قالباً احترافياً مصمماً مسبقاً وجاهزاً للاستعمال المباشر بدون أي تعديل، مع حرية التخصيص الكامل (Word / Photoshop) والربط التلقائي بكل الصفحات
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('visual_studio')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer ${this.activeSection === 'visual_studio' ? 'bg-blue-600 text-white shadow-md' : 'bg-white/10 hover:bg-white/20 text-slate-200'}">
+                  🎨 1. استوديو الفواتير والطبقات (28 قالباً)
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('cross_page_bridge')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer ${this.activeSection === 'cross_page_bridge' ? 'bg-blue-600 text-white shadow-md' : 'bg-white/10 hover:bg-white/20 text-slate-200'}">
+                  🔗 2. فواتير الصفحات (${(this.liveDataRecords.sales || []).length + (this.liveDataRecords.purchases || []).length})
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('barcode_shelf_factory')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer ${this.activeSection === 'barcode_shelf_factory' ? 'bg-amber-500 text-slate-950 shadow-md' : 'bg-white/10 hover:bg-white/20 text-slate-200'}">
+                  🏷️ 3. الباركود والرفوف
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('free_word_editor')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer ${this.activeSection === 'free_word_editor' ? 'bg-emerald-600 text-white shadow-md' : 'bg-white/10 hover:bg-white/20 text-slate-200'}">
+                  📝 4. محرر البونات (Word)
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('hardware_defaults')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer ${this.activeSection === 'hardware_defaults' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white/10 hover:bg-white/20 text-slate-200'}">
+                  ⚙️ 5. القوالب الافتراضية الـ 28 (Par Défaut)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="w-full">${sectionBodyHtml}</div>
+        </div>
+      `;
+    };
+
+    // دوال التفاعل السلسة
+    studio.setDefaultsCatFilter = function (cat) {
+      this.defaultsCategoryFilter = cat || 'ALL';
+      this.renderStudioIntoRoot();
+    };
+
+    studio.setDefaultsSearch = function (val) {
+      this.defaultsSearchQuery = String(val || '');
+      this.renderStudioIntoRoot();
+      setTimeout(() => {
+        const inp = document.querySelector('input[placeholder*="ابحث في الـ 28 مستنداً"]');
+        if (inp) {
+          inp.focus();
+          const len = inp.value.length;
+          inp.setSelectionRange(len, len);
+        }
+      }, 10);
+    };
+
+    studio.customizeCardInStudioNow = async function (docId) {
+      const targetId = docId || 'receipt_thermal';
+      const meta = PRO_28_TEMPLATES.find((d) => d.id === targetId) || PRO_28_TEMPLATES[0];
+
+      document.getElementById('v46MultiSizePreviewModal')?.classList.add('hidden');
+      document.getElementById('v58PreviewAndEditModal')?.classList.add('hidden');
+
+      this.config.activeDocType = targetId;
+      this.loadProfileForDocType(targetId);
+      this.selectedRecordId = 'SAMPLE';
+      this.activeLoadedDocData = null;
+      this.activeSection = 'visual_studio';
+      this.saveConfigLocal();
+
+      const viewPrint = document.getElementById('view-print');
+      if (viewPrint && !viewPrint.classList.contains('active') && typeof window.App.switchView === 'function') {
+        await window.App.switchView('print');
+      }
+
+      await this.renderStudioIntoRoot();
+      if (window.showToast) {
+        window.showToast(`🎨 تم فتح (${meta.name}) في استوديو التخصيص الكامل!`, 'success');
+      }
+    };
+
+    studio.openMultiSizePreviewModal = async function (docId) {
+      const targetId = docId || this.config.activeDocType || 'receipt_thermal';
+      const meta = PRO_28_TEMPLATES.find((d) => d.id === targetId) || PRO_28_TEMPLATES[0];
+      const def = this.config.defaultsByDocType[targetId] || {
+        paperSize: meta.defaultPaper,
+        themeId: meta.defaultTheme,
+        lang: 'ar'
+      };
+
+      this.config.activeDocType = targetId;
+      this.loadProfileForDocType(targetId);
+      this.activeLoadedDocData = null;
+
+      this.previewModalState = {
+        isOpen: true,
+        docId: meta.id,
+        paperSize: def.paperSize || meta.defaultPaper,
+        themeId: def.themeId || meta.defaultTheme
+      };
+
+      let modal = document.getElementById('v58PreviewAndEditModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'v58PreviewAndEditModal';
+        modal.style.zIndex = '29600';
+        modal.className = 'fixed inset-0 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4';
+        document.body.appendChild(modal);
+      }
+
+      await this.renderV58PreviewModalContent();
+      modal.classList.remove('hidden');
+    };
+
+    studio.renderV58PreviewModalContent = async function () {
+      const modal = document.getElementById('v58PreviewAndEditModal');
+      if (!modal) return;
+
+      const st = this.previewModalState;
+      const meta = PRO_28_TEMPLATES.find((d) => d.id === st.docId) || PRO_28_TEMPLATES[0];
+      const sizeInfo = PAPER_SIZE_META[st.paperSize] || PAPER_SIZE_META['80mm'];
+      const docData = await this.resolveActiveDocumentData(st.docId);
+
+      const liveEditablePaperHtml = this.buildLiveDocumentPaperHtml(docData, false, {
+        ...this.config,
+        activeDocType: st.docId,
+        paperSize: st.paperSize,
+        themeId: st.themeId,
+        zoomPct: st.paperSize === '2xa5' ? 80 : 95,
+        isPreviewModal: false
+      });
+
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-slate-900 border-2 border-blue-500 rounded-3xl max-w-5xl w-[95vw] max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-right" dir="rtl">
+          <div class="p-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 border-b border-slate-700">
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="text-base font-black">👁️ معاينة القالب الاحترافي المعتمد: ${meta.name}</h3>
+                <span class="px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 font-mono font-black text-xs">${sizeInfo.badge}</span>
+              </div>
+              <p class="text-xs text-slate-300 mt-0.5">🔗 مربوط مع: <strong>${meta.sourceLabel}</strong> — ${meta.proDesc}</p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" onclick="window.GherbiPrintStudioV45.printFromPreviewModalNow()" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow cursor-pointer">🖨️ طباعة / PDF (${sizeInfo.badge})</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.customizeCardInStudioNow('${st.docId}')" class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg cursor-pointer">🎨 فتح في استوديو التخصيص الكامل ⬅</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.saveDirectEditsFromPreviewModal()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-lg cursor-pointer">💾 حفظ واعتماد التعديلات</button>
+              <button type="button" onclick="document.getElementById('v58PreviewAndEditModal').classList.add('hidden')" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-600 text-white font-black text-xs cursor-pointer">✕ إغلاق</button>
+            </div>
+          </div>
+
+          <div class="px-4 py-2.5 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="font-black text-slate-600 dark:text-slate-300">📐 المقاس:</span>
+              <button type="button" onclick="window.GherbiPrintStudioV45.switchV58PreviewSize('80mm')" class="px-3 py-1 rounded-xl font-black cursor-pointer ${st.paperSize === '80mm' ? 'bg-blue-600 text-white shadow' : 'bg-white dark:bg-slate-700 border'}">80mm حراري</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.switchV58PreviewSize('58mm')" class="px-3 py-1 rounded-xl font-black cursor-pointer ${st.paperSize === '58mm' ? 'bg-blue-600 text-white shadow' : 'bg-white dark:bg-slate-700 border'}">58mm حراري</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.switchV58PreviewSize('a4')" class="px-3 py-1 rounded-xl font-black cursor-pointer ${st.paperSize === 'a4' ? 'bg-blue-600 text-white shadow' : 'bg-white dark:bg-slate-700 border'}">A4 رسمي</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.switchV58PreviewSize('a5')" class="px-3 py-1 rounded-xl font-black cursor-pointer ${st.paperSize === 'a5' ? 'bg-blue-600 text-white shadow' : 'bg-white dark:bg-slate-700 border'}">A5 نصفي</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.switchV58PreviewSize('2xa5')" class="px-3 py-1 rounded-xl font-black cursor-pointer ${st.paperSize === '2xa5' ? 'bg-blue-600 text-white shadow' : 'bg-white dark:bg-slate-700 border'}">2×A5 مزدوج</button>
+
+              <select onchange="window.GherbiPrintStudioV45.switchV58PreviewTheme(this.value)" class="px-2.5 py-1 rounded-xl bg-white dark:bg-slate-700 border font-black cursor-pointer">
+                ${VISUAL_THEMES.map((t) => `<option value="${t.id}" ${st.themeId === t.id ? 'selected' : ''}>🎨 ${t.name}</option>`).join('')}
+              </select>
+            </div>
+
+            <div class="flex items-center gap-1.5">
+              <span class="px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 font-black text-[11px]">
+                ✍️ يمكنك النقر على أي نص داخل الورقة بالأسفل وتعديله مباشرةً!
+              </span>
+              <button type="button" onclick="window.GherbiPrintStudioV45.applySingleProDefaultTemplate('${st.docId}'); window.GherbiPrintStudioV45.openMultiSizePreviewModal('${st.docId}');" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-black text-[11px] cursor-pointer">
+                ⚡ استعادة القالب الاحترافي
+              </button>
+            </div>
+          </div>
+
+          <div class="v45-studio-workspace flex-1 overflow-y-auto" id="v58PreviewModalPaperHost">
+            ${liveEditablePaperHtml}
+          </div>
+        </div>
+      `;
+    };
+
+    studio.switchV58PreviewSize = async function (newSize) {
+      this.previewModalState.paperSize = newSize;
+      this.config.paperSize = newSize;
+      this.setDocDefaultPaper(this.previewModalState.docId, newSize);
+      await this.renderV58PreviewModalContent();
+    };
+
+    studio.switchV58PreviewTheme = async function (newTheme) {
+      this.previewModalState.themeId = newTheme;
+      this.config.themeId = newTheme;
+      this.setDocDefaultTheme(this.previewModalState.docId, newTheme);
+      await this.renderV58PreviewModalContent();
+    };
+
+    studio.saveDirectEditsFromPreviewModal = async function () {
+      const st = this.previewModalState;
+      this.config.activeDocType = st.docId;
+      this.config.paperSize = st.paperSize;
+      this.config.themeId = st.themeId;
+      await this.saveAsDefaultForDocType();
+      document.getElementById('v58PreviewAndEditModal')?.classList.add('hidden');
+      await this.renderStudioIntoRoot();
+    };
+
+    studio.printFromPreviewModalNow = async function () {
+      const paperEl = document.querySelector('#v58PreviewModalPaperHost .v45-live-paper');
+      if (!paperEl) return;
+      const clone = paperEl.cloneNode(true);
+      clone.querySelectorAll('.v45-layer-handle-bar').forEach((el) => el.remove());
+      clone.querySelectorAll('[contenteditable]').forEach((el) => el.removeAttribute('contenteditable'));
+      clone.style.transform = 'none';
+
+      const pSize = this.previewModalState.paperSize || '80mm';
+      const isThermal = pSize === '80mm' || pSize === '58mm';
+      const pageCss = isThermal
+        ? `@page { size: ${pSize} auto; margin: 1.5mm; }`
+        : pSize === '2xa5'
+        ? `@page { size: A4 landscape; margin: 6mm; }`
+        : pSize === 'a5'
+        ? `@page { size: A5 portrait; margin: 6mm; }`
+        : `@page { size: A4 portrait; margin: 8mm; }`;
+
+      const html = `<!DOCTYPE html><html lang="ar" dir="rtl" data-v52-studio-master="1"><head><meta charset="UTF-8"><style>
+        ${pageCss}
+        * { box-sizing: border-box !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        body { margin: 0; padding: 0; font-family: 'Cairo', Tahoma, sans-serif; color: #0f172a; background: #fff; }
+        .v45-live-paper { box-shadow: none !important; margin: 0 auto !important; width: ${isThermal ? (pSize === '58mm' ? '56mm' : '78mm') : '100%'} !important; min-height: auto !important; }
+        .v45-canvas-layer { border: none !important; box-shadow: none !important; }
+      </style></head><body>${clone.outerHTML}</body></html>`;
+
+      await window.__gherbiMasterPrintSilent({ html, silent: false });
+    };
+
+    ensureAll28ProProfilesInitialized();
+
+    const pcSelect = document.getElementById('pcDocTypeSelect');
+    if (pcSelect) {
+      pcSelect.innerHTML = studio.build28DocsGroupedOptionsHtml('invoice_a4');
+    }
+
+    if (document.getElementById('view-print')?.classList.contains('active')) {
+      studio.renderStudioIntoRoot();
+    }
+
+    console.log('🏆 [Gherbi V59 Clean-Room Print Center]: تم إصلاح تخطيط البطاقات الـ 28 بعرض كامل 100% وتزويد كل مستند بقالب احترافي جاهز (Par Défaut)!');
+  }, 120);
+})();
+
+/* ==================== [V60 30 SMART LAYERS & DEEP LAYER INSPECTOR STUDIO] ==================== */
+(function initV60Smart30LayersAndDeepInspectorStudio() {
+  // ==========================================================================
+  // 1. مكتبة الطبقات الذكية الموسعة (30 طبقة احترافية تغطي كافة القوالب الـ 28)
+  // ==========================================================================
+  const FULL_30_SMART_LAYERS = [
+    // ── الفئة 1: الأساسية والجدول (CORE — 6 طبقات) ──
+    { id: 'header_layer', cat: 'CORE', catLabel: '🏛️ الأساسية (6)', name: '🏢 1. ترويسة المتجر والشعار والبيانات الجبائية', desc: 'اسم المتجر، الشعار، الهاتف، العنوان، وأرقام RC / NIF / AI / NIS.', defaultVisible: true, forDocs: ['ALL'] },
+    { id: 'doc_banner_layer', cat: 'CORE', catLabel: '🏛️ الأساسية (6)', name: '🏷️ 2. شريط عنوان ورقم المستند والباركود', desc: 'عنوان التذكرة/الفاتورة، رقمها التسلسلي، تاريخ وساعة الإصدار، والباركود.', defaultVisible: true, forDocs: ['ALL'] },
+    { id: 'customer_box_layer', cat: 'CORE', catLabel: '🏛️ الأساسية (6)', name: '👤 3. بطاقة بيانات الزبون / المورد والرصيد', desc: 'اسم الزبون أو المورد، رقم هاتفه، عنوانه، وبياناته الجبائية.', defaultVisible: true, forDocs: ['ALL'] },
+    { id: 'items_table_layer', cat: 'CORE', catLabel: '🏛️ الأساسية (6)', name: '📋 4. جدول الأصناف والكميات والأسعار', desc: 'جدول السلع أو البنود بتخطيط ذكي يتكيف تلقائياً مع 80mm و A4.', defaultVisible: true, forDocs: ['ALL'] },
+    { id: 'totals_words_layer', cat: 'CORE', catLabel: '🏛️ الأساسية (6)', name: '💰 5. شلال المجاميع بالدينار والسنتيم والتفقيط', desc: 'المجموع الفرعي، التخفيض، الصافي بالدينار والسنتيم، والمبلغ بالحروف.', defaultVisible: true, forDocs: ['ALL'] },
+    { id: 'footer_stamp_layer', cat: 'CORE', catLabel: '🏛️ الأساسية (6)', name: '✒️ 6. التذييل، شروط الاستبدال، رمز RIP، والختم', desc: 'شروط الإرجاع والاستبدال، رقم حساب BaridiMob RIP، ومربع الختم والإمضاء.', defaultVisible: true, forDocs: ['ALL'] },
+
+    // ── الفئة 2: الوفاء والعروض والتسويق (LOYALTY — 5 طبقات) ──
+    { id: 'loyalty_points_layer', cat: 'LOYALTY', catLabel: '👑 الوفاء والتسويق (5)', name: '👑 7. بطاقة نقاط الوفاء والمخصوم من البطاقة (VIP & عابر)', desc: 'تعرض نوع الزبون، الرصيد السابق، المكتسب (+)، المخصوم (-)، والرصيد الجديد.', defaultVisible: true, forDocs: ['receipt_thermal', 'invoice_a4', 'pos_partial_credit_80mm', 'loyalty_vip_card_80mm', 'customer_carnet_80mm'] },
+    { id: 'savings_promo_layer', cat: 'LOYALTY', catLabel: '👑 الوفاء والتسويق (5)', name: '🎉 8. شريط "كم وفّرت اليوم؟" وعداد القطع الإجمالي', desc: 'يبرز للزبون إجمالي ما وفّره في الفاتورة وإجمالي عدد القطع المستلمة.', defaultVisible: false, forDocs: ['receipt_thermal', 'invoice_a4', 'invoice_a5', 'loyalty_vip_card_80mm'] },
+    { id: 'vip_coupon_cut_layer', cat: 'LOYALTY', catLabel: '👑 الوفاء والتسويق (5)', name: '✂️ 9. قسيمة هدية وتخفيض قابلة للقص للزيارة القادمة (Coupon)', desc: 'كوبون ترويجي منقط قابل للقص في أسفل التذكرة لتحفيز الزبون على العودة.', defaultVisible: false, forDocs: ['receipt_thermal', 'loyalty_vip_card_80mm'] },
+    { id: 'qr_social_wifi_layer', cat: 'LOYALTY', catLabel: '👑 الوفاء والتسويق (5)', name: '📱 10. رمز QR المتجر، صفحات التواصل، وكود Wi-Fi الزبائن', desc: 'رمز استجابة سريعة للمتجر مع صفحات فيسبوك/واتساب أو كود Wi-Fi الزبائن.', defaultVisible: false, forDocs: ['receipt_thermal', 'loyalty_vip_card_80mm', 'price_catalog_a4'] },
+    { id: 'return_policy_box_layer', cat: 'LOYALTY', catLabel: '👑 الوفاء والتسويق (5)', name: '🔄 11. صندوق شروط الإرجاع والاستبدال وحماية المستهلك', desc: 'يوضح شروط استبدال السلع خلال 48 ساعة وإلزامية إحضار الوصل الأصلي.', defaultVisible: false, forDocs: ['receipt_thermal', 'invoice_a4', 'invoice_a5', 'credit_note'] },
+
+    // ── الفئة 3: الكريدي والديون والأقساط (FINANCE — 5 طبقات) ──
+    { id: 'credit_carnet_layer', cat: 'FINANCE', catLabel: '💳 الكريدي والمالية (5)', name: '💳 12. كشف حساب الكريدي السريع للزبون (Carnet de Crédit)', desc: 'صندوق أحمر يوضح الكريدي السابق، فاتورة اليوم، المدفوع اليوم، وإجمالي الكريدي المتبقي.', defaultVisible: false, forDocs: ['payment_receipt', 'customer_carnet_80mm', 'pos_partial_credit_80mm', 'receipt_thermal'] },
+    { id: 'debt_ledger_layer', cat: 'FINANCE', catLabel: '💳 الكريدي والمالية (5)', name: '⚖️ 13. جدول وضعية الديون والحساب التراكمي (A4 / A5)', desc: 'جدول رسمي يوضح الدين السابق + فاتورة اليوم - المدفوع = إجمالي الدين المتبقي.', defaultVisible: false, forDocs: ['invoice_a4', 'invoice_a5', 'customer_ledger_a4', 'recap_invoice_a4', 'purchase_invoice', 'supplier_payment_receipt', 'supplier_ledger_a4'] },
+    { id: 'payment_breakdown_layer', cat: 'FINANCE', catLabel: '💳 الكريدي والمالية (5)', name: '💵 14. تفصيل المقبوض، الصرف المرجع (Rendu)، وطريقة الدفع', desc: 'يعرض المبلغ المستلم، الصرف المرجع للزبون بالدينار والسنتيم، واسم الكاشير.', defaultVisible: false, forDocs: ['receipt_thermal', 'pos_partial_credit_80mm', 'payment_receipt'] },
+    { id: 'installments_schedule_layer', cat: 'FINANCE', catLabel: '💳 الكريدي والمالية (5)', name: '🗓️ 15. جدول الأقساط الشهرية ومواعيد الاستحقاق والتسبيق', desc: 'يعرض الدفعة الأولى (التسبيق)، عدد الأشهر، قيمة القسط الشهري، وتواريخ الدفع.', defaultVisible: false, forDocs: ['installment_contract', 'invoice_a4'] },
+    { id: 'bank_rip_ccp_box_layer', cat: 'FINANCE', catLabel: '💳 الكريدي والمالية (5)', name: '🏦 16. بطاقة الحساب البنكي (RIB / CCP / BaridiMob RIP)', desc: 'صندوق رسمي لبيانات الدفع البنكي والبريدي للشركات والزبائن.', defaultVisible: false, forDocs: ['invoice_a4', 'proforma', 'recap_invoice_a4', 'customer_ledger_a4'] },
+
+    // ── الفئة 4: المخزون والمشتريات والتصنيع (INVENTORY — 5 طبقات) ──
+    { id: 'supplier_reception_layer', cat: 'INVENTORY', catLabel: '📦 المخزون والمشتريات (5)', name: '🛍️ 17. بطاقة مطابقة استلام البضاعة من المورد وفحص الجودة', desc: 'توثق تاريخ الاستلام، رقم فاتورة المورد، حالة الطرود، ومراقب المخزن.', defaultVisible: false, forDocs: ['purchase_invoice', 'supplier_return_note', 'supplier_ledger_a4'] },
+    { id: 'stocktake_variance_layer', cat: 'INVENTORY', catLabel: '📦 المخزون والمشتريات (5)', name: '📊 18. ملخص محضر الجرد المخزني وفوارق الكميات والقيمة', desc: 'يلخص إجمالي الرصيد الدفتري، الرصيد الفعلي المعدود، وصافي العجز أو الفائض.', defaultVisible: false, forDocs: ['stocktake_sheet_a4'] },
+    { id: 'bom_production_cost_layer', cat: 'INVENTORY', catLabel: '📦 المخزون والمشتريات (5)', name: '🏭 19. بطاقة تكلفة التصنيع، المواد الأولية، ونسبة الهدر (BOM)', desc: 'تفصل تكلفة المواد الأولية، المصاريف الإضافية، وتكلفة الوحدة المصنعة الناتجة.', defaultVisible: false, forDocs: ['production_order_sheet'] },
+    { id: 'low_stock_reorder_layer', cat: 'INVENTORY', catLabel: '📦 المخزون والمشتريات (5)', name: '🚨 20. بطاقة أولوية التموين للأصناف الحرجة والنافدة', desc: 'تبرز عدد الأصناف التي وصلت للحد الأدنى والميزانية التقديرية لإعادة تموينها.', defaultVisible: false, forDocs: ['low_stock_order_a4', 'purchase_invoice'] },
+    { id: 'pack_carton_summary_layer', cat: 'INVENTORY', catLabel: '📦 المخزون والمشتريات (5)', name: '📦 21. ملخص التغليف وإجمالي الكراتين والباكي (Colisage)', desc: 'يحسب إجمالي عدد الطرود والكراتين والقطع لتسهيل التحميل والمراقبة.', defaultVisible: false, forDocs: ['delivery_note', 'invoice_a4', 'purchase_invoice', 'customer_order'] },
+
+    // ── الفئة 5: التوصيل والضمان واللوجستيك (LOGISTICS — 4 طبقات) ──
+    { id: 'delivery_driver_layer', cat: 'LOGISTICS', catLabel: '🚚 الضمان والتوصيل (4)', name: '🚚 22. بطاقة التوصيل، السائق، رقم المركبة، وإمضاء الاستلام', desc: 'اسم السائق، رقم لوحة المركبة (Matricule)، وجهة التوصيل، وخانة إمضاء المستلم.', defaultVisible: false, forDocs: ['delivery_note', 'invoice_a4', 'customer_order'] },
+    { id: 'warranty_imei_layer', cat: 'LOGISTICS', catLabel: '🚚 الضمان والتوصيل (4)', name: '🛡️ 23. شهادة الضمان الرسمي والأرقام التسلسلية (IMEI / S-N)', desc: 'صندوق مخصص لمدة الضمان بالأشهر، الأرقام التسلسلية للأجهزة، وشروط الصيانة.', defaultVisible: false, forDocs: ['warranty_cert', 'invoice_a4', 'receipt_thermal'] },
+    { id: 'order_reservation_layer', cat: 'LOGISTICS', catLabel: '🚚 الضمان والتوصيل (4)', name: '📋 24. بطاقة حجز الطلبية، العربون المدفوع، وتاريخ التسليم', desc: 'توضح حالة حجز السلعة في المخزن، مبلغ العربون (Acompte)، والباقي عند الاستلام.', defaultVisible: false, forDocs: ['customer_order', 'proforma'] },
+    { id: 'dual_signature_stamps_layer', cat: 'LOGISTICS', catLabel: '🚚 الضمان والتوصيل (4)', name: '✍️ 25. مربعات الإمضاء والختم الثلاثي (المسلّم / المستلم / المراقب)', desc: 'ثلاث خانات رسمية للتوقيع والختم في أسفل الفواتير ومحاضر الاستلام والجرد.', defaultVisible: false, forDocs: ['delivery_note', 'purchase_invoice', 'stocktake_sheet_a4', 'production_order_sheet', 'installment_contract'] },
+
+    // ── الفئة 6: الصندوق والجباية والرقابة (CAISSE_FISCAL — 5 طبقات) ──
+    { id: 'tax_ifu_breakdown_layer', cat: 'CAISSE_FISCAL', catLabel: '🏦 الصندوق والجباية (5)', name: '🇩🇿 26. جدول تفصيل الضرائب الجزائرية (TVA / الطابع / إعفاء G12)', desc: 'يفصل المبلغ خارج الرسم HT، ضريبة TVA، الطابع الجبائي، والسلع المقننة المعفاة.', defaultVisible: false, forDocs: ['fiscal_g12_statement', 'invoice_a4', 'proforma', 'recap_invoice_a4'] },
+    { id: 'caisse_z_denoms_layer', cat: 'CAISSE_FISCAL', catLabel: '🏦 الصندوق والجباية (5)', name: '🔒 27. جدول جرد الفئات النقدية الجزائرية وفارق الصندوق (Z-Report)', desc: 'يفصل عدّ الأوراق النقدية (2000، 1000، 500، 200 د.ج) والرصيد المتوقع والفارق.', defaultVisible: false, forDocs: ['caisse_z_report'] },
+    { id: 'expense_approval_layer', cat: 'CAISSE_FISCAL', catLabel: '🏦 الصندوق والجباية (5)', name: '💸 28. بطاقة اعتماد سند الصرف النقدي وتوقيع المستفيد', desc: 'توثق فئة المصروف، رقم المناوبة، اسم المستلم للمبلغ، وتوقيع المدير.', defaultVisible: false, forDocs: ['expense_voucher', 'supplier_payment_receipt'] },
+    { id: 'forensic_radar_summary_layer', cat: 'CAISSE_FISCAL', catLabel: '🏦 الصندوق والجباية (5)', name: '🛡️ 29. بطاقة مؤشرات الرقابة الجنائية وحماية الأرباح', desc: 'تلخص عمليات حذف السطور بعد المسح، تفريغ السلة، والبيع بأقل من التكلفة.', defaultVisible: false, forDocs: ['forensic_audit_report', 'caisse_z_report'] },
+    { id: 'free_custom_note_layer', cat: 'CAISSE_FISCAL', catLabel: '🏦 الصندوق والجباية (5)', name: '📝 30. صندوق ملاحظات وتعليمات حرة قابلة للتخصيص', desc: 'صندوق نصي حر يمكنك كتابة أي إعلان، تهنئة، أو ملاحظة خاصة بداخله.', defaultVisible: false, forDocs: ['ALL'] }
+  ];
+
+  const waitStudio = setInterval(() => {
+    const studio = window.GherbiPrintStudioV45;
+    if (!studio || !window.App) return;
+    clearInterval(waitStudio);
+
+    studio.FULL_16_LAYERS_CATALOG = FULL_30_SMART_LAYERS;
+    studio.FULL_30_SMART_LAYERS = FULL_30_SMART_LAYERS;
+    studio.layerCatalogSearch = studio.layerCatalogSearch || '';
+    studio.inspectorOpenForLayerId = studio.inspectorOpenForLayerId || 'header_layer';
+    studio.activeLeftToolTab = studio.activeLeftToolTab || 'layers_order'; // 'layers_order' | 'smart_catalog' | 'layer_inspector' | 'table_and_shop'
+
+    // 1. دالة ترجمة المتغيرات الذكية داخل نصوص وملاحظات الطبقات
+    studio.interpolateSmartVariables = function (rawText, docData) {
+      if (!rawText) return '';
+      const shop = this.getShopIdentity();
+      return String(rawText)
+        .replace(/\{اسم_المتجر\}/g, shop.name || 'Gherbi.Ai POS')
+        .replace(/\{هاتف_المتجر\}/g, shop.phone || '0550 00 00 00')
+        .replace(/\{عنوان_المتجر\}/g, shop.address || 'الجزائر')
+        .replace(/\{RIP\}/g, shop.rip || '00799999000000000000')
+        .replace(/\{رقم_المستند\}/g, (docData && docData.docNumber) || 'FAC-001')
+        .replace(/\{التاريخ\}/g, (docData && docData.date) || new Date().toISOString().slice(0, 16))
+        .replace(/\{اسم_الزبون\}/g, (docData && docData.partyName) || 'زبون عابر')
+        .replace(/\{هاتف_الزبون\}/g, (docData && docData.partyPhone) || '-')
+        .replace(/\{الإجمالي\}/g, this.fmtDzd(docData && docData.total))
+        .replace(/\{المدفوع\}/g, this.fmtDzd(docData && docData.paidAmount))
+        .replace(/\{الدين_السابق\}/g, this.fmtDzd(docData && docData.previousBalance))
+        .replace(/\{صافي_الدين\}/g, this.fmtDzd((Number(docData?.previousBalance || 0) + Number(docData?.remainingDebt || 0))))
+        .replace(/\{نقاط_الوفاء\}/g, String((docData && docData.loyaltyTotalBalance) || 0));
+    };
+
+    // 2. دمج الطبقات الـ 30 في إعدادات القالب الحالي دون فقدان أي تخصيص سابق
+    studio.sync30LayersWithActiveConfig = function () {
+      const existing = Array.isArray(this.config.layers) ? this.config.layers : [];
+      const mapById = new Map(existing.map((l) => [l.id, l]));
+      const merged = [];
+
+      for (const cat of FULL_30_SMART_LAYERS) {
+        if (mapById.has(cat.id)) {
+          const item = mapById.get(cat.id);
+          item.name = item.customLabel || cat.name;
+          merged.push({
+            fontSizeScale: 100,
+            textAlign: 'right',
+            borderStyle: 'default',
+            bgStyle: 'default',
+            paddingMode: 'normal',
+            customTitle: '',
+            customNote: '',
+            ...item
+          });
+          mapById.delete(cat.id);
+        } else {
+          merged.push({
+            id: cat.id,
+            name: cat.name,
+            visible: Boolean(cat.defaultVisible),
+            align: 'between',
+            fontSizeScale: 100,
+            textAlign: 'right',
+            borderStyle: 'default',
+            bgStyle: 'default',
+            paddingMode: 'normal',
+            customTitle: '',
+            customNote: ''
+          });
+        }
+      }
+      for (const customLayer of mapById.values()) {
+        merged.push({
+          fontSizeScale: 100,
+          textAlign: 'right',
+          borderStyle: 'default',
+          bgStyle: 'default',
+          paddingMode: 'normal',
+          customTitle: '',
+          customNote: '',
+          ...customLayer
+        });
+      }
+      this.config.layers = merged;
+    };
+
+    studio.sync30LayersWithActiveConfig();
+
+    // ربط تحميل أي مستند من الـ 28 مستنداً بتفعيل طبقاته الذكية الخاصة من الـ 30 طبقة
+    const prevLoadProfile = studio.loadProfileForDocType.bind(studio);
+    studio.loadProfileForDocType = function (docId) {
+      prevLoadProfile(docId);
+      this.sync30LayersWithActiveConfig();
+
+      // تفعيل الطبقات التخصصية الجديدة حسب نوع المستند إذا لم يكن المستخدم قد حفظ تعديلاً يدوياً خاصاً
+      const savedProf = this.config.adoptedProfiles && this.config.adoptedProfiles[docId];
+      if (!savedProf || !savedProf._v60Customized) {
+        const autoMap = {
+          purchase_invoice: ['supplier_reception_layer', 'pack_carton_summary_layer', 'dual_signature_stamps_layer'],
+          supplier_return_note: ['supplier_reception_layer', 'dual_signature_stamps_layer'],
+          stocktake_sheet_a4: ['stocktake_variance_layer', 'dual_signature_stamps_layer'],
+          production_order_sheet: ['bom_production_cost_layer', 'dual_signature_stamps_layer'],
+          low_stock_order_a4: ['low_stock_reorder_layer'],
+          delivery_note: ['delivery_driver_layer', 'pack_carton_summary_layer', 'dual_signature_stamps_layer'],
+          customer_order: ['order_reservation_layer', 'delivery_driver_layer'],
+          proforma: ['tax_ifu_breakdown_layer', 'bank_rip_ccp_box_layer'],
+          caisse_z_report: ['caisse_z_denoms_layer', 'forensic_radar_summary_layer'],
+          expense_voucher: ['expense_approval_layer'],
+          fiscal_g12_statement: ['tax_ifu_breakdown_layer'],
+          forensic_audit_report: ['forensic_radar_summary_layer'],
+          loyalty_vip_card_80mm: ['loyalty_points_layer', 'vip_coupon_cut_layer', 'qr_social_wifi_layer']
+        };
+        const extras = autoMap[docId] || [];
+        for (const lid of extras) {
+          const found = this.config.layers.find((x) => x.id === lid);
+          if (found) found.visible = true;
+        }
+      }
+    };
+
+    // ========================================================================
+    // 3. بناء محتوى الطبقات الـ 14 الجديدة + تطبيق خصائص المفتش (Inspector Styles)
+    //    على جميع الـ 30 طبقة داخل الورقة الحية وعند الطباعة والـ PDF
+    // ========================================================================
+    const prevBuildPaper = studio.buildLiveDocumentPaperHtml.bind(studio);
+    studio.buildLiveDocumentPaperHtml = function (docData, forPrintOutput = false, customOverrides = null) {
+      const cfg = customOverrides ? { ...this.config, ...customOverrides } : this.config;
+      const isThermal = cfg.paperSize === '80mm' || cfg.paperSize === '58mm';
+      const editAttr = forPrintOutput ? '' : 'contenteditable="true" spellcheck="false"';
+      const totalItemsQty = (docData.items || []).reduce((s, it) => s + Number(it.qty || 1), 0);
+
+      // أولاً: نبني الورقة الأساسية عبر المحرك الموجود
+      let html = prevBuildPaper(docData, forPrintOutput, customOverrides);
+
+      // ثانياً: دالة مساعدة لتوليد محتوى HTML لأي طبقة من الطبقات التخصصية الجديدة (أو المحدثة)
+      const renderSpecializedLayerInnerHtml = (layer) => {
+        const lid = layer.id;
+        const cTitle = this.interpolateSmartVariables(layer.customTitle, docData);
+        const cNote = this.interpolateSmartVariables(layer.customNote, docData);
+        const customNoteBanner = cNote
+          ? `<div ${editAttr} style="margin-top:4px;padding-top:3px;border-top:1px dashed #cbd5e1;font-size:9.5px;font-weight:800;color:#334155;">📌 ${cNote}</div>`
+          : '';
+
+        if (lid === 'vip_coupon_cut_layer') {
+          return `
+            <div style="border:2px dashed #d97706;border-radius:10px;padding:7px 9px;background:#fffbeb;color:#78350f;text-align:center;font-size:${isThermal ? '10px' : '11px'};">
+              <div ${editAttr} style="font-weight:900;font-size:${isThermal ? '11px' : '12.5px'};color:#b45309;">
+                ✂️ ${cTitle || 'قسيمة هدية وتخفيض للزيارة القادمة (Coupon Détachable)'}
+              </div>
+              <div ${editAttr} style="font-weight:700;margin-top:2px;">
+                احتفظ بهذه القسيمة واستفد من تخفيض خاص أو نقاط وفاء مضاعفة عند زيارتك القادمة!
+              </div>
+              <div ${editAttr} style="font-family:monospace;font-weight:900;margin-top:3px;background:#ffffff;border:1px solid #f59e0b;display:inline-block;padding:1px 8px;border-radius:6px;">
+                CODE: VIP-${docData.docNumber || '2026'}
+              </div>
+              ${customNoteBanner}
+            </div>`;
+        }
+
+        if (lid === 'return_policy_box_layer') {
+          return `
+            <div style="border:1.5px solid #64748b;border-radius:8px;padding:6px 8px;background:#f8fafc;font-size:${isThermal ? '9.5px' : '10.5px'};color:#1e293b;">
+              <div ${editAttr} style="font-weight:900;margin-bottom:2px;color:#0f172a;">
+                🔄 ${cTitle || 'شروط الإرجاع والاستبدال وحماية المستهلك:'}
+              </div>
+              <div ${editAttr} style="font-weight:700;line-height:1.4;">
+                1. البضاعة المباعة تستبدل خلال 48 ساعة بشرط سلامة الغلاف الأصلي وإحضار هذا الوصل.<br>
+                2. المواد المبردة والمفتوحة لا ترد ولا تستبدل حفاظاً على صحتكم.
+              </div>
+              ${customNoteBanner}
+            </div>`;
+        }
+
+        if (lid === 'bank_rip_ccp_box_layer') {
+          const shop = this.getShopIdentity();
+          return `
+            <div style="border:1.5px solid #1d4ed8;border-radius:8px;padding:7px 10px;background:#eff6ff;font-size:${isThermal ? '9.5px' : '11px'};color:#1e3a8a;">
+              <div ${editAttr} style="font-weight:900;margin-bottom:3px;">
+                🏦 ${cTitle || 'بيانات الحساب البنكي والبريدي للتسديد (RIB / CCP / BaridiMob):'}
+              </div>
+              <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-family:monospace;font-weight:900;">
+                <span ${editAttr}>RIP BaridiMob: ${shop.rip || '00799999000000000000'}</span>
+                <span ${editAttr}>CCP: ${shop.ccp || '0012345678 Clé 42'}</span>
+              </div>
+              ${customNoteBanner}
+            </div>`;
+        }
+
+        if (lid === 'supplier_reception_layer') {
+          return `
+            <div style="border:1.5px solid #047857;border-radius:8px;padding:7px 10px;background:#ecfdf5;font-size:${isThermal ? '9.5px' : '11px'};color:#064e3b;">
+              <div ${editAttr} style="font-weight:900;border-bottom:1px dashed #6ee7b7;padding-bottom:3px;margin-bottom:4px;">
+                🛍️ ${cTitle || 'محضر مطابقة استلام البضاعة وفحص الجودة (Réception Fournisseur)'}
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-weight:800;">
+                <div ${editAttr}>• حالة الطرود: <strong>سليمة ومطابقة ✔</strong></div>
+                <div ${editAttr}>• فحص الصلاحية: <strong>مراقب ✔</strong></div>
+                <div ${editAttr}>• أمين المخزن: <strong>المدير العام</strong></div>
+              </div>
+              ${customNoteBanner}
+            </div>`;
+        }
+
+        if (lid === 'stocktake_variance_layer') {
+          return `
+            <div style="border:1.5px solid #0f172a;border-radius:8px;padding:8px 10px;background:#f1f5f9;font-size:11px;color:#0f172a;">
+              <div ${editAttr} style="font-weight:900;margin-bottom:4px;">
+                📊 ${cTitle || 'ملخص مطابقة الجرد المخزني وفوارق الكميات (Écart d’Inventaire)'}
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center;font-weight:900;">
+                <div ${editAttr} style="background:#fff;padding:4px;border-radius:6px;border:1px solid #cbd5e1;">عدد الأصناف المجرودة: ${(docData.items || []).length}</div>
+                <div ${editAttr} style="background:#fff;padding:4px;border-radius:6px;border:1px solid #cbd5e1;">إجمالي الكمية المعدودة: ${totalItemsQty}</div>
+                <div ${editAttr} style="background:#ecfdf5;padding:4px;border-radius:6px;border:1px solid #6ee7b7;color:#047857;">قيمة المخزون الفعلي: ${this.fmtDzd(docData.total)}</div>
+                <div ${editAttr} style="background:#fff1f2;padding:4px;border-radius:6px;border:1px solid #fda4af;color:#be123c;">حالة الجرد: مصادق عليه ✔</div>
+              </div>
+              ${customNoteBanner}
+            </div>`;
+        }
+
+        if (lid === 'bom_production_cost_layer') {
+          const unitCost = totalItemsQty > 0 ? Number((Number(docData.total || 0) / totalItemsQty).toFixed(2)) : Number(docData.total || 0);
+          return `
+            <div style="border:1.5px solid #047857;border-radius:8px;padding:7px 10px;background:#f0fdf4;font-size:11px;color:#064e3b;">
+              <div ${editAttr} style="font-weight:900;margin-bottom:4px;">
+                🏭 ${cTitle || 'بطاقة تكلفة التصنيع والمواد الأولية المستهلكة (Fiche de Production BOM)'}
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-weight:800;">
+                <div ${editAttr}>• تكلفة المواد الأولية: <strong>${this.fmtDzd(docData.total)}</strong></div>
+                <div ${editAttr}>• نسبة الهدر المعيارية: <strong>0.0%</strong></div>
+                <div ${editAttr}>• التكلفة الصافية للوحدة: <strong>${this.fmtDzd(unitCost)}</strong></div>
+              </div>
+              ${customNoteBanner}
+            </div>`;
+        }
+
+        if (lid === 'low_stock_reorder_layer') {
+          return `
+            <div style="border:1.5px solid #d97706;border-radius:8px;padding:7px 10px;background:#fffbeb;font-size:11px;color:#78350f;">
+              <div ${editAttr} style="font-weight:900;margin-bottom:3px;">
+                🚨 ${cTitle || 'توصيات التموين السريع للأصناف الحرجة والنافدة'}
+              </div>
+              <div ${editAttr} style="font-weight:800;">
+                الأصناف المدرجة أعلاه وصلت إلى الحد الأدنى للتنبيه — يرجى تزويد المخزن بالكميات المقترحة لتفادي انقطاع البيع.
+              </div>
+              ${customNoteBanner}
+            </div>`;
+        }
+
+        if (lid === 'pack_carton_summary_layer') {
+          return `
+            <div style="border:1.5px solid #334155;border-radius:8px;padding:6px 10px;background:#f8fafc;font-size:${isThermal ? '10px' : '11px'};display:flex;justify-content:space-between;align-items:center;font-weight:900;">
+              <span ${editAttr}>📦 ${cTitle || 'ملخص التغليف والطرود (Colisage):'}</span>
+              <span ${editAttr}>عدد الأسطر: ${(docData.items || []).length} | إجمالي الوحدات/الطرود: ${totalItemsQty} وحدة</span>
+            </div>`;
+        }
+
+        if (lid === 'order_reservation_layer') {
+          const paidDep = Number(docData.paidAmount || 0);
+          const remOrder = Math.max(0, Number((Number(docData.total || 0) - paidDep).toFixed(2)));
+          return `
+            <div style="border:1.5px solid #d97706;border-radius:8px;padding:7px 10px;background:#fffbeb;font-size:${isThermal ? '10px' : '11px'};color:#78350f;">
+              <div ${editAttr} style="font-weight:900;border-bottom:1px dashed #fcd34d;padding-bottom:3px;margin-bottom:4px;">
+                📋 ${cTitle || 'بطاقة حجز طلبية الزبون والعربون المدفوع (Réservation Commande)'}
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-weight:900;">
+                <div ${editAttr}>• حالة المخزون: <strong>محجوز للزبون ✔</strong></div>
+                <div ${editAttr} style="color:#047857;">• العربون (Acompte): <strong>${this.fmtDzd(paidDep)}</strong></div>
+                <div ${editAttr} style="color:#be123c;">• الباقي عند التسليم: <strong>${this.fmtDzd(remOrder)}</strong></div>
+              </div>
+              ${customNoteBanner}
+            </div>`;
+        }
+
+        if (lid === 'dual_signature_stamps_layer') {
+          return `
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px;text-align:center;font-size:${isThermal ? '9.5px' : '11px'};font-weight:900;">
+              <div ${editAttr} style="border:1.5px dashed #64748b;border-radius:8px;padding:8px;min-height:58px;background:#f8fafc;">
+                ✍️ إمضاء وختم المسلّم / الإدارة
+              </div>
+              <div ${editAttr} style="border:1.5px dashed #64748b;border-radius:8px;padding:8px;min-height:58px;background:#f8fafc;">
+                🔍 إمضاء المراقب / أمين المخزن
+              </div>
+              <div ${editAttr} style="border:1.5px dashed #64748b;border-radius:8px;padding:8px;min-height:58px;background:#f8fafc;">
+                🤝 إمضاء وختم المستلم
+              </div>
+            </div>`;
+        }
+
+        if (lid === 'caisse_z_denoms_layer') {
+          return `
+            <div style="border:1.5px solid #0f172a;border-radius:8px;padding:6px 8px;background:#f8fafc;font-size:${isThermal ? '9.5px' : '11px'};">
+              <div ${editAttr} style="font-weight:900;border-bottom:1px solid #cbd5e1;padding-bottom:3px;margin-bottom:4px;">
+                🔒 ${cTitle || 'جدول جرد الفئات النقدية الجزائرية في الدرج (Billetage Z-Report)'}
+              </div>
+              <div ${editAttr} style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;font-family:monospace;font-weight:900;text-align:center;">
+                <span style="background:#fff;border:1px solid #cbd5e1;padding:2px;border-radius:4px;">2000 د.ج × __</span>
+                <span style="background:#fff;border:1px solid #cbd5e1;padding:2px;border-radius:4px;">1000 د.ج × __</span>
+                <span style="background:#fff;border:1px solid #cbd5e1;padding:2px;border-radius:4px;">500 د.ج × __</span>
+                <span style="background:#fff;border:1px solid #cbd5e1;padding:2px;border-radius:4px;">200 د.ج × __</span>
+                <span style="background:#fff;border:1px solid #cbd5e1;padding:2px;border-radius:4px;">100 د.ج × __</span>
+                <span style="background:#ecfdf5;border:1px solid #6ee7b7;padding:2px;border-radius:4px;color:#047857;">الفارق: 0.00</span>
+              </div>
+              ${customNoteBanner}
+            </div>`;
+        }
+
+        if (lid === 'expense_approval_layer') {
+          return `
+            <div style="border:1.5px solid #be123c;border-radius:8px;padding:6px 8px;background:#fff1f2;font-size:${isThermal ? '9.5px' : '11px'};color:#881337;">
+              <div ${editAttr} style="font-weight:900;margin-bottom:3px;">
+                💸 ${cTitle || 'اعتماد سند الصرف النقدي من الصندوق:'}
+              </div>
+              <div style="display:flex;justify-content:space-between;font-weight:800;">
+                <span ${editAttr}>المصادق: المدير العام ✔</span>
+                <span ${editAttr}>إمضاء مستلم المبلغ: ....................</span>
+              </div>
+              ${customNoteBanner}
+            </div>`;
+        }
+
+        if (lid === 'forensic_radar_summary_layer') {
+          return `
+            <div style="border:1.5px solid #be123c;border-radius:8px;padding:7px 10px;background:#fff1f2;font-size:${isThermal ? '9.5px' : '11px'};color:#881337;">
+              <div ${editAttr} style="font-weight:900;border-bottom:1px dashed #fda4af;padding-bottom:3px;margin-bottom:4px;">
+                🛡️ ${cTitle || 'ملخص فحص رادار الرقابة الجنائية وحماية الأرباح'}
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-weight:900;text-align:center;">
+                <div ${editAttr} style="background:#fff;padding:3px;border-radius:6px;border:1px solid #fecdd3;">سطور محذوفة: 0</div>
+                <div ${editAttr} style="background:#fff;padding:3px;border-radius:6px;border:1px solid #fecdd3;">بيع بالخسارة: 0</div>
+                <div ${editAttr} style="background:#ecfdf5;padding:3px;border-radius:6px;border:1px solid #6ee7b7;color:#047857;">الحالة الأمنية: سليمة ✔</div>
+              </div>
+              ${customNoteBanner}
+            </div>`;
+        }
+
+        if (lid === 'free_custom_note_layer') {
+          return `
+            <div style="border:1.5px dashed #2563eb;border-radius:8px;padding:7px 10px;background:#eff6ff;font-size:${isThermal ? '10px' : '11px'};color:#1e3a8a;">
+              <div ${editAttr} style="font-weight:900;">
+                📝 ${cTitle || 'ملاحظة وتنبيه خاص:'}
+              </div>
+              <div ${editAttr} style="font-weight:700;margin-top:2px;">
+                ${cNote || 'انقر هنا لكتابة أي ملاحظة، شروط خاصة، أو إعلان لزبائنك الكرام...'}
+              </div>
+            </div>`;
+        }
+
+        return null;
+      };
+
+      // ثالثاً: تمرير جميع الطبقات الظاهرة لتطبيق التخصيصات المريحة (عنوان الطبقة، الملاحظة، حجم الخط، الخلفية، الإطار، والمحاذاة)
+      for (const layer of cfg.layers || []) {
+        if (!layer.visible) continue;
+
+        const specializedHtml = renderSpecializedLayerInnerHtml(layer);
+        const scalePct = Number(layer.fontSizeScale || 100);
+        const padPx = layer.paddingMode === 'compact' ? '3px 5px' : layer.paddingMode === 'relaxed' ? '10px 12px' : '';
+        const borderCss =
+          layer.borderStyle === 'none'
+            ? 'border:none !important;'
+            : layer.borderStyle === 'solid'
+            ? 'border:1.5px solid #0f172a !important;border-radius:8px;'
+            : layer.borderStyle === 'dashed'
+            ? 'border:1.5px dashed #475569 !important;border-radius:8px;'
+            : layer.borderStyle === 'double'
+            ? 'border:3px double #1d4ed8 !important;border-radius:8px;'
+            : '';
+        const bgCss =
+          layer.bgStyle === 'white'
+            ? 'background:#ffffff !important;'
+            : layer.bgStyle === 'soft_blue'
+            ? 'background:#eff6ff !important;'
+            : layer.bgStyle === 'soft_green'
+            ? 'background:#ecfdf5 !important;'
+            : layer.bgStyle === 'soft_amber'
+            ? 'background:#fffbeb !important;'
+            : layer.bgStyle === 'soft_rose'
+            ? 'background:#fff1f2 !important;'
+            : layer.bgStyle === 'soft_slate'
+            ? 'background:#f8fafc !important;'
+            : '';
+        const alignCss =
+          layer.textAlign === 'center'
+            ? 'text-align:center !important;'
+            : layer.textAlign === 'left'
+            ? 'text-align:left !important;'
+            : '';
+
+        const wrapperCustomCss = `${scalePct !== 100 ? `zoom:${scalePct}%;` : ''}${padPx ? `padding:${padPx};` : ''}${borderCss}${bgCss}${alignCss}`;
+
+        if (specializedHtml) {
+          html = html.replace(
+            new RegExp(`(<div[^>]*data-v47-layer-id="${layer.id}"[\\s\\S]*?<\\/div>\\s*)<div[^>]*>[\\s\\S]*?<\\/div>(\\s*<\\/div>)`),
+            `$1<div style="${wrapperCustomCss}">${specializedHtml}</div>$2`
+          );
+        } else if (wrapperCustomCss || layer.customTitle || layer.customNote) {
+          const cTitleHtml = layer.customTitle
+            ? `<div ${editAttr} style="font-weight:900;color:#1d4ed8;margin-bottom:3px;font-size:10.5px;">🔹 ${this.interpolateSmartVariables(layer.customTitle, docData)}</div>`
+            : '';
+          const cNoteHtml = layer.customNote
+            ? `<div ${editAttr} style="margin-top:4px;padding-top:3px;border-top:1px dashed #cbd5e1;font-weight:800;color:#334155;font-size:9.5px;">📌 ${this.interpolateSmartVariables(layer.customNote, docData)}</div>`
+            : '';
+
+          html = html.replace(
+            new RegExp(`(<div[^>]*data-v47-layer-id="${layer.id}"[^>]*>)([\\s\\S]*?)(<\\/div>\\s*<!--\\s*end)`),
+            `$1$2`
+          );
+
+          // حقن شريط العنوان الإضافي أو الملاحظة المخصصة أو الـ Style على الطبقة
+          if (cTitleHtml || cNoteHtml || wrapperCustomCss) {
+            const layerRegex = new RegExp(`(<div[^>]*data-v47-layer-id="${layer.id}"[\\s\\S]*?<div class="v45-layer-handle-bar"[\\s\\S]*?<\\/div>)`);
+            if (layerRegex.test(html)) {
+              html = html.replace(
+                layerRegex,
+                `$1${cTitleHtml ? `<div style="padding:2px 4px;">${cTitleHtml}</div>` : ''}`
+              );
+            }
+          }
+        }
+      }
+
+      return html;
+    };
+
+    // ========================================================================
+    // 4. دوال التعديل المريح لخصائص الطبقات (Deep Layer Inspector Actions)
+    // ========================================================================
+    studio.openLayerInspector = function (layerId) {
+      this.selectedLayerId = layerId;
+      this.inspectorOpenForLayerId = layerId;
+      this.selectLayerDomOnly(layerId);
+      this.renderInspectorBoxOnly();
+
+      // تمرير سلس إلى صندوق مفتش الطبقة إذا لم يكن ظاهراً
+      const box = document.getElementById('v60ActiveLayerInspectorBox');
+      if (box && box.scrollIntoView) {
+        box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    };
+
+    studio.updateActiveLayerProp = function (layerId, propKey, val) {
+      const layer = (this.config.layers || []).find((l) => l.id === layerId);
+      if (!layer) return;
+      layer[propKey] = val;
+      if (propKey === 'customLabel' && val) {
+        layer.name = val;
+      }
+      if (!layer.visible) layer.visible = true;
+
+      // حفظ في البروفايل المعتمد للمستند الحالي أيضاً
+      const docType = this.config.activeDocType || 'receipt_thermal';
+      if (this.config.adoptedProfiles && this.config.adoptedProfiles[docType]) {
+        this.config.adoptedProfiles[docType]._v60Customized = true;
+        this.config.adoptedProfiles[docType].layers = JSON.parse(JSON.stringify(this.config.layers));
+      }
+
+      this.saveConfigLocal();
+      this.refreshPaperHostOnly();
+    };
+
+    studio.insertSmartTagIntoLayerNote = function (layerId, tagText) {
+      const layer = (this.config.layers || []).find((l) => l.id === layerId);
+      if (!layer) return;
+      layer.customNote = ((layer.customNote || '') + ' ' + tagText).trim();
+      this.updateActiveLayerProp(layerId, 'customNote', layer.customNote);
+      const inp = document.getElementById('v60InspectorNoteInput');
+      if (inp) inp.value = layer.customNote;
+    };
+
+    studio.duplicateLayerAsCustomBlock = function (layerId) {
+      const src = (this.config.layers || []).find((l) => l.id === layerId);
+      if (!src) return;
+      const newId = 'custom_' + Date.now().toString().slice(-5);
+      const copyLayer = {
+        ...JSON.parse(JSON.stringify(src)),
+        id: newId,
+        name: '📋 نسخة: ' + src.name.replace(/^[^\s]+\s\d+\.\s/, ''),
+        visible: true,
+        customNote: src.customNote || 'نص حر قابل للتعديل المباشر على الورقة'
+      };
+      const idx = this.config.layers.findIndex((l) => l.id === layerId);
+      this.config.layers.splice(idx + 1, 0, copyLayer);
+      this.selectedLayerId = newId;
+      this.inspectorOpenForLayerId = newId;
+      this.saveConfigLocal();
+      this.renderStudioIntoRoot();
+      if (window.showToast) window.showToast('✅ تم استنساخ الطبقة وإضافتها تحت الطبقة الأصلية مباشرةً!', 'success');
+    };
+
+    studio.resetSingleLayerToDefault = function (layerId) {
+      const layer = (this.config.layers || []).find((l) => l.id === layerId);
+      const catMeta = FULL_30_SMART_LAYERS.find((c) => c.id === layerId);
+      if (!layer) return;
+      layer.fontSizeScale = 100;
+      layer.textAlign = 'right';
+      layer.borderStyle = 'default';
+      layer.bgStyle = 'default';
+      layer.paddingMode = 'normal';
+      layer.customTitle = '';
+      layer.customNote = '';
+      if (catMeta) layer.name = catMeta.name;
+      this.saveConfigLocal();
+      this.renderInspectorBoxOnly();
+      this.refreshPaperHostOnly();
+      if (window.showToast) window.showToast('🔄 تمت استعادة الإعدادات الافتراضية لهذه الطبقة.', 'info');
+    };
+
+    studio.updateShopIdentityQuickField = async function (fieldKey, val) {
+      if (!window.AppState) window.AppState = {};
+      if (!window.AppState.settings) window.AppState.settings = {};
+      window.AppState.settings[fieldKey] = val;
+      try {
+        if (window.api?.updateSettings) {
+          await window.api.updateSettings({ [fieldKey]: val });
+        }
+      } catch (_) {}
+      this.refreshPaperHostOnly();
+    };
+
+    studio.updateCustomColumnHeaderTitle = function (colKey, val) {
+      if (!this.config.customTexts) this.config.customTexts = {};
+      this.config.customTexts[colKey] = val;
+      this.saveConfigLocal();
+      this.refreshPaperHostOnly();
+    };
+
+    studio.applyTableColumnsPreset = function (presetKey) {
+      const presets = {
+        thermal_simple: { index: false, barcode: false, name: true, unit: false, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+        a4_full: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: true, tva: true, subtotal: true },
+        delivery_qty_only: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: false, discount: false, tva: false, subtotal: false },
+        catalog_prices: { index: true, barcode: true, name: true, unit: true, qty: false, unitPrice: true, discount: false, tva: false, subtotal: false }
+      };
+      if (presets[presetKey]) {
+        this.config.columns = { ...this.config.columns, ...presets[presetKey] };
+        this.saveConfigLocal();
+        this.renderStudioIntoRoot();
+      }
+    };
+
+    // تحديث الورقة الحية فقط في 0ms دون إعادة رسم الشريط الجانبي (حتى لا يفقد المستخدم التركيز أثناء الكتابة في الحقول!)
+    studio.refreshPaperHostOnly = async function () {
+      const host = document.getElementById('v45LivePaperHost');
+      if (!host) return;
+      const docData = await this.resolveActiveDocumentData();
+      host.innerHTML = this.buildLiveDocumentPaperHtml(docData, false);
+    };
+
+    // رسم صندوق "مفتش ومحرر الطبقة المحددة (Layer Deep Inspector)"
+    studio.buildActiveLayerInspectorHtml = function () {
+      const targetId = this.inspectorOpenForLayerId || this.selectedLayerId || 'header_layer';
+      const layer = (this.config.layers || []).find((l) => l.id === targetId) || this.config.layers[0];
+      if (!layer) return '';
+
+      const catMeta = FULL_30_SMART_LAYERS.find((c) => c.id === layer.id);
+      const scale = Number(layer.fontSizeScale || 100);
+
+      return `
+        <div class="rounded-2xl bg-gradient-to-br from-blue-50/90 via-white to-indigo-50/60 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800 border-2 border-blue-500 p-4 shadow-md space-y-3 text-xs">
+          <div class="flex items-center justify-between gap-2 border-b border-blue-200 dark:border-slate-700 pb-2.5">
+            <div>
+              <div class="text-[10.5px] font-black text-blue-600 dark:text-blue-400">🎛️ مفتش ومحرر خصائص الطبقة المحددة (Layer Inspector)</div>
+              <div class="font-black text-slate-900 dark:text-white text-sm mt-0.5">${layer.name}</div>
+            </div>
+            <div class="flex items-center gap-1">
+              <button type="button" onclick="window.GherbiPrintStudioV45.duplicateLayerAsCustomBlock('${layer.id}')" class="px-2.5 py-1 rounded-lg bg-indigo-100 hover:bg-indigo-600 text-indigo-800 hover:text-white font-black text-[11px] cursor-pointer" title="تكرار هذه الطبقة">
+                📋 تكرار
+              </button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.resetSingleLayerToDefault('${layer.id}')" class="px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-rose-600 hover:text-white font-black text-[11px] cursor-pointer" title="إعادة ضبط الطبقة">
+                🔄 ضبط
+              </button>
+            </div>
+          </div>
+
+          ${catMeta ? `<div class="text-[11px] text-slate-500 font-bold">💡 وظيفة الطبقة: ${catMeta.desc}</div>` : ''}
+
+          <!-- 1. تعديل عنوان الطبقة والملاحظة المخصصة بداخلها -->
+          <div class="grid grid-cols-1 gap-2.5">
+            <div>
+              <label class="block font-black text-slate-700 dark:text-slate-200 mb-1">✏️ عنوان مخصص أعلى/داخل هذه الطبقة (اختياري):</label>
+              <input type="text" value="${layer.customTitle || ''}" oninput="window.GherbiPrintStudioV45.updateActiveLayerProp('${layer.id}', 'customTitle', this.value)" placeholder="اتركه فارغاً للعنوان الافتراضي أو اكتب عنواناً خاصاً..." class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-bold outline-none focus:border-blue-500">
+            </div>
+
+            <div>
+              <label class="block font-black text-slate-700 dark:text-slate-200 mb-1">📝 نص حر أو سطر إضافي يظهر داخل هذه الطبقة:</label>
+              <textarea id="v60InspectorNoteInput" rows="2" oninput="window.GherbiPrintStudioV45.updateActiveLayerProp('${layer.id}', 'customNote', this.value)" placeholder="اكتب أي جملة، رقم هاتف، شروط، أو أدرج متغيراً ذكياً من الأزرار بالأسفل..." class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-bold outline-none focus:border-blue-500">${layer.customNote || ''}</textarea>
+            </div>
+
+            <!-- أزرار إدراج المتغيرات الذكية الحية بنقرة واحدة -->
+            <div class="space-y-1">
+              <div class="text-[10.5px] font-black text-slate-500">⚡ إدراج متغير حي في الطبقة بنقرة واحدة:</div>
+              <div class="flex flex-wrap gap-1">
+                ${[
+                  '{اسم_المتجر}',
+                  '{هاتف_المتجر}',
+                  '{اسم_الزبون}',
+                  '{رقم_المستند}',
+                  '{الإجمالي}',
+                  '{الدين_السابق}',
+                  '{صافي_الدين}',
+                  '{نقاط_الوفاء}',
+                  '{RIP}'
+                ]
+                  .map(
+                    (tag) =>
+                      `<button type="button" onclick="window.GherbiPrintStudioV45.insertSmartTagIntoLayerNote('${layer.id}', '${tag}')" class="px-2 py-0.5 rounded-lg bg-blue-100/80 dark:bg-slate-800 hover:bg-blue-600 hover:text-white text-blue-800 dark:text-blue-300 font-mono font-bold text-[10px] cursor-pointer transition">${tag}</button>`
+                  )
+                  .join('')}
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. التحكم البصري المريح في حجم خط الطبقة، المحاذاة، الإطار، والخلفية -->
+          <div class="grid grid-cols-2 gap-2 pt-2 border-t border-blue-200/70 dark:border-slate-700">
+            <div>
+              <label class="block font-black text-slate-600 dark:text-slate-300 mb-1">🔠 حجم خط هذه الطبقة:</label>
+              <select onchange="window.GherbiPrintStudioV45.updateActiveLayerProp('${layer.id}', 'fontSizeScale', Number(this.value))" class="w-full px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-black cursor-pointer">
+                <option value="85" ${scale === 85 ? 'selected' : ''}>صغير مدمج (85%)</option>
+                <option value="95" ${scale === 95 ? 'selected' : ''}>متوسط (95%)</option>
+                <option value="100" ${scale === 100 ? 'selected' : ''}>قياسي افتراضي (100%)</option>
+                <option value="110" ${scale === 110 ? 'selected' : ''}>كبير واضح (110%)</option>
+                <option value="125" ${scale === 125 ? 'selected' : ''}>عريض بارز جداً (125%)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block font-black text-slate-600 dark:text-slate-300 mb-1">↔️ محاذاة نصوص الطبقة:</label>
+              <select onchange="window.GherbiPrintStudioV45.updateActiveLayerProp('${layer.id}', 'textAlign', this.value)" class="w-full px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-black cursor-pointer">
+                <option value="right" ${layer.textAlign === 'right' ? 'selected' : ''}>محاذاة لليمين (RTL)</option>
+                <option value="center" ${layer.textAlign === 'center' ? 'selected' : ''}>توسيط (Center)</option>
+                <option value="left" ${layer.textAlign === 'left' ? 'selected' : ''}>محاذاة لليسار (LTR)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block font-black text-slate-600 dark:text-slate-300 mb-1">🔲 إطار وحدود الطبقة:</label>
+              <select onchange="window.GherbiPrintStudioV45.updateActiveLayerProp('${layer.id}', 'borderStyle', this.value)" class="w-full px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-bold cursor-pointer">
+                <option value="default" ${layer.borderStyle === 'default' ? 'selected' : ''}>الإطار القياسي للقالب</option>
+                <option value="none" ${layer.borderStyle === 'none' ? 'selected' : ''}>بدون إطار</option>
+                <option value="solid" ${layer.borderStyle === 'solid' ? 'selected' : ''}>إطار أسود متصل</option>
+                <option value="dashed" ${layer.borderStyle === 'dashed' ? 'selected' : ''}>إطار متقطع (Dashed)</option>
+                <option value="double" ${layer.borderStyle === 'double' ? 'selected' : ''}>إطار مزدوج رسمي</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block font-black text-slate-600 dark:text-slate-300 mb-1">🎨 لون خلفية الطبقة:</label>
+              <select onchange="window.GherbiPrintStudioV45.updateActiveLayerProp('${layer.id}', 'bgStyle', this.value)" class="w-full px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-bold cursor-pointer">
+                <option value="default" ${layer.bgStyle === 'default' ? 'selected' : ''}>خلفية القالب الافتراضية</option>
+                <option value="white" ${layer.bgStyle === 'white' ? 'selected' : ''}>⚪ أبيض صافي (توفير حبر)</option>
+                <option value="soft_slate" ${layer.bgStyle === 'soft_slate' ? 'selected' : ''}>🔘 رمادي فاتح رسمي</option>
+                <option value="soft_blue" ${layer.bgStyle === 'soft_blue' ? 'selected' : ''}>🔵 أزرق هادئ</option>
+                <option value="soft_green" ${layer.bgStyle === 'soft_green' ? 'selected' : ''}>🟢 أخضر تجاري</option>
+                <option value="soft_amber" ${layer.bgStyle === 'soft_amber' ? 'selected' : ''}>🟡 ذهبي دافئ (VIP)</option>
+                <option value="soft_rose" ${layer.bgStyle === 'soft_rose' ? 'selected' : ''}>🔴 وردي تحذيري (كريدي)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      `;
+    };
+
+    studio.renderInspectorBoxOnly = function () {
+      const box = document.getElementById('v60ActiveLayerInspectorBox');
+      if (box) {
+        box.innerHTML = this.buildActiveLayerInspectorHtml();
+      }
+    };
+
+    // ========================================================================
+    // 5. تحديث واجهة التبويب الأول (visual_studio) لتضم المكتبة ذات الـ 30 طبقة،
+    //    ولفائف الترتيب المطورة، ومفتش الطبقة، ومحرر الأعمدة والمتجر المريح!
+    // ========================================================================
+    const prevRenderStudioV59 = studio.renderStudioIntoRoot.bind(studio);
+    studio.renderStudioIntoRoot = async function (rootEl) {
+      if (this.activeSection !== 'visual_studio') {
+        return await prevRenderStudioV59(rootEl);
+      }
+
+      const targetRoot = rootEl || document.getElementById('print-view-root');
+      if (!targetRoot) return;
+
+      this.sync30LayersWithActiveConfig();
+      const cfg = this.config;
+      const all28 = this.ALL_28_MASTER_DOCS || [];
+      const activeDocMeta = all28.find((d) => d.id === cfg.activeDocType) || all28[0] || { id: 'receipt_thermal', name: 'تذكرة كاشير', sourcePage: 'pos', sourceLabel: 'شاشة المبيعات' };
+      const docData = await this.resolveActiveDocumentData();
+      const paperHtml = this.buildLiveDocumentPaperHtml(docData, false);
+      const shop = this.getShopIdentity();
+      const ct = cfg.customTexts || {};
+
+      let recordsList = [];
+      if (activeDocMeta.sourcePage === 'purchases') recordsList = this.liveDataRecords.purchases || [];
+      else if (activeDocMeta.sourcePage === 'proformas') recordsList = this.liveDataRecords.proformas || [];
+      else if (activeDocMeta.sourcePage === 'orders') recordsList = this.liveDataRecords.orders || [];
+      else recordsList = this.liveDataRecords.sales || [];
+
+      const recordOptionsHtml = [
+        `<option value="SAMPLE" ${this.selectedRecordId === 'SAMPLE' ? 'selected' : ''}>✨ بيانات نموذجية احترافية جاهزة للتعديل الحر</option>`,
+        ...recordsList.slice(0, 50).map((r) => {
+          const num = r.doc_number || r.invoice_number || ('#' + r.id);
+          const party = r.customer_name || r.supplier_name || 'زبون عابر';
+          const tot = Number(r.total || 0).toFixed(2);
+          return `<option value="${r.id}" ${String(this.selectedRecordId) === String(r.id) ? 'selected' : ''}>📄 ${num} — ${party} (${tot} د.ج)</option>`;
+        })
+      ].join('');
+
+      // فلترة مكتبة الـ 30 طبقة ذكية حسب الفئة المختارة أو البحث أو "🎯 طبقات هذا القالب"
+      const catFilter = this.catalogCategoryFilter || 'ALL';
+      const searchQ = (this.layerCatalogSearch || '').trim().toLowerCase();
+
+      const filtered30Catalog = FULL_30_SMART_LAYERS.filter((item) => {
+        if (catFilter === 'FOR_DOC') {
+          const isRec = item.forDocs.includes('ALL') || item.forDocs.includes(cfg.activeDocType);
+          if (!isRec) return false;
+        } else if (catFilter !== 'ALL' && item.cat !== catFilter) {
+          return false;
+        }
+        if (searchQ && !`${item.name} ${item.desc}`.toLowerCase().includes(searchQ)) {
+          return false;
+        }
+        return true;
+      });
+
+      const activeLayersCount = (cfg.layers || []).filter((l) => l.visible).length;
+
+      const suggestedCatalog30Html = filtered30Catalog
+        .map((catItem) => {
+          const layerState = cfg.layers.find((l) => l.id === catItem.id);
+          const isVis = Boolean(layerState && layerState.visible);
+          return `
+            <div class="p-2.5 rounded-xl border transition flex items-start justify-between gap-2 ${
+              isVis
+                ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-400 shadow-sm'
+                : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+            }">
+              <div class="space-y-0.5 flex-1 min-w-0">
+                <div class="font-black text-xs text-slate-900 dark:text-white leading-snug">${catItem.name}</div>
+                <div class="text-[10.5px] text-slate-500 dark:text-slate-400 leading-snug">${catItem.desc}</div>
+              </div>
+              <div class="flex items-center gap-1 shrink-0">
+                <button type="button" onclick="window.GherbiPrintStudioV45.openLayerInspector('${catItem.id}')" class="px-2 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:border-blue-500 text-slate-700 dark:text-slate-200 font-black text-[10.5px] cursor-pointer" title="فتح محرر خصائص هذه الطبقة">
+                  ⚙️
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.activateSuggestedLayerFromCatalog('${catItem.id}')" class="px-2.5 py-1.5 rounded-xl font-black text-[11px] transition cursor-pointer ${
+                  isVis
+                    ? 'bg-emerald-600 text-white shadow-sm hover:bg-rose-600'
+                    : 'bg-blue-600 text-white shadow-sm hover:bg-blue-500'
+                }">
+                  ${isVis ? '✅ مفعّلة' : '➕ إضافة'}
+                </button>
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+
+      // بناء صفوف "ترتيب طبقات المستند (Photoshop Layers)" مع أزرار (⚙️ تخصيص | 📋 تكرار | ▲ | ▼)
+      const photoshopLayersRowsHtml = cfg.layers
+        .map((l, idx) => {
+          const isInspected = (this.inspectorOpenForLayerId || this.selectedLayerId) === l.id;
+          return `
+            <div data-v47-sidebar-layer-id="${l.id}" onclick="window.GherbiPrintStudioV45.openLayerInspector('${l.id}')" class="flex items-center justify-between p-2 rounded-xl border text-xs cursor-pointer transition ${
+              isInspected
+                ? 'bg-blue-50 dark:bg-blue-950/50 border-2 border-blue-500 font-black shadow-sm'
+                : l.visible
+                ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 font-bold hover:border-blue-400'
+                : 'bg-slate-50/70 dark:bg-slate-900/40 border-slate-200/60 dark:border-slate-800 text-slate-400'
+            }">
+              <div class="flex items-center gap-2 truncate flex-1 min-w-0">
+                <input type="checkbox" ${l.visible ? 'checked' : ''} onclick="event.stopPropagation(); window.GherbiPrintStudioV45.toggleLayerVisibility('${l.id}')" class="w-4 h-4 accent-blue-600 rounded cursor-pointer shrink-0">
+                <span class="truncate ${l.visible ? '' : 'line-through'}">${l.name}</span>
+              </div>
+              <div class="flex items-center gap-1 shrink-0 mr-1">
+                <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.openLayerInspector('${l.id}')" class="px-2 py-0.5 rounded-lg ${isInspected ? 'bg-blue-600 text-white' : 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-300'} font-black text-[10px] hover:bg-blue-600 hover:text-white cursor-pointer" title="تعديل عنوان وخصائص وتنسيق هذه الطبقة">
+                  ⚙️ تعديل
+                </button>
+                <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45. moveLayer('${l.id}', -1)" ${idx === 0 ? 'disabled' : ''} class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-[10px] hover:bg-blue-600 hover:text-white disabled:opacity-30 cursor-pointer">▲</button>
+                <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.moveLayer('${l.id}', 1)" ${idx === cfg.layers.length - 1 ? 'disabled' : ''} class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-[10px] hover:bg-blue-600 hover:text-white disabled:opacity-30 cursor-pointer">▼</button>
+                ${
+                  l.id.startsWith('custom_')
+                    ? `<button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.deleteCustomLayer('${l.id}')" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 text-[10px] hover:bg-rose-600 hover:text-white cursor-pointer">✕</button>`
+                    : ''
+                }
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+
+      targetRoot.innerHTML = `
+        <div id="v45MasterPrintStudio" data-gherbi-print-v2="1" class="space-y-4 text-right pb-8 w-full" dir="rtl">
+          <!-- الترويسة العليا للتبويبات الخمسة -->
+          <div class="rounded-3xl bg-gradient-to-l from-slate-900 via-blue-950 to-slate-900 text-white p-5 shadow-xl border border-blue-500/30 w-full">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-3.5">
+                <div class="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg">
+                  <span class="material-symbols-rounded" style="font-size:28px;">print</span>
+                </div>
+                <div>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-black text-[11px]">
+                      Gherbi.Ai Omni-Print V60 — 28 قالباً & 30 طبقة ذكية
+                    </span>
+                    <h1 class="text-lg md:text-xl font-black">
+                      مركز الطباعة الشامل، مكتبة الـ 30 طبقة، ومفتش التخصيص المريح
+                    </h1>
+                  </div>
+                  <p class="text-xs text-slate-300 mt-0.5">
+                    اختر أي مستند من الـ 28 قالباً، وتحكم في الـ 30 طبقة ذكية، وعدّل خصائص كل طبقة وعناوين الجدول وبيانات المتجر بكل أريحية
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('visual_studio')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer bg-blue-600 text-white shadow-md">
+                  🎨 1. استوديو الفواتير والطبقات (30 طبقة)
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('cross_page_bridge')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer bg-white/10 hover:bg-white/20 text-slate-200">
+                  🔗 2. فواتير الصفحات (${(this.liveDataRecords.sales || []).length + (this.liveDataRecords.purchases || []).length})
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('barcode_shelf_factory')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer bg-white/10 hover:bg-white/20 text-slate-200">
+                  🏷️ 3. الباركود والرفوف
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('free_word_editor')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer bg-white/10 hover:bg-white/20 text-slate-200">
+                  📝 4. محرر البونات (Word)
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('hardware_defaults')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer bg-white/10 hover:bg-white/20 text-slate-200">
+                  ⚙️ 5. القوالب الافتراضية الـ 28 (Par Défaut)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- شريط أدوات القالب والمقاس والاعتماد -->
+          <div class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3.5 shadow-sm space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 pb-3">
+              <div class="flex flex-wrap items-center gap-2">
+                <label class="text-xs font-black text-slate-700 dark:text-slate-200">📑 القالب (28 مستنداً):</label>
+                <select onchange="window.GherbiPrintStudioV45.selectDocType(this.value)" class="px-3 py-2 rounded-xl bg-blue-50 dark:bg-slate-900 border-2 border-blue-400 dark:border-blue-600 text-blue-950 dark:text-blue-200 font-black text-xs cursor-pointer min-w-[270px]">
+                  ${this.build28DocsGroupedOptionsHtml(cfg.activeDocType)}
+                </select>
+
+                <select onchange="window.GherbiPrintStudioV45.selectLiveRecord(this.value)" class="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-bold text-xs max-w-xs cursor-pointer">
+                  ${recordOptionsHtml}
+                </select>
+
+                <button type="button" onclick="window.GherbiPrintStudioV45.applySingleProDefaultTemplate('${cfg.activeDocType}')" class="px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-900 dark:text-amber-300 hover:text-slate-950 border border-amber-400 font-black text-xs transition cursor-pointer">
+                  ⚡ استعادة القالب الاحترافي الجاهز
+                </button>
+
+                <button type="button" onclick="window.App.switchView('${activeDocMeta.sourcePage}')" class="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-indigo-600 hover:text-white text-slate-700 dark:text-slate-200 font-black text-xs transition cursor-pointer">
+                  🔗 افتح (${activeDocMeta.sourceLabel}) ⬅
+                </button>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="window.GherbiPrintStudioV45.saveAsDefaultForDocType()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md transition cursor-pointer flex items-center gap-1.5">
+                  <span>⭐ اعتماد وحفظ كأمر مطلق للطباعة (Par Défaut)</span>
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.printCurrentCanvasNow()" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-md transition cursor-pointer">
+                  🖨️ طباعة / PDF الآن
+                </button>
+              </div>
+            </div>
+
+            <!-- الصف الثاني من شريط الأدوات -->
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="font-black text-slate-500 text-[11px]">📐 المقاس:</span>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('a4')" class="v45-word-ribbon-btn ${cfg.paperSize === 'a4' ? 'active' : ''}">A4 رسمي</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('a5')" class="v45-word-ribbon-btn ${cfg.paperSize === 'a5' ? 'active' : ''}">A5 نصفي</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('2xa5')" class="v45-word-ribbon-btn ${cfg.paperSize === '2xa5' ? 'active' : ''}">2×A5 مزدوج</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('80mm')" class="v45-word-ribbon-btn ${cfg.paperSize === '80mm' ? 'active' : ''}">80mm حراري</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('58mm')" class="v45-word-ribbon-btn ${cfg.paperSize === '58mm' ? 'active' : ''}">58mm حراري</button>
+
+                <span class="mx-1 text-slate-300">|</span>
+                <span class="font-black text-slate-500 text-[11px]">🔤 الخط العام:</span>
+                <button type="button" onclick="window.GherbiPrintStudioV45.stepFontSize(-0.5)" class="v45-word-ribbon-btn">-A</button>
+                <span class="font-mono font-black px-1">${cfg.baseFontSizePx}px</span>
+                <button type="button" onclick="window.GherbiPrintStudioV45.stepFontSize(0.5)" class="v45-word-ribbon-btn">+A</button>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                <div class="inline-flex items-center rounded-xl bg-amber-50 dark:bg-slate-900 border border-amber-300 p-0.5 text-[11px]">
+                  <button type="button" onclick="window.GherbiPrintStudioV45.switchLoyaltySimulationMode('vip')" class="px-2 py-1 rounded-lg font-black cursor-pointer ${this.loyaltySimMode === 'vip' ? 'bg-amber-500 text-slate-950' : 'text-amber-800'}">👑 زبون وفي</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.switchLoyaltySimulationMode('walkin')" class="px-2 py-1 rounded-lg font-black cursor-pointer ${this.loyaltySimMode === 'walkin' ? 'bg-slate-800 text-white' : 'text-slate-600'}">🚶 زبون عابر (0 ن)</button>
+                </div>
+                <button type="button" onclick="window.GherbiPrintStudioV45.addRowToActiveTicket()" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] cursor-pointer">➕ سطر جديد</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.removeLastRowFromActiveTicket()" class="px-2.5 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 font-black text-[11px] cursor-pointer">➖ حذف سطر</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.triggerLogoUploadFromStudio()" class="px-2.5 py-1 rounded-lg bg-indigo-100 text-indigo-800 font-black text-[11px] cursor-pointer">📷 الشعار</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.toggleCfgBool('showCentimesEquivalent')" class="v45-word-ribbon-btn ${cfg.showCentimesEquivalent ? 'active' : ''}">🇩🇿 السنتيم</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.toggleCfgBool('showCustomerBalance')" class="v45-word-ribbon-btn ${cfg.showCustomerBalance ? 'active' : ''}">⚖️ الباقي</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.toggleCfgBool('showDocBarcode')" class="v45-word-ribbon-btn ${cfg.showDocBarcode ? 'active' : ''}">||| باركود</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- مساحة العمل المزدوجة: يمين (الأدوات والمكتبة ذات الـ 30 طبقة والمفتش المريح) | يسار (الورقة الحية) -->
+          <div class="v59-studio-main-grid">
+            <div class="space-y-3.5 max-h-[80vh] overflow-y-auto pl-1">
+              <!-- أ) مفتش ومحرر الطبقة المحددة المريح (Layer Deep Inspector) — يتحدث فور النقر على أي طبقة -->
+              <div id="v60ActiveLayerInspectorBox">
+                ${this.buildActiveLayerInspectorHtml()}
+              </div>
+
+              <!-- ب) مكتبة الطبقات الذكية المقترحة الموسعة (30 طبقة احترافية في 6 فئات + بحث + طبقات القالب) -->
+              <div class="rounded-2xl bg-white dark:bg-slate-800 border-2 border-indigo-400/70 dark:border-indigo-600/60 p-4 shadow-sm space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 pb-2">
+                  <div>
+                    <h3 class="font-black text-xs text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
+                      <span>🧩 مكتبة الطبقات الذكية المقترحة (30 طبقة احترافية)</span>
+                      <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-mono text-[10px]">${activeLayersCount} مفعّلة</span>
+                    </h3>
+                    <p class="text-[10.5px] text-slate-500 mt-0.5">أضف أو أخفِ أو خصّص أي طبقة بضغطة زر على التذكرة أو الفاتورة</p>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <button type="button" onclick="window.GherbiPrintStudioV45.enableAllSuggestedLayers()" class="px-2.5 py-1 rounded-lg bg-indigo-100 hover:bg-indigo-600 text-indigo-800 hover:text-white font-black text-[10.5px] transition cursor-pointer">
+                      ✨ تفعيل الكل
+                    </button>
+                  </div>
+                </div>
+
+                <!-- حقل بحث فوري داخل الـ 30 طبقة -->
+                <input type="text" value="${this.layerCatalogSearch || ''}" oninput="window.GherbiPrintStudioV45.setLayerCatalogSearch(this.value)" placeholder="🔎 ابحث في الـ 30 طبقة (كريدي، وفاء، ضمان، جرد، سائق، G12...)" class="w-full px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-xs font-bold outline-none focus:border-blue-500">
+
+                <!-- أزرار تصنيف الـ 30 طبقة (7 فلاتر) -->
+                <div class="flex flex-wrap items-center gap-1 text-[10.5px]">
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('ALL')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${catFilter === 'ALL' ? 'bg-slate-900 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}">الكل (30)</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('FOR_DOC')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${catFilter === 'FOR_DOC' ? 'bg-blue-600 text-white' : 'bg-blue-50 dark:bg-slate-700 text-blue-800 dark:text-blue-300'}">🎯 طبقات هذا القالب</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('CORE')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${catFilter === 'CORE' ? 'bg-slate-800 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'}">🏛️ الأساسية (6)</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('LOYALTY')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${catFilter === 'LOYALTY' ? 'bg-amber-500 text-slate-950' : 'bg-amber-50 dark:bg-slate-700 text-amber-800 dark:text-amber-300'}">👑 الوفاء (5)</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('FINANCE')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${catFilter === 'FINANCE' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 dark:bg-slate-700 text-emerald-800 dark:text-emerald-300'}">💳 الكريدي (5)</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('INVENTORY')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${catFilter === 'INVENTORY' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 dark:bg-slate-700 text-indigo-800 dark:text-indigo-300'}">📦 المخزون والمشتريات (5)</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('LOGISTICS')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${catFilter === 'LOGISTICS' ? 'bg-teal-600 text-white' : 'bg-teal-50 dark:bg-slate-700 text-teal-800 dark:text-teal-300'}">🚚 الضمان والتوصيل (4)</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogCategoryFilter('CAISSE_FISCAL')" class="px-2.5 py-1 rounded-lg font-black cursor-pointer ${catFilter === 'CAISSE_FISCAL' ? 'bg-rose-600 text-white' : 'bg-rose-50 dark:bg-slate-700 text-rose-800 dark:text-rose-300'}">🏦 الصندوق والجباية (5)</button>
+                </div>
+
+                <div class="space-y-2 max-h-64 overflow-y-auto pr-0.5">
+                  ${suggestedCatalog30Html}
+                </div>
+              </div>
+
+              <!-- ج) ترتيب طبقات المستند (Photoshop Layers — 30 طبقة قابلة للترتيب والتعديل المريح) -->
+              <div class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 shadow-sm space-y-2.5">
+                <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+                  <div>
+                    <h3 class="font-black text-xs text-slate-900 dark:text-white">🗂️ ترتيب طبقات المستند (Photoshop Layers)</h3>
+                    <p class="text-[10px] text-slate-400">اضغط (⚙️ تعديل) أمام أي طبقة لفتح محررها المريح بالأعلى</p>
+                  </div>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.addCustomLayerBlock()" class="px-2.5 py-1.5 rounded-xl bg-blue-600 text-white font-black text-[11px] hover:bg-blue-500 cursor-pointer shadow-sm">
+                    + طبقة نصية حرة
+                  </button>
+                </div>
+
+                <div class="space-y-1.5 max-h-64 overflow-y-auto">
+                  ${photoshopLayersRowsHtml}
+                </div>
+              </div>
+
+              <!-- د) محرر أعمدة الجدول المريح (إظهار/إخفاء + تغيير تسمية أي عمود + قوالب أعمدة سريعة) -->
+              <div class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 shadow-sm space-y-3 text-xs">
+                <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+                  <h3 class="font-black text-slate-900 dark:text-white">📊 تخصيص وتسمية أعمدة جدول الأصناف</h3>
+                  <div class="flex gap-1 text-[10px]">
+                    <button type="button" onclick="window.GherbiPrintStudioV45.applyTableColumnsPreset('thermal_simple')" class="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 font-bold cursor-pointer">تذكرة مبسطة</button>
+                    <button type="button" onclick="window.GherbiPrintStudioV45.applyTableColumnsPreset('a4_full')" class="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-bold cursor-pointer">فاتورة كاملة</button>
+                    <button type="button" onclick="window.GherbiPrintStudioV45.applyTableColumnsPreset('delivery_qty_only')" class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold cursor-pointer">وصل كميات</button>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 font-bold">
+                  <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ${cfg.columns.index ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('index')" class="accent-blue-600"> <span>رقم السطر (#)</span></label>
+                  <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ${cfg.columns.barcode ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('barcode')" class="accent-blue-600"> <span>الباركود / الكود</span></label>
+                  <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ${cfg.columns.name ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('name')" class="accent-blue-600"> <span>التعيين / الصنف</span></label>
+                  <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ${cfg.columns.unit ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('unit')" class="accent-blue-600"> <span>الوحدة</span></label>
+                  <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ${cfg.columns.qty ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('qty')" class="accent-blue-600"> <span>الكمية</span></label>
+                  <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ${cfg.columns.unitPrice ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('unitPrice')" class="accent-blue-600"> <span>سعر الوحدة</span></label>
+                  <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ${cfg.columns.discount ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('discount')" class="accent-blue-600"> <span>الخصم</span></label>
+                  <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" ${cfg.columns.tva ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumn('tva')" class="accent-blue-600"> <span>ضريبة TVA</span></label>
+                </div>
+
+                <!-- تعديل مسميات رؤوس الأعمدة مباشرة -->
+                <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                  <div><label class="block text-[10px] text-slate-400">عنوان عمود الصنف:</label><input type="text" value="${ct.colName || 'التعيين / الصنف'}" oninput="window.GherbiPrintStudioV45.updateCustomColumnHeaderTitle('colName', this.value)" class="w-full px-2.5 py-1 rounded-lg border font-bold"></div>
+                  <div><label class="block text-[10px] text-slate-400">عنوان عمود الكمية:</label><input type="text" value="${ct.colQty || 'الكمية'}" oninput="window.GherbiPrintStudioV45.updateCustomColumnHeaderTitle('colQty', this.value)" class="w-full px-2.5 py-1 rounded-lg border font-bold"></div>
+                  <div><label class="block text-[10px] text-slate-400">عنوان عمود السعر:</label><input type="text" value="${ct.colPrice || 'سعر الوحدة'}" oninput="window.GherbiPrintStudioV45.updateCustomColumnHeaderTitle('colPrice', this.value)" class="w-full px-2.5 py-1 rounded-lg border font-bold"></div>
+                  <div><label class="block text-[10px] text-slate-400">عنوان عمود المجموع:</label><input type="text" value="${ct.colSubtotal || 'المجموع'}" oninput="window.GherbiPrintStudioV45.updateCustomColumnHeaderTitle('colSubtotal', this.value)" class="w-full px-2.5 py-1 rounded-lg border font-bold"></div>
+                </div>
+              </div>
+
+              <!-- هـ) محرر بيانات المتجر والتذييل السريع من داخل الاستوديو -->
+              <details class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 shadow-sm text-xs">
+                <summary class="font-black text-slate-900 dark:text-white cursor-pointer select-none">
+                  🏢 تعديل سريع لبيانات المتجر والبيانات الجبائية والتذييل
+                </summary>
+                <div class="grid grid-cols-2 gap-2 pt-3 mt-2 border-t border-slate-100 dark:border-slate-700">
+                  <div class="col-span-2"><label class="block font-bold mb-0.5">اسم المتجر / المؤسسة:</label><input type="text" value="${shop.name}" oninput="window.GherbiPrintStudioV45.updateShopIdentityQuickField('shop_name', this.value)" class="w-full px-2.5 py-1.5 rounded-lg border font-black"></div>
+                  <div><label class="block font-bold mb-0.5">رقم الهاتف:</label><input type="text" value="${shop.phone}" oninput="window.GherbiPrintStudioV45.updateShopIdentityQuickField('shop_phone', this.value)" class="w-full px-2.5 py-1.5 rounded-lg border font-mono"></div>
+                  <div><label class="block font-bold mb-0.5">العنوان:</label><input type="text" value="${shop.address}" oninput="window.GherbiPrintStudioV45.updateShopIdentityQuickField('shop_address', this.value)" class="w-full px-2.5 py-1.5 rounded-lg border"></div>
+                  <div><label class="block font-bold mb-0.5">السجل التجاري (RC):</label><input type="text" value="${shop.rc}" oninput="window.GherbiPrintStudioV45.updateShopIdentityQuickField('shop_rc', this.value)" class="w-full px-2.5 py-1.5 rounded-lg border font-mono"></div>
+                  <div><label class="block font-bold mb-0.5">الرقم الجبائي (NIF):</label><input type="text" value="${shop.nif}" oninput="window.GherbiPrintStudioV45.updateShopIdentityQuickField('shop_nif', this.value)" class="w-full px-2.5 py-1.5 rounded-lg border font-mono"></div>
+                  <div class="col-span-2"><label class="block font-bold mb-0.5">عبارة التذييل وشروط الاستبدال:</label><input type="text" value="${cfg.customFooterTerms || ''}" oninput="window.GherbiPrintStudioV45.updateCfg('customFooterTerms', this.value)" class="w-full px-2.5 py-1.5 rounded-lg border font-bold"></div>
+                </div>
+              </details>
+            </div>
+
+            <!-- يسار: الورقة التفاعلية الحية القابلة للكتابة والتعديل المباشر -->
+            <div class="w-full min-w-0">
+              <div class="v45-studio-workspace max-h-[80vh] w-full">
+                <div id="v45LivePaperHost">
+                  ${paperHtml}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    };
+
+    studio.setLayerCatalogSearch = function (val) {
+      this.layerCatalogSearch = String(val || '');
+      this.renderStudioIntoRoot();
+      setTimeout(() => {
+        const inp = document.querySelector('input[placeholder*="ابحث في الـ 30 طبقة"]');
+        if (inp) {
+          inp.focus();
+          const len = inp.value.length;
+          inp.setSelectionRange(len, len);
+        }
+      }, 10);
+    };
+
+    if (document.getElementById('view-print')?.classList.contains('active')) {
+      studio.renderStudioIntoRoot();
+    }
+
+    console.log('🏆 [Gherbi V60 Smart 30 Layers & Deep Inspector]: تم تفعيل الـ 30 طبقة ذكية ومفتش خصائص الطبقات المريح 100%!');
+  }, 140);
+})();
+
+/* ==================== [V61 ZERO-JUMP SUB-TABBED PRINT STUDIO & INLINE INSPECTOR] ==================== */
+(function initV61ZeroJumpSubTabbedPrintStudio() {
+  const waitStudio = setInterval(() => {
+    const studio = window.GherbiPrintStudioV45;
+    if (!studio || !window.App || !studio.FULL_30_SMART_LAYERS) return;
+    clearInterval(waitStudio);
+
+    // حالة التبويب الفرعي في اللوحة اليمنى ومحررات الأكورديون المدمجة
+    studio.leftPanelTab = studio.leftPanelTab || 'catalog_30'; // 'catalog_30' | 'layers_stack' | 'columns_and_shop'
+    studio.expandedInspectorLayerId = null; // يفتح فقط عند الضغط الصريح على زر ⚙️ تحت نفس العنصر!
+
+    // 1. محرك حفظ واستعادة مواضع التمرير لجميع الحاويات بدقة 100% (Zero-Scroll-Jump Engine)
+    studio.captureAllScrollPositions = function () {
+      const ids = ['view-print', 'v61LeftScrollContainer', 'v61RightPaperWorkspace'];
+      const map = {};
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el) map[id] = el.scrollTop;
+      }
+      return map;
+    };
+
+    studio.restoreAllScrollPositions = function (map) {
+      if (!map) return;
+      const apply = () => {
+        for (const [id, topVal] of Object.entries(map)) {
+          const el = document.getElementById(id);
+          if (el && typeof topVal === 'number') {
+            el.scrollTop = topVal;
+          }
+        }
+      };
+      apply();
+      requestAnimationFrame(apply);
+    };
+
+    // 2. بناء درج التخصيص المدمج (Inline Accordion Inspector) الذي يظهر مباشرةً تحت الطبقة المضغوط عليها
+    studio.buildInlineAccordionInspectorHtml = function (layerId) {
+      const layer = (this.config.layers || []).find((l) => l.id === layerId);
+      if (!layer) return '';
+
+      const scale = Number(layer.fontSizeScale || 100);
+
+      return `
+        <div class="v61-inline-inspector-drawer space-y-2.5 text-xs p-2.5" onclick="event.stopPropagation()">
+          <div class="flex items-center justify-between border-b border-blue-200 dark:border-slate-700 pb-1.5">
+            <span class="font-black text-blue-700 dark:text-blue-400 text-[11px]">🎛️ تخصيص مريح ومباشر لهذه الطبقة:</span>
+            <div class="flex items-center gap-1">
+              <button type="button" onclick="window.GherbiPrintStudioV45.duplicateLayerInPlace('${layer.id}')" class="px-2 py-0.5 rounded bg-indigo-100 hover:bg-indigo-600 text-indigo-800 hover:text-white font-black text-[10px] cursor-pointer">
+                📋 تكرار
+              </button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.resetLayerInPlace('${layer.id}')" class="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 hover:bg-rose-600 hover:text-white font-black text-[10px] cursor-pointer">
+                🔄 ضبط
+              </button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.toggleInlineInspector('${layer.id}')" class="px-2 py-0.5 rounded bg-rose-100 text-rose-700 font-black text-[10px] cursor-pointer">
+                ✕ إغلاق
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block font-black text-slate-700 dark:text-slate-200 mb-1 text-[11px]">✏️ عنوان مخصص أعلى هذه الطبقة (اختياري):</label>
+            <input type="text" value="${layer.customTitle || ''}" oninput="window.GherbiPrintStudioV45.updateActiveLayerProp('${layer.id}', 'customTitle', this.value)" placeholder="اتركه فارغاً للعنوان الافتراضي أو اكتب عنواناً خاصاً..." class="w-full px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-bold outline-none focus:border-blue-500">
+          </div>
+
+          <div>
+            <label class="block font-black text-slate-700 dark:text-slate-200 mb-1 text-[11px]">📝 نص حر أو سطر إضافي داخل هذه الطبقة:</label>
+            <textarea id="v61InlineNote_${layer.id}" rows="2" oninput="window.GherbiPrintStudioV45.updateActiveLayerProp('${layer.id}', 'customNote', this.value)" placeholder="اكتب أي ملاحظة أو أدرج متغيراً ذكياً من الأزرار بالأسفل..." class="w-full px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-bold outline-none focus:border-blue-500">${layer.customNote || ''}</textarea>
+          </div>
+
+          <div class="space-y-1">
+            <div class="text-[10px] font-black text-slate-500">⚡ إدراج متغير حي بنقرة واحدة:</div>
+            <div class="flex flex-wrap gap-1">
+              ${[
+                '{اسم_المتجر}',
+                '{هاتف_المتجر}',
+                '{اسم_الزبون}',
+                '{رقم_المستند}',
+                '{الإجمالي}',
+                '{الدين_السابق}',
+                '{صافي_الدين}',
+                '{نقاط_الوفاء}',
+                '{RIP}'
+              ]
+                .map(
+                  (tag) =>
+                    `<button type="button" onclick="window.GherbiPrintStudioV45.insertTagInInlineNote('${layer.id}', '${tag}')" class="px-2 py-0.5 rounded-lg bg-blue-100/90 dark:bg-slate-800 hover:bg-blue-600 hover:text-white text-blue-800 dark:text-blue-300 font-mono font-bold text-[10px] cursor-pointer">${tag}</button>`
+                )
+                .join('')}
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 pt-1.5 border-t border-blue-200/60 dark:border-slate-700">
+            <div>
+              <label class="block font-black text-slate-600 dark:text-slate-300 mb-0.5 text-[10.5px]">🔠 حجم خط الطبقة:</label>
+              <select onchange="window.GherbiPrintStudioV45.updateActiveLayerProp('${layer.id}', 'fontSizeScale', Number(this.value))" class="w-full px-2 py-1 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-black text-[11px] cursor-pointer">
+                <option value="85" ${scale === 85 ? 'selected' : ''}>صغير (85%)</option>
+                <option value="95" ${scale === 95 ? 'selected' : ''}>متوسط (95%)</option>
+                <option value="100" ${scale === 100 ? 'selected' : ''}>قياسي (100%)</option>
+                <option value="110" ${scale === 110 ? 'selected' : ''}>كبير (110%)</option>
+                <option value="125" ${scale === 125 ? 'selected' : ''}>بارز جداً (125%)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block font-black text-slate-600 dark:text-slate-300 mb-0.5 text-[10.5px]">↔️ محاذاة النصوص:</label>
+              <select onchange="window.GherbiPrintStudioV45.updateActiveLayerProp('${layer.id}', 'textAlign', this.value)" class="w-full px-2 py-1 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-black text-[11px] cursor-pointer">
+                <option value="right" ${layer.textAlign === 'right' ? 'selected' : ''}>يمين (RTL)</option>
+                <option value="center" ${layer.textAlign === 'center' ? 'selected' : ''}>توسيط (Center)</option>
+                <option value="left" ${layer.textAlign === 'left' ? 'selected' : ''}>يسار (LTR)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block font-black text-slate-600 dark:text-slate-300 mb-0.5 text-[10.5px]">🔲 إطار الطبقة:</label>
+              <select onchange="window.GherbiPrintStudioV45.updateActiveLayerProp('${layer.id}', 'borderStyle', this.value)" class="w-full px-2 py-1 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-bold text-[11px] cursor-pointer">
+                <option value="default" ${layer.borderStyle === 'default' ? 'selected' : ''}>الإطار القياسي</option>
+                <option value="none" ${layer.borderStyle === 'none' ? 'selected' : ''}>بدون إطار</option>
+                <option value="solid" ${layer.borderStyle === 'solid' ? 'selected' : ''}>إطار متصل</option>
+                <option value="dashed" ${layer.borderStyle === 'dashed' ? 'selected' : ''}>إطار متقطع</option>
+                <option value="double" ${layer.borderStyle === 'double' ? 'selected' : ''}>إطار مزدوج</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block font-black text-slate-600 dark:text-slate-300 mb-0.5 text-[10.5px]">🎨 خلفية الطبقة:</label>
+              <select onchange="window.GherbiPrintStudioV45.updateActiveLayerProp('${layer.id}', 'bgStyle', this.value)" class="w-full px-2 py-1 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-bold text-[11px] cursor-pointer">
+                <option value="default" ${layer.bgStyle === 'default' ? 'selected' : ''}>الافتراضية</option>
+                <option value="white" ${layer.bgStyle === 'white' ? 'selected' : ''}>⚪ أبيض صافي</option>
+                <option value="soft_slate" ${layer.bgStyle === 'soft_slate' ? 'selected' : ''}>🔘 رمادي فاتح</option>
+                <option value="soft_blue" ${layer.bgStyle === 'soft_blue' ? 'selected' : ''}>🔵 أزرق هادئ</option>
+                <option value="soft_green" ${layer.bgStyle === 'soft_green' ? 'selected' : ''}>🟢 أخضر تجاري</option>
+                <option value="soft_amber" ${layer.bgStyle === 'soft_amber' ? 'selected' : ''}>🟡 ذهبي (VIP)</option>
+                <option value="soft_rose" ${layer.bgStyle === 'soft_rose' ? 'selected' : ''}>🔴 وردي (كريدي)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      `;
+    };
+
+    // 3. بناء محتوى اللوحة الجانبية اليمنى فقط (حسب التبويب الفرعي المختار) دون المساس ببقية الصفحة
+    studio.buildLeftSidebarPanelHtml = function () {
+      this.sync30LayersWithActiveConfig();
+      const cfg = this.config;
+      const full30 = this.FULL_30_SMART_LAYERS || [];
+      const activeLayersCount = (cfg.layers || []).filter((l) => l.visible).length;
+      const subTab = this.leftPanelTab || 'catalog_30';
+      const catFilter = this.catalogCategoryFilter || 'ALL';
+      const searchQ = (this.layerCatalogSearch || '').trim().toLowerCase();
+      const shop = this.getShopIdentity();
+      const ct = cfg.customTexts || {};
+
+      let subTabBodyHtml = '';
+
+      if (subTab === 'catalog_30') {
+        const filtered30 = full30.filter((item) => {
+          if (catFilter === 'FOR_DOC') {
+            const isRec = item.forDocs.includes('ALL') || item.forDocs.includes(cfg.activeDocType);
+            if (!isRec) return false;
+          } else if (catFilter !== 'ALL' && item.cat !== catFilter) {
+            return false;
+          }
+          if (searchQ && !`${item.name} ${item.desc}`.toLowerCase().includes(searchQ)) {
+            return false;
+          }
+          return true;
+        });
+
+        const cardsHtml = filtered30
+          .map((catItem) => {
+            const layerState = cfg.layers.find((l) => l.id === catItem.id);
+            const isVis = Boolean(layerState && layerState.visible);
+            const isExpanded = this.expandedInspectorLayerId === catItem.id;
+
+            return `
+              <div class="p-3 rounded-2xl border transition ${
+                isExpanded
+                  ? 'bg-white dark:bg-slate-800 border-2 border-blue-500 shadow-md'
+                  : isVis
+                  ? 'bg-emerald-50/75 dark:bg-emerald-950/30 border-emerald-400'
+                  : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+              }">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="space-y-0.5 flex-1 min-w-0 cursor-pointer" onclick="window.GherbiPrintStudioV45.toggleLayerInPlace('${catItem.id}')">
+                    <div class="font-black text-xs text-slate-900 dark:text-white leading-snug">${catItem.name}</div>
+                    <div class="text-[10.5px] text-slate-500 dark:text-slate-400 leading-snug">${catItem.desc}</div>
+                  </div>
+                  <div class="flex items-center gap-1.5 shrink-0">
+                    <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.toggleInlineInspector('${catItem.id}')" class="px-2.5 py-1.5 rounded-xl border font-black text-xs transition cursor-pointer ${
+                      isExpanded
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:border-blue-500'
+                    }" title="فتح/إغلاق إعدادات هذه الطبقة هنا مباشرةً">
+                      ⚙️
+                    </button>
+                    <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.toggleLayerInPlace('${catItem.id}')" class="px-3 py-1.5 rounded-xl font-black text-[11px] transition cursor-pointer ${
+                      isVis
+                        ? 'bg-emerald-600 text-white shadow-sm hover:bg-rose-600'
+                        : 'bg-blue-600 text-white shadow-sm hover:bg-blue-500'
+                    }">
+                      ${isVis ? '✅ مفعّلة' : '+ إضافة'}
+                    </button>
+                  </div>
+                </div>
+                ${isExpanded ? this.buildInlineAccordionInspectorHtml(catItem.id) : ''}
+              </div>
+            `;
+          })
+          .join('');
+
+        subTabBodyHtml = `
+          <div class="space-y-3">
+            <!-- شريط البحث وزر تفعيل الكل -->
+            <div class="flex items-center gap-1.5">
+              <input id="v61CatalogSearchInp" type="text" value="${this.layerCatalogSearch || ''}" oninput="window.GherbiPrintStudioV45.onCatalogSearchInPlace(this.value)" placeholder="🔎 ابحث في الـ 30 طبقة (كريدي، وفاء، ضمان، سائق...)" class="flex-1 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-xs font-bold outline-none focus:border-blue-500">
+              <button type="button" onclick="window.GherbiPrintStudioV45.enableAllSuggestedLayersInPlace()" class="px-3 py-2 rounded-xl bg-indigo-100 hover:bg-indigo-600 text-indigo-900 hover:text-white font-black text-[11px] whitespace-nowrap transition cursor-pointer">
+                ✨ تفعيل الكل
+              </button>
+            </div>
+
+            <!-- أزرار الفلترة الـ 8 (تحدث القائمة في مكانها بدون أي قفز) -->
+            <div class="flex flex-wrap items-center gap-1 text-[11px]">
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('ALL')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'ALL' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}">الكل (30)</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('FOR_DOC')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'FOR_DOC' ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-50 dark:bg-slate-700 text-blue-800 dark:text-blue-300'}">🎯 طبقات هذا القالب</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('CORE')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'CORE' ? 'bg-slate-800 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'}">🏛️ الأساسية (6)</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('LOYALTY')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'LOYALTY' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'bg-amber-50 dark:bg-slate-700 text-amber-800 dark:text-amber-300'}">👑 الوفاء (5)</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('FINANCE')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'FINANCE' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-emerald-50 dark:bg-slate-700 text-emerald-800 dark:text-emerald-300'}">💳 الكريدي (5)</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('INVENTORY')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'INVENTORY' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-indigo-50 dark:bg-slate-700 text-indigo-800 dark:text-indigo-300'}">📦 المخزون والمشتريات (5)</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('LOGISTICS')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'LOGISTICS' ? 'bg-teal-600 text-white shadow-sm' : 'bg-teal-50 dark:bg-slate-700 text-teal-800 dark:text-teal-300'}">🚚 الضمان والتوصيل (4)</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('CAISSE_FISCAL')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'CAISSE_FISCAL' ? 'bg-rose-600 text-white shadow-sm' : 'bg-rose-50 dark:bg-slate-700 text-rose-800 dark:text-rose-300'}">🏦 الصندوق والجباية (5)</button>
+            </div>
+
+            <!-- قائمة البطاقات بثبات تام -->
+            <div id="v61LeftScrollContainer" class="space-y-2 max-h-[58vh] overflow-y-auto pr-1">
+              ${cardsHtml}
+            </div>
+          </div>
+        `;
+      } else if (subTab === 'layers_stack') {
+        const stackRowsHtml = cfg.layers
+          .map((l, idx) => {
+            const isExpanded = this.expandedInspectorLayerId === l.id;
+            return `
+              <div class="p-2.5 rounded-2xl border transition ${
+                isExpanded
+                  ? 'bg-white dark:bg-slate-800 border-2 border-blue-500 shadow-md'
+                  : l.visible
+                  ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 font-bold hover:border-blue-400'
+                  : 'bg-slate-50/70 dark:bg-slate-900/40 border-slate-200/60 dark:border-slate-800 text-slate-400'
+              }">
+                <div class="flex items-center justify-between gap-2 text-xs">
+                  <div class="flex items-center gap-2 truncate flex-1 min-w-0 cursor-pointer" onclick="window.GherbiPrintStudioV45.toggleLayerInPlace('${l.id}')">
+                    <input type="checkbox" ${l.visible ? 'checked' : ''} onclick="event.stopPropagation(); window.GherbiPrintStudioV45.toggleLayerInPlace('${l.id}')" class="w-4 h-4 accent-blue-600 rounded cursor-pointer shrink-0">
+                    <span class="truncate ${l.visible ? 'font-black text-slate-900 dark:text-white' : 'line-through'}">${l.name}</span>
+                  </div>
+                  <div class="flex items-center gap-1 shrink-0">
+                    <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.toggleInlineInspector('${l.id}')" class="px-2 py-1 rounded-lg ${
+                      isExpanded ? 'bg-blue-600 text-white' : 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-300'
+                    } font-black text-[10.5px] hover:bg-blue-600 hover:text-white cursor-pointer">
+                      ⚙️ تعديل
+                    </button>
+                    <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.moveLayerInPlace('${l.id}', -1)" ${idx === 0 ? 'disabled' : ''} class="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 text-[10.5px] hover:bg-blue-600 hover:text-white disabled:opacity-30 cursor-pointer">▲</button>
+                    <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.moveLayerInPlace('${l.id}', 1)" ${idx === cfg.layers.length - 1 ? 'disabled' : ''} class="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 text-[10.5px] hover:bg-blue-600 hover:text-white disabled:opacity-30 cursor-pointer">▼</button>
+                    ${
+                      l.id.startsWith('custom_')
+                        ? `<button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.deleteCustomLayerInPlace('${l.id}')" class="px-2 py-1 rounded-lg bg-rose-100 text-rose-600 text-[10.5px] hover:bg-rose-600 hover:text-white cursor-pointer">✕</button>`
+                        : ''
+                    }
+                  </div>
+                </div>
+                ${isExpanded ? this.buildInlineAccordionInspectorHtml(l.id) : ''}
+              </div>
+            `;
+          })
+          .join('');
+
+        subTabBodyHtml = `
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-500">اسحب أو اضغط (▲ / ▼) لترتيب الطبقات، أو اضغط (⚙️ تعديل) لفتح خصائص الطبقة تحتها مباشرةً:</span>
+              <button type="button" onclick="window.GherbiPrintStudioV45.addCustomLayerInPlace()" class="px-3 py-1.5 rounded-xl bg-blue-600 text-white font-black text-xs hover:bg-blue-500 cursor-pointer shrink-0 shadow-sm">
+                + طبقة نصية حرة
+              </button>
+            </div>
+            <div id="v61LeftScrollContainer" class="space-y-2 max-h-[62vh] overflow-y-auto pr-1">
+              ${stackRowsHtml}
+            </div>
+          </div>
+        `;
+      } else {
+        // التبويب الفرعي الثالث: الأعمدة وبيانات المتجر
+        subTabBodyHtml = `
+          <div id="v61LeftScrollContainer" class="space-y-4 max-h-[64vh] overflow-y-auto pr-1 text-xs">
+            <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 space-y-3">
+              <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
+                <h4 class="font-black text-slate-900 dark:text-white">📊 إظهار وإخفاء أعمدة الجدول</h4>
+                <div class="flex gap-1 text-[10px]">
+                  <button type="button" onclick="window.GherbiPrintStudioV45.applyTableColumnsPresetInPlace('thermal_simple')" class="px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border font-black cursor-pointer">تذكرة مبسطة</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.applyTableColumnsPresetInPlace('a4_full')" class="px-2 py-1 rounded-lg bg-blue-600 text-white font-black cursor-pointer">فاتورة كاملة</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.applyTableColumnsPresetInPlace('delivery_qty_only')" class="px-2 py-1 rounded-lg bg-emerald-600 text-white font-black cursor-pointer">وصل كميات</button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2.5 font-bold">
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.index ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('index')" class="w-4 h-4 accent-blue-600"> <span>رقم السطر (#)</span></label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.barcode ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('barcode')" class="w-4 h-4 accent-blue-600"> <span>الباركود / الكود</span></label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.name ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('name')" class="w-4 h-4 accent-blue-600"> <span>التعيين / الصنف</span></label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.unit ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('unit')" class="w-4 h-4 accent-blue-600"> <span>الوحدة</span></label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.qty ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('qty')" class="w-4 h-4 accent-blue-600"> <span>الكمية</span></label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.unitPrice ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('unitPrice')" class="w-4 h-4 accent-blue-600"> <span>سعر الوحدة</span></label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.discount ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('discount')" class="w-4 h-4 accent-blue-600"> <span>الخصم</span></label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.tva ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('tva')" class="w-4 h-4 accent-blue-600"> <span>ضريبة TVA</span></label>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                <div><label class="block text-[10.5px] font-bold text-slate-500 mb-0.5">عنوان عمود الصنف:</label><input type="text" value="${ct.colName || 'التعيين / الصنف'}" oninput="window.GherbiPrintStudioV45.updateCustomColumnHeaderTitle('colName', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-bold"></div>
+                <div><label class="block text-[10.5px] font-bold text-slate-500 mb-0.5">عنوان عمود الكمية:</label><input type="text" value="${ct.colQty || 'الكمية'}" oninput="window.GherbiPrintStudioV45.updateCustomColumnHeaderTitle('colQty', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-bold"></div>
+                <div><label class="block text-[10.5px] font-bold text-slate-500 mb-0.5">عنوان عمود السعر:</label><input type="text" value="${ct.colPrice || 'سعر الوحدة'}" oninput="window.GherbiPrintStudioV45.updateCustomColumnHeaderTitle('colPrice', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-bold"></div>
+                <div><label class="block text-[10.5px] font-bold text-slate-500 mb-0.5">عنوان عمود المجموع:</label><input type="text" value="${ct.colSubtotal || 'المجموع'}" oninput="window.GherbiPrintStudioV45.updateCustomColumnHeaderTitle('colSubtotal', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-bold"></div>
+              </div>
+            </div>
+
+            <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 space-y-2.5">
+              <h4 class="font-black text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-1.5">🏢 بيانات المتجر والبيانات الجبائية والتذييل</h4>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="col-span-2"><label class="block font-bold mb-0.5">اسم المتجر / المؤسسة:</label><input type="text" value="${shop.name}" oninput="window.GherbiPrintStudioV45.updateShopIdentityQuickField('shop_name', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-black"></div>
+                <div><label class="block font-bold mb-0.5">رقم الهاتف:</label><input type="text" value="${shop.phone}" oninput="window.GherbiPrintStudioV45.updateShopIdentityQuickField('shop_phone', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-mono"></div>
+                <div><label class="block font-bold mb-0.5">العنوان:</label><input type="text" value="${shop.address}" oninput="window.GherbiPrintStudioV45.updateShopIdentityQuickField('shop_address', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800"></div>
+                <div><label class="block font-bold mb-0.5">السجل التجاري (RC):</label><input type="text" value="${shop.rc}" oninput="window.GherbiPrintStudioV45.updateShopIdentityQuickField('shop_rc', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-mono"></div>
+                <div><label class="block font-bold mb-0.5">الرقم الجبائي (NIF):</label><input type="text" value="${shop.nif}" oninput="window.GherbiPrintStudioV45.updateShopIdentityQuickField('shop_nif', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-mono"></div>
+                <div class="col-span-2"><label class="block font-bold mb-0.5">عبارة التذييل وشروط الاستبدال:</label><input type="text" value="${cfg.customFooterTerms || ''}" oninput="window.GherbiPrintStudioV45.updateFooterTermsInPlace(this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-bold"></div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="rounded-3xl bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 p-4 shadow-sm space-y-3.5">
+          <!-- شريط التبويبات الفرعية الـ 3 للوحة التحكم اليمنى (يمنع ازدحام الصفحة وقفز التمرير نهائياً) -->
+          <div class="grid grid-cols-3 gap-1.5 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl text-xs">
+            <button type="button" onclick="window.GherbiPrintStudioV45.switchLeftSubTab('catalog_30')" class="py-2 px-2 rounded-xl font-black transition cursor-pointer ${
+              subTab === 'catalog_30' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-white/60'
+            }">
+              🧩 1. مكتبة الـ 30 طبقة
+            </button>
+            <button type="button" onclick="window.GherbiPrintStudioV45.switchLeftSubTab('layers_stack')" class="py-2 px-2 rounded-xl font-black transition cursor-pointer ${
+              subTab === 'layers_stack' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-white/60'
+            }">
+              🗂️ 2. الترتيب (${activeLayersCount})
+            </button>
+            <button type="button" onclick="window.GherbiPrintStudioV45.switchLeftSubTab('columns_and_shop')" class="py-2 px-2 rounded-xl font-black transition cursor-pointer ${
+              subTab === 'columns_and_shop' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-white/60'
+            }">
+              📊 3. الأعمدة والمتجر
+            </button>
+          </div>
+
+          ${subTabBodyHtml}
+        </div>
+      `;
+    };
+
+    // 4. تحديث اللوحة الجانبية فقط مع الحفاظ التام على موضع التمرير (scrollTop)
+    studio.refreshLeftSidebarOnly = function () {
+      const host = document.getElementById('v61LeftSidebarHost');
+      if (!host) return;
+      const savedScrolls = this.captureAllScrollPositions();
+      host.innerHTML = this.buildLeftSidebarPanelHtml();
+      this.restoreAllScrollPositions(savedScrolls);
+    };
+
+    // 5. دوال التفاعل الجراحية التي تعمل في نفس المكان (In-Place) بدون أي قفز للشاشة!
+    studio.switchLeftSubTab = function (tabName) {
+      const savedPageScroll = document.getElementById('view-print')?.scrollTop || 0;
+      this.leftPanelTab = tabName || 'catalog_30';
+      const host = document.getElementById('v61LeftSidebarHost');
+      if (host) {
+        host.innerHTML = this.buildLeftSidebarPanelHtml();
+      }
+      const vp = document.getElementById('view-print');
+      if (vp) vp.scrollTop = savedPageScroll;
+    };
+
+    studio.toggleInlineInspector = function (layerId) {
+      if (this.expandedInspectorLayerId === layerId) {
+        this.expandedInspectorLayerId = null;
+      } else {
+        this.expandedInspectorLayerId = layerId;
+        this.selectedLayerId = layerId;
+      }
+      this.refreshLeftSidebarOnly();
+      this.selectLayerDomOnly(layerId);
+    };
+
+    studio.toggleLayerInPlace = function (layerId) {
+      this.sync30LayersWithActiveConfig();
+      const target = (this.config.layers || []).find((l) => l.id === layerId);
+      if (target) {
+        target.visible = !target.visible;
+      }
+      this.selectedLayerId = layerId;
+      this.saveConfigLocal();
+      this.refreshLeftSidebarOnly();
+      this.refreshPaperHostOnly();
+    };
+
+    studio.activateSuggestedLayerFromCatalog = function (layerId) {
+      this.toggleLayerInPlace(layerId);
+    };
+
+    studio.toggleLayerVisibility = function (layerId) {
+      this.toggleLayerInPlace(layerId);
+    };
+
+    studio.setCatalogFilterInPlace = function (cat) {
+      const savedPageScroll = document.getElementById('view-print')?.scrollTop || 0;
+      this.catalogCategoryFilter = cat || 'ALL';
+      const host = document.getElementById('v61LeftSidebarHost');
+      if (host) host.innerHTML = this.buildLeftSidebarPanelHtml();
+      const vp = document.getElementById('view-print');
+      if (vp) vp.scrollTop = savedPageScroll;
+    };
+
+    studio.setCatalogCategoryFilter = function (cat) {
+      this.setCatalogFilterInPlace(cat);
+    };
+
+    studio.onCatalogSearchInPlace = function (val) {
+      this.layerCatalogSearch = String(val || '');
+      this.refreshLeftSidebarOnly();
+      const inp = document.getElementById('v61CatalogSearchInp');
+      if (inp) {
+        inp.focus();
+        const len = inp.value.length;
+        inp.setSelectionRange(len, len);
+      }
+    };
+
+    studio.enableAllSuggestedLayersInPlace = function () {
+      this.sync30LayersWithActiveConfig();
+      for (const l of this.config.layers) {
+        l.visible = true;
+      }
+      this.saveConfigLocal();
+      this.refreshLeftSidebarOnly();
+      this.refreshPaperHostOnly();
+      if (window.showToast) window.showToast('✨ تم تفعيل جميع الطبقات على الورقة الحية!', 'success');
+    };
+
+    studio.enableAllSuggestedLayers = function () {
+      this.enableAllSuggestedLayersInPlace();
+    };
+
+    studio.moveLayerInPlace = function (layerId, dir) {
+      const arr = this.config.layers;
+      const idx = arr.findIndex((l) => l.id === layerId);
+      if (idx < 0) return;
+      const targetIdx = idx + dir;
+      if (targetIdx < 0 || targetIdx >= arr.length) return;
+      const tmp = arr[idx];
+      arr[idx] = arr[targetIdx];
+      arr[targetIdx] = tmp;
+      this.saveConfigLocal();
+      this.refreshLeftSidebarOnly();
+      this.refreshPaperHostOnly();
+    };
+
+    studio.moveLayer = function (layerId, dir) {
+      this.moveLayerInPlace(layerId, dir);
+    };
+
+    studio.addCustomLayerInPlace = function () {
+      const newId = 'custom_' + Date.now().toString().slice(-5);
+      this.config.layers.push({
+        id: newId,
+        name: '📝 طبقة نصية مخصصة #' + (this.config.layers.length + 1),
+        visible: true,
+        align: 'center',
+        fontSizeScale: 100,
+        textAlign: 'center',
+        borderStyle: 'dashed',
+        bgStyle: 'soft_blue',
+        customTitle: '',
+        customNote: 'انقر هنا أو افتح (⚙️ تعديل) لكتابة أي نص أو ملاحظة حرة...'
+      });
+      this.expandedInspectorLayerId = newId;
+      this.saveConfigLocal();
+      this.refreshLeftSidebarOnly();
+      this.refreshPaperHostOnly();
+    };
+
+    studio.addCustomLayerBlock = function () {
+      this.addCustomLayerInPlace();
+    };
+
+    studio.deleteCustomLayerInPlace = function (layerId) {
+      this.config.layers = this.config.layers.filter((l) => l.id !== layerId);
+      if (this.expandedInspectorLayerId === layerId) this.expandedInspectorLayerId = null;
+      this.saveConfigLocal();
+      this.refreshLeftSidebarOnly();
+      this.refreshPaperHostOnly();
+    };
+
+    studio.deleteCustomLayer = function (layerId) {
+      this.deleteCustomLayerInPlace(layerId);
+    };
+
+    studio.duplicateLayerInPlace = function (layerId) {
+      const src = (this.config.layers || []).find((l) => l.id === layerId);
+      if (!src) return;
+      const newId = 'custom_' + Date.now().toString().slice(-5);
+      const copyLayer = {
+        ...JSON.parse(JSON.stringify(src)),
+        id: newId,
+        name: '📋 نسخة: ' + src.name.replace(/^[^\s]+\s\d+\.\s/, ''),
+        visible: true
+      };
+      const idx = this.config.layers.findIndex((l) => l.id === layerId);
+      this.config.layers.splice(idx + 1, 0, copyLayer);
+      this.expandedInspectorLayerId = newId;
+      this.saveConfigLocal();
+      this.refreshLeftSidebarOnly();
+      this.refreshPaperHostOnly();
+      if (window.showToast) window.showToast('📋 تم تكرار الطبقة بنجاح!', 'success');
+    };
+
+    studio.resetLayerInPlace = function (layerId) {
+      const layer = (this.config.layers || []).find((l) => l.id === layerId);
+      const catMeta = (this.FULL_30_SMART_LAYERS || []).find((c) => c.id === layerId);
+      if (!layer) return;
+      layer.fontSizeScale = 100;
+      layer.textAlign = 'right';
+      layer.borderStyle = 'default';
+      layer.bgStyle = 'default';
+      layer.customTitle = '';
+      layer.customNote = '';
+      if (catMeta) layer.name = catMeta.name;
+      this.saveConfigLocal();
+      this.refreshLeftSidebarOnly();
+      this.refreshPaperHostOnly();
+    };
+
+    studio.insertTagInInlineNote = function (layerId, tagText) {
+      const layer = (this.config.layers || []).find((l) => l.id === layerId);
+      if (!layer) return;
+      layer.customNote = ((layer.customNote || '') + ' ' + tagText).trim();
+      this.updateActiveLayerProp(layerId, 'customNote', layer.customNote);
+      const inp = document.getElementById('v61InlineNote_' + layerId);
+      if (inp) inp.value = layer.customNote;
+    };
+
+    studio.toggleColumnInPlace = function (colKey) {
+      this.config.columns[colKey] = !this.config.columns[colKey];
+      this.saveConfigLocal();
+      this.refreshLeftSidebarOnly();
+      this.refreshPaperHostOnly();
+    };
+
+    studio.toggleColumn = function (colKey) {
+      this.toggleColumnInPlace(colKey);
+    };
+
+    studio.applyTableColumnsPresetInPlace = function (presetKey) {
+      const presets = {
+        thermal_simple: { index: false, barcode: false, name: true, unit: false, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+        a4_full: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: true, tva: true, subtotal: true },
+        delivery_qty_only: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: false, discount: false, tva: false, subtotal: false }
+      };
+      if (presets[presetKey]) {
+        this.config.columns = { ...this.config.columns, ...presets[presetKey] };
+        this.saveConfigLocal();
+        this.refreshLeftSidebarOnly();
+        this.refreshPaperHostOnly();
+      }
+    };
+
+    studio.updateFooterTermsInPlace = function (val) {
+      this.config.customFooterTerms = val;
+      this.saveConfigLocal();
+      this.refreshPaperHostOnly();
+    };
+
+    // كما نحول دوال شريط الأدوات العلوي (حجم الخط، السنتيم، الباقي، الباركود، إضافة/حذف سطر) لتعمل بدون قفز
+    studio.stepFontSize = function (delta) {
+      const next = Math.max(8, Math.min(18, Number((this.config.baseFontSizePx + delta).toFixed(1))));
+      this.config.baseFontSizePx = next;
+      this.saveConfigLocal();
+      const lbl = document.getElementById('v61FontSizePxBadge');
+      if (lbl) lbl.textContent = next + 'px';
+      this.refreshPaperHostOnly();
+    };
+
+    studio.toggleCfgBool = function (key) {
+      this.config[key] = !this.config[key];
+      this.saveConfigLocal();
+      const saved = this.captureAllScrollPositions();
+      this.renderStudioIntoRoot().then(() => this.restoreAllScrollPositions(saved));
+    };
+
+    // 6. التحديث الشامل لـ renderStudioIntoRoot في وضع visual_studio ليستخدم الحاويتين المستقلتين (#v61LeftSidebarHost و #v61RightPaperWorkspace)
+    const prevRenderV60 = studio.renderStudioIntoRoot.bind(studio);
+    studio.renderStudioIntoRoot = async function (rootEl) {
+      const savedScrolls = this.captureAllScrollPositions();
+
+      if (this.activeSection !== 'visual_studio') {
+        await prevRenderV60(rootEl);
+        this.restoreAllScrollPositions(savedScrolls);
+        return;
+      }
+
+      const targetRoot = rootEl || document.getElementById('print-view-root');
+      if (!targetRoot) return;
+
+      this.sync30LayersWithActiveConfig();
+      const cfg = this.config;
+      const all28 = this.ALL_28_MASTER_DOCS || [];
+      const activeDocMeta = all28.find((d) => d.id === cfg.activeDocType) || all28[0] || { id: 'receipt_thermal', name: 'تذكرة كاشير', sourcePage: 'pos', sourceLabel: 'شاشة المبيعات' };
+      const docData = await this.resolveActiveDocumentData();
+      const paperHtml = this.buildLiveDocumentPaperHtml(docData, false);
+
+      let recordsList = [];
+      if (activeDocMeta.sourcePage === 'purchases') recordsList = this.liveDataRecords.purchases || [];
+      else if (activeDocMeta.sourcePage === 'proformas') recordsList = this.liveDataRecords.proformas || [];
+      else if (activeDocMeta.sourcePage === 'orders') recordsList = this.liveDataRecords.orders || [];
+      else recordsList = this.liveDataRecords.sales || [];
+
+      const recordOptionsHtml = [
+        `<option value="SAMPLE" ${this.selectedRecordId === 'SAMPLE' ? 'selected' : ''}>✨ بيانات نموذجية احترافية جاهزة للتعديل الحر</option>`,
+        ...recordsList.slice(0, 50).map((r) => {
+          const num = r.doc_number || r.invoice_number || ('#' + r.id);
+          const party = r.customer_name || r.supplier_name || 'زبون عابر';
+          const tot = Number(r.total || 0).toFixed(2);
+          return `<option value="${r.id}" ${String(this.selectedRecordId) === String(r.id) ? 'selected' : ''}>📄 ${num} — ${party} (${tot} د.ج)</option>`;
+        })
+      ].join('');
+
+      targetRoot.innerHTML = `
+        <div id="v45MasterPrintStudio" data-gherbi-print-v2="1" class="space-y-3.5 text-right pb-6 w-full" dir="rtl">
+          <!-- الترويسة العليا المدمجة للتبويبات الخمسة -->
+          <div class="rounded-3xl bg-gradient-to-l from-slate-900 via-blue-950 to-slate-900 text-white p-4 shadow-xl border border-blue-500/30 w-full">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg">
+                  <span class="material-symbols-rounded" style="font-size:24px;">print</span>
+                </div>
+                <div>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-black text-[10.5px]">
+                      Gherbi.Ai Omni-Print V61 — Zero-Jump Studio
+                    </span>
+                    <h1 class="text-base md:text-lg font-black">
+                      مركز الطباعة الشامل واستوديو الـ 28 قالباً والـ 30 طبقة ذكية
+                    </h1>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('visual_studio')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer bg-blue-600 text-white shadow-md">
+                  🎨 1. استوديو الفواتير والطبقات (30 طبقة)
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('cross_page_bridge')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer bg-white/10 hover:bg-white/20 text-slate-200">
+                  🔗 2. فواتير الصفحات (${(this.liveDataRecords.sales || []).length + (this.liveDataRecords.purchases || []).length})
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('barcode_shelf_factory')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer bg-white/10 hover:bg-white/20 text-slate-200">
+                  🏷️ 3. الباركود والرفوف
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('free_word_editor')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer bg-white/10 hover:bg-white/20 text-slate-200">
+                  📝 4. محرر البونات (Word)
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.switchSection('hardware_defaults')" class="px-3.5 py-2 rounded-xl font-black text-xs transition cursor-pointer bg-white/10 hover:bg-white/20 text-slate-200">
+                  ⚙️ 5. القوالب الافتراضية الـ 28 (Par Défaut)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- شريط التحكم العلوي في المستند والمقاس والاعتماد -->
+          <div class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 shadow-sm space-y-2.5">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 pb-2.5">
+              <div class="flex flex-wrap items-center gap-2">
+                <label class="text-xs font-black text-slate-700 dark:text-slate-200">📑 القالب (28 مستنداً):</label>
+                <select onchange="window.GherbiPrintStudioV45.selectDocType(this.value)" class="px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-slate-900 border-2 border-blue-400 dark:border-blue-600 text-blue-950 dark:text-blue-200 font-black text-xs cursor-pointer min-w-[260px]">
+                  ${this.build28DocsGroupedOptionsHtml(cfg.activeDocType)}
+                </select>
+
+                <select onchange="window.GherbiPrintStudioV45.selectLiveRecord(this.value)" class="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 font-bold text-xs max-w-xs cursor-pointer">
+                  ${recordOptionsHtml}
+                </select>
+
+                <button type="button" onclick="window.GherbiPrintStudioV45.applySingleProDefaultTemplate('${cfg.activeDocType}')" class="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-900 dark:text-amber-300 hover:text-slate-950 border border-amber-400 font-black text-xs transition cursor-pointer">
+                  ⚡ استعادة القالب الاحترافي الجاهز
+                </button>
+
+                <button type="button" onclick="window.App.switchView('${activeDocMeta.sourcePage}')" class="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-indigo-600 hover:text-white text-slate-700 dark:text-slate-200 font-black text-xs transition cursor-pointer">
+                  🔗 افتح (${activeDocMeta.sourceLabel}) ⬅
+                </button>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="window.GherbiPrintStudioV45.saveAsDefaultForDocType()" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md transition cursor-pointer">
+                  ⭐ اعتماد وحفظ كأمر مطلق للطباعة (Par Défaut)
+                </button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.printCurrentCanvasNow()" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-md transition cursor-pointer">
+                  🖨️ طباعة / PDF الآن
+                </button>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="font-black text-slate-500 text-[11px]">📐 المقاس:</span>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('a4')" class="v45-word-ribbon-btn ${cfg.paperSize === 'a4' ? 'active' : ''}">A4 رسمي</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('a5')" class="v45-word-ribbon-btn ${cfg.paperSize === 'a5' ? 'active' : ''}">A5 نصفي</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('2xa5')" class="v45-word-ribbon-btn ${cfg.paperSize === '2xa5' ? 'active' : ''}">2×A5 مزدوج</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('80mm')" class="v45-word-ribbon-btn ${cfg.paperSize === '80mm' ? 'active' : ''}">80mm حراري</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.setPaperSize('58mm')" class="v45-word-ribbon-btn ${cfg.paperSize === '58mm' ? 'active' : ''}">58mm حراري</button>
+
+                <span class="mx-1 text-slate-300">|</span>
+                <span class="font-black text-slate-500 text-[11px]">🔤 الخط العام:</span>
+                <button type="button" onclick="window.GherbiPrintStudioV45.stepFontSize(-0.5)" class="v45-word-ribbon-btn">-A</button>
+                <span id="v61FontSizePxBadge" class="font-mono font-black px-1">${cfg.baseFontSizePx}px</span>
+                <button type="button" onclick="window.GherbiPrintStudioV45.stepFontSize(0.5)" class="v45-word-ribbon-btn">+A</button>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                <div class="inline-flex items-center rounded-xl bg-amber-50 dark:bg-slate-900 border border-amber-300 p-0.5 text-[11px]">
+                  <button type="button" onclick="window.GherbiPrintStudioV45.switchLoyaltySimulationMode('vip')" class="px-2 py-1 rounded-lg font-black cursor-pointer ${this.loyaltySimMode === 'vip' ? 'bg-amber-500 text-slate-950' : 'text-amber-800'}">👑 زبون وفي</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.switchLoyaltySimulationMode('walkin')" class="px-2 py-1 rounded-lg font-black cursor-pointer ${this.loyaltySimMode === 'walkin' ? 'bg-slate-800 text-white' : 'text-slate-600'}">🚶 زبون عابر (0 ن)</button>
+                </div>
+                <button type="button" onclick="window.GherbiPrintStudioV45.addRowToActiveTicket()" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] cursor-pointer">➕ سطر جديد</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.removeLastRowFromActiveTicket()" class="px-2.5 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 font-black text-[11px] cursor-pointer">➖ حذف سطر</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.triggerLogoUploadFromStudio()" class="px-2.5 py-1 rounded-lg bg-indigo-100 text-indigo-800 font-black text-[11px] cursor-pointer">📷 الشعار</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.toggleCfgBool('showCentimesEquivalent')" class="v45-word-ribbon-btn ${cfg.showCentimesEquivalent ? 'active' : ''}">🇩🇿 السنتيم</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.toggleCfgBool('showCustomerBalance')" class="v45-word-ribbon-btn ${cfg.showCustomerBalance ? 'active' : ''}">⚖️ الباقي</button>
+                <button type="button" onclick="window.GherbiPrintStudioV45.toggleCfgBool('showDocBarcode')" class="v45-word-ribbon-btn ${cfg.showDocBarcode ? 'active' : ''}">||| باركود</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- التقسيم الثابت المتوازي بدون أي قفز في التمرير -->
+          <div class="v61-studio-split-layout">
+            <!-- يمين: اللوحة الجانبية ذات الـ 3 تبويبات ومحررات الأكورديون المدمجة -->
+            <div id="v61LeftSidebarHost" class="w-full min-w-0">
+              ${this.buildLeftSidebarPanelHtml()}
+            </div>
+
+            <!-- يسار: الورقة التفاعلية الحية -->
+            <div class="w-full min-w-0">
+              <div id="v61RightPaperWorkspace" class="v45-studio-workspace max-h-[75vh] w-full">
+                <div id="v45LivePaperHost">
+                  ${paperHtml}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      this.restoreAllScrollPositions(savedScrolls);
+    };
+
+    if (document.getElementById('view-print')?.classList.contains('active')) {
+      studio.renderStudioIntoRoot();
+    }
+
+    console.log('🏆 [Gherbi V61 Zero-Jump Print Studio]: تم القضاء نهائياً على قفز التمرير وتفعيل التبويبات الفرعية ومحرر الأكورديون المدمج!');
+  }, 150);
+})();
+
+/* ==================== [V62 ABSOLUTE SAVE & UNIVERSAL 28-DOCS CROSS-PAGE BINDING] ==================== */
+(function initV62AbsoluteSaveAndUniversalPageBinding() {
+  const STORAGE_KEY_V62 = 'gherbi_master_print_profiles_v62';
+
+  const waitStudio = setInterval(() => {
+    const studio = window.GherbiPrintStudioV45;
+    if (!studio || !window.App || !studio.ALL_28_MASTER_DOCS) return;
+    clearInterval(waitStudio);
+
+    // ========================================================================
+    // 1. استرجاع القوالب المعتمدة المحفوظة من SQLite و localStorage عند الإقلاع
+    // ========================================================================
+    studio.restoreAbsoluteProfilesFromStorageAndDb = async function () {
+      try {
+        let rawJson = localStorage.getItem(STORAGE_KEY_V62);
+        if (!rawJson && window.AppState?.settings?.[STORAGE_KEY_V62]) {
+          rawJson = window.AppState.settings[STORAGE_KEY_V62];
+        }
+        if (!rawJson && window.api?.getSettings) {
+          const allSet = await window.api.getSettings();
+          if (allSet && allSet[STORAGE_KEY_V62]) {
+            rawJson = allSet[STORAGE_KEY_V62];
+          }
+        }
+        if (rawJson) {
+          const parsed = JSON.parse(rawJson);
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.defaultsByDocType) {
+              this.config.defaultsByDocType = {
+                ...this.config.defaultsByDocType,
+                ...parsed.defaultsByDocType
+              };
+            }
+            if (parsed.adoptedProfiles) {
+              this.config.adoptedProfiles = {
+                ...this.config.adoptedProfiles,
+                ...parsed.adoptedProfiles
+              };
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[V62 Restore Profiles Warning]:', e);
+      }
+
+      // تحميل القالب المعتمد للمستند النشط حالياً في الاستوديو
+      if (typeof this.loadProfileForDocType === 'function') {
+        this.loadProfileForDocType(this.config.activeDocType || 'receipt_thermal');
+      }
+    };
+
+    // ========================================================================
+    // 2. تفريغ والتقاط جميع النصوص المحررة مباشرةً على الورقة الحية قبل الحفظ
+    // ========================================================================
+    studio.flushAllLivePaperEditsIntoConfig = function () {
+      const containers = [
+        document.getElementById('v45LivePaperHost'),
+        document.getElementById('v58PreviewModalPaperHost')
+      ].filter(Boolean);
+
+      for (const host of containers) {
+        const editableNodes = host.querySelectorAll('[data-v45-edit]');
+        editableNodes.forEach((node) => {
+          const key = node.getAttribute('data-v45-edit');
+          const textVal = (node.innerText || node.textContent || '').trim();
+          if (!key) return;
+
+          if (key === 'customHeaderTitle') {
+            this.config.customHeaderTitle = textVal;
+          } else if (key === 'customFooterTerms') {
+            this.config.customFooterTerms = textVal;
+          } else if (key.startsWith('layerNote:')) {
+            const lid = key.split(':')[1];
+            const layer = (this.config.layers || []).find((l) => l.id === lid);
+            if (layer) layer.customNote = textVal;
+          } else if (key.startsWith('layerTitle:')) {
+            const lid = key.split(':')[1];
+            const layer = (this.config.layers || []).find((l) => l.id === lid);
+            if (layer) layer.customTitle = textVal;
+          } else if (!key.startsWith('item:') && !key.startsWith('docField:') && !key.startsWith('shop:')) {
+            if (!this.config.customTexts) this.config.customTexts = {};
+            this.config.customTexts[key] = textVal;
+          }
+        });
+      }
+    };
+
+    // ========================================================================
+    // 3. الحفظ المطلق الدائم (saveAsDefaultForDocType) في localStorage و SQLite معاً
+    // ========================================================================
+    studio.persistAllProfilesPermanently = async function () {
+      this.saveConfigLocal();
+      const masterPayload = {
+        updatedAt: new Date().toISOString(),
+        defaultsByDocType: this.config.defaultsByDocType || {},
+        adoptedProfiles: this.config.adoptedProfiles || {}
+      };
+      const jsonStr = JSON.stringify(masterPayload);
+      try {
+        localStorage.setItem(STORAGE_KEY_V62, jsonStr);
+      } catch (_) {}
+
+      try {
+        if (window.AppState?.settings) {
+          window.AppState.settings[STORAGE_KEY_V62] = jsonStr;
+        }
+        if (window.api?.updateSettings) {
+          await window.api.updateSettings({
+            [STORAGE_KEY_V62]: jsonStr,
+            receipt_paper_width_mm:
+              this.config.defaultsByDocType?.receipt_thermal?.paperSize === '58mm' ? '58' : '80'
+          });
+        }
+      } catch (e) {
+        console.warn('[V62 SQLite Persist Warning]:', e);
+      }
+    };
+
+    studio.saveAsDefaultForDocType = async function (targetDocIdOverride = null) {
+      // 1) التقاط أي نص كتبه المستخدم على الورقة الحية قبل الحفظ
+      this.flushAllLivePaperEditsIntoConfig();
+      if (typeof this.sync30LayersWithActiveConfig === 'function') {
+        this.sync30LayersWithActiveConfig();
+      }
+
+      const docType = targetDocIdOverride || this.config.activeDocType || 'receipt_thermal';
+      const docMeta =
+        (this.ALL_28_MASTER_DOCS || []).find((d) => d.id === docType) ||
+        { id: docType, name: docType, sourceLabel: 'جميع الصفحات', defaultPaper: 'a4', defaultTheme: 'royal_blue' };
+
+      if (!this.config.defaultsByDocType) this.config.defaultsByDocType = {};
+      if (!this.config.adoptedProfiles) this.config.adoptedProfiles = {};
+
+      // 2) تحديث المقاس واللون الافتراضي لهذا المستند
+      this.config.defaultsByDocType[docType] = {
+        paperSize: this.config.paperSize || docMeta.defaultPaper,
+        themeId: this.config.themeId || docMeta.defaultTheme,
+        lang: this.config.lang || 'ar',
+        adopted: true,
+        adoptedAt: new Date().toISOString()
+      };
+
+      // 3) أخذ لقطة عميقة شاملة 100% لجميع الطبقات الـ 30 وترتيبها وأعمدتها ونصوصها وتنسيقاتها
+      this.config.adoptedProfiles[docType] = {
+        _isAbsoluteMaster: true,
+        _v60Customized: true,
+        adoptedAt: new Date().toISOString(),
+        activeDocType: docType,
+        paperSize: this.config.paperSize || docMeta.defaultPaper,
+        themeId: this.config.themeId || docMeta.defaultTheme,
+        fontFamily: this.config.fontFamily || 'Cairo',
+        baseFontSizePx: Number(this.config.baseFontSizePx || 11.5),
+        marginMode: this.config.marginMode || 'normal',
+        densityMode: this.config.densityMode || 'normal',
+        borderMode: this.config.borderMode || 'grid',
+        watermarkText: this.config.watermarkText || '',
+        customHeaderTitle: this.config.customHeaderTitle || docMeta.cleanTitle || '',
+        customFooterTerms: this.config.customFooterTerms || '',
+        showCentimesEquivalent: Boolean(this.config.showCentimesEquivalent),
+        showAmountInWords: Boolean(this.config.showAmountInWords),
+        showCustomerBalance: Boolean(this.config.showCustomerBalance),
+        showBaridimobQr: Boolean(this.config.showBaridimobQr),
+        showDocBarcode: Boolean(this.config.showDocBarcode),
+        showStampSignature: Boolean(this.config.showStampSignature),
+        columns: JSON.parse(JSON.stringify(this.config.columns || {})),
+        customTexts: JSON.parse(JSON.stringify(this.config.customTexts || {})),
+        layers: JSON.parse(JSON.stringify(this.config.layers || []))
+      };
+
+      // 4) حفظ دائم في localStorage وفي قاعدة بيانات SQLite
+      await this.persistAllProfilesPermanently();
+
+      // 5) تحديث معاينة نافذة #posPrintCenterModal إن كانت مفتوحة
+      if (window.GherbiSalesTurbo && document.getElementById('posPrintCenterModal')?.classList.contains('active')) {
+        await window.GherbiSalesTurbo.refreshFastPrintCenterPreview();
+      }
+
+      if (window.showToast) {
+        window.showToast(
+          `⭐ تم الاعتماد والحفظ كأمر مطلق! القالب (${docMeta.name}) بالمقاس (${(this.config.paperSize || '').toUpperCase()}) مطبق الآن إجبارياً في (${docMeta.sourceLabel})!`,
+          'success'
+        );
+      }
+      return this.config.adoptedProfiles[docType];
+    };
+
+    // ربط تغييرات المقاس واللون في التبويب الخامس بالحفظ المطلق الدائم أيضاً
+    studio.setDocDefaultPaper = async function (docId, paperSize) {
+      if (!this.config.defaultsByDocType[docId]) {
+        this.config.defaultsByDocType[docId] = { paperSize, themeId: 'royal_blue', lang: 'ar', adopted: true };
+      } else {
+        this.config.defaultsByDocType[docId].paperSize = paperSize;
+        this.config.defaultsByDocType[docId].adopted = true;
+      }
+      if (this.config.adoptedProfiles && this.config.adoptedProfiles[docId]) {
+        this.config.adoptedProfiles[docId].paperSize = paperSize;
+      }
+      if (this.config.activeDocType === docId) {
+        this.config.paperSize = paperSize;
+      }
+      await this.persistAllProfilesPermanently();
+      await this.renderStudioIntoRoot();
+      if (window.showToast) {
+        window.showToast(`📐 تم اعتماد المقاس (${paperSize.toUpperCase()}) كأمر مطلق لهذا المستند في كل الصفحات!`, 'success');
+      }
+    };
+
+    studio.setDocDefaultTheme = async function (docId, themeId) {
+      if (!this.config.defaultsByDocType[docId]) {
+        this.config.defaultsByDocType[docId] = { paperSize: 'a4', themeId, lang: 'ar', adopted: true };
+      } else {
+        this.config.defaultsByDocType[docId].themeId = themeId;
+        this.config.defaultsByDocType[docId].adopted = true;
+      }
+      if (this.config.adoptedProfiles && this.config.adoptedProfiles[docId]) {
+        this.config.adoptedProfiles[docId].themeId = themeId;
+      }
+      if (this.config.activeDocType === docId) {
+        this.config.themeId = themeId;
+      }
+      await this.persistAllProfilesPermanently();
+      if (document.getElementById('view-print')?.classList.contains('active')) {
+        await this.renderStudioIntoRoot();
+      }
+      if (window.showToast) {
+        window.showToast('🎨 تم اعتماد الثيم اللوني كأمر مطلق لهذا المستند في كل الصفحات!', 'success');
+      }
+    };
+
+    // ========================================================================
+    // 4. محرك البناء المعزول (Context-Switched Master Profile Renderer)
+    //    يضمن أن أي صفحة تطلب طباعة مستند (docType) تحصل على القالب المحفوظ له حرفياً
+    //    بكل طبقاته الـ 30 وترتيبها وأعمدتها ونصوصها حتى لو كان الاستوديو مفتوحاً على مستند آخر!
+    // ========================================================================
+    studio.renderAdoptedMasterDocumentHtml = async function (docTypeKey, docDataInput, runtimeOverrides = {}) {
+      let targetDocType = docTypeKey || 'receipt_thermal';
+      if (['receipt', '80mm', '58mm', 'thermal'].includes(targetDocType)) targetDocType = 'receipt_thermal';
+      else if (['a4', 'invoice'].includes(targetDocType)) targetDocType = 'invoice_a4';
+      else if (targetDocType === 'a5') targetDocType = 'invoice_a5';
+      else if (['delivery', 'bl'].includes(targetDocType)) targetDocType = 'delivery_note';
+
+      const docMeta =
+        (this.ALL_28_MASTER_DOCS || []).find((d) => d.id === targetDocType) ||
+        (this.ALL_28_MASTER_DOCS && this.ALL_28_MASTER_DOCS[0]);
+
+      // جلب البروفايل المعتمد المحفوظ لهذا المستند
+      const savedDef = (this.config.defaultsByDocType && this.config.defaultsByDocType[targetDocType]) || {};
+      let savedProfile = this.config.adoptedProfiles && this.config.adoptedProfiles[targetDocType];
+      if (!savedProfile && docMeta && typeof this.buildIdealProfileObjectForDoc === 'function') {
+        savedProfile = this.buildIdealProfileObjectForDoc(docMeta);
+        this.config.adoptedProfiles[targetDocType] = savedProfile;
+      }
+
+      const effectivePaperSize =
+        runtimeOverrides.paperSize ||
+        savedDef.paperSize ||
+        (savedProfile && savedProfile.paperSize) ||
+        (docMeta && docMeta.defaultPaper) ||
+        (targetDocType.includes('80mm') || targetDocType === 'receipt_thermal' ? '80mm' : 'a4');
+
+      const effectiveThemeId =
+        runtimeOverrides.themeId ||
+        savedDef.themeId ||
+        (savedProfile && savedProfile.themeId) ||
+        (docMeta && docMeta.defaultTheme) ||
+        'royal_blue';
+
+      // حفظ حالة الاستوديو الحالية مؤقتاً، ثم التبديل الكامل إلى البروفايل المعتمد للمستند المطلوب
+      const backupConfig = JSON.parse(JSON.stringify(this.config));
+      let paperInnerHtml = '';
+
+      try {
+        if (savedProfile) {
+          this.config = {
+            ...this.config,
+            ...JSON.parse(JSON.stringify(savedProfile)),
+            activeDocType: targetDocType,
+            paperSize: effectivePaperSize,
+            themeId: effectiveThemeId,
+            columns: {
+              ...(this.config.columns || {}),
+              ...(savedProfile.columns || {})
+            },
+            customTexts: {
+              ...(this.config.customTexts || {}),
+              ...(savedProfile.customTexts || {}),
+              ...(runtimeOverrides.customTexts || {})
+            },
+            layers: Array.isArray(savedProfile.layers)
+              ? JSON.parse(JSON.stringify(savedProfile.layers))
+              : this.config.layers
+          };
+        } else {
+          this.config.activeDocType = targetDocType;
+          this.config.paperSize = effectivePaperSize;
+          this.config.themeId = effectiveThemeId;
+        }
+
+        if (runtimeOverrides.customHeaderTitle) {
+          this.config.customHeaderTitle = runtimeOverrides.customHeaderTitle;
+        } else if (!this.config.customHeaderTitle && docMeta) {
+          this.config.customHeaderTitle = docMeta.cleanTitle;
+        }
+
+        const resolvedData = docDataInput || (await this.resolveActiveDocumentData(targetDocType));
+        paperInnerHtml = this.buildLiveDocumentPaperHtml(resolvedData, true, {
+          ...this.config,
+          ...runtimeOverrides,
+          activeDocType: targetDocType,
+          paperSize: effectivePaperSize,
+          themeId: effectiveThemeId
+        });
+      } finally {
+        // استعادة حالة الاستوديو الأصلية دون أي تأثير جانبي
+        this.config = backupConfig;
+      }
+
+      const isThermal = effectivePaperSize === '80mm' || effectivePaperSize === '58mm';
+      const thermalW = effectivePaperSize === '58mm' ? '56mm' : '78mm';
+      const dir = runtimeOverrides.dir || 'rtl';
+      const lang = runtimeOverrides.lang || 'ar';
+      const fontFam = (savedProfile && savedProfile.fontFamily) || 'Cairo';
+
+      const pageCss = isThermal
+        ? `@page { size: ${effectivePaperSize} auto; margin: 2mm; }`
+        : effectivePaperSize === '2xa5'
+        ? `@page { size: A4 landscape; margin: 6mm; }`
+        : effectivePaperSize === 'a5'
+        ? `@page { size: A5 portrait; margin: 6mm; }`
+        : `@page { size: A4 portrait; margin: 8mm; }`;
+
+      return `<!DOCTYPE html>
+<html lang="${lang}" dir="${dir}" data-v52-studio-master="1" data-v62-adopted-doc="${targetDocType}">
+<head>
+  <meta charset="UTF-8">
+  <title>${(docDataInput && docDataInput.docNumber) || targetDocType}</title>
+  <style>
+    ${pageCss}
+    * {
+      box-sizing: border-box !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    html, body {
+      margin: 0 !important;
+      padding: ${runtimeOverrides.forIframePreview ? '8px' : '0'} !important;
+      background: ${runtimeOverrides.forIframePreview ? '#f1f5f9' : '#ffffff'} !important;
+      color: #0f172a !important;
+      font-family: '${fontFam}', 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, sans-serif !important;
+      direction: ${dir} !important;
+    }
+    @media print {
+      html, body {
+        background: #ffffff !important;
+        padding: 0 !important;
+      }
+    }
+    .v45-live-paper {
+      background: #ffffff !important;
+      color: #0f172a !important;
+      margin: 0 auto !important;
+      width: ${isThermal ? thermalW : '100%'} !important;
+      max-width: 100% !important;
+      min-height: auto !important;
+      padding: ${isThermal ? '2.5mm' : '6mm'} !important;
+      box-shadow: ${runtimeOverrides.forIframePreview ? '0 6px 20px rgba(15,23,42,0.12)' : 'none'} !important;
+      border-radius: ${runtimeOverrides.forIframePreview ? '8px' : '0'} !important;
+      overflow: hidden !important;
+    }
+    .v45-canvas-layer {
+      border: none !important;
+      box-shadow: none !important;
+      margin-bottom: 6px !important;
+    }
+    .v45-layer-handle-bar {
+      display: none !important;
+    }
+    table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+    }
+  </style>
+</head>
+<body>
+  ${paperInnerHtml}
+</body>
+</html>`;
+    };
+
+    // ربط generateAdoptedHtmlForDocument القديمة بالمحرك المعزول الجديد V62
+    studio.generateAdoptedHtmlForDocument = async function (docTypeKey, recordId = null, rawPayload = null) {
+      let docData = null;
+      if (rawPayload) {
+        docData = this.enrichDocumentDataWithLoyaltyAndDebt({
+          docNumber: rawPayload.doc_number || rawPayload.invoice_number || rawPayload.return_number || 'DOC-' + Date.now().toString().slice(-4),
+          date: String(rawPayload.sale_date || rawPayload.date || new Date().toISOString()).replace('T', ' ').slice(0, 16),
+          customerId: rawPayload.customer_id || null,
+          partyTitle: rawPayload.party_title || (docTypeKey.includes('supplier') || docTypeKey === 'purchase_invoice' ? 'المورد:' : 'الزبون:'),
+          partyName: rawPayload.customer_name || rawPayload.supplier_name || 'زبون عابر (Comptoir)',
+          partyPhone: rawPayload.customer_phone || rawPayload.supplier_phone || '-',
+          partyAddress: rawPayload.customer_address || rawPayload.supplier_address || '-',
+          partyRc: rawPayload.customer_rc || rawPayload.supplier_rc || '-',
+          partyNif: rawPayload.customer_nif || rawPayload.supplier_nif || '-',
+          paymentMethod: rawPayload.payment_method || 'نقداً',
+          previousBalance: Number(rawPayload.previous_debt || 0),
+          items: (rawPayload.items || []).map((it) => ({
+            barcode: it.barcode || it.product_barcode || '-',
+            name: it.name || it.product_name || it.custom_product_name || 'صنف',
+            unit: it.unit || it.product_unit || 'قطعة',
+            qty: Number(it.quantity ?? it.qty ?? 1),
+            price: Number(it.price ?? it.cost_price ?? 0),
+            discount: Number(it.discount || 0),
+            tva: Number(rawPayload.tax_percentage || 0),
+            subtotal: Number(it.subtotal ?? it.total_cost ?? Number(it.price || 0) * Number(it.quantity || 1))
+          })),
+          subtotal: Number(rawPayload.subtotal ?? rawPayload.total ?? 0),
+          discount: Number(rawPayload.discount || 0),
+          tvaAmount: 0,
+          stampAmount: Number(rawPayload.stamp_amount || 0),
+          total: Number(rawPayload.total || 0),
+          paidAmount: Number(rawPayload.paid_amount ?? rawPayload.total ?? 0),
+          receivedAmount: Number(rawPayload.received_amount ?? rawPayload.paid_amount ?? rawPayload.total ?? 0),
+          remainingDebt: Math.max(0, Number((Number(rawPayload.total || 0) - Number(rawPayload.paid_amount ?? rawPayload.total ?? 0)).toFixed(2)))
+        });
+      } else if (recordId && recordId !== 'SAMPLE') {
+        const prevRec = this.selectedRecordId;
+        this.selectedRecordId = String(recordId);
+        this.activeLoadedDocData = null;
+        docData = await this.resolveActiveDocumentData(docTypeKey);
+        this.selectedRecordId = prevRec;
+      } else {
+        docData = await this.resolveActiveDocumentData(docTypeKey);
+      }
+      return await this.renderAdoptedMasterDocumentHtml(docTypeKey, docData);
+    };
+
+    // ========================================================================
+    // 5. إعادة ربط جميع صفحات البرنامج ونوافذ الطباعة بمحرك القوالب المعتمدة V62
+    // ========================================================================
+
+    // أ) ربط نافذة المعاينة الفورية (#posPrintCenterModal) وطباعة سجل المبيعات (SalesTurboHub)
+    if (window.GherbiSalesTurbo) {
+      const salesHub = window.GherbiSalesTurbo;
+      const origBuildPreview = salesHub.buildPrintCenterPreviewHtml.bind(salesHub);
+
+      salesHub.buildPrintCenterPreviewHtml = async function (docTypeRaw, langRaw, templateRaw, saleId) {
+        let targetDocType = docTypeRaw || 'invoice_a4';
+        if (targetDocType === 'receipt' || targetDocType === '80mm') targetDocType = 'receipt_thermal';
+        if (targetDocType === 'delivery' || targetDocType === 'bl') targetDocType = 'delivery_note';
+
+        const themeMap = {
+          default: null,
+          royal_blue: 'royal_blue',
+          executive_dark: 'executive_dark',
+          emerald_dz: 'emerald_dz',
+          crimson_bold: 'crimson_bold',
+          amber_gold: 'amber_gold',
+          pure_mono: 'pure_mono'
+        };
+        const chosenTheme = themeMap[templateRaw] || null;
+
+        let docData = null;
+        if (saleId && saleId !== 'SAMPLE') {
+          const det = await this.getSaleDetailsFast(saleId);
+          if (det && Array.isArray(det.items)) {
+            const earnedPts = Math.max(0, Math.floor(Number(det.total || 0) / 100));
+            docData = studio.enrichDocumentDataWithLoyaltyAndDebt({
+              docNumber: det.doc_number || String(det.id),
+              date: String(det.sale_date || det.created_at || '').replace('T', ' ').slice(0, 16),
+              customerId: det.customer_id || null,
+              partyTitle: langRaw === 'fr' ? 'Client :' : langRaw === 'en' ? 'Customer:' : 'الزبون:',
+              partyName: det.customer_name || 'زبون عابر (Comptoir)',
+              partyPhone: det.customer_phone || '-',
+              partyAddress: det.customer_address || '-',
+              partyRc: det.customer_rc || '-',
+              partyNif: det.customer_nif || '-',
+              paymentMethod: det.payment_method || 'نقداً',
+              cashierName: det.seller_name || 'المدير العام',
+              previousBalance: 0,
+              loyaltyPointsEarned: earnedPts,
+              items: det.items.map((it) => ({
+                barcode: it.product_barcode || '-',
+                name: it.product_name || it.custom_product_name || 'منتج',
+                unit: it.product_unit || 'قطعة',
+                qty: Number(it.quantity || 1),
+                price: Number(it.price || 0),
+                discount: Number(it.discount || 0),
+                tva: Number(det.tax_percentage || 0),
+                subtotal: Number(it.subtotal || 0)
+              })),
+              subtotal: Number(det.subtotal || det.total || 0),
+              discount: Number(det.discount || 0),
+              tvaAmount: Number(((Number(det.subtotal || 0) * Number(det.tax_percentage || 0)) / 100).toFixed(2)),
+              stampAmount: Number(det.stamp_amount || 0),
+              total: Number(det.total || 0),
+              paidAmount: Number(det.paid_amount ?? det.total ?? 0),
+              receivedAmount: Number(det.paid_amount ?? det.total ?? 0),
+              remainingDebt: Math.max(0, Number((Number(det.total || 0) - Number(det.paid_amount ?? det.total ?? 0)).toFixed(2)))
+            });
+          }
+        }
+
+        if (!docData) {
+          docData = await studio.resolveActiveDocumentData(targetDocType);
+        }
+
+        const overrides = {
+          forIframePreview: true,
+          lang: langRaw || 'ar',
+          dir: langRaw === 'fr' || langRaw === 'en' ? 'ltr' : 'rtl'
+        };
+        if (chosenTheme) overrides.themeId = chosenTheme;
+
+        return await studio.renderAdoptedMasterDocumentHtml(targetDocType, docData, overrides);
+      };
+    }
+
+    // ب) ربط صفحة الزبائن وكشوف الحسابات (CustomersTurboHub) بالقوالب المعتمدة (customer_carnet_80mm و customer_ledger_a4)
+    if (window.GherbiCustomersTurbo) {
+      const custHub = window.GherbiCustomersTurbo;
+      custHub.printCustomerStatement = async function (customerId, format = 'a4') {
+        await this.ensureFreshData(false);
+        const cust = this.customersCache.find((c) => Number(c.id) === Number(customerId));
+        if (!cust) return;
+
+        const sales = window.api?.getCustomerSales ? await window.api.getCustomerSales(Number(customerId)) : [];
+        const targetDocType = format === '80mm' ? 'customer_carnet_80mm' : 'customer_ledger_a4';
+        const initDebt = Math.max(0, Number(cust.initial_debt || 0) - Number(cust.initial_debt_paid || 0));
+        const totalDebt = Math.max(0, Number(cust.total_debt || 0));
+
+        const items =
+          Array.isArray(sales) && sales.length > 0
+            ? sales.slice(0, 40).map((s) => {
+                const tot = Number(s.total || 0);
+                const paid = Number(s.paid_amount ?? tot);
+                const rem = Math.max(0, Number((tot - paid).toFixed(2)));
+                return {
+                  barcode: s.doc_number || ('#' + s.id),
+                  name: `فاتورة بتاريخ ${String(s.sale_date || '').slice(0, 10)} (المدفوع: ${paid.toFixed(2)} | الباقي: ${rem.toFixed(2)})`,
+                  unit: s.payment_method || 'فاتورة',
+                  quantity: 1,
+                  price: tot,
+                  subtotal: tot
+                };
+              })
+            : [
+                {
+                  barcode: 'SOLDE',
+                  name: 'رصيد الحساب الإجمالي المسجل للزبون',
+                  unit: 'حساب',
+                  quantity: 1,
+                  price: totalDebt,
+                  subtotal: totalDebt
+                }
+              ];
+
+        const html = await studio.generateAdoptedHtmlForDocument(targetDocType, null, {
+          doc_number: `REL-${new Date().getFullYear()}-${cust.id}`,
+          sale_date: new Date().toISOString(),
+          customer_id: cust.id,
+          customer_name: cust.name,
+          customer_phone: cust.phone || '-',
+          customer_address: cust.address || '-',
+          customer_rc: cust.rc || '-',
+          customer_nif: cust.nif || '-',
+          payment_method: 'كشف حساب وديون الزبون',
+          previous_debt: initDebt,
+          items,
+          subtotal: Number(cust.total_sales || totalDebt),
+          total: Number(cust.total_sales || totalDebt),
+          paid_amount: Number(cust.total_paid || 0)
+        });
+
+        await window.__gherbiMasterPrintSilent({ html, silent: false });
+      };
+    }
+
+    // ج) ربط نافذة وصل التوصيل (#deliveryNoteModal) ونافذة إشعار الدائن (#creditNoteModal) ونافذة قائمة الأسعار (#priceListModal)
+    window.App.confirmPrintDeliveryNote = async function () {
+      const saleId = Number(document.getElementById('deliveryNoteSaleId')?.value || window.App.currentPrintingSaleId || 0);
+      const driver = document.getElementById('delivDriverInput')?.value?.trim() || '';
+      const vehicle = document.getElementById('delivVehicleInput')?.value?.trim() || '';
+      const fmt = document.getElementById('delivFormatSelect')?.value || 'ar';
+
+      window.App.closeModal('deliveryNoteModal');
+
+      // إذا أدخل المستخدم اسم السائق أو المركبة، نحدث طبقة التوصيل
+      const delivLayer = (studio.config.layers || []).find((l) => l.id === 'delivery_driver_layer');
+      if (delivLayer && (driver || vehicle)) {
+        delivLayer.visible = true;
+        delivLayer.customNote = `السائق: ${driver || '-'} | رقم المركبة: ${vehicle || '-'}`;
+      }
+
+      const paperOverride = fmt === 'thermal' ? '80mm' : fmt === 'a5' ? 'a5' : undefined;
+      const langOverride = fmt === 'fr' ? 'fr' : 'ar';
+
+      if (saleId && window.GherbiSalesTurbo) {
+        const det = await window.GherbiSalesTurbo.getSaleDetailsFast(saleId);
+        if (det) {
+          const html = await studio.generateAdoptedHtmlForDocument('delivery_note', saleId, det);
+          await window.__gherbiMasterPrintSilent({ html, paperSize: paperOverride, lang: langOverride, silent: false });
+          return;
+        }
+      }
+      const html = await studio.generateAdoptedHtmlForDocument('delivery_note', saleId || 'SAMPLE', null);
+      await window.__gherbiMasterPrintSilent({ html, silent: false });
+    };
+
+    window.App.confirmIssueCreditNote = async function () {
+      const saleId = Number(document.getElementById('creditNoteSaleId')?.value || window.App.currentPrintingSaleId || 0);
+      const reason = document.getElementById('creditNoteReasonInput')?.value?.trim() || 'إرجاع بضاعة من الزبون';
+      window.App.closeModal('creditNoteModal');
+
+      if (saleId && window.api?.issueCreditNote) {
+        await window.api.issueCreditNote({ saleId, reason }).catch(() => {});
+      }
+      if (window.GherbiSalesTurbo) {
+        window.GherbiSalesTurbo.invalidateCache(saleId);
+        if (document.getElementById('view-sales')?.classList.contains('active')) {
+          window.GherbiSalesTurbo.renderTurboSalesView(true);
+        }
+      }
+
+      const html = await studio.generateAdoptedHtmlForDocument('credit_note', saleId || 'SAMPLE', null);
+      await window.__gherbiMasterPrintSilent({ html, silent: false });
+      if (window.showToast) window.showToast("↩️ تم إصدار وطباعة إشعار الدائن (Facture d'Avoir) بالقالب المعتمد!", 'success');
+    };
+
+    window.App.confirmPrintPriceList = async function () {
+      const cat = document.getElementById('priceListCategorySelect')?.value || '';
+      const mode = document.getElementById('priceListModeSelect')?.value || 'retail';
+      window.App.closeModal('priceListModal');
+
+      const allProds = window.api?.getProducts ? await window.api.getProducts({ category: cat || undefined }) : [];
+      const items = (allProds || []).slice(0, 150).map((p) => ({
+        barcode: p.barcode || '-',
+        name: p.name || 'منتج',
+        unit: mode === 'wholesale' ? p.wholesale_unit || 'باكي' : p.unit || 'قطعة',
+        quantity: 1,
+        price: mode === 'wholesale' && Number(p.wholesale_price) > 0 ? Number(p.wholesale_price) : Number(p.selling_price || 0),
+        subtotal: mode === 'wholesale' && Number(p.wholesale_price) > 0 ? Number(p.wholesale_price) : Number(p.selling_price || 0)
+      }));
+
+      const totalVal = items.reduce((s, x) => s + x.price, 0);
+      const html = await studio.generateAdoptedHtmlForDocument('price_catalog_a4', null, {
+        doc_number: 'CAT-' + new Date().toISOString().slice(0, 10),
+        customer_name: cat ? `فئة: ${cat}` : 'جميع فئات المتجر',
+        payment_method: mode === 'wholesale' ? 'أسعار البيع بالباكي / الكرتونة' : 'أسعار البيع بالتجزئة',
+        items,
+        subtotal: totalVal,
+        total: totalVal,
+        paid_amount: totalVal
+      });
+      await window.__gherbiMasterPrintSilent({ html, silent: false });
+    };
+
+    // د) ربط تسديد دفعات الموردين (#supplierPaymentModal) بالقالب المعتمد (supplier_payment_receipt)
+    if (typeof window.App.submitSupplierPaymentModal === 'function' && !window.App._v62SupPayHooked) {
+      const origSupPay = window.App.submitSupplierPaymentModal.bind(window.App);
+      window.App._v62SupPayHooked = true;
+      window.App.submitSupplierPaymentModal = async function (shouldPrint = true) {
+        const sid = Number(document.getElementById('supPaySupplierId')?.value || 0);
+        const amt = Number(document.getElementById('supPayAmountInput')?.value || 0);
+        const method = document.getElementById('supPayMethodSelect')?.value || 'cash';
+        const notes = document.getElementById('supPayNotesInput')?.value || 'تسديد دفعة لمورد';
+
+        const res = await origSupPay(false);
+        if (shouldPrint && sid && amt > 0) {
+          const sups = window.api?.getSuppliers ? await window.api.getSuppliers() : [];
+          const sup = (sups || []).find((s) => Number(s.id) === sid) || { name: 'مورد #' + sid };
+          const html = await studio.generateAdoptedHtmlForDocument('supplier_payment_receipt', null, {
+            doc_number: 'VERS-' + Date.now().toString().slice(-4),
+            supplier_name: sup.name,
+            supplier_phone: sup.phone || '-',
+            supplier_address: sup.address || '-',
+            payment_method: method,
+            previous_debt: Number(sup.total_debt || 0) + amt,
+            items: [
+              {
+                barcode: 'VERS',
+                name: notes,
+                unit: 'دفعة',
+                quantity: 1,
+                price: amt,
+                subtotal: amt
+              }
+            ],
+            subtotal: amt,
+            total: amt,
+            paid_amount: amt
+          });
+          await window.__gherbiMasterPrintSilent({ html, silent: false });
+        }
+        return res;
+      };
+    }
+
+    // هـ) ترقية الموجه المركزي (window.__gherbiMasterPrintSilent) ليكتشف جميع الـ 28 مستنداً ويطبق القالب المعتمد المحفوظ دائماً
+    const origMasterPrint = window.__gherbiMasterPrintSilent;
+    window.__gherbiMasterPrintSilent = async function (payload = {}, ...rest) {
+      try {
+        const rawHtml = String((payload && payload.html) || '');
+
+        // إذا كان الـ HTML صادراً بالفعل من المحرك المعزول V62، نمرره مباشرةً للطابعة أو الـ PDF
+        if (rawHtml.includes('data-v62-adopted-doc=')) {
+          return await origMasterPrint(payload, ...rest);
+        }
+
+        // كشف ذكي لنوع المستند من الـ 28 مستنداً في حال استدعاء طباعة تقليدية من أي صفحة
+        let detectedDocType = null;
+        if (rawHtml.includes('وصل استلام دفعة') || rawHtml.includes('Reçu de Paiement')) detectedDocType = 'payment_receipt';
+        else if (rawHtml.includes('فاتورة شكلية') || rawHtml.includes('Proforma')) detectedDocType = 'proforma';
+        else if (rawHtml.includes('طلبية زبون') || rawHtml.includes('Bon de Commande')) detectedDocType = 'customer_order';
+        else if (rawHtml.includes('وصل التوصيل') || rawHtml.includes('Bon de Livraison')) detectedDocType = 'delivery_note';
+        else if (rawHtml.includes('إشعار دائن') || rawHtml.includes('Avoir')) detectedDocType = 'credit_note';
+        else if (rawHtml.includes('شهادة ضمان') || rawHtml.includes('Garantie')) detectedDocType = 'warranty_cert';
+        else if (rawHtml.includes('وصل استلام') || rawHtml.includes('Bon de Réception')) detectedDocType = 'purchase_invoice';
+        else if (rawHtml.includes('مرتجع مورد') || rawHtml.includes('Bon de Retour')) detectedDocType = 'supplier_return_note';
+        else if (rawHtml.includes('محضر الجرد') || rawHtml.includes('Inventaire')) detectedDocType = 'stocktake_sheet_a4';
+        else if (rawHtml.includes('أمر تشغيل') || rawHtml.includes('Ordre de Fabrication')) detectedDocType = 'production_order_sheet';
+        else if (rawHtml.includes('data-classic-caisse-zreport="1"') || rawHtml.includes('إغلاق المناوبة')) detectedDocType = 'caisse_z_report';
+        else if (rawHtml.includes('استمارة التصريح الجبائي') || rawHtml.includes('G12')) detectedDocType = 'fiscal_g12_statement';
+        else if (rawHtml.includes('التقرير الجنائي') || rawHtml.includes('تقرير رادار الرقابة')) detectedDocType = 'forensic_audit_report';
+
+        if (detectedDocType && !rawHtml.includes('v45-live-paper')) {
+          const adoptedHtml = await studio.generateAdoptedHtmlForDocument(detectedDocType, null, null);
+          if (adoptedHtml) {
+            const defPaper = studio.config.defaultsByDocType?.[detectedDocType]?.paperSize || 'a4';
+            return await origMasterPrint(
+              {
+                ...payload,
+                html: adoptedHtml,
+                paperSize: defPaper,
+                widthMm: defPaper === '80mm' ? 80 : defPaper === '58mm' ? 58 : undefined
+              },
+              ...rest
+            );
+          }
+        }
+      } catch (e) {
+        console.warn('[V62 Universal Interceptor Warning]:', e);
+      }
+
+      return await origMasterPrint(payload, ...rest);
+    };
+
+    // استرجاع البروفايلات المحفوظة من القاعدة وتحديث العرض
+    studio.restoreAbsoluteProfilesFromStorageAndDb().then(() => {
+      if (document.getElementById('view-print')?.classList.contains('active')) {
+        studio.renderStudioIntoRoot();
+      }
+      console.log('🏆 [Gherbi V62 Absolute Save & 28-Docs Binding]: الحفظ المطلق الدائم والربط الشامل مع جميع الصفحات مفعّل 100%!');
+    });
+  }, 160);
+})();
+
+/* ==================== [V63 ULTRA-LIGHT CAISSE & PRINT STUDIO DUAL Z-REPORT] ==================== */
+(function initV63UltraLightCaisseAndPrintStudioBridge() {
+  const CAISSE_MODE_STORAGE_KEY = 'gherbi_caisse_zreport_print_mode_v63'; // 'studio' | 'classic'
+
+  const CaisseTurboHub = {
+    activeSessionInfo: null,
+    sessionsCache: [],
+    txLogCache: [],
+    lastFetchTime: 0,
+    activeSubView: 'shifts', // 'shifts' | 'transactions'
+    zReportMode: localStorage.getItem(CAISSE_MODE_STORAGE_KEY) || 'studio', // 'studio' (قالب مركز الطباعة) أو 'classic' (معاينة الصندوق الكلاسيكية)
+    reviewModalPaperSize: '80mm', // '80mm' | 'a4' | 'a5'
+    currentReviewedSessionId: null,
+    currentReviewedDetails: null,
+
+    filters: {
+      search: '',
+      shiftStatus: 'ALL',
+      txType: 'ALL',
+      dateFrom: '',
+      dateTo: ''
+    },
+
+    fmtDzd(val) {
+      return Number(val || 0).toLocaleString('fr-DZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' د.ج';
+    },
+
+    fmtCentimes(val) {
+      const c = Math.round(Math.abs(Number(val || 0)) * 100);
+      if (c === 0) return '0 سنتيم';
+      if (c >= 1000000) {
+        const m = Math.floor(c / 1000000);
+        const remK = Math.floor((c % 1000000) / 1000);
+        const mLabel = m === 1 ? 'مليون' : m === 2 ? 'جوج ملاين' : `${m} ملاين`;
+        return remK > 0 ? `${mLabel} و ${remK} ألف سنتيم` : `${mLabel} سنتيم`;
+      }
+      const th = Math.floor(c / 1000);
+      const rem = c % 1000;
+      return rem > 0 ? `${th} ألف و ${rem} سنتيم` : `${th} ألف سنتيم`;
+    },
+
+    setPreferredZReportMode(mode) {
+      this.zReportMode = mode === 'classic' ? 'classic' : 'studio';
+      try {
+        localStorage.setItem(CAISSE_MODE_STORAGE_KEY, this.zReportMode);
+      } catch (_) {}
+    },
+
+    // جلب بيانات الصندوق مع ذاكرة تخزين مؤقت فورية (0ms Cache) لعدم إبطاء المتصفح
+    async ensureFreshCaisseData(forceRefresh = false) {
+      const now = Date.now();
+      if (!forceRefresh && this.sessionsCache.length > 0 && now - this.lastFetchTime < 3500) {
+        return;
+      }
+      try {
+        const uid = window.AppState?.currentUser?.id || 1;
+        const [activeSess, sessionsList, txLogList] = await Promise.all([
+          window.api?.getActiveSession ? window.api.getActiveSession(uid) : Promise.resolve(null),
+          window.api?.getCaisseSessions ? window.api.getCaisseSessions() : Promise.resolve([]),
+          window.api?.getCaisseTransactionsLog ? window.api.getCaisseTransactionsLog() : Promise.resolve([])
+        ]);
+        this.activeSessionInfo = activeSess || null;
+        this.sessionsCache = Array.isArray(sessionsList) ? sessionsList : [];
+        this.txLogCache = Array.isArray(txLogList) ? txLogList : [];
+        this.lastFetchTime = Date.now();
+      } catch (e) {
+        console.warn('[V63 Caisse Cache Fetch]:', e);
+      }
+    },
+
+    invalidateCache() {
+      this.lastFetchTime = 0;
+    },
+
+    // ========================================================================
+    // 1. بناء الـ HTML الكلاسيكي لتذكرة الصندوق (Classic Z-Report)
+    // ========================================================================
+    buildClassicCaisseZReportHtml(details, forPrint = false) {
+      const studio = window.GherbiPrintStudioV45;
+      const shop = studio ? studio.getShopIdentity() : { name: 'Gherbi.Ai POS', address: 'الجزائر', phone: '' };
+      const sess = (details && details.session) || {};
+      const sum = (details && details.summary) || {};
+      const txs = (details && details.transactions) || [];
+
+      const opening = Number(sess.opening_balance ?? sum.openingBalance ?? 0);
+      const salesAndDebtIn = Number((Number(sum.cashSales || 0) + Number(sum.debtPayments || 0) + Number(sum.orderDeposits || 0)).toFixed(2));
+      const cashIn = Number(sum.cashIn || 0);
+      const cashOut = Number(sum.cashOut || 0);
+      const expenses = Number(sum.expenses || 0);
+      const expected = Number(sess.expected_balance ?? sum.expectedBalance ?? (opening + salesAndDebtIn + cashIn - cashOut - expenses));
+      const counted = sess.closing_balance !== null && sess.closing_balance !== undefined ? Number(sess.closing_balance) : expected;
+      const diff = Number((counted - expected).toFixed(2));
+
+      const openedStr = String(sess.opened_at || '').replace('T', ' ').slice(0, 16);
+      const closedStr = sess.closed_at ? String(sess.closed_at).replace('T', ' ').slice(0, 16) : 'مفتوحة الآن (X-Report)';
+
+      const cardBodyHtml = `
+        <div class="classic-z-paper" dir="rtl" style="font-family:'Cairo','Segoe UI',Tahoma,sans-serif;width:${forPrint ? '74mm' : '100%'};max-width:310px;margin:0 auto;background:#ffffff;color:#0f172a;padding:10px;font-size:11.5px;border:${forPrint ? 'none' : '1px solid #cbd5e1'};border-radius:10px;">
+          <div style="text-align:center;margin-bottom:6px;">
+            <div style="font-size:16px;font-weight:900;">${shop.name || 'Gherbi.Ai POS'}</div>
+            <div style="font-size:11px;color:#475569;font-weight:700;">${shop.address || 'الجزائر'}</div>
+          </div>
+
+          <div style="border:1.5px solid #0f172a;border-radius:8px;padding:4px 8px;text-align:center;font-weight:900;font-size:12.5px;margin-bottom:8px;background:#f8fafc;">
+            ${sess.status === 'closed' ? 'تقرير إغلاق الوردية النهائي (Z-REPORT)' : 'تقرير جرد الوردية الحالي (X-REPORT)'}
+          </div>
+
+          <div style="font-size:11px;line-height:1.6;">
+            <div style="display:flex;justify-content:space-between;"><span>رقم المناوبة:</span><strong style="font-family:monospace;">#${sess.id || 1}</strong></div>
+            <div style="display:flex;justify-content:space-between;"><span>أمين الصندوق:</span><strong>${sess.user_name || 'المدير العام'}</strong></div>
+            <div style="display:flex;justify-content:space-between;"><span>وقت الافتتاح:</span><strong style="font-family:monospace;" dir="ltr">${openedStr}</strong></div>
+            <div style="display:flex;justify-content:space-between;"><span>وقت الإغلاق:</span><strong style="font-family:monospace;" dir="ltr">${closedStr}</strong></div>
+          </div>
+
+          <div style="border-top:1.5px dashed #0f172a;border-bottom:1.5px dashed #0f172a;margin:7px 0;padding:6px 0;line-height:1.75;font-size:11px;">
+            <div style="display:flex;justify-content:space-between;"><span>الرصيد الافتتاحي:</span><strong style="font-family:monospace;">${opening.toFixed(2)} د.ج</strong></div>
+            <div style="display:flex;justify-content:space-between;color:#047857;"><span>مبيعات وتسديدات النقد (+):</span><strong style="font-family:monospace;">+${salesAndDebtIn.toFixed(2)} د.ج</strong></div>
+            <div style="display:flex;justify-content:space-between;color:#0284c7;"><span>إيداعات نقدية (+):</span><strong style="font-family:monospace;">+${cashIn.toFixed(2)} د.ج</strong></div>
+            <div style="display:flex;justify-content:space-between;color:#be123c;"><span>سحوبات نقدية (-):</span><strong style="font-family:monospace;">-${cashOut.toFixed(2)} د.ج</strong></div>
+            <div style="display:flex;justify-content:space-between;color:#be123c;"><span>مصاريف ومرتجعات (-):</span><strong style="font-family:monospace;">-${expenses.toFixed(2)} د.ج</strong></div>
+          </div>
+
+          <div style="border:1.5px solid #0f172a;border-radius:8px;padding:6px 8px;background:#f8fafc;line-height:1.7;">
+            <div style="display:flex;justify-content:space-between;font-weight:900;font-size:12px;">
+              <span>الرصيد الدفتري المتوقع:</span>
+              <span style="font-family:monospace;">${expected.toFixed(2)} د.ج</span>
+            </div>
+            <div style="font-size:10px;font-weight:800;color:#b45309;text-align:left;">🇩🇿 ${this.fmtCentimes(expected)}</div>
+            <div style="display:flex;justify-content:space-between;font-weight:900;margin-top:3px;border-top:1px dashed #cbd5e1;padding-top:3px;">
+              <span>المبلغ الفعلي المعدود:</span>
+              <span style="font-family:monospace;color:#047857;">${counted.toFixed(2)} د.ج</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-weight:900;">
+              <span>الفارق (Écart de Caisse):</span>
+              <span style="font-family:monospace;color:${Math.abs(diff) < 0.05 ? '#047857' : '#be123c'};">${diff.toFixed(2)} د.ج ${Math.abs(diff) < 0.05 ? '✔' : '⚠️'}</span>
+            </div>
+          </div>
+
+          <div style="margin-top:6px;text-align:center;font-size:10px;color:#64748b;font-weight:700;">
+            إجمالي الحركات المسجلة: ${txs.length} حركة — طُبع بتاريخ ${new Date().toLocaleTimeString('fr-DZ')}
+          </div>
+        </div>
+      `;
+
+      if (!forPrint) return cardBodyHtml;
+
+      return `<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-classic-caisse-zreport="1">
+<head>
+  <meta charset="UTF-8">
+  <title>Z-Report #${sess.id || 1}</title>
+  <style>
+    @page { size: 80mm auto; margin: 2mm; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { margin: 0; padding: 0; background: #fff; font-family: 'Cairo', Tahoma, sans-serif; }
+  </style>
+</head>
+<body>${cardBodyHtml}</body>
+</html>`;
+    },
+
+    // ========================================================================
+    // 2. بناء الـ HTML المخصص لتذكرة أو تقرير الصندوق عبر القالب المعتمد في مركز الطباعة (#25 caisse_z_report)
+    // ========================================================================
+    async buildStudioAdoptedZReportHtml(details, paperSizeOverride = null, forPreviewBox = false) {
+      const studio = window.GherbiPrintStudioV45;
+      if (!studio) return this.buildClassicCaisseZReportHtml(details, !forPreviewBox);
+
+      const sess = (details && details.session) || {};
+      const sum = (details && details.summary) || {};
+      const txs = (details && details.transactions) || [];
+
+      const opening = Number(sess.opening_balance ?? sum.openingBalance ?? 0);
+      const cashSales = Number(sum.cashSales || 0);
+      const debtPayments = Number(sum.debtPayments || 0);
+      const cashIn = Number(sum.cashIn || 0);
+      const cashOut = Number(sum.cashOut || 0);
+      const expenses = Number(sum.expenses || 0);
+      const expected = Number(sess.expected_balance ?? sum.expectedBalance ?? (opening + cashSales + debtPayments + cashIn - cashOut - expenses));
+      const counted = sess.closing_balance !== null && sess.closing_balance !== undefined ? Number(sess.closing_balance) : expected;
+      const diff = Number((counted - expected).toFixed(2));
+
+      const openedStr = String(sess.opened_at || '').replace('T', ' ').slice(0, 16);
+      const closedStr = sess.closed_at ? String(sess.closed_at).replace('T', ' ').slice(0, 16) : 'نشطة الآن';
+
+      const items = [
+        { barcode: 'OPEN', name: '1. الرصيد الافتتاحي في الدرج (Fond de Caisse)', unit: 'رصيد', qty: 1, price: opening, discount: 0, tva: 0, subtotal: opening },
+        { barcode: 'SALES', name: '2. المبيعات النقدية المحصلة في المناوبة (+)', unit: 'مبيعات', qty: 1, price: cashSales, discount: 0, tva: 0, subtotal: cashSales },
+        { barcode: 'DEBT-IN', name: '3. تسديدات ديون الزبائن المقبوضة نقداً (+)', unit: 'تحصيل', qty: 1, price: debtPayments, discount: 0, tva: 0, subtotal: debtPayments }
+      ];
+
+      if (cashIn > 0) {
+        items.push({ barcode: 'CASH-IN', name: '4. إيداعات وتغذية نقدية إضافية (+)', unit: 'إيداع', qty: 1, price: cashIn, discount: 0, tva: 0, subtotal: cashIn });
+      }
+      if (cashOut > 0 || expenses > 0) {
+        items.push({ barcode: 'CASH-OUT', name: '5. المسحوبات والمصاريف النقدية (-)', unit: 'سحب', qty: 1, price: -(cashOut + expenses), discount: 0, tva: 0, subtotal: -(cashOut + expenses) });
+      }
+
+      const effectivePaper = paperSizeOverride || studio.config.defaultsByDocType?.caisse_z_report?.paperSize || '80mm';
+      if (effectivePaper === 'a4' && txs.length > 0) {
+        for (const tx of txs.slice(0, 30)) {
+          const isOut = tx.type === 'cash_out' || tx.type === 'expense';
+          const amt = isOut ? -Math.abs(Number(tx.amount || 0)) : Math.abs(Number(tx.amount || 0));
+          items.push({
+            barcode: String(tx.created_at || '').replace('T', ' ').slice(11, 16) || ('#' + tx.id),
+            name: `حركة: ${tx.description || tx.category || tx.type}`,
+            unit: tx.type === 'debt_payment' ? 'تسديد دين' : tx.type === 'sale' ? 'بيع نقدي' : tx.type,
+            qty: 1,
+            price: amt,
+            discount: 0,
+            tva: 0,
+            subtotal: amt
+          });
+        }
+      }
+
+      const docData = studio.enrichDocumentDataWithLoyaltyAndDebt({
+        docNumber: `Z-SHIFT-#${sess.id || 1}`,
+        date: closedStr !== 'نشطة الآن' ? closedStr : openedStr,
+        isWalkinCustomer: true,
+        partyTitle: 'المناوبة / أمين الصندوق:',
+        partyName: `المناوبة #${sess.id || 1} — الكاشير: ${sess.user_name || 'المدير العام'}`,
+        partyPhone: `افتتاح: ${openedStr}`,
+        partyAddress: `إغلاق: ${closedStr} | عدد الحركات: ${txs.length}`,
+        paymentMethod: Math.abs(diff) < 0.05 ? 'مطابق تماماً ✔ (الفارق: 0.00 د.ج)' : `فارق صندوق: ${diff.toFixed(2)} د.ج`,
+        previousBalance: 0,
+        items,
+        subtotal: expected,
+        discount: 0,
+        tvaAmount: 0,
+        stampAmount: 0,
+        total: expected,
+        paidAmount: counted,
+        receivedAmount: counted,
+        remainingDebt: Math.abs(diff)
+      });
+
+      if (forPreviewBox) {
+        const savedProf = studio.config.adoptedProfiles?.caisse_z_report || {};
+        const savedDef = studio.config.defaultsByDocType?.caisse_z_report || {};
+        const paperHtml = studio.buildLiveDocumentPaperHtml(docData, true, {
+          ...savedProf,
+          activeDocType: 'caisse_z_report',
+          paperSize: paperSizeOverride || savedDef.paperSize || savedProf.paperSize || '80mm',
+          themeId: savedDef.themeId || savedProf.themeId || 'executive_dark'
+        });
+        return `<div style="zoom:0.92;margin:0 auto;">${paperHtml}</div>`;
+      }
+
+      return await studio.renderAdoptedMasterDocumentHtml('caisse_z_report', docData, {
+        paperSize: effectivePaper
+      });
+    },
+
+    // ========================================================================
+    // 3. فتح نافذة مراجعة المناوبة المطورة (#reviewCaisseModal)
+    //    مع زر التبديل الفوري بين (🎨 قالب مركز الطباعة المخصص) و (⚡ معاينة الصندوق الكلاسيكية)
+    // ========================================================================
+    async openDualModeReviewCaisseModal(sessionId) {
+      const sid = Number(sessionId || this.activeSessionInfo?.session?.id || 0);
+      if (!sid) {
+        if (window.showToast) window.showToast('⚠️ لا توجد مناوبة محددة لعرضها.', 'warning');
+        return;
+      }
+
+      const modal = document.getElementById('reviewCaisseModal');
+      const titleEl = document.getElementById('reviewCaisseModalTitle');
+      const bodyEl = document.getElementById('reviewCaisseModalBody');
+      if (!modal || !bodyEl) return;
+
+      modal.classList.add('active');
+      modal.classList.remove('hidden');
+      bodyEl.innerHTML = `<div class="py-10 text-center font-bold text-slate-400">⏳ جاري تحميل تفاصيل وحركات المناوبة #${sid}...</div>`;
+
+      const details = window.api?.getSessionDetails ? await window.api.getSessionDetails(sid) : null;
+      if (!details || !details.session) {
+        bodyEl.innerHTML = `<div class="py-10 text-center font-bold text-rose-500">❌ تعذر العثور على بيانات المناوبة #${sid}.</div>`;
+        return;
+      }
+
+      this.currentReviewedSessionId = sid;
+      this.currentReviewedDetails = details;
+
+      const sess = details.session;
+      if (titleEl) {
+        titleEl.innerHTML = `📋 مراجعة المناوبة ${sess.status === 'closed' ? 'المغلقة' : 'النشطة'} رقم <span class="font-mono">#${sess.id}</span> — الكاشير: ${sess.user_name || 'المدير العام'}`;
+      }
+
+      await this.renderDualModeReviewModalBody();
+    },
+
+    async renderDualModeReviewModalBody() {
+      const bodyEl = document.getElementById('reviewCaisseModalBody');
+      const details = this.currentReviewedDetails;
+      if (!bodyEl || !details) return;
+
+      const sess = details.session || {};
+      const sum = details.summary || {};
+      const txs = Array.isArray(details.transactions) ? details.transactions : [];
+
+      const opening = Number(sess.opening_balance ?? sum.openingBalance ?? 0);
+      const expected = Number(sess.expected_balance ?? sum.expectedBalance ?? 0);
+      const counted = sess.closing_balance !== null && sess.closing_balance !== undefined ? Number(sess.closing_balance) : expected;
+      const diff = Number((counted - expected).toFixed(2));
+      const mode = this.zReportMode; // 'studio' | 'classic'
+
+      const previewBoxHtml =
+        mode === 'studio'
+          ? await this.buildStudioAdoptedZReportHtml(details, this.reviewModalPaperSize, true)
+          : this.buildClassicCaisseZReportHtml(details, false);
+
+      const txRowsHtml =
+        txs.length > 0
+          ? txs
+              .map((tx) => {
+                const isOut = tx.type === 'cash_out' || tx.type === 'expense';
+                const badgeClass =
+                  tx.type === 'debt_payment'
+                    ? 'bg-blue-100 text-blue-800'
+                    : tx.type === 'sale'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : isOut
+                    ? 'bg-rose-100 text-rose-700'
+                    : 'bg-amber-100 text-amber-800';
+                const badgeLabel =
+                  tx.type === 'debt_payment'
+                    ? '🤝 تسديد دين زبون'
+                    : tx.type === 'sale'
+                    ? '🛒 مبيعات نقدية'
+                    : tx.type === 'cash_in'
+                    ? '➕ إيداع نقدي'
+                    : '➖ سحب / مصروف';
+
+                return `
+                  <tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-xs">
+                    <td class="py-2 px-2.5"><span class="px-2 py-0.5 rounded-lg font-black text-[10.5px] ${badgeClass}">${badgeLabel}</span></td>
+                    <td class="py-2 px-2.5 font-bold text-slate-800 dark:text-slate-200">${tx.description || tx.category || '-'}</td>
+                    <td class="py-2 px-2.5 font-mono font-black ${isOut ? 'text-rose-600' : 'text-emerald-600'}" dir="ltr">
+                      ${isOut ? '-' : '+'}${Number(tx.amount || 0).toFixed(2)} د.ج
+                    </td>
+                    <td class="py-2 px-2.5 font-mono text-[11px] text-slate-400" dir="ltr">${String(tx.created_at || '').replace('T', ' ').slice(0, 16)}</td>
+                    <td class="py-2 px-2 text-center">
+                      <button type="button" onclick="window.GherbiCaisseTurbo.printSingleCaisseTransactionTicket(${tx.id})" class="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-blue-600 hover:text-white font-black text-[10px] cursor-pointer" title="طباعة تذكرة/سند هذه الحركة">
+                        🧾 سند
+                      </button>
+                    </td>
+                  </tr>
+                `;
+              })
+              .join('')
+          : `<tr><td colspan="5" class="py-8 text-center text-slate-400 font-bold">لا توجد حركات مسجلة في هذه المناوبة.</td></tr>`;
+
+      bodyEl.innerHTML = `
+        <div class="space-y-3.5 text-right" dir="rtl">
+          <!-- البطاقات الأربع لملخص المناوبة -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-center p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+            <div>
+              <div class="text-slate-400 font-bold text-[11px]">الرصيد الافتتاحي</div>
+              <div class="font-mono font-black text-base text-slate-900 dark:text-white mt-0.5">${this.fmtDzd(opening)}</div>
+              <div class="font-mono text-[10px] text-slate-400">${String(sess.opened_at || '').replace('T', ' ').slice(0, 16)} 🕒</div>
+            </div>
+            <div>
+              <div class="text-slate-400 font-bold text-[11px]">الرصيد الدفتري المتوقع</div>
+              <div class="font-mono font-black text-base text-blue-600 mt-0.5">${this.fmtDzd(expected)}</div>
+              <div class="text-[10.5px] font-black text-amber-600">${this.fmtCentimes(expected)}</div>
+            </div>
+            <div>
+              <div class="text-slate-400 font-bold text-[11px]">المبلغ الفعلي المعدود</div>
+              <div class="font-mono font-black text-base text-emerald-600 mt-0.5">${this.fmtDzd(counted)}</div>
+              <div class="font-mono text-[10px] text-slate-400">${sess.closed_at ? String(sess.closed_at).replace('T', ' ').slice(0, 16) + ' 🕒' : 'مناوبة مفتوحة'}</div>
+            </div>
+            <div>
+              <div class="text-slate-400 font-bold text-[11px]">الفارق (Écart de Caisse)</div>
+              <div class="font-mono font-black text-base ${Math.abs(diff) < 0.05 ? 'text-emerald-600' : 'text-rose-600'} mt-0.5">${this.fmtDzd(diff)}</div>
+              <div class="text-[10.5px] font-black ${Math.abs(diff) < 0.05 ? 'text-emerald-600' : 'text-rose-600'}">${Math.abs(diff) < 0.05 ? '✅ مطابق تماماً' : '⚠️ يوجد فارق نقدي'}</div>
+            </div>
+          </div>
+
+          <!-- شريط الاختيار الحر بين (🎨 قالب مركز الطباعة المخصص) و (⚡ معاينة الصندوق الكلاسيكية) + أزرار الطباعة -->
+          <div class="p-3.5 rounded-2xl bg-blue-50/80 dark:bg-slate-800 border-2 border-blue-300 dark:border-blue-700 space-y-2.5">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-black text-blue-950 dark:text-blue-200 text-xs">🖨️ اختر نمط المعاينة والطباعة للمناوبة:</span>
+                <div class="inline-flex rounded-xl bg-white dark:bg-slate-900 p-1 border border-blue-300 dark:border-slate-700 shadow-sm">
+                  <button type="button" onclick="window.GherbiCaisseTurbo.switchReviewModalMode('studio')" class="px-3 py-1.5 rounded-lg font-black text-xs transition cursor-pointer ${
+                    mode === 'studio' ? 'bg-blue-600 text-white shadow' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100'
+                  }">
+                    🎨 1. قالب مركز الطباعة المخصص (Studio Par Défaut)
+                  </button>
+                  <button type="button" onclick="window.GherbiCaisseTurbo.switchReviewModalMode('classic')" class="px-3 py-1.5 rounded-lg font-black text-xs transition cursor-pointer ${
+                    mode === 'classic' ? 'bg-slate-900 text-amber-400 shadow' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100'
+                  }">
+                    ⚡ 2. المعاينة الكلاسيكية الخاصة بالصندوق
+                  </button>
+                </div>
+              </div>
+
+              <button type="button" onclick="window.App.closeModal('reviewCaisseModal'); window.App.openDocumentInPrintStudio('caisse_z_report', 'SAMPLE')" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-sm cursor-pointer">
+                🎨 تعديل قالب Z-Report في مركز الطباعة ⬅
+              </button>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-blue-200/70 dark:border-slate-700">
+              <div class="flex items-center gap-1.5">
+                <span class="text-[11px] font-bold text-slate-600 dark:text-slate-300">📐 مقاس القالب:</span>
+                <button type="button" onclick="window.GherbiCaisseTurbo.setReviewModalPaper('80mm')" class="px-2.5 py-1 rounded-lg font-mono font-black text-[11px] cursor-pointer ${this.reviewModalPaperSize === '80mm' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-900 border'}">80mm حراري</button>
+                <button type="button" onclick="window.GherbiCaisseTurbo.setReviewModalPaper('a4')" class="px-2.5 py-1 rounded-lg font-mono font-black text-[11px] cursor-pointer ${this.reviewModalPaperSize === 'a4' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-900 border'}">A4 مفصل</button>
+                <button type="button" onclick="window.GherbiCaisseTurbo.setReviewModalPaper('a5')" class="px-2.5 py-1 rounded-lg font-mono font-black text-[11px] cursor-pointer ${this.reviewModalPaperSize === 'a5' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-900 border'}">A5 نصفي</button>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="window.GherbiCaisseTurbo.printActiveReviewModalReport('selected')" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow cursor-pointer flex items-center gap-1">
+                  <span>🖨️ طباعة المعاينة المختارة الآن (${mode === 'studio' ? 'قالب الاستوديو' : 'كلاسيكي'})</span>
+                </button>
+                <button type="button" onclick="window.GherbiCaisseTurbo.printActiveReviewModalReport('studio_a4')" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow cursor-pointer">
+                  📄 طباعة تقرير مفصل (A4)
+                </button>
+                <button type="button" onclick="window.GherbiCaisseTurbo.printActiveReviewModalReport('pdf')" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs shadow cursor-pointer">
+                  📥 حفظ PDF
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- التقسيم المتوازي: يمين (جدول حركات الخزينة في المناوبة) | يسار (المعاينة الحية المختارة) -->
+          <div class="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-start">
+            <div class="md:col-span-7 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900">
+              <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-100 dark:border-slate-800">
+                <span class="font-black text-xs text-slate-900 dark:text-white">حركات الخزينة في هذه المناوبة (${txs.length} حركة):</span>
+                <span class="text-[10.5px] text-slate-400 font-bold">انقر (🧾 سند) لطباعة وصل أي حركة منفردة</span>
+              </div>
+              <div class="overflow-y-auto max-h-80">
+                <table class="w-full text-right border-collapse">
+                  <thead class="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-500 text-[11px] font-black">
+                    <tr>
+                      <th class="py-2 px-2.5">النوع</th>
+                      <th class="py-2 px-2.5">البيان</th>
+                      <th class="py-2 px-2.5">المبلغ</th>
+                      <th class="py-2 px-2.5">التوقيت</th>
+                      <th class="py-2 px-2 text-center">سند</th>
+                    </tr>
+                  </thead>
+                  <tbody>${txRowsHtml}</tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="md:col-span-5 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 bg-slate-100 dark:bg-slate-950">
+              <div class="text-center font-black text-xs text-slate-600 dark:text-slate-300 mb-2">
+                ${mode === 'studio' ? `🎨 معاينة قالب مركز الطباعة المخصص (${this.reviewModalPaperSize.toUpperCase()}):` : '⚡ معاينة تذكرة Z-Report الكلاسيكية (80mm):'}
+              </div>
+              <div class="overflow-y-auto max-h-80 p-1">
+                ${previewBoxHtml}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    },
+
+    async switchReviewModalMode(newMode) {
+      this.setPreferredZReportMode(newMode);
+      await this.renderDualModeReviewModalBody();
+    },
+
+    async setReviewModalPaper(paperSize) {
+      this.reviewModalPaperSize = paperSize || '80mm';
+      this.setPreferredZReportMode('studio');
+      await this.renderDualModeReviewModalBody();
+    },
+
+    async printActiveReviewModalReport(actionType) {
+      const details = this.currentReviewedDetails;
+      if (!details) return;
+
+      let html = '';
+      if (actionType === 'studio_a4') {
+        html = await this.buildStudioAdoptedZReportHtml(details, 'a4', false);
+      } else if (this.zReportMode === 'classic') {
+        html = this.buildClassicCaisseZReportHtml(details, true);
+      } else {
+        html = await this.buildStudioAdoptedZReportHtml(details, this.reviewModalPaperSize, false);
+      }
+
+      if (html) {
+        await window.__gherbiMasterPrintSilent({ html, silent: false });
+      }
+    },
+
+    async quickPrintShiftReport(sessionId, modeOverride = null, paperSize = '80mm') {
+      const details = window.api?.getSessionDetails ? await window.api.getSessionDetails(Number(sessionId)) : null;
+      if (!details) return;
+
+      const effectiveMode = modeOverride || this.zReportMode || 'studio';
+      const html =
+        effectiveMode === 'classic'
+          ? this.buildClassicCaisseZReportHtml(details, true)
+          : await this.buildStudioAdoptedZReportHtml(details, paperSize, false);
+
+      await window.__gherbiMasterPrintSilent({ html, silent: false });
+    },
+
+    async printSingleCaisseTransactionTicket(txId) {
+      await this.ensureFreshCaisseData(false);
+      const allTxs = [
+        ...(this.txLogCache || []),
+        ...((this.currentReviewedDetails && this.currentReviewedDetails.transactions) || [])
+      ];
+      const tx = allTxs.find((t) => Number(t.id) === Number(txId));
+      if (!tx) return;
+
+      const studio = window.GherbiPrintStudioV45;
+      if (!studio) return;
+
+      const docType = tx.type === 'debt_payment' ? 'payment_receipt' : 'expense_voucher';
+      const amt = Math.abs(Number(tx.amount || 0));
+      const typeLabel =
+        tx.type === 'cash_in'
+          ? 'سند إيداع وتغذية صندوق (Bon d’Entrée)'
+          : tx.type === 'debt_payment'
+          ? 'وصل قبض تسديد دين زبون'
+          : 'سند صرف نقدي من الصندوق (Bon de Sortie)';
+
+      const html = await studio.generateAdoptedHtmlForDocument(docType, null, {
+        doc_number: `CAISSE-TX-${tx.id}`,
+        sale_date: tx.created_at || new Date().toISOString(),
+        customer_name: tx.user_name || 'أمين الصندوق — المدير العام',
+        payment_method: typeLabel,
+        items: [
+          {
+            barcode: `TX-${tx.id}`,
+            name: `${typeLabel}: ${tx.description || tx.category || 'حركة خزينة'} (المناوبة #${tx.session_id || '-'})`,
+            unit: 'سند',
+            quantity: 1,
+            price: amt,
+            subtotal: amt
+          }
+        ],
+        subtotal: amt,
+        total: amt,
+        paid_amount: amt
+      });
+
+      await window.__gherbiMasterPrintSilent({ html, silent: false });
+      if (window.showToast) window.showToast(`🧾 تم توليد وطباعة (${typeLabel}) بالقالب المعتمد!`, 'success');
+    },
+
+    // ========================================================================
+    // 4. بناء صفحة "إدارة الصندوق" (#view-caisse) الفائقة الخفة والمتصلة بمركز الطباعة
+    // ========================================================================
+    async renderTurboCaisseView(forceRefresh = false) {
+      const root = document.getElementById('caisse-view-root');
+      if (!root) return;
+
+      await this.ensureFreshCaisseData(forceRefresh);
+
+      const activeSess = this.activeSessionInfo && this.activeSessionInfo.session ? this.activeSessionInfo.session : null;
+      const activeSum = (this.activeSessionInfo && this.activeSessionInfo.summary) || {};
+
+      const openingBal = Number(activeSess ? activeSess.opening_balance : 0);
+      const cashSalesAndDebt = Number((Number(activeSum.cashSales || 0) + Number(activeSum.debtPayments || 0) + Number(activeSum.orderDeposits || 0)).toFixed(2));
+      const cashInTotal = Number(activeSum.cashIn || 0);
+      const cashOutAndExp = Number((Number(activeSum.cashOut || 0) + Number(activeSum.expenses || 0)).toFixed(2));
+      const expectedDrawer = Number(activeSum.expectedBalance ?? (openingBal + cashSalesAndDebt + cashInTotal - cashOutAndExp));
+
+      const mode = this.zReportMode;
+
+      root.innerHTML = `
+        <div class="space-y-3.5 text-right" dir="rtl">
+          <div class="rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 shadow-sm space-y-3.5">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-700 pb-3">
+              <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h2 class="text-lg font-black text-slate-900 dark:text-white">
+                    🏦 إدارة الصندوق، الورديات (Z-Report)، وسندات القبض والصرف
+                  </h2>
+                  ${
+                    activeSess
+                      ? `<span class="px-3 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-black text-xs">🟢 المناوبة #${activeSess.id} مفتوحة ونشطة</span>`
+                      : `<span class="px-3 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-300 font-black text-xs">⚪ لا توجد مناوبة مفتوحة حالياً</span>`
+                  }
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  متصلة مباشرةً بمركز الطباعة — اختر بحرية بين طباعة قالب مركز الطباعة المخصص أو المعاينة الكلاسيكية للصندوق
+                </p>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                ${
+                  activeSess
+                    ? `
+                      <button type="button" onclick="window.GherbiCaisseTurbo.openTxModal('cash_in')" class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-sm cursor-pointer">
+                        ➕ إيداع نقدي (+ سند)
+                      </button>
+                      <button type="button" onclick="window.GherbiCaisseTurbo.openTxModal('cash_out')" class="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-sm cursor-pointer">
+                        ➖ سحب نقدي (+ سند)
+                      </button>
+                      <button type="button" onclick="window.GherbiCaisseTurbo.openDualModeReviewCaisseModal(${activeSess.id})" class="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-sm cursor-pointer">
+                        🧾 معاينة وطباعة X-Report الحي
+                      </button>
+                      <button type="button" onclick="window.App.openCloseShiftModal(${activeSess.id})" class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-sm cursor-pointer">
+                        🔒 إغلاق المناوبة (Z-Report)
+                      </button>
+                    `
+                    : `
+                      <button type="button" onclick="window.App.openModal('openShiftModal')" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md cursor-pointer">
+                        🔓 فتح مناوبة صندوق جديدة الآن
+                      </button>
+                    `
+                }
+                <button type="button" onclick="window.GherbiCaisseTurbo.jumpToPrintStudioForCaisse('caisse_z_report')" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-sm cursor-pointer">
+                  🎨 تخصيص تذاكر الصندوق في مركز الطباعة ⬅
+                </button>
+                <button type="button" onclick="window.GherbiCaisseTurbo.exportCaisseReportPdf()" class="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs cursor-pointer">
+                  📄 تصدير PDF
+                </button>
+                <button type="button" onclick="window.GherbiCaisseTurbo.exportCaisseReportExcel()" class="px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-black text-xs cursor-pointer">
+                  📊 Excel
+                </button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-center text-xs">
+              <div class="p-3 rounded-2xl bg-blue-50/90 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+                <div class="text-[11px] font-black text-blue-800 dark:text-blue-300">💰 الرصيد المتوقع في الدرج الآن</div>
+                <div class="text-lg font-black font-mono text-blue-600 mt-0.5">${this.fmtDzd(expectedDrawer)}</div>
+                <div class="text-[10.5px] font-bold text-amber-700">🇩🇿 ${this.fmtCentimes(expectedDrawer)}</div>
+              </div>
+
+              <div class="p-3 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
+                <div class="text-[11px] font-black text-emerald-800 dark:text-emerald-300">🛒 مبيعات النقد وتحصيل الديون (+)</div>
+                <div class="text-lg font-black font-mono text-emerald-600 mt-0.5">+${this.fmtDzd(cashSalesAndDebt)}</div>
+                <div class="text-[10.5px] font-bold text-slate-500">الافتتاحي: ${this.fmtDzd(openingBal)}</div>
+              </div>
+
+              <div class="p-3 rounded-2xl bg-sky-50/90 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800">
+                <div class="text-[11px] font-black text-sky-800 dark:text-sky-300">➕ الإيداعات والتغذية النقدية</div>
+                <div class="text-lg font-black font-mono text-sky-600 mt-0.5">+${this.fmtDzd(cashInTotal)}</div>
+                <div class="text-[10.5px] font-bold text-sky-700">🇩🇿 ${this.fmtCentimes(cashInTotal)}</div>
+              </div>
+
+              <div class="p-3 rounded-2xl bg-rose-50/90 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800">
+                <div class="text-[11px] font-black text-rose-800 dark:text-rose-300">➖ المسحوبات والمصاريف النقدية</div>
+                <div class="text-lg font-black font-mono text-rose-600 mt-0.5">-${this.fmtDzd(cashOutAndExp)}</div>
+                <div class="text-[10.5px] font-bold text-rose-700">🇩🇿 ${this.fmtCentimes(cashOutAndExp)}</div>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="font-black text-slate-600 dark:text-slate-300">🖨️ النمط المعتمد لطباعة Z-Report:</span>
+                <button type="button" onclick="window.GherbiCaisseTurbo.setGlobalZReportMode('studio')" class="px-3 py-1.5 rounded-xl font-black transition cursor-pointer ${
+                  mode === 'studio' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border'
+                }">
+                  🎨 قالب مركز الطباعة المخصص (#25)
+                </button>
+                <button type="button" onclick="window.GherbiCaisseTurbo.setGlobalZReportMode('classic')" class="px-3 py-1.5 rounded-xl font-black transition cursor-pointer ${
+                  mode === 'classic' ? 'bg-slate-900 text-amber-400 shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border'
+                }">
+                  ⚡ معاينة الصندوق الكلاسيكية
+                </button>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="font-bold text-slate-400">تخصيص سريع لتذاكر الصندوق:</span>
+                <button type="button" onclick="window.GherbiCaisseTurbo.jumpToPrintStudioForCaisse('caisse_z_report')" class="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border border-indigo-200 font-black text-[11px] cursor-pointer">🔒 قالب Z-Report (#25)</button>
+                <button type="button" onclick="window.GherbiCaisseTurbo.jumpToPrintStudioForCaisse('expense_voucher')" class="px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-slate-800 text-rose-700 dark:text-rose-300 border border-rose-200 font-black text-[11px] cursor-pointer">💸 قالب سند الصرف (#26)</button>
+                <button type="button" onclick="window.GherbiCaisseTurbo.jumpToPrintStudioForCaisse('payment_receipt')" class="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 border border-emerald-200 font-black text-[11px] cursor-pointer">💵 قالب وصل القبض (#10)</button>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <div class="flex items-center gap-1.5">
+                <button type="button" onclick="window.GherbiCaisseTurbo.switchSubView('shifts')" class="px-4 py-2 rounded-xl font-black text-xs transition cursor-pointer ${
+                  this.activeSubView === 'shifts' ? 'bg-slate-900 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                }">
+                  📋 1. سجل الورديات والمناوبات (${this.sessionsCache.length})
+                </button>
+                <button type="button" onclick="window.GherbiCaisseTurbo.switchSubView('transactions')" class="px-4 py-2 rounded-xl font-black text-xs transition cursor-pointer ${
+                  this.activeSubView === 'transactions' ? 'bg-slate-900 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                }">
+                  💳 2. سجل حركات الخزينة وسندات الصرف والقبض (${this.txLogCache.length})
+                </button>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <input id="v63CaisseSearchInp" type="text" value="${this.filters.search}" oninput="window.GherbiCaisseTurbo.onSearchInput(this.value)" placeholder="🔎 ابحث برقم المناوبة، الكاشير، البيان، المبلغ..." class="w-64 px-3.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-xs font-bold outline-none focus:border-blue-500">
+              </div>
+            </div>
+          </div>
+
+          <div id="v63CaisseTableContainer" class="rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden"></div>
+        </div>
+      `;
+
+      this.renderActiveCaisseTableOnly();
+    },
+
+    renderActiveCaisseTableOnly() {
+      const container = document.getElementById('v63CaisseTableContainer');
+      if (!container) return;
+
+      const q = (this.filters.search || '').trim().toLowerCase();
+
+      if (this.activeSubView === 'shifts') {
+        const list = (this.sessionsCache || []).filter((s) => {
+          if (!q) return true;
+          return `${s.id} ${s.user_name || ''} ${s.opening_balance || ''} ${s.closing_balance || ''} ${s.status || ''}`.toLowerCase().includes(q);
+        });
+
+        const rowsHtml =
+          list.length > 0
+            ? list
+                .slice(0, 80)
+                .map((s) => {
+                  const isOpen = s.status === 'open';
+                  const openBal = Number(s.opening_balance || 0);
+                  const expBal = Number(s.expected_balance ?? openBal);
+                  const closeBal = s.closing_balance !== null && s.closing_balance !== undefined ? Number(s.closing_balance) : expBal;
+                  const diff = Number(s.difference ?? (closeBal - expBal));
+
+                  return `
+                    <tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-blue-50/30 dark:hover:bg-slate-800/50 transition text-xs">
+                      <td class="py-3 px-3 font-mono font-black text-blue-600">#${s.id}</td>
+                      <td class="py-3 px-3 font-black text-slate-900 dark:text-white">👤 ${s.user_name || 'المدير العام'}</td>
+                      <td class="py-3 px-3 font-mono text-slate-500" dir="ltr">${String(s.opened_at || '').replace('T', ' ').slice(0, 16)}</td>
+                      <td class="py-3 px-3 font-mono text-slate-500" dir="ltr">${s.closed_at ? String(s.closed_at).replace('T', ' ').slice(0, 16) : '—'}</td>
+                      <td class="py-3 px-3 font-mono font-bold">${this.fmtDzd(openBal)}</td>
+                      <td class="py-3 px-3 font-mono font-black text-blue-600">${this.fmtDzd(expBal)}</td>
+                      <td class="py-3 px-3 font-mono font-black text-emerald-600">${isOpen ? '—' : this.fmtDzd(closeBal)}</td>
+                      <td class="py-3 px-3 font-mono font-black ${Math.abs(diff) < 0.05 ? 'text-emerald-600' : 'text-rose-600'}">
+                        ${isOpen ? '<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10.5px]">🟢 مفتوحة</span>' : `${diff.toFixed(2)} د.ج`}
+                      </td>
+                      <td class="py-3 px-3">
+                        <div class="flex items-center justify-center gap-1 flex-wrap">
+                          <button type="button" onclick="window.GherbiCaisseTurbo.openDualModeReviewCaisseModal(${s.id})" class="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-[11px] shadow-sm cursor-pointer">
+                            📋 مراجعة ومعاينة التذكرة
+                          </button>
+                          <button type="button" onclick="window.GherbiCaisseTurbo.quickPrintShiftReport(${s.id}, 'studio', '80mm')" class="px-2.5 py-1.5 rounded-xl bg-indigo-100 hover:bg-indigo-600 text-indigo-900 hover:text-white font-black text-[11px] cursor-pointer" title="طباعة بقالب مركز الطباعة المخصص">
+                            🎨 طباعة القالب
+                          </button>
+                          <button type="button" onclick="window.GherbiCaisseTurbo.quickPrintShiftReport(${s.id}, 'classic', '80mm')" class="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-700 text-amber-400 font-black text-[11px] cursor-pointer" title="طباعة Z-Report الكلاسيكي السريع">
+                            ⚡ Z-Report كلاسيكي
+                          </button>
+                          <button type="button" onclick="window.GherbiCaisseTurbo.quickPrintShiftReport(${s.id}, 'studio', 'a4')" class="px-2 py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-600 text-emerald-900 hover:text-white font-mono font-black text-[11px] cursor-pointer">
+                            A4
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                })
+                .join('')
+            : `<tr><td colspan="9" class="py-12 text-center text-slate-400 font-bold">لا توجد مناوبات مطابقة للبحث.</td></tr>`;
+
+        container.innerHTML = `
+          <div class="overflow-x-auto max-h-[60vh]">
+            <table class="w-full text-right border-collapse">
+              <thead class="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-xs font-black border-b border-slate-200 dark:border-slate-700">
+                <tr>
+                  <th class="py-3 px-3">رقم المناوبة</th>
+                  <th class="py-3 px-3">أمين الصندوق</th>
+                  <th class="py-3 px-3">وقت الافتتاح</th>
+                  <th class="py-3 px-3">وقت الإغلاق</th>
+                  <th class="py-3 px-3">الافتتاحي</th>
+                  <th class="py-3 px-3">المتوقع</th>
+                  <th class="py-3 px-3">الفعلي المعدود</th>
+                  <th class="py-3 px-3">الفارق / الحالة</th>
+                  <th class="py-3 px-3 text-center">إجراءات المعاينة والطباعة الفورية</th>
+                </tr>
+              </thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>
+          </div>
+        `;
+      } else {
+        const list = (this.txLogCache || []).filter((tx) => {
+          if (!q) return true;
+          return `${tx.id} ${tx.description || ''} ${tx.category || ''} ${tx.amount || ''} ${tx.user_name || ''}`.toLowerCase().includes(q);
+        });
+
+        const rowsHtml =
+          list.length > 0
+            ? list
+                .slice(0, 100)
+                .map((tx) => {
+                  const isOut = tx.type === 'cash_out' || tx.type === 'expense';
+                  const typeBadge =
+                    tx.type === 'debt_payment'
+                      ? '<span class="px-2.5 py-1 rounded-lg bg-blue-100 text-blue-800 font-black text-[11px]">🤝 تسديد دين زبون</span>'
+                      : tx.type === 'sale'
+                      ? '<span class="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 font-black text-[11px]">🛒 مبيعات نقدية</span>'
+                      : tx.type === 'cash_in'
+                      ? '<span class="px-2.5 py-1 rounded-lg bg-sky-100 text-sky-800 font-black text-[11px]">➕ إيداع نقدي</span>'
+                      : '<span class="px-2.5 py-1 rounded-lg bg-rose-100 text-rose-700 font-black text-[11px]">➖ سحب / مصروف</span>';
+
+                  return `
+                    <tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-blue-50/30 dark:hover:bg-slate-800/50 transition text-xs">
+                      <td class="py-2.5 px-3 font-mono font-bold text-slate-400">#${tx.id}</td>
+                      <td class="py-2.5 px-3 font-mono font-bold text-blue-600">مناوبة #${tx.session_id || '-'}</td>
+                      <td class="py-2.5 px-3">${typeBadge}</td>
+                      <td class="py-2.5 px-3 font-black text-slate-900 dark:text-white">${tx.description || tx.category || '-'}</td>
+                      <td class="py-2.5 px-3 font-mono font-black text-sm ${isOut ? 'text-rose-600' : 'text-emerald-600'}" dir="ltr">
+                        ${isOut ? '-' : '+'}${Number(tx.amount || 0).toFixed(2)} د.ج
+                      </td>
+                      <td class="py-2.5 px-3 font-mono text-slate-500" dir="ltr">${String(tx.created_at || '').replace('T', ' ').slice(0, 16)}</td>
+                      <td class="py-2.5 px-3 text-center">
+                        <button type="button" onclick="window.GherbiCaisseTurbo.printSingleCaisseTransactionTicket(${tx.id})" class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-blue-600 text-white font-black text-[11px] shadow-sm cursor-pointer">
+                          🧾 طباعة سند الحركة (80mm / A5)
+                        </button>
+                      </td>
+                    </tr>
+                  `;
+                })
+                .join('')
+            : `<tr><td colspan="7" class="py-12 text-center text-slate-400 font-bold">لا توجد حركات خزينة مطابقة للبحث.</td></tr>`;
+
+        container.innerHTML = `
+          <div class="overflow-x-auto max-h-[60vh]">
+            <table class="w-full text-right border-collapse">
+              <thead class="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-xs font-black border-b border-slate-200 dark:border-slate-700">
+                <tr>
+                  <th class="py-3 px-3">#</th>
+                  <th class="py-3 px-3">المناوبة</th>
+                  <th class="py-3 px-3">نوع الحركة</th>
+                  <th class="py-3 px-3">البيان والتفاصيل</th>
+                  <th class="py-3 px-3">المبلغ</th>
+                  <th class="py-3 px-3">التاريخ والتوقيت</th>
+                  <th class="py-3 px-3 text-center">طباعة التذكرة / السند</th>
+                </tr>
+              </thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>
+          </div>
+        `;
+      }
+    },
+
+    setGlobalZReportMode(mode) {
+      this.setPreferredZReportMode(mode);
+      this.renderTurboCaisseView(false);
+      if (window.showToast) {
+        window.showToast(
+          mode === 'studio'
+            ? '🎨 تم اعتماد (قالب مركز الطباعة المخصص) كخيار افتراضي لطباعة تقارير الصندوق!'
+            : '⚡ تم اعتماد (المعاينة الكلاسيكية الخاصة بالصندوق) كخيار افتراضي لطباعة Z-Report!',
+          'success'
+        );
+      }
+    },
+
+    switchSubView(viewName) {
+      this.activeSubView = viewName || 'shifts';
+      this.renderTurboCaisseView(false);
+    },
+
+    onSearchInput(val) {
+      this.filters.search = String(val || '');
+      this.renderActiveCaisseTableOnly();
+    },
+
+    openTxModal(type = 'cash_in') {
+      const inpType = document.getElementById('caisseTxTypeInput');
+      const titleEl = document.getElementById('caisseTxModalTitle');
+      const descInp = document.getElementById('caisseTxDescInput');
+      if (inpType) inpType.value = type;
+      if (titleEl) {
+        titleEl.innerHTML =
+          type === 'cash_in'
+            ? '➕ إيداع وتغذية نقدية في الصندوق (Bon d’Entrée)'
+            : '➖ سحب نقدي من الصندوق (Bon de Sortie)';
+      }
+      if (descInp) {
+        descInp.value = type === 'cash_in' ? 'تغذية نقدية لصندوق الكاشير' : 'سحب نقدي من الصندوق';
+      }
+      window.App.openModal('caisseTxModal');
+    },
+
+    async jumpToPrintStudioForCaisse(docType = 'caisse_z_report') {
+      const studio = window.GherbiPrintStudioV45;
+      if (!studio) return;
+      await studio.customizeCardInStudioNow(docType);
+    },
+
+    exportCaisseReportExcel() {
+      const rows = [
+        ['رقم المناوبة', 'أمين الصندوق', 'وقت الافتتاح', 'وقت الإغلاق', 'الرصيد الافتتاحي', 'الرصيد المتوقع', 'الفعلي المعدود', 'الفارق', 'الحالة']
+      ];
+      for (const s of this.sessionsCache || []) {
+        rows.push([
+          s.id,
+          s.user_name || 'المدير العام',
+          String(s.opened_at || '').slice(0, 16),
+          String(s.closed_at || '').slice(0, 16),
+          Number(s.opening_balance || 0).toFixed(2),
+          Number(s.expected_balance || 0).toFixed(2),
+          Number(s.closing_balance || 0).toFixed(2),
+          Number(s.difference || 0).toFixed(2),
+          s.status || 'closed'
+        ]);
+      }
+      const csv = '\uFEFF' + rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Gherbi_Caisse_Shifts_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      if (window.showToast) window.showToast('📊 تم تصدير سجل المناوبات إلى ملف Excel بنجاح!', 'success');
+    },
+
+    async exportCaisseReportPdf() {
+      const studio = window.GherbiPrintStudioV45;
+      const shop = studio ? studio.getShopIdentity() : { name: 'Gherbi.Ai POS', address: 'الجزائر' };
+      const rowsHtml = (this.sessionsCache || [])
+        .slice(0, 150)
+        .map(
+          (s) => `
+          <tr>
+            <td style="text-align:center;font-family:monospace;font-weight:900;">#${s.id}</td>
+            <td><strong>${s.user_name || 'المدير العام'}</strong></td>
+            <td style="font-family:monospace;" dir="ltr">${String(s.opened_at || '').replace('T', ' ').slice(0, 16)}</td>
+            <td style="font-family:monospace;" dir="ltr">${s.closed_at ? String(s.closed_at).replace('T', ' ').slice(0, 16) : 'مفتوحة'}</td>
+            <td style="font-family:monospace;">${Number(s.opening_balance || 0).toFixed(2)} د.ج</td>
+            <td style="font-family:monospace;font-weight:900;color:#1d4ed8;">${Number(s.expected_balance || 0).toFixed(2)} د.ج</td>
+            <td style="font-family:monospace;font-weight:900;color:#047857;">${Number(s.closing_balance || 0).toFixed(2)} د.ج</td>
+            <td style="font-family:monospace;font-weight:900;color:${Math.abs(Number(s.difference || 0)) < 0.05 ? '#047857' : '#be123c'};">${Number(s.difference || 0).toFixed(2)} د.ج</td>
+          </tr>`
+        )
+        .join('');
+
+      const html = `<!DOCTYPE html><html lang="ar" dir="rtl" data-v52-studio-master="1"><head><meta charset="UTF-8"><style>
+        @page { size: A4 portrait; margin: 10mm; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        body { font-family: 'Cairo', Tahoma, sans-serif; color: #0f172a; margin: 0; font-size: 11px; }
+        .hdr { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px; }
+        table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+        th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; }
+        th { background: #0f172a; color: #ffffff; font-weight: 900; }
+      </style></head><body>
+        <div class="hdr">
+          <div><h2 style="margin:0;">🏦 التقرير الرسمي لسجل مناوبات وجرد الصندوق (A4 / PDF)</h2><div>${shop.name} — ${shop.address}</div></div>
+          <div style="text-align:left;font-weight:800;">تاريخ الاستخراج: ${new Date().toLocaleString('fr-DZ')}</div>
+        </div>
+        <table>
+          <thead><tr><th>#</th><th>أمين الصندوق</th><th>الافتتاح</th><th>الإغلاق</th><th>الافتتاحي</th><th>المتوقع</th><th>الفعلي</th><th>الفارق</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </body></html>`;
+
+      await window.__gherbiMasterPrintSilent({ html, silent: false });
+    }
+  };
+
+  window.GherbiCaisseTurbo = CaisseTurboHub;
+
+  const waitApp = setInterval(() => {
+    const studio = window.GherbiPrintStudioV45;
+    if (!window.App || !studio) return;
+    clearInterval(waitApp);
+
+    window.App.loadCaisseView = () => CaisseTurboHub.renderTurboCaisseView(true);
+    window.App.renderCaisseView = () => CaisseTurboHub.renderTurboCaisseView(false);
+    window.App.openReviewCaisseModal = (sid) => CaisseTurboHub.openDualModeReviewCaisseModal(sid);
+    window.App.reviewCaisseSession = (sid) => CaisseTurboHub.openDualModeReviewCaisseModal(sid);
+    window.App.printZReport = (sid) => CaisseTurboHub.quickPrintShiftReport(sid, null, '80mm');
+    window.App.printCaisseSessionReport = (sid) => CaisseTurboHub.quickPrintShiftReport(sid, null, '80mm');
+
+    if (typeof window.App.confirmCaisseTx === 'function' && !window.App._v63CaisseTxHooked) {
+      const origConfirmTx = window.App.confirmCaisseTx.bind(window.App);
+      window.App._v63CaisseTxHooked = true;
+      window.App.confirmCaisseTx = async function (...args) {
+        const res = await origConfirmTx(...args);
+        CaisseTurboHub.invalidateCache();
+        await CaisseTurboHub.ensureFreshCaisseData(true);
+        if (document.getElementById('view-caisse')?.classList.contains('active')) {
+          await CaisseTurboHub.renderTurboCaisseView(false);
+        }
+        return res;
+      };
+    }
+
+    if (typeof window.App.confirmCloseShift === 'function' && !window.App._v63CloseShiftHooked) {
+      const origCloseShift = window.App.confirmCloseShift.bind(window.App);
+      window.App._v63CloseShiftHooked = true;
+      window.App.confirmCloseShift = async function (...args) {
+        const sid = Number(document.getElementById('closeShiftSessionId')?.value || CaisseTurboHub.activeSessionInfo?.session?.id || 0);
+        const res = await origCloseShift(...args);
+        CaisseTurboHub.invalidateCache();
+        await CaisseTurboHub.ensureFreshCaisseData(true);
+        if (document.getElementById('view-caisse')?.classList.contains('active')) {
+          await CaisseTurboHub.renderTurboCaisseView(false);
+        }
+        if (sid) {
+          await CaisseTurboHub.openDualModeReviewCaisseModal(sid);
+        }
+        return res;
+      };
+    }
+
+    studio._lastLiveFetchTs = 0;
+    const origFetchAllLiveData = studio.fetchAllLiveData?.bind(studio);
+    if (origFetchAllLiveData) {
+      studio.fetchAllLiveData = async function (force = false) {
+        const now = Date.now();
+        if (!force && this._lastLiveFetchTs > 0 && now - this._lastLiveFetchTs < 6000) {
+          return;
+        }
+        this._lastLiveFetchTs = now;
+        return await origFetchAllLiveData();
+      };
+    }
+
+    if (document.getElementById('view-caisse')?.classList.contains('active')) {
+      CaisseTurboHub.renderTurboCaisseView(true);
+    }
+
+    console.log('⚡ [Gherbi V63 Caisse & Print Studio Dual Bridge]: صفحتا إدارة الصندوق ومركز الطباعة متصلتان وتعملان بسرعة البرق مع المعاينة المزدوجة لـ Z-Report!');
+  }, 140);
 })();
