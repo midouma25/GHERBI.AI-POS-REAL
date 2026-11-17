@@ -2423,3 +2423,177 @@ html.dark .v61-inline-inspector-drawer {
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   border-top-color: #3b82f6;
 }
+
+/* === [GHERBI V72: ZERO-CLIPPED BUTTONS IN TOP-NAV, CART FOOTER & PRODUCTS GRID] === */
+
+/* 1. ضمان عدم تجاوز #main-content وأقسام العرض لارتفاع الشاشة الفعلي مهما كان وضع القائمة */
+#app-container {
+  height: 100vh !important;
+  max-height: 100vh !important;
+  overflow: hidden !important;
+}
+
+#main-content {
+  height: 100% !important;
+  max-height: 100vh !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+/* 2. إظهار جميع أزرار الصفحات الـ 18 في الشريط الكحلي العلوي (عند تفعيل وضع القائمة العلوية) بدون اختفاء أي زر */
+#sidebar[style*="width: 100%"],
+body.top-nav-mode #sidebar,
+#app-container.top-nav-layout #sidebar {
+  height: auto !important;
+  min-height: 44px !important;
+  max-height: 88px !important;
+  width: 100% !important;
+  flex-shrink: 0 !important;
+  overflow: visible !important;
+}
+
+#sidebar[style*="width: 100%"] #sidebar-nav,
+body.top-nav-mode #sidebar #sidebar-nav,
+#app-container.top-nav-layout #sidebar #sidebar-nav {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 4px !important;
+  padding: 5px 10px !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+}
+
+#sidebar[style*="width: 100%"] #sidebar-nav .nav-btn,
+body.top-nav-mode #sidebar #sidebar-nav .nav-btn,
+#app-container.top-nav-layout #sidebar #sidebar-nav .nav-btn {
+  width: auto !important;
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+  border-radius: 0.6rem !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  gap: 4px !important;
+}
+
+/* 3. ضبط ارتفاع شاشة المبيعات (#view-pos) و (.pos-layout) ديناميكياً ليتسع لكل الأزرار السفلية 100% */
+#view-pos.view-section.active {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  padding: 0.5rem 0.75rem !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#view-pos .pos-layout {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  gap: 0.75rem !important;
+  align-items: stretch !important;
+  overflow: hidden !important;
+}
+
+/* 4. ضبط العمود الأيمن (الفئات وشبكة المنتجات) لمنع تغطية أول صف من البطاقات */
+#view-pos .pos-layout > div:first-child {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  gap: 0.45rem !important;
+}
+
+#view-pos .pos-layout > div:first-child > div:first-child {
+  flex-shrink: 0 !important;
+  z-index: 5 !important;
+}
+
+#posProductsGrid {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  padding-top: 4px !important;
+  padding-bottom: 14px !important;
+}
+
+/* 5. ضبط حاوية السلة (.cart-container) لتظهر جميع أزرارها السفلية وزر (تسديد الفاتورة F1) بالكامل */
+#view-pos .cart-container {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  border-radius: 1rem !important;
+}
+
+/* ترويسة السلة العلوية مضغوطة وأنيقة */
+#view-pos .cart-container > div:first-child {
+  flex-shrink: 0 !important;
+  padding: 0.4rem 0.6rem !important;
+  gap: 0.25rem !important;
+}
+
+#view-pos .cart-container > div:first-child.space-y-2\.5 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.25rem !important;
+}
+
+/* منطقة عناصر السلة الوسطى تتمدد وتنكمش بمرونة وتقبل التمرير */
+#posCartItems {
+  flex: 1 1 0% !important;
+  min-height: 75px !important;
+  overflow-y: auto !important;
+  padding: 0.4rem 0.55rem !important;
+}
+
+/* تذييل السلة السفلي (المجاميع + أزرار الديون + زر تسديد الفاتورة F1) ثابت ومضغوط ليظهر كاملاً 100% */
+#view-pos .cart-container > div:last-child {
+  flex-shrink: 0 !important;
+  padding: 0.45rem 0.65rem !important;
+  gap: 0.3rem !important;
+}
+
+#view-pos .cart-container > div:last-child.space-y-3 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.3rem !important;
+}
+
+/* ضغط ذكي لأزرار التحكم السفلية داخل السلة لتظهر كلها مع زر F1 بوضوح تام */
+#view-pos .cart-container > div:last-child button[onclick*="openCheckoutModal"] {
+  padding-top: 0.55rem !important;
+  padding-bottom: 0.55rem !important;
+  font-size: 0.92rem !important;
+  border-radius: 0.75rem !important;
+}
+
+#v68BottomDebtButtonsRow button {
+  padding-top: 0.4rem !important;
+  padding-bottom: 0.4rem !important;
+}
+
+/* === [GHERBI V73: GPU ACCELERATED PRINT STUDIO & ZERO-REFLOW CONTAINMENT] === */
+#v45MasterPrintStudio {
+  contain: layout style;
+}
+#v61LeftSidebarHost,
+#v45WorkspaceHost {
+  contain: layout style;
+  will-change: contents;
+}
+.v59-template-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 250px;
+  contain: layout style paint;
+  transition: border-color 0.1s ease !important;
+}
+.v59-template-card:hover {
+  transform: none !important;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12) !important;
+}
