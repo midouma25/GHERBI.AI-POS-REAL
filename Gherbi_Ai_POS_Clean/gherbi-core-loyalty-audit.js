@@ -1442,7 +1442,7 @@
 
       this.cancelEditModeBanner();
       window.RetailMaster?.syncSmartLoyaltyButtonDisplay();
-      window.GherbiV4Stage1?.computeChangeInstant(0);
+      window.GherbiV4Stage1?.computeChangeInstant?.(0);
       window.GherbiStage12Enforcer?.updateChangeInstant(0);
       window.App?.recalcAndRenderCart?.();
     },
@@ -6151,3 +6151,13 @@
     ForensicCenter.init();
   }
 })();
+
+/* [POS_TIME_MACHINE_STAGE_1] */
+(function(){ if(stageNum < 2) { document.querySelectorAll('[id*="v65"], [id*="V65"]').forEach(el => el.remove()); } });
+/* [POS_TIME_MACHINE_SAFE_CHANGE_SHIM] */
+if (typeof window !== 'undefined') {
+  window.GherbiV4Stage1 = window.GherbiV4Stage1 || {};
+  if (typeof window.GherbiV4Stage1.computeChangeInstant !== 'function') {
+    window.GherbiV4Stage1.computeChangeInstant = function () { return 0; };
+  }
+}

@@ -1351,20 +1351,32 @@
   </div>
 
   <div id="shortcutsHelpModal" class="modal-overlay">
-    <div class="modal-content w-full max-w-md p-6 space-y-4">
+    <div class="modal-content w-full max-w-lg p-6 space-y-4">
       <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
-        <h3 class="text-lg font-black">دليل اختصارات لوحة المفاتيح السريعة</h3>
+        <h3 class="text-lg font-black flex items-center gap-2">
+          <span>⌨️ دليل اختصارات لوحة المفاتيح السريعة والكريدي</span>
+        </h3>
         <button onclick="App.closeModal('shortcutsHelpModal')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>
       </div>
-      <div class="space-y-2 text-xs">
-        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>فتح نافذة التسديد والدفع</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono">F1</kbd></div>
-        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>تعليق الفاتورة الحالية في المسودات</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono">F2</kbd></div>
-        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>فتح قائمة الفواتير المعلقة (المسودات)</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono">F3</kbd></div>
-        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>إفراغ السلة الحالية</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono">F4</kbd></div>
-        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>نافذة بطاقة الوفاء واختيار الزبون</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono">F8</kbd></div>
-        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>فتح درج النقود (Cash Drawer)</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono">F10</kbd></div>
+      <div class="space-y-2 text-xs max-h-[70vh] overflow-y-auto pr-1">
+        <div class="font-black text-blue-600 pb-1 border-b border-slate-200 dark:border-slate-700">🛒 اختصارات الكاشير والسلة:</div>
+        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>فتح نافذة التسديد والدفع الشاملة</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono font-black">F1</kbd></div>
+        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>تعليق الفاتورة الحالية في المسودات</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono font-black">F2</kbd></div>
+        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>فتح قائمة الفواتير المعلقة (المسودات)</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono font-black">F3</kbd></div>
+        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>إفراغ السلة الحالية / البحث السريع</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono font-black">F4</kbd></div>
+        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>تعديل إجمالي السطر لحساب الكمية الموزونة أو السعر</span><kbd class="px-2 py-0.5 bg-blue-600 text-white rounded font-mono font-black">F12</kbd></div>
+        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>طباعة تذكرة 80mm فورية للسلة الحالية</span><kbd class="px-2 py-0.5 bg-emerald-600 text-white rounded font-mono font-black">Échap</kbd></div>
+        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>حفظ البيع نقداً بدون طباعة تذكرة</span><kbd class="px-2 py-0.5 bg-slate-800 text-white rounded font-mono font-black">Ctrl + Space</kbd></div>
+
+        <div class="font-black text-rose-600 pt-2 pb-1 border-b border-rose-200 dark:border-rose-800">💳 اختصارات الكريدي، الدفع الجزئي، والوفاء:</div>
+        <div class="flex justify-between p-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800"><span class="font-black text-rose-900 dark:text-rose-200">📝 تسجيل بيع بالكريدي أو دفع جزئي والباقي كريدي</span><kbd class="px-2 py-0.5 bg-rose-600 text-white rounded font-mono font-black">Ctrl + D</kbd></div>
+        <div class="flex justify-between p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800"><span class="font-black text-emerald-900 dark:text-emerald-200">💵 قبض وتسديد دفعة من كريدي زبون + طباعة وصل</span><kbd class="px-2 py-0.5 bg-emerald-600 text-white rounded font-mono font-black">Alt + V</kbd></div>
+        <div class="flex justify-between p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800"><span class="font-black text-indigo-900 dark:text-indigo-200">📒 فتح مركز الكريدي والديون وكشوف الحسابات</span><kbd class="px-2 py-0.5 bg-indigo-600 text-white rounded font-mono font-black">Ctrl + K</kbd></div>
+        <div class="flex justify-between p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800"><span class="font-black text-amber-900 dark:text-amber-200">👑 نافذة بطاقة الوفاء واختيار الزبون الوفي</span><kbd class="px-2 py-0.5 bg-amber-500 text-slate-950 rounded font-mono font-black">F8</kbd></div>
+        <div class="flex justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800"><span>التركيز في خانة المبلغ المستلم (لحساب الصرف أو الكريدي)</span><kbd class="px-2 py-0.5 bg-sky-600 text-white rounded font-mono font-black">Alt + C</kbd></div>
       </div>
     </div>
+  </div>
   </div>
 
   <!-- 29. نافذة سجل الرقابة الأمنية للكاشير ونافذة عقود التقسيط -->

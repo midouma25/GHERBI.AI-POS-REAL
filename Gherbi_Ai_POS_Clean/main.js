@@ -1381,10 +1381,15 @@ function registerIpcHandlers() {
         remainingAmt = Number((remainingAmt - apply).toFixed(2));
       }
 
-      /* [V27_EXACT_CUSTOMER_DEBT_APPLIED] */
-      const appliedAmt = Number((Number(amount || 0) - remainingAmt).toFixed(2));
-      if (appliedAmt <= 0.009) {
-        throw new Error('لا يوجد دين مستحق على هذا الزبون لتسديده');
+      /* [V27_EXACT_CUSTOMER_DEBT_APPLIED_V68_SAFE] */
+      let appliedAmt = Number((Number(amount || 0) - remainingAmt).toFixed(2));
+      if (appliedAmt <= 0.009 && Number(amount || 0) > 0.009) {
+        // إذا كان الدين مسجلاً كرصيد عام أو دفعة مسبقة على الحساب نسمح بتوثيق الوصل وتخفيض الرصيد الأولي
+        appliedAmt = Number(Number(amount || 0).toFixed(2));
+        await dbRun(
+          'UPDATE customers SET initial_debt_paid = COALESCE(initial_debt_paid, 0) + ? WHERE id = ?',
+          [appliedAmt, cid]
+        );
       }
       const ins = await dbRun(
         `INSERT INTO sale_payments (sale_id, customer_id, amount, date, payment_method, reference, receipt_number, notes)

@@ -264,3 +264,167 @@ module.exports = {
   applySaleTillDelta,
   reverseSaleTill
 };
+/* ==================== [V69 SHIFT DEBT & FULL FINANCIAL AUDIT ENRICHMENT] ==================== */
+(function wrapComputeSessionSummaryWithDebtAccounting() {
+  const origCompute = module.exports.computeSessionSummary;
+  if (typeof origCompute !== 'function') return;
+
+  module.exports.computeSessionSummary = async function (db, sessionId) {
+    const baseResult = await origCompute(db, sessionId);
+    if (!baseResult || !baseResult.session) return baseResult;
+
+    const sess = baseResult.session;
+    const sum = baseResult.summary || {};
+    const txs = Array.isArray(baseResult.transactions) ? baseResult.transactions : [];
+    const sid = Number(sess.id);
+
+    const dbAll = (sql, params = []) =>
+      typeof db.dbAll === 'function'
+        ? db.dbAll(sql, params)
+        : new Promise((resolve) => db.all(sql, params, (_e, r) => resolve(r || [])));
+
+    const dbGet = (sql, params = []) =>
+      typeof db.dbGet === 'function'
+        ? db.dbGet(sql, params)
+        : new Promise((resolve) => db.get(sql, params, (_e, r) => resolve(r || null)));
+
+    try {
+      // 1. جلب جميع فواتير المبيعات (النقدية والآجلة والجزئية) التي تمت خلال هذه الوردية
+      const openedAt = sess.opened_at || '1970-01-01';
+      const closedAt = sess.closed_at || null;
+
+      const shiftSales = await dbAll(
+        `SELECT s.*, c.name AS customer_name, c.phone AS customer_phone
+         FROM sales s
+         LEFT JOIN customers c ON c.id = s.customer_id
+         WHERE s.deleted_at IS NULL
+           AND (
+             s.session_id = ?
+             OR (
+               s.session_id IS NULL
+               AND datetime(COALESCE(s.sale_date, s.created_at)) >= datetime(?)
+               AND (? IS NULL OR datetime(COALESCE(s.sale_date, s.created_at)) <= datetime(?))
+             )
+           )
+         ORDER BY s.id DESC`,
+        [sid, openedAt, closedAt, closedAt]
+      );
+
+      let totalSalesGross = 0;
+      let totalPaidInSales = 0;
+      let newCreditGiven = 0;
+      let creditInvoicesCount = 0;
+      let cashInvoicesCount = 0;
+      const creditSalesDetails = [];
+
+      for (const s of shiftSales) {
+        const tot = Math.max(0, Number(s.total || 0));
+        const paid = Math.max(0, Math.min(tot, Number(s.paid_amount ?? tot)));
+        const remDebt = Math.max(0, Number((tot - paid).toFixed(2)));
+
+        totalSalesGross = Number((totalSalesGross + tot).toFixed(2));
+        totalPaidInSales = Number((totalPaidInSales + paid).toFixed(2));
+
+        if (remDebt > 0.009 || s.payment_method === 'credit') {
+          newCreditGiven = Number((newCreditGiven + remDebt).toFixed(2));
+          creditInvoicesCount++;
+          creditSalesDetails.push({
+            id: s.id,
+            doc_number: s.doc_number || ('#' + s.id),
+            customer_id: s.customer_id,
+            customer_name: s.customer_name || 'زبون',
+            total: tot,
+            paid_amount: paid,
+            remaining_debt: remDebt,
+            sale_date: s.sale_date || s.created_at,
+            payment_method: s.payment_method
+          });
+        } else {
+          cashInvoicesCount++;
+        }
+      }
+
+      // 2. حساب تسديدات الديون المقبوضة في هذه الوردية (Alt+V) والمصاريف بالتفصيل
+      const debtPaymentTxs = txs.filter((t) => t.type === 'debt_payment');
+      const expenseTxs = txs.filter((t) => t.type === 'expense');
+      const cashInTxs = txs.filter((t) => t.type === 'cash_in');
+      const cashOutTxs = txs.filter((t) => t.type === 'cash_out');
+
+      const debtPaymentsTotal = Number(
+        debtPaymentTxs.reduce((acc, t) => acc + Math.abs(Number(t.amount || 0)), 0).toFixed(2)
+      );
+      const expensesTotal = Number(
+        expenseTxs.reduce((acc, t) => acc + Math.abs(Number(t.amount || 0)), 0).toFixed(2)
+      );
+      const cashInTotal = Number(
+        cashInTxs.reduce((acc, t) => acc + Math.abs(Number(t.amount || 0)), 0).toFixed(2)
+      );
+      const cashOutTotal = Number(
+        cashOutTxs.reduce((acc, t) => acc + Math.abs(Number(t.amount || 0)), 0).toFixed(2)
+      );
+
+      // 3. إجمالي الديون الكلي المتراكم على جميع زبائن المتجر حالياً
+      const storeDebtRow = await dbGet(
+        `SELECT COALESCE(SUM(debt), 0) AS total_store_debt, COUNT(*) AS debtors_count FROM (
+           SELECT (COALESCE(SUM(s.total - s.paid_amount), 0) + (COALESCE(c.initial_debt, 0) - COALESCE(c.initial_debt_paid, 0))) AS debt
+           FROM customers c
+           LEFT JOIN sales s ON s.customer_id = c.id AND s.deleted_at IS NULL
+           WHERE c.deleted_at IS NULL
+           GROUP BY c.id
+           HAVING debt > 0.009
+         )`
+      );
+
+      const openingBalance = Number(sess.opening_balance ?? sum.openingBalance ?? 0);
+      const cashSalesVal = Number(sum.cashSales ?? totalPaidInSales ?? 0);
+      const orderDepositsVal = Number(sum.orderDeposits || 0);
+
+      // المعادلة النقدية الصافية للدرج (لا تخلط الديون غير المدفوعة مع الكاش أبداً!)
+      const exactExpectedDrawerCash = Number(
+        (
+          openingBalance +
+          cashSalesVal +
+          debtPaymentsTotal +
+          orderDepositsVal +
+          cashInTotal -
+          cashOutTotal -
+          expensesTotal
+        ).toFixed(2)
+      );
+
+      baseResult.summary = {
+        ...sum,
+        openingBalance,
+        cashSales: cashSalesVal,
+        debtPayments: debtPaymentsTotal,
+        debtPaymentsCount: debtPaymentTxs.length,
+        orderDeposits: orderDepositsVal,
+        cashIn: cashInTotal,
+        cashInCount: cashInTxs.length,
+        cashOut: cashOutTotal,
+        cashOutCount: cashOutTxs.length,
+        expenses: expensesTotal,
+        expensesCount: expenseTxs.length,
+        expectedBalance: sum.expectedBalance !== undefined ? Number(sum.expectedBalance) : exactExpectedDrawerCash,
+        exactExpectedDrawerCash,
+        // بيانات الديون والائتمان الخاصة بالوردية
+        newCreditGiven,
+        creditInvoicesCount,
+        cashInvoicesCount,
+        totalShiftInvoicesCount: shiftSales.length,
+        totalSalesGross: Math.max(totalSalesGross, Number((cashSalesVal + newCreditGiven).toFixed(2))),
+        netDebtChangeInShift: Number((newCreditGiven - debtPaymentsTotal).toFixed(2)),
+        totalStoreCustomerDebt: Number((storeDebtRow && storeDebtRow.total_store_debt) || 0),
+        totalStoreDebtorsCount: Number((storeDebtRow && storeDebtRow.debtors_count) || 0)
+      };
+
+      baseResult.creditSales = creditSalesDetails;
+      baseResult.debtPaymentTxs = debtPaymentTxs;
+      baseResult.expenseTxs = expenseTxs;
+    } catch (e) {
+      console.warn('[V69 Till Debt Enrichment Warning]:', e.message);
+    }
+
+    return baseResult;
+  };
+})();

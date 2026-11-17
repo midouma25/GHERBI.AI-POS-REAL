@@ -2505,7 +2505,7 @@
             rawHtml.includes('التقرير الجنائي') ||
             rawHtml.includes('تقرير رادار الرقابة') ||
             rawHtml.includes('استمارة حساب الضريبة') ||
-            rawHtml.includes('data-classic-caisse-zreport="1"');
+            rawHtml.includes('Z-Report');
 
           if (isAlreadyV49) return payload;
 
@@ -4820,7 +4820,7 @@
         rawHtml.includes('التقرير الجنائي') ||
         rawHtml.includes('تقرير رادار الرقابة') ||
         rawHtml.includes('استمارة حساب الضريبة') ||
-        rawHtml.includes('data-classic-caisse-zreport="1"');
+        rawHtml.includes('Z-Report');
 
       if (isAlreadyStudioMaster) {
         return await nativePrint(payload, ...rest);
@@ -5115,7 +5115,7 @@
         rawHtml.includes('التقرير الجنائي') ||
         rawHtml.includes('تقرير رادار الرقابة') ||
         rawHtml.includes('استمارة حساب الضريبة') ||
-        rawHtml.includes('data-classic-caisse-zreport="1"')
+        rawHtml.includes('Z-Report')
       ) {
         return payload;
       }
@@ -11744,7 +11744,7 @@
         else if (rawHtml.includes('مرتجع مورد') || rawHtml.includes('Bon de Retour')) detectedDocType = 'supplier_return_note';
         else if (rawHtml.includes('محضر الجرد') || rawHtml.includes('Inventaire')) detectedDocType = 'stocktake_sheet_a4';
         else if (rawHtml.includes('أمر تشغيل') || rawHtml.includes('Ordre de Fabrication')) detectedDocType = 'production_order_sheet';
-        else if (rawHtml.includes('data-classic-caisse-zreport="1"') || rawHtml.includes('إغلاق المناوبة')) detectedDocType = 'caisse_z_report';
+        else if (rawHtml.includes('Z-Report') || rawHtml.includes('إغلاق المناوبة')) detectedDocType = 'caisse_z_report';
         else if (rawHtml.includes('استمارة التصريح الجبائي') || rawHtml.includes('G12')) detectedDocType = 'fiscal_g12_statement';
         else if (rawHtml.includes('التقرير الجنائي') || rawHtml.includes('تقرير رادار الرقابة')) detectedDocType = 'forensic_audit_report';
 
@@ -11780,27 +11780,32 @@
   }, 160);
 })();
 
-/* ==================== [V63 ULTRA-LIGHT CAISSE & PRINT STUDIO DUAL Z-REPORT] ==================== */
-(function initV63UltraLightCaisseAndPrintStudioBridge() {
-  const CAISSE_MODE_STORAGE_KEY = 'gherbi_caisse_zreport_print_mode_v63'; // 'studio' | 'classic'
+/* ==================== [V68 DIRECT DOM & SQLITE POS DEBT ENGINE] ==================== */
+(function initV68DirectDomAndSqlitePosDebtEngine() {
+  const DebtEngineV68 = {
+    customers: [],
+    customersById: new Map(),
+    sales: [],
+    caisseTxs: [],
+    lastFetchTs: 0,
+    historyTab: 'debtors', // 'debtors' | 'invoices' | 'payments'
+    historyCustId: 'ALL',
+    historySearch: '',
 
-  const CaisseTurboHub = {
-    activeSessionInfo: null,
-    sessionsCache: [],
-    txLogCache: [],
-    lastFetchTime: 0,
-    activeSubView: 'shifts', // 'shifts' | 'transactions'
-    zReportMode: localStorage.getItem(CAISSE_MODE_STORAGE_KEY) || 'studio', // 'studio' (قالب مركز الطباعة) أو 'classic' (معاينة الصندوق الكلاسيكية)
-    reviewModalPaperSize: '80mm', // '80mm' | 'a4' | 'a5'
-    currentReviewedSessionId: null,
-    currentReviewedDetails: null,
-
-    filters: {
-      search: '',
-      shiftStatus: 'ALL',
-      txType: 'ALL',
-      dateFrom: '',
-      dateTo: ''
+    notify(msg, type = 'success') {
+      if (typeof window.showToast === 'function') return window.showToast(msg, type);
+      if (window.App && typeof window.App.showToast === 'function') return window.App.showToast(msg, type);
+      if (window.App && typeof window.App.toast === 'function') return window.App.toast(msg, type);
+      const tc = document.getElementById('toastContainer');
+      if (tc) {
+        const el = document.createElement('div');
+        el.className = `px-4 py-2.5 rounded-xl shadow-lg font-black text-xs text-white ${
+          type === 'error' ? 'bg-rose-600' : type === 'warning' ? 'bg-amber-500 text-slate-950' : 'bg-emerald-600'
+        }`;
+        el.textContent = msg;
+        tc.appendChild(el);
+        setTimeout(() => el.remove(), 3500);
+      }
     },
 
     fmtDzd(val) {
@@ -11821,985 +11826,3517 @@
       return rem > 0 ? `${th} ألف و ${rem} سنتيم` : `${th} ألف سنتيم`;
     },
 
-    setPreferredZReportMode(mode) {
-      this.zReportMode = mode === 'classic' ? 'classic' : 'studio';
-      try {
-        localStorage.setItem(CAISSE_MODE_STORAGE_KEY, this.zReportMode);
-      } catch (_) {}
+    getFidCode(cust) {
+      if (!cust) return '';
+      return cust.loyalty_card_code || ('FID-' + String(cust.id || 1).padStart(5, '0'));
     },
 
-    // جلب بيانات الصندوق مع ذاكرة تخزين مؤقت فورية (0ms Cache) لعدم إبطاء المتصفح
-    async ensureFreshCaisseData(forceRefresh = false) {
+    // جلب أحدث بيانات الزبائن وديونهم الحقيقية من قاعدة بيانات SQLite مباشرةً
+    async syncFromSqlite(force = false) {
       const now = Date.now();
-      if (!forceRefresh && this.sessionsCache.length > 0 && now - this.lastFetchTime < 3500) {
+      if (!force && this.customers.length > 0 && now - this.lastFetchTs < 1500) {
         return;
       }
       try {
-        const uid = window.AppState?.currentUser?.id || 1;
-        const [activeSess, sessionsList, txLogList] = await Promise.all([
-          window.api?.getActiveSession ? window.api.getActiveSession(uid) : Promise.resolve(null),
-          window.api?.getCaisseSessions ? window.api.getCaisseSessions() : Promise.resolve([]),
+        const [custRows, salesRows, txRows] = await Promise.all([
+          window.api?.getCustomers ? window.api.getCustomers({}) : Promise.resolve([]),
+          window.api?.getSales ? window.api.getSales({}) : Promise.resolve([]),
           window.api?.getCaisseTransactionsLog ? window.api.getCaisseTransactionsLog() : Promise.resolve([])
         ]);
-        this.activeSessionInfo = activeSess || null;
-        this.sessionsCache = Array.isArray(sessionsList) ? sessionsList : [];
-        this.txLogCache = Array.isArray(txLogList) ? txLogList : [];
-        this.lastFetchTime = Date.now();
+
+        if (Array.isArray(custRows)) {
+          this.customers = custRows;
+          this.customersById.clear();
+          for (const c of custRows) {
+            this.customersById.set(Number(c.id), c);
+          }
+          if (window.AppState) window.AppState.customers = custRows;
+        }
+        if (Array.isArray(salesRows)) this.sales = salesRows;
+        if (Array.isArray(txRows)) this.caisseTxs = txRows;
+        this.lastFetchTs = Date.now();
       } catch (e) {
-        console.warn('[V63 Caisse Cache Fetch]:', e);
+        console.warn('[V68 SQLite Sync]:', e);
       }
     },
 
-    invalidateCache() {
-      this.lastFetchTime = 0;
-    },
-
     // ========================================================================
-    // 1. بناء الـ HTML الكلاسيكي لتذكرة الصندوق (Classic Z-Report)
+    // 1. الكاشف الذكي للزبون الوفي المحدد حالياً في الكاشير (يتعرف على FID-00003 فوراً!)
     // ========================================================================
-    buildClassicCaisseZReportHtml(details, forPrint = false) {
-      const studio = window.GherbiPrintStudioV45;
-      const shop = studio ? studio.getShopIdentity() : { name: 'Gherbi.Ai POS', address: 'الجزائر', phone: '' };
-      const sess = (details && details.session) || {};
-      const sum = (details && details.summary) || {};
-      const txs = (details && details.transactions) || [];
-
-      const opening = Number(sess.opening_balance ?? sum.openingBalance ?? 0);
-      const salesAndDebtIn = Number((Number(sum.cashSales || 0) + Number(sum.debtPayments || 0) + Number(sum.orderDeposits || 0)).toFixed(2));
-      const cashIn = Number(sum.cashIn || 0);
-      const cashOut = Number(sum.cashOut || 0);
-      const expenses = Number(sum.expenses || 0);
-      const expected = Number(sess.expected_balance ?? sum.expectedBalance ?? (opening + salesAndDebtIn + cashIn - cashOut - expenses));
-      const counted = sess.closing_balance !== null && sess.closing_balance !== undefined ? Number(sess.closing_balance) : expected;
-      const diff = Number((counted - expected).toFixed(2));
-
-      const openedStr = String(sess.opened_at || '').replace('T', ' ').slice(0, 16);
-      const closedStr = sess.closed_at ? String(sess.closed_at).replace('T', ' ').slice(0, 16) : 'مفتوحة الآن (X-Report)';
-
-      const cardBodyHtml = `
-        <div class="classic-z-paper" dir="rtl" style="font-family:'Cairo','Segoe UI',Tahoma,sans-serif;width:${forPrint ? '74mm' : '100%'};max-width:310px;margin:0 auto;background:#ffffff;color:#0f172a;padding:10px;font-size:11.5px;border:${forPrint ? 'none' : '1px solid #cbd5e1'};border-radius:10px;">
-          <div style="text-align:center;margin-bottom:6px;">
-            <div style="font-size:16px;font-weight:900;">${shop.name || 'Gherbi.Ai POS'}</div>
-            <div style="font-size:11px;color:#475569;font-weight:700;">${shop.address || 'الجزائر'}</div>
-          </div>
-
-          <div style="border:1.5px solid #0f172a;border-radius:8px;padding:4px 8px;text-align:center;font-weight:900;font-size:12.5px;margin-bottom:8px;background:#f8fafc;">
-            ${sess.status === 'closed' ? 'تقرير إغلاق الوردية النهائي (Z-REPORT)' : 'تقرير جرد الوردية الحالي (X-REPORT)'}
-          </div>
-
-          <div style="font-size:11px;line-height:1.6;">
-            <div style="display:flex;justify-content:space-between;"><span>رقم المناوبة:</span><strong style="font-family:monospace;">#${sess.id || 1}</strong></div>
-            <div style="display:flex;justify-content:space-between;"><span>أمين الصندوق:</span><strong>${sess.user_name || 'المدير العام'}</strong></div>
-            <div style="display:flex;justify-content:space-between;"><span>وقت الافتتاح:</span><strong style="font-family:monospace;" dir="ltr">${openedStr}</strong></div>
-            <div style="display:flex;justify-content:space-between;"><span>وقت الإغلاق:</span><strong style="font-family:monospace;" dir="ltr">${closedStr}</strong></div>
-          </div>
-
-          <div style="border-top:1.5px dashed #0f172a;border-bottom:1.5px dashed #0f172a;margin:7px 0;padding:6px 0;line-height:1.75;font-size:11px;">
-            <div style="display:flex;justify-content:space-between;"><span>الرصيد الافتتاحي:</span><strong style="font-family:monospace;">${opening.toFixed(2)} د.ج</strong></div>
-            <div style="display:flex;justify-content:space-between;color:#047857;"><span>مبيعات وتسديدات النقد (+):</span><strong style="font-family:monospace;">+${salesAndDebtIn.toFixed(2)} د.ج</strong></div>
-            <div style="display:flex;justify-content:space-between;color:#0284c7;"><span>إيداعات نقدية (+):</span><strong style="font-family:monospace;">+${cashIn.toFixed(2)} د.ج</strong></div>
-            <div style="display:flex;justify-content:space-between;color:#be123c;"><span>سحوبات نقدية (-):</span><strong style="font-family:monospace;">-${cashOut.toFixed(2)} د.ج</strong></div>
-            <div style="display:flex;justify-content:space-between;color:#be123c;"><span>مصاريف ومرتجعات (-):</span><strong style="font-family:monospace;">-${expenses.toFixed(2)} د.ج</strong></div>
-          </div>
-
-          <div style="border:1.5px solid #0f172a;border-radius:8px;padding:6px 8px;background:#f8fafc;line-height:1.7;">
-            <div style="display:flex;justify-content:space-between;font-weight:900;font-size:12px;">
-              <span>الرصيد الدفتري المتوقع:</span>
-              <span style="font-family:monospace;">${expected.toFixed(2)} د.ج</span>
-            </div>
-            <div style="font-size:10px;font-weight:800;color:#b45309;text-align:left;">🇩🇿 ${this.fmtCentimes(expected)}</div>
-            <div style="display:flex;justify-content:space-between;font-weight:900;margin-top:3px;border-top:1px dashed #cbd5e1;padding-top:3px;">
-              <span>المبلغ الفعلي المعدود:</span>
-              <span style="font-family:monospace;color:#047857;">${counted.toFixed(2)} د.ج</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-weight:900;">
-              <span>الفارق (Écart de Caisse):</span>
-              <span style="font-family:monospace;color:${Math.abs(diff) < 0.05 ? '#047857' : '#be123c'};">${diff.toFixed(2)} د.ج ${Math.abs(diff) < 0.05 ? '✔' : '⚠️'}</span>
-            </div>
-          </div>
-
-          <div style="margin-top:6px;text-align:center;font-size:10px;color:#64748b;font-weight:700;">
-            إجمالي الحركات المسجلة: ${txs.length} حركة — طُبع بتاريخ ${new Date().toLocaleTimeString('fr-DZ')}
-          </div>
-        </div>
-      `;
-
-      if (!forPrint) return cardBodyHtml;
-
-      return `<!DOCTYPE html>
-<html lang="ar" dir="rtl" data-classic-caisse-zreport="1">
-<head>
-  <meta charset="UTF-8">
-  <title>Z-Report #${sess.id || 1}</title>
-  <style>
-    @page { size: 80mm auto; margin: 2mm; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    body { margin: 0; padding: 0; background: #fff; font-family: 'Cairo', Tahoma, sans-serif; }
-  </style>
-</head>
-<body>${cardBodyHtml}</body>
-</html>`;
-    },
-
-    // ========================================================================
-    // 2. بناء الـ HTML المخصص لتذكرة أو تقرير الصندوق عبر القالب المعتمد في مركز الطباعة (#25 caisse_z_report)
-    // ========================================================================
-    async buildStudioAdoptedZReportHtml(details, paperSizeOverride = null, forPreviewBox = false) {
-      const studio = window.GherbiPrintStudioV45;
-      if (!studio) return this.buildClassicCaisseZReportHtml(details, !forPreviewBox);
-
-      const sess = (details && details.session) || {};
-      const sum = (details && details.summary) || {};
-      const txs = (details && details.transactions) || [];
-
-      const opening = Number(sess.opening_balance ?? sum.openingBalance ?? 0);
-      const cashSales = Number(sum.cashSales || 0);
-      const debtPayments = Number(sum.debtPayments || 0);
-      const cashIn = Number(sum.cashIn || 0);
-      const cashOut = Number(sum.cashOut || 0);
-      const expenses = Number(sum.expenses || 0);
-      const expected = Number(sess.expected_balance ?? sum.expectedBalance ?? (opening + cashSales + debtPayments + cashIn - cashOut - expenses));
-      const counted = sess.closing_balance !== null && sess.closing_balance !== undefined ? Number(sess.closing_balance) : expected;
-      const diff = Number((counted - expected).toFixed(2));
-
-      const openedStr = String(sess.opened_at || '').replace('T', ' ').slice(0, 16);
-      const closedStr = sess.closed_at ? String(sess.closed_at).replace('T', ' ').slice(0, 16) : 'نشطة الآن';
-
-      const items = [
-        { barcode: 'OPEN', name: '1. الرصيد الافتتاحي في الدرج (Fond de Caisse)', unit: 'رصيد', qty: 1, price: opening, discount: 0, tva: 0, subtotal: opening },
-        { barcode: 'SALES', name: '2. المبيعات النقدية المحصلة في المناوبة (+)', unit: 'مبيعات', qty: 1, price: cashSales, discount: 0, tva: 0, subtotal: cashSales },
-        { barcode: 'DEBT-IN', name: '3. تسديدات ديون الزبائن المقبوضة نقداً (+)', unit: 'تحصيل', qty: 1, price: debtPayments, discount: 0, tva: 0, subtotal: debtPayments }
-      ];
-
-      if (cashIn > 0) {
-        items.push({ barcode: 'CASH-IN', name: '4. إيداعات وتغذية نقدية إضافية (+)', unit: 'إيداع', qty: 1, price: cashIn, discount: 0, tva: 0, subtotal: cashIn });
-      }
-      if (cashOut > 0 || expenses > 0) {
-        items.push({ barcode: 'CASH-OUT', name: '5. المسحوبات والمصاريف النقدية (-)', unit: 'سحب', qty: 1, price: -(cashOut + expenses), discount: 0, tva: 0, subtotal: -(cashOut + expenses) });
+    detectActivePosCustomer() {
+      // أ) فحص القائمة #posCustomerSelect
+      const sel = document.getElementById('posCustomerSelect');
+      if (sel && Number(sel.value) > 0 && this.customersById.has(Number(sel.value))) {
+        return this.customersById.get(Number(sel.value));
       }
 
-      const effectivePaper = paperSizeOverride || studio.config.defaultsByDocType?.caisse_z_report?.paperSize || '80mm';
-      if (effectivePaper === 'a4' && txs.length > 0) {
-        for (const tx of txs.slice(0, 30)) {
-          const isOut = tx.type === 'cash_out' || tx.type === 'expense';
-          const amt = isOut ? -Math.abs(Number(tx.amount || 0)) : Math.abs(Number(tx.amount || 0));
-          items.push({
-            barcode: String(tx.created_at || '').replace('T', ' ').slice(11, 16) || ('#' + tx.id),
-            name: `حركة: ${tx.description || tx.category || tx.type}`,
-            unit: tx.type === 'debt_payment' ? 'تسديد دين' : tx.type === 'sale' ? 'بيع نقدي' : tx.type,
-            qty: 1,
-            price: amt,
-            discount: 0,
-            tva: 0,
-            subtotal: amt
-          });
+      // ب) فحص الشريط الذهبي للزبون الوفي في أعلى السلة (مثل: أمين بن يحيى (زبون وفي) (FID-00003))
+      const posView = document.getElementById('view-pos');
+      if (posView) {
+        const cartHeaderText = posView.querySelector('.cart-container')?.innerText || '';
+        const fidMatch = cartHeaderText.match(/FID-0*(\d+)/i);
+        if (fidMatch && fidMatch[1]) {
+          const parsedId = parseInt(fidMatch[1], 10);
+          if (this.customersById.has(parsedId)) {
+            if (sel) sel.value = String(parsedId);
+            return this.customersById.get(parsedId);
+          }
+        }
+
+        // مطابقة بالاسم إذا كان ظاهراً في شريط الوفاء
+        for (const c of this.customers) {
+          if (c.name && c.name.length > 2 && cartHeaderText.includes(c.name)) {
+            if (sel) sel.value = String(c.id);
+            return c;
+          }
         }
       }
 
-      const docData = studio.enrichDocumentDataWithLoyaltyAndDebt({
-        docNumber: `Z-SHIFT-#${sess.id || 1}`,
-        date: closedStr !== 'نشطة الآن' ? closedStr : openedStr,
-        isWalkinCustomer: true,
-        partyTitle: 'المناوبة / أمين الصندوق:',
-        partyName: `المناوبة #${sess.id || 1} — الكاشير: ${sess.user_name || 'المدير العام'}`,
-        partyPhone: `افتتاح: ${openedStr}`,
-        partyAddress: `إغلاق: ${closedStr} | عدد الحركات: ${txs.length}`,
-        paymentMethod: Math.abs(diff) < 0.05 ? 'مطابق تماماً ✔ (الفارق: 0.00 د.ج)' : `فارق صندوق: ${diff.toFixed(2)} د.ج`,
-        previousBalance: 0,
-        items,
-        subtotal: expected,
-        discount: 0,
-        tvaAmount: 0,
-        stampAmount: 0,
-        total: expected,
-        paidAmount: counted,
-        receivedAmount: counted,
-        remainingDebt: Math.abs(diff)
-      });
-
-      if (forPreviewBox) {
-        const savedProf = studio.config.adoptedProfiles?.caisse_z_report || {};
-        const savedDef = studio.config.defaultsByDocType?.caisse_z_report || {};
-        const paperHtml = studio.buildLiveDocumentPaperHtml(docData, true, {
-          ...savedProf,
-          activeDocType: 'caisse_z_report',
-          paperSize: paperSizeOverride || savedDef.paperSize || savedProf.paperSize || '80mm',
-          themeId: savedDef.themeId || savedProf.themeId || 'executive_dark'
-        });
-        return `<div style="zoom:0.92;margin:0 auto;">${paperHtml}</div>`;
+      // ج) فحص متغير محرك الوفاء العام إن وجد
+      if (window.__gherbiActivePosCustomerId && this.customersById.has(Number(window.__gherbiActivePosCustomerId))) {
+        return this.customersById.get(Number(window.__gherbiActivePosCustomerId));
       }
 
-      return await studio.renderAdoptedMasterDocumentHtml('caisse_z_report', docData, {
-        paperSize: effectivePaper
-      });
+      return null;
     },
 
     // ========================================================================
-    // 3. فتح نافذة مراجعة المناوبة المطورة (#reviewCaisseModal)
-    //    مع زر التبديل الفوري بين (🎨 قالب مركز الطباعة المخصص) و (⚡ معاينة الصندوق الكلاسيكية)
+    // 2. القارئ الشامل للسلة والمجموع من الـ DOM ومن الذاكرة (لا يفشل أبداً!)
     // ========================================================================
-    async openDualModeReviewCaisseModal(sessionId) {
-      const sid = Number(sessionId || this.activeSessionInfo?.session?.id || 0);
-      if (!sid) {
-        if (window.showToast) window.showToast('⚠️ لا توجد مناوبة محددة لعرضها.', 'warning');
-        return;
+    extractCurrentCartItemsAndTotal() {
+      let items = [];
+
+      // أ) محاولة القراءة من AppState أو App إن توفرت
+      const stateCart =
+        window.AppState?.carts?.[window.AppState?.activeCartIndex || 0] ||
+        window.AppState?.cart ||
+        window.App?.cart ||
+        (typeof window.App?.getCurrentCart === 'function' ? window.App.getCurrentCart() : null);
+
+      if (stateCart && Array.isArray(stateCart.items) && stateCart.items.length > 0) {
+        items = stateCart.items.map((it) => ({
+          product_id: it.product_id || it.id || null,
+          batch_id: it.batch_id || null,
+          variant_id: it.variant_id || null,
+          quantity: Number(it.quantity ?? it.qty ?? 1),
+          price: Number(it.price ?? it.selling_price ?? 0),
+          subtotal: Number(it.subtotal ?? Number(it.price || 0) * Number(it.quantity || 1)),
+          custom_product_name: it.custom_product_name || it.name || 'منتج'
+        }));
       }
 
-      const modal = document.getElementById('reviewCaisseModal');
-      const titleEl = document.getElementById('reviewCaisseModalTitle');
-      const bodyEl = document.getElementById('reviewCaisseModalBody');
-      if (!modal || !bodyEl) return;
-
-      modal.classList.add('active');
-      modal.classList.remove('hidden');
-      bodyEl.innerHTML = `<div class="py-10 text-center font-bold text-slate-400">⏳ جاري تحميل تفاصيل وحركات المناوبة #${sid}...</div>`;
-
-      const details = window.api?.getSessionDetails ? await window.api.getSessionDetails(sid) : null;
-      if (!details || !details.session) {
-        bodyEl.innerHTML = `<div class="py-10 text-center font-bold text-rose-500">❌ تعذر العثور على بيانات المناوبة #${sid}.</div>`;
-        return;
-      }
-
-      this.currentReviewedSessionId = sid;
-      this.currentReviewedDetails = details;
-
-      const sess = details.session;
-      if (titleEl) {
-        titleEl.innerHTML = `📋 مراجعة المناوبة ${sess.status === 'closed' ? 'المغلقة' : 'النشطة'} رقم <span class="font-mono">#${sess.id}</span> — الكاشير: ${sess.user_name || 'المدير العام'}`;
-      }
-
-      await this.renderDualModeReviewModalBody();
-    },
-
-    async renderDualModeReviewModalBody() {
-      const bodyEl = document.getElementById('reviewCaisseModalBody');
-      const details = this.currentReviewedDetails;
-      if (!bodyEl || !details) return;
-
-      const sess = details.session || {};
-      const sum = details.summary || {};
-      const txs = Array.isArray(details.transactions) ? details.transactions : [];
-
-      const opening = Number(sess.opening_balance ?? sum.openingBalance ?? 0);
-      const expected = Number(sess.expected_balance ?? sum.expectedBalance ?? 0);
-      const counted = sess.closing_balance !== null && sess.closing_balance !== undefined ? Number(sess.closing_balance) : expected;
-      const diff = Number((counted - expected).toFixed(2));
-      const mode = this.zReportMode; // 'studio' | 'classic'
-
-      const previewBoxHtml =
-        mode === 'studio'
-          ? await this.buildStudioAdoptedZReportHtml(details, this.reviewModalPaperSize, true)
-          : this.buildClassicCaisseZReportHtml(details, false);
-
-      const txRowsHtml =
-        txs.length > 0
-          ? txs
-              .map((tx) => {
-                const isOut = tx.type === 'cash_out' || tx.type === 'expense';
-                const badgeClass =
-                  tx.type === 'debt_payment'
-                    ? 'bg-blue-100 text-blue-800'
-                    : tx.type === 'sale'
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : isOut
-                    ? 'bg-rose-100 text-rose-700'
-                    : 'bg-amber-100 text-amber-800';
-                const badgeLabel =
-                  tx.type === 'debt_payment'
-                    ? '🤝 تسديد دين زبون'
-                    : tx.type === 'sale'
-                    ? '🛒 مبيعات نقدية'
-                    : tx.type === 'cash_in'
-                    ? '➕ إيداع نقدي'
-                    : '➖ سحب / مصروف';
-
-                return `
-                  <tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-xs">
-                    <td class="py-2 px-2.5"><span class="px-2 py-0.5 rounded-lg font-black text-[10.5px] ${badgeClass}">${badgeLabel}</span></td>
-                    <td class="py-2 px-2.5 font-bold text-slate-800 dark:text-slate-200">${tx.description || tx.category || '-'}</td>
-                    <td class="py-2 px-2.5 font-mono font-black ${isOut ? 'text-rose-600' : 'text-emerald-600'}" dir="ltr">
-                      ${isOut ? '-' : '+'}${Number(tx.amount || 0).toFixed(2)} د.ج
-                    </td>
-                    <td class="py-2 px-2.5 font-mono text-[11px] text-slate-400" dir="ltr">${String(tx.created_at || '').replace('T', ' ').slice(0, 16)}</td>
-                    <td class="py-2 px-2 text-center">
-                      <button type="button" onclick="window.GherbiCaisseTurbo.printSingleCaisseTransactionTicket(${tx.id})" class="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-blue-600 hover:text-white font-black text-[10px] cursor-pointer" title="طباعة تذكرة/سند هذه الحركة">
-                        🧾 سند
-                      </button>
-                    </td>
-                  </tr>
-                `;
-              })
-              .join('')
-          : `<tr><td colspan="5" class="py-8 text-center text-slate-400 font-bold">لا توجد حركات مسجلة في هذه المناوبة.</td></tr>`;
-
-      bodyEl.innerHTML = `
-        <div class="space-y-3.5 text-right" dir="rtl">
-          <!-- البطاقات الأربع لملخص المناوبة -->
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-center p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-            <div>
-              <div class="text-slate-400 font-bold text-[11px]">الرصيد الافتتاحي</div>
-              <div class="font-mono font-black text-base text-slate-900 dark:text-white mt-0.5">${this.fmtDzd(opening)}</div>
-              <div class="font-mono text-[10px] text-slate-400">${String(sess.opened_at || '').replace('T', ' ').slice(0, 16)} 🕒</div>
-            </div>
-            <div>
-              <div class="text-slate-400 font-bold text-[11px]">الرصيد الدفتري المتوقع</div>
-              <div class="font-mono font-black text-base text-blue-600 mt-0.5">${this.fmtDzd(expected)}</div>
-              <div class="text-[10.5px] font-black text-amber-600">${this.fmtCentimes(expected)}</div>
-            </div>
-            <div>
-              <div class="text-slate-400 font-bold text-[11px]">المبلغ الفعلي المعدود</div>
-              <div class="font-mono font-black text-base text-emerald-600 mt-0.5">${this.fmtDzd(counted)}</div>
-              <div class="font-mono text-[10px] text-slate-400">${sess.closed_at ? String(sess.closed_at).replace('T', ' ').slice(0, 16) + ' 🕒' : 'مناوبة مفتوحة'}</div>
-            </div>
-            <div>
-              <div class="text-slate-400 font-bold text-[11px]">الفارق (Écart de Caisse)</div>
-              <div class="font-mono font-black text-base ${Math.abs(diff) < 0.05 ? 'text-emerald-600' : 'text-rose-600'} mt-0.5">${this.fmtDzd(diff)}</div>
-              <div class="text-[10.5px] font-black ${Math.abs(diff) < 0.05 ? 'text-emerald-600' : 'text-rose-600'}">${Math.abs(diff) < 0.05 ? '✅ مطابق تماماً' : '⚠️ يوجد فارق نقدي'}</div>
-            </div>
-          </div>
-
-          <!-- شريط الاختيار الحر بين (🎨 قالب مركز الطباعة المخصص) و (⚡ معاينة الصندوق الكلاسيكية) + أزرار الطباعة -->
-          <div class="p-3.5 rounded-2xl bg-blue-50/80 dark:bg-slate-800 border-2 border-blue-300 dark:border-blue-700 space-y-2.5">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="font-black text-blue-950 dark:text-blue-200 text-xs">🖨️ اختر نمط المعاينة والطباعة للمناوبة:</span>
-                <div class="inline-flex rounded-xl bg-white dark:bg-slate-900 p-1 border border-blue-300 dark:border-slate-700 shadow-sm">
-                  <button type="button" onclick="window.GherbiCaisseTurbo.switchReviewModalMode('studio')" class="px-3 py-1.5 rounded-lg font-black text-xs transition cursor-pointer ${
-                    mode === 'studio' ? 'bg-blue-600 text-white shadow' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100'
-                  }">
-                    🎨 1. قالب مركز الطباعة المخصص (Studio Par Défaut)
-                  </button>
-                  <button type="button" onclick="window.GherbiCaisseTurbo.switchReviewModalMode('classic')" class="px-3 py-1.5 rounded-lg font-black text-xs transition cursor-pointer ${
-                    mode === 'classic' ? 'bg-slate-900 text-amber-400 shadow' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100'
-                  }">
-                    ⚡ 2. المعاينة الكلاسيكية الخاصة بالصندوق
-                  </button>
-                </div>
-              </div>
-
-              <button type="button" onclick="window.App.closeModal('reviewCaisseModal'); window.App.openDocumentInPrintStudio('caisse_z_report', 'SAMPLE')" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-sm cursor-pointer">
-                🎨 تعديل قالب Z-Report في مركز الطباعة ⬅
-              </button>
-            </div>
-
-            <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-blue-200/70 dark:border-slate-700">
-              <div class="flex items-center gap-1.5">
-                <span class="text-[11px] font-bold text-slate-600 dark:text-slate-300">📐 مقاس القالب:</span>
-                <button type="button" onclick="window.GherbiCaisseTurbo.setReviewModalPaper('80mm')" class="px-2.5 py-1 rounded-lg font-mono font-black text-[11px] cursor-pointer ${this.reviewModalPaperSize === '80mm' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-900 border'}">80mm حراري</button>
-                <button type="button" onclick="window.GherbiCaisseTurbo.setReviewModalPaper('a4')" class="px-2.5 py-1 rounded-lg font-mono font-black text-[11px] cursor-pointer ${this.reviewModalPaperSize === 'a4' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-900 border'}">A4 مفصل</button>
-                <button type="button" onclick="window.GherbiCaisseTurbo.setReviewModalPaper('a5')" class="px-2.5 py-1 rounded-lg font-mono font-black text-[11px] cursor-pointer ${this.reviewModalPaperSize === 'a5' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-900 border'}">A5 نصفي</button>
-              </div>
-
-              <div class="flex flex-wrap items-center gap-1.5">
-                <button type="button" onclick="window.GherbiCaisseTurbo.printActiveReviewModalReport('selected')" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow cursor-pointer flex items-center gap-1">
-                  <span>🖨️ طباعة المعاينة المختارة الآن (${mode === 'studio' ? 'قالب الاستوديو' : 'كلاسيكي'})</span>
-                </button>
-                <button type="button" onclick="window.GherbiCaisseTurbo.printActiveReviewModalReport('studio_a4')" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow cursor-pointer">
-                  📄 طباعة تقرير مفصل (A4)
-                </button>
-                <button type="button" onclick="window.GherbiCaisseTurbo.printActiveReviewModalReport('pdf')" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs shadow cursor-pointer">
-                  📥 حفظ PDF
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- التقسيم المتوازي: يمين (جدول حركات الخزينة في المناوبة) | يسار (المعاينة الحية المختارة) -->
-          <div class="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-start">
-            <div class="md:col-span-7 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900">
-              <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-100 dark:border-slate-800">
-                <span class="font-black text-xs text-slate-900 dark:text-white">حركات الخزينة في هذه المناوبة (${txs.length} حركة):</span>
-                <span class="text-[10.5px] text-slate-400 font-bold">انقر (🧾 سند) لطباعة وصل أي حركة منفردة</span>
-              </div>
-              <div class="overflow-y-auto max-h-80">
-                <table class="w-full text-right border-collapse">
-                  <thead class="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-500 text-[11px] font-black">
-                    <tr>
-                      <th class="py-2 px-2.5">النوع</th>
-                      <th class="py-2 px-2.5">البيان</th>
-                      <th class="py-2 px-2.5">المبلغ</th>
-                      <th class="py-2 px-2.5">التوقيت</th>
-                      <th class="py-2 px-2 text-center">سند</th>
-                    </tr>
-                  </thead>
-                  <tbody>${txRowsHtml}</tbody>
-                </table>
-              </div>
-            </div>
-
-            <div class="md:col-span-5 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 bg-slate-100 dark:bg-slate-950">
-              <div class="text-center font-black text-xs text-slate-600 dark:text-slate-300 mb-2">
-                ${mode === 'studio' ? `🎨 معاينة قالب مركز الطباعة المخصص (${this.reviewModalPaperSize.toUpperCase()}):` : '⚡ معاينة تذكرة Z-Report الكلاسيكية (80mm):'}
-              </div>
-              <div class="overflow-y-auto max-h-80 p-1">
-                ${previewBoxHtml}
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    },
-
-    async switchReviewModalMode(newMode) {
-      this.setPreferredZReportMode(newMode);
-      await this.renderDualModeReviewModalBody();
-    },
-
-    async setReviewModalPaper(paperSize) {
-      this.reviewModalPaperSize = paperSize || '80mm';
-      this.setPreferredZReportMode('studio');
-      await this.renderDualModeReviewModalBody();
-    },
-
-    async printActiveReviewModalReport(actionType) {
-      const details = this.currentReviewedDetails;
-      if (!details) return;
-
-      let html = '';
-      if (actionType === 'studio_a4') {
-        html = await this.buildStudioAdoptedZReportHtml(details, 'a4', false);
-      } else if (this.zReportMode === 'classic') {
-        html = this.buildClassicCaisseZReportHtml(details, true);
-      } else {
-        html = await this.buildStudioAdoptedZReportHtml(details, this.reviewModalPaperSize, false);
-      }
-
-      if (html) {
-        await window.__gherbiMasterPrintSilent({ html, silent: false });
-      }
-    },
-
-    async quickPrintShiftReport(sessionId, modeOverride = null, paperSize = '80mm') {
-      const details = window.api?.getSessionDetails ? await window.api.getSessionDetails(Number(sessionId)) : null;
-      if (!details) return;
-
-      const effectiveMode = modeOverride || this.zReportMode || 'studio';
-      const html =
-        effectiveMode === 'classic'
-          ? this.buildClassicCaisseZReportHtml(details, true)
-          : await this.buildStudioAdoptedZReportHtml(details, paperSize, false);
-
-      await window.__gherbiMasterPrintSilent({ html, silent: false });
-    },
-
-    async printSingleCaisseTransactionTicket(txId) {
-      await this.ensureFreshCaisseData(false);
-      const allTxs = [
-        ...(this.txLogCache || []),
-        ...((this.currentReviewedDetails && this.currentReviewedDetails.transactions) || [])
-      ];
-      const tx = allTxs.find((t) => Number(t.id) === Number(txId));
-      if (!tx) return;
-
-      const studio = window.GherbiPrintStudioV45;
-      if (!studio) return;
-
-      const docType = tx.type === 'debt_payment' ? 'payment_receipt' : 'expense_voucher';
-      const amt = Math.abs(Number(tx.amount || 0));
-      const typeLabel =
-        tx.type === 'cash_in'
-          ? 'سند إيداع وتغذية صندوق (Bon d’Entrée)'
-          : tx.type === 'debt_payment'
-          ? 'وصل قبض تسديد دين زبون'
-          : 'سند صرف نقدي من الصندوق (Bon de Sortie)';
-
-      const html = await studio.generateAdoptedHtmlForDocument(docType, null, {
-        doc_number: `CAISSE-TX-${tx.id}`,
-        sale_date: tx.created_at || new Date().toISOString(),
-        customer_name: tx.user_name || 'أمين الصندوق — المدير العام',
-        payment_method: typeLabel,
-        items: [
-          {
-            barcode: `TX-${tx.id}`,
-            name: `${typeLabel}: ${tx.description || tx.category || 'حركة خزينة'} (المناوبة #${tx.session_id || '-'})`,
-            unit: 'سند',
-            quantity: 1,
-            price: amt,
-            subtotal: amt
+      // ب) إذا لم نجد عناصر في الذاكرة، نقرأ السطور المرسومة فعلياً داخل #posCartItems في الشاشة
+      if (items.length === 0) {
+        const cartRows = document.querySelectorAll('#posCartItems > div');
+        cartRows.forEach((row) => {
+          const inputs = row.querySelectorAll('input[type="number"], input[type="text"]');
+          if (inputs.length >= 2) {
+            const nameEl = row.querySelector('.font-bold, .font-black, [class*="text-slate"]');
+            const rawName = nameEl ? (nameEl.textContent || '').trim() : 'صنف مبيعات';
+            const nums = Array.from(inputs)
+              .map((inp) => parseFloat(inp.value))
+              .filter((n) => Number.isFinite(n) && n > 0);
+            if (nums.length > 0) {
+              const subtotal = nums[nums.length - 1] || 0;
+              const qty = nums.find((n) => n <= 500 && n !== subtotal) || 1;
+              const price = qty > 0 ? Number((subtotal / qty).toFixed(2)) : subtotal;
+              if (subtotal > 0) {
+                items.push({
+                  product_id: null,
+                  batch_id: null,
+                  variant_id: null,
+                  quantity: qty,
+                  price,
+                  subtotal,
+                  custom_product_name: rawName.slice(0, 80)
+                });
+              }
+            }
           }
-        ],
-        subtotal: amt,
-        total: amt,
-        paid_amount: amt
-      });
+        });
+      }
 
-      await window.__gherbiMasterPrintSilent({ html, silent: false });
-      if (window.showToast) window.showToast(`🧾 تم توليد وطباعة (${typeLabel}) بالقالب المعتمد!`, 'success');
+      // ج) قراءة الإجمالي المستحق المعروض في الشاشة (#cartTotalText مثل 295.00 د.ج)
+      const totalText = document.getElementById('cartTotalText')?.textContent || '0';
+      const domTotal = Math.max(0, parseFloat(String(totalText).replace(/[^\d.-]/g, '')) || 0);
+      const calcTotal = items.reduce((s, it) => s + Number(it.subtotal || 0), 0);
+      const finalTotal = domTotal > 0 ? domTotal : Number(calcTotal.toFixed(2));
+
+      // إذا كان هناك مبلغ إجمالي في #cartTotalText (مثل 295.00 د.ج في الصورة) ولم تكن هناك أسطر فرعية، ننشئ بند فاتورة جاهزاً بهذا المبلغ
+      if (items.length === 0 && finalTotal > 0) {
+        items.push({
+          product_id: null,
+          batch_id: null,
+          variant_id: null,
+          quantity: 1,
+          price: finalTotal,
+          subtotal: finalTotal,
+          custom_product_name: 'مشتريات سلة الكاشير (على الحساب)'
+        });
+      }
+
+      // قراءة المبلغ المستلم المكتوب في خانة (المبلغ المستلم Alt+C) إن وجد
+      const recInp =
+        document.getElementById('posReceivedCashInput') ||
+        document.querySelector('input[placeholder*="أعطاه الزبون"]') ||
+        document.querySelector('input[placeholder*="أعطاه الز"]');
+      const receivedCash = recInp ? Math.max(0, parseFloat(recInp.value) || 0) : 0;
+
+      return { items, total: finalTotal, receivedCash };
     },
 
     // ========================================================================
-    // 4. بناء صفحة "إدارة الصندوق" (#view-caisse) الفائقة الخفة والمتصلة بمركز الطباعة
+    // 3. تركيب الأزرار الثلاثة (Alt+D | Alt+V | Alt+H) وشارة الديون الحية في الكاشير
     // ========================================================================
-    async renderTurboCaisseView(forceRefresh = false) {
-      const root = document.getElementById('caisse-view-root');
-      if (!root) return;
+    mountAllPosDebtControls() {
+      const posView = document.getElementById('view-pos');
+      if (!posView) return;
 
-      await this.ensureFreshCaisseData(forceRefresh);
+      // أ) تركيب أزرار (Alt+D تأكيد الدين | Alt+V تسديد الديون | Alt+H هيستوريك الديون) في أعلى السلة بجانب F8 و F9
+      const f8Btn =
+        posView.querySelector('button[onclick*="openLoyaltyCardModal"]') ||
+        Array.from(posView.querySelectorAll('button')).find((b) =>
+          (b.textContent || '').includes('البطاقة / الزبون')
+        );
 
-      const activeSess = this.activeSessionInfo && this.activeSessionInfo.session ? this.activeSessionInfo.session : null;
-      const activeSum = (this.activeSessionInfo && this.activeSessionInfo.summary) || {};
+      // ربط نقرة زر F8 البطاقة / الزبون ليفتح دائماً نافذة F8 المطورة التي تعرض النقاط والديون معاً!
+      if (f8Btn && !f8Btn._v68F8Bound) {
+        f8Btn._v68F8Bound = true;
+        f8Btn.addEventListener(
+          'click',
+          (ev) => {
+            ev.preventDefault();
+            ev.stopImmediatePropagation();
+            this.openF8LoyaltyAndDebtModal();
+          },
+          true
+        );
+      }
 
-      const openingBal = Number(activeSess ? activeSess.opening_balance : 0);
-      const cashSalesAndDebt = Number((Number(activeSum.cashSales || 0) + Number(activeSum.debtPayments || 0) + Number(activeSum.orderDeposits || 0)).toFixed(2));
-      const cashInTotal = Number(activeSum.cashIn || 0);
-      const cashOutAndExp = Number((Number(activeSum.cashOut || 0) + Number(activeSum.expenses || 0)).toFixed(2));
-      const expectedDrawer = Number(activeSum.expectedBalance ?? (openingBal + cashSalesAndDebt + cashInTotal - cashOutAndExp));
+      if (f8Btn && f8Btn.parentElement && !document.getElementById('v68TopCreditBar')) {
+        const topBar = document.createElement('div');
+        topBar.id = 'v68TopCreditBar';
+        topBar.className = 'inline-flex items-center gap-1 flex-wrap mr-1';
+        topBar.innerHTML = `
+          <button type="button" data-v68-action="confirm-debt" class="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black text-[10.5px] shadow-sm cursor-pointer flex items-center gap-1" title="تأكيد عملية الدين (Alt+D)">
+            <span>📝 تأكيد دين</span>
+            <kbd class="px-1 bg-black/25 rounded font-mono text-[9px]">Alt+D</kbd>
+          </button>
+          <button type="button" data-v68-action="settle-debt" class="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10.5px] shadow-sm cursor-pointer flex items-center gap-1" title="تسديد الديون (Alt+V)">
+            <span>💵 تسديد</span>
+            <kbd class="px-1 bg-black/25 rounded font-mono text-[9px]">Alt+V</kbd>
+          </button>
+          <button type="button" data-v68-action="history-debt" class="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10.5px] shadow-sm cursor-pointer flex items-center gap-1" title="هيستوريك الديون الشامل وطباعة التذاكر (Alt+H)">
+            <span>📜 هيستوريك الديون</span>
+            <kbd class="px-1 bg-black/25 rounded font-mono text-[9px]">Alt+H</kbd>
+          </button>
+        `;
+        f8Btn.parentElement.appendChild(topBar);
+      }
 
-      const mode = this.zReportMode;
+      // ب) تركيب شريط ديون الزبون الوفي تحت الشريط الذهبي (`أمين بن يحيى FID-00003`) مباشرةً
+      const cartTopBox = posView.querySelector('.cart-container > div:first-child');
+      if (cartTopBox && !document.getElementById('v68CustomerLiveDebtBanner')) {
+        const banner = document.createElement('div');
+        banner.id = 'v68CustomerLiveDebtBanner';
+        banner.className = 'mt-1.5';
+        cartTopBox.appendChild(banner);
+      }
 
-      root.innerHTML = `
-        <div class="space-y-3.5 text-right" dir="rtl">
-          <div class="rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 shadow-sm space-y-3.5">
-            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-700 pb-3">
+      // ج) تركيب شريط الأزرار الثلاثة في أسفل السلة فوق زر (تسديد الفاتورة F1) مباشرةً
+      const f1Btn = posView.querySelector('button[onclick*="openCheckoutModal"]');
+      if (f1Btn && f1Btn.parentElement && !document.getElementById('v68BottomDebtButtonsRow')) {
+        // إزالة أي شريط قديم معطل
+        document.getElementById('v66BottomCreditActionsRow')?.remove();
+        document.getElementById('v67BottomDebtCommandBar')?.remove();
+
+        const botRow = document.createElement('div');
+        botRow.id = 'v68BottomDebtButtonsRow';
+        botRow.className = 'grid grid-cols-12 gap-1.5 pt-1';
+        botRow.innerHTML = `
+          <button type="button" data-v68-action="confirm-debt" class="col-span-6 py-2.5 px-2.5 rounded-xl bg-gradient-to-l from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white font-black text-xs shadow-md cursor-pointer flex items-center justify-center gap-1.5">
+            <span id="v68BotConfirmDebtText">📝 تأكيد عملية الدين</span>
+            <kbd class="px-1.5 py-0.5 rounded bg-black/25 text-white font-mono text-[10px]">Alt+D</kbd>
+          </button>
+          <button type="button" data-v68-action="settle-debt" class="col-span-3 py-2.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md cursor-pointer flex items-center justify-center gap-1">
+            <span>💵 تسديد الديون</span>
+            <kbd class="px-1 py-0.5 rounded bg-black/25 text-white font-mono text-[9.5px]">Alt+V</kbd>
+          </button>
+          <button type="button" data-v68-action="history-debt" class="col-span-3 py-2.5 px-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-md cursor-pointer flex items-center justify-center gap-1">
+            <span>📜 هيستوريك الديون</span>
+            <kbd class="px-1 py-0.5 rounded bg-black/25 text-white font-mono text-[9.5px]">Alt+H</kbd>
+          </button>
+        `;
+        f1Btn.parentElement.insertBefore(botRow, f1Btn);
+      }
+
+      this.refreshLivePosDebtBannerAndButtons();
+    },
+
+    // ========================================================================
+    // 4. تحديث شارة ديون الزبون الوفي بجانب نقاط الوفاء ونص زر (Alt+D) في الوقت الفعلي
+    // ========================================================================
+    refreshLivePosDebtBannerAndButtons() {
+      const cust = this.detectActivePosCustomer();
+      const { total, receivedCash } = this.extractCurrentCartItemsAndTotal();
+
+      // 1) تحديث نص زر Alt+D السفلي
+      const botTxt = document.getElementById('v68BotConfirmDebtText');
+      if (botTxt) {
+        if (total <= 0) {
+          botTxt.textContent = '📝 تأكيد عملية الدين';
+        } else if (receivedCash > 0 && receivedCash < total) {
+          const rem = Number((total - receivedCash).toFixed(2));
+          botTxt.innerHTML = `💸 دفع (${receivedCash.toFixed(0)}) + دين (${rem.toFixed(2)})`;
+        } else {
+          botTxt.innerHTML = `📝 تأكيد الدين (${total.toFixed(2)} د.ج)`;
+        }
+      }
+
+      // 2) حقن شارة الديون مباشرةً بجانب الشارة الصفراء (⭐ 76 نقطة (152 د.ج)) إن كانت موجودة في الكاشير!
+      const posView = document.getElementById('view-pos');
+      if (posView && cust) {
+        const debtVal = Math.max(0, Number(cust.total_debt || 0));
+        const allSpans = posView.querySelectorAll('.cart-container span, .cart-container div');
+        for (const el of allSpans) {
+          const txt = el.textContent || '';
+          if (txt.includes('نقطة (') && !txt.includes('FID-') && el.children.length === 0) {
+            let inlineBadge = document.getElementById('v68InlineNextToPointsDebtBadge');
+            if (!inlineBadge) {
+              inlineBadge = document.createElement('span');
+              inlineBadge.id = 'v68InlineNextToPointsDebtBadge';
+              inlineBadge.setAttribute('data-v68-action', 'history-debt');
+              inlineBadge.style.marginRight = '6px';
+              inlineBadge.style.cursor = 'pointer';
+              el.insertAdjacentElement('afterend', inlineBadge);
+            }
+            inlineBadge.className = `px-2.5 py-0.5 rounded-lg font-black text-[11px] shadow-sm inline-flex items-center gap-1 ${
+              debtVal > 0.05 ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'
+            }`;
+            inlineBadge.innerHTML = `💳 الديون: <span class="font-mono">${this.fmtDzd(debtVal)}</span>`;
+            break;
+          }
+        }
+      } else {
+        document.getElementById('v68InlineNextToPointsDebtBadge')?.remove();
+      }
+
+      // 3) تحديث شريط الديون التفصيلي للزبون تحت الشريط الذهبي
+      const banner = document.getElementById('v68CustomerLiveDebtBanner');
+      if (!banner) return;
+
+      if (!cust) {
+        banner.innerHTML = `
+          <div class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-[11px]">
+            <span class="font-bold text-slate-600 dark:text-slate-300">🚶 البيع الحالي: <strong>زبون عابر</strong> — اختر زبوناً وفياً بـ (F8) أو اضغط (Alt+D) لتسجيل دين</span>
+            <button type="button" data-v68-action="open-f8" class="px-2.5 py-0.5 rounded-lg bg-amber-500 text-slate-950 font-black text-[10.5px] cursor-pointer">
+              👑 الزبون الوفي والديون (F8)
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      const currentDebt = Math.max(0, Number(cust.total_debt || 0));
+      const addedDebtToday =
+        total > 0
+          ? receivedCash > 0 && receivedCash < total
+            ? Number((total - receivedCash).toFixed(2))
+            : receivedCash >= total
+            ? 0
+            : total
+          : 0;
+      const projectedDebt = Number((currentDebt + addedDebtToday).toFixed(2));
+
+      banner.innerHTML = `
+        <div class="p-2 rounded-xl border-2 text-[11px] ${
+          currentDebt > 0.05
+            ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-400 text-rose-950 dark:text-rose-200'
+            : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-400 text-emerald-950 dark:text-emerald-200'
+        }">
+          <div class="flex flex-wrap items-center justify-between gap-1.5">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-black">
+                💳 ديون (${cust.name}): <strong class="font-mono text-xs ${currentDebt > 0.05 ? 'text-rose-600' : 'text-emerald-600'}">${this.fmtDzd(currentDebt)}</strong>
+              </span>
+              <span class="text-[10px] font-black text-amber-700">(${this.fmtCentimes(currentDebt)})</span>
+              ${
+                total > 0
+                  ? `<span class="px-2 py-0.2 rounded bg-white dark:bg-slate-900 border border-rose-300 font-black text-rose-600">
+                      بعد السلة: <strong class="font-mono">${this.fmtDzd(projectedDebt)}</strong>
+                    </span>`
+                  : ''
+              }
+            </div>
+            <div class="flex items-center gap-1">
+              <button type="button" data-v68-action="confirm-debt" class="px-2 py-0.5 rounded-lg bg-rose-600 text-white font-black text-[10px] cursor-pointer">+ تأكيد دين (Alt+D)</button>
+              <button type="button" data-v68-action="settle-debt" class="px-2 py-0.5 rounded-lg bg-emerald-600 text-white font-black text-[10px] cursor-pointer">💵 تسديد (Alt+V)</button>
+              <button type="button" data-v68-action="history-debt" class="px-2 py-0.5 rounded-lg bg-indigo-600 text-white font-black text-[10px] cursor-pointer">📜 هيستوريك (Alt+H)</button>
+            </div>
+          </div>
+        </div>
+      `;
+    },
+
+    // ========================================================================
+    // 5. نافذة تأكيد عملية الدين (Alt + D) — تعمل سواء كانت السلة ممتلئة أو بمبلغ مباشر!
+    // ========================================================================
+    async openConfirmDebtModal() {
+      await this.syncFromSqlite(true);
+      const activeCust = this.detectActivePosCustomer();
+      const { items, total, receivedCash } = this.extractCurrentCartItemsAndTotal();
+      const initialPaid = receivedCash > 0 && receivedCash < total ? receivedCash : 0;
+
+      let modal = document.getElementById('v68ConfirmDebtModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'v68ConfirmDebtModal';
+        modal.style.zIndex = '29900';
+        modal.className = 'fixed inset-0 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4';
+        document.body.appendChild(modal);
+      }
+
+      const custOptionsHtml = [
+        `<option value="0">-- 👤 اختر الزبون الوفي لتسجيل الدين على حسابه * --</option>`,
+        ...this.customers.map((c) => {
+          const debt = Math.max(0, Number(c.total_debt || 0));
+          const pts = Math.floor(Number(c.loyalty_points || 0));
+          return `<option value="${c.id}" ${activeCust && Number(activeCust.id) === Number(c.id) ? 'selected' : ''}>👑 ${c.name} (${this.getFidCode(c)}) — 💳 دينه الحالي: ${debt.toFixed(2)} د.ج | ⭐ ${pts} نقطة</option>`;
+        })
+      ].join('');
+
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-slate-900 border-2 border-rose-500 rounded-3xl max-w-xl w-full p-5 shadow-2xl space-y-4 text-right" dir="rtl">
+          <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
+            <div class="flex items-center gap-2">
+              <span class="px-2.5 py-1 rounded-xl bg-rose-600 text-white font-mono font-black text-xs">Alt + D</span>
               <div>
-                <div class="flex items-center gap-2 flex-wrap">
-                  <h2 class="text-lg font-black text-slate-900 dark:text-white">
-                    🏦 إدارة الصندوق، الورديات (Z-Report)، وسندات القبض والصرف
-                  </h2>
-                  ${
-                    activeSess
-                      ? `<span class="px-3 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-black text-xs">🟢 المناوبة #${activeSess.id} مفتوحة ونشطة</span>`
-                      : `<span class="px-3 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-300 font-black text-xs">⚪ لا توجد مناوبة مفتوحة حالياً</span>`
-                  }
-                </div>
-                <p class="text-xs text-slate-500 mt-0.5">
-                  متصلة مباشرةً بمركز الطباعة — اختر بحرية بين طباعة قالب مركز الطباعة المخصص أو المعاينة الكلاسيكية للصندوق
-                </p>
-              </div>
-
-              <div class="flex flex-wrap items-center gap-1.5">
-                ${
-                  activeSess
-                    ? `
-                      <button type="button" onclick="window.GherbiCaisseTurbo.openTxModal('cash_in')" class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-sm cursor-pointer">
-                        ➕ إيداع نقدي (+ سند)
-                      </button>
-                      <button type="button" onclick="window.GherbiCaisseTurbo.openTxModal('cash_out')" class="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-sm cursor-pointer">
-                        ➖ سحب نقدي (+ سند)
-                      </button>
-                      <button type="button" onclick="window.GherbiCaisseTurbo.openDualModeReviewCaisseModal(${activeSess.id})" class="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-sm cursor-pointer">
-                        🧾 معاينة وطباعة X-Report الحي
-                      </button>
-                      <button type="button" onclick="window.App.openCloseShiftModal(${activeSess.id})" class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-sm cursor-pointer">
-                        🔒 إغلاق المناوبة (Z-Report)
-                      </button>
-                    `
-                    : `
-                      <button type="button" onclick="window.App.openModal('openShiftModal')" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md cursor-pointer">
-                        🔓 فتح مناوبة صندوق جديدة الآن
-                      </button>
-                    `
-                }
-                <button type="button" onclick="window.GherbiCaisseTurbo.jumpToPrintStudioForCaisse('caisse_z_report')" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-sm cursor-pointer">
-                  🎨 تخصيص تذاكر الصندوق في مركز الطباعة ⬅
-                </button>
-                <button type="button" onclick="window.GherbiCaisseTurbo.exportCaisseReportPdf()" class="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs cursor-pointer">
-                  📄 تصدير PDF
-                </button>
-                <button type="button" onclick="window.GherbiCaisseTurbo.exportCaisseReportExcel()" class="px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-black text-xs cursor-pointer">
-                  📊 Excel
-                </button>
+                <h3 class="text-base font-black text-slate-900 dark:text-white">📝 تأكيد عملية الدين / البيع بالكريدي للزبون الوفي</h3>
+                <p class="text-[11px] text-slate-500">يُحفظ الدين فوراً في قاعدة البيانات ويظهر في شريط الزبون و(F8) و(هيستوريك الديون)</p>
               </div>
             </div>
+            <button type="button" onclick="document.getElementById('v68ConfirmDebtModal').classList.add('hidden')" class="px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-rose-600 font-black cursor-pointer">✕</button>
+          </div>
 
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-center text-xs">
-              <div class="p-3 rounded-2xl bg-blue-50/90 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-                <div class="text-[11px] font-black text-blue-800 dark:text-blue-300">💰 الرصيد المتوقع في الدرج الآن</div>
-                <div class="text-lg font-black font-mono text-blue-600 mt-0.5">${this.fmtDzd(expectedDrawer)}</div>
-                <div class="text-[10.5px] font-bold text-amber-700">🇩🇿 ${this.fmtCentimes(expectedDrawer)}</div>
-              </div>
-
-              <div class="p-3 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
-                <div class="text-[11px] font-black text-emerald-800 dark:text-emerald-300">🛒 مبيعات النقد وتحصيل الديون (+)</div>
-                <div class="text-lg font-black font-mono text-emerald-600 mt-0.5">+${this.fmtDzd(cashSalesAndDebt)}</div>
-                <div class="text-[10.5px] font-bold text-slate-500">الافتتاحي: ${this.fmtDzd(openingBal)}</div>
-              </div>
-
-              <div class="p-3 rounded-2xl bg-sky-50/90 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800">
-                <div class="text-[11px] font-black text-sky-800 dark:text-sky-300">➕ الإيداعات والتغذية النقدية</div>
-                <div class="text-lg font-black font-mono text-sky-600 mt-0.5">+${this.fmtDzd(cashInTotal)}</div>
-                <div class="text-[10.5px] font-bold text-sky-700">🇩🇿 ${this.fmtCentimes(cashInTotal)}</div>
-              </div>
-
-              <div class="p-3 rounded-2xl bg-rose-50/90 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800">
-                <div class="text-[11px] font-black text-rose-800 dark:text-rose-300">➖ المسحوبات والمصاريف النقدية</div>
-                <div class="text-lg font-black font-mono text-rose-600 mt-0.5">-${this.fmtDzd(cashOutAndExp)}</div>
-                <div class="text-[10.5px] font-bold text-rose-700">🇩🇿 ${this.fmtCentimes(cashOutAndExp)}</div>
-              </div>
+          <div class="space-y-2 text-xs">
+            <div class="flex items-center justify-between">
+              <label class="font-black text-slate-700 dark:text-slate-200">👑 الزبون الوفي صاحب الدين *:</label>
+              <button type="button" onclick="document.getElementById('v68QuickNewCustBox').classList.toggle('hidden')" class="text-blue-600 font-black hover:underline cursor-pointer">➕ إضافة زبون جديد سريع</button>
             </div>
+            <select id="v68DebtCustSelect" onchange="window.GherbiDebtV68.recalcConfirmModal()" class="w-full px-3 py-2.5 rounded-xl bg-blue-50 dark:bg-slate-800 border-2 border-blue-500 font-black text-xs cursor-pointer">
+              ${custOptionsHtml}
+            </select>
 
-            <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs">
-              <div class="flex flex-wrap items-center gap-1.5">
-                <span class="font-black text-slate-600 dark:text-slate-300">🖨️ النمط المعتمد لطباعة Z-Report:</span>
-                <button type="button" onclick="window.GherbiCaisseTurbo.setGlobalZReportMode('studio')" class="px-3 py-1.5 rounded-xl font-black transition cursor-pointer ${
-                  mode === 'studio' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border'
-                }">
-                  🎨 قالب مركز الطباعة المخصص (#25)
-                </button>
-                <button type="button" onclick="window.GherbiCaisseTurbo.setGlobalZReportMode('classic')" class="px-3 py-1.5 rounded-xl font-black transition cursor-pointer ${
-                  mode === 'classic' ? 'bg-slate-900 text-amber-400 shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border'
-                }">
-                  ⚡ معاينة الصندوق الكلاسيكية
-                </button>
-              </div>
-
-              <div class="flex flex-wrap items-center gap-1.5">
-                <span class="font-bold text-slate-400">تخصيص سريع لتذاكر الصندوق:</span>
-                <button type="button" onclick="window.GherbiCaisseTurbo.jumpToPrintStudioForCaisse('caisse_z_report')" class="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border border-indigo-200 font-black text-[11px] cursor-pointer">🔒 قالب Z-Report (#25)</button>
-                <button type="button" onclick="window.GherbiCaisseTurbo.jumpToPrintStudioForCaisse('expense_voucher')" class="px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-slate-800 text-rose-700 dark:text-rose-300 border border-rose-200 font-black text-[11px] cursor-pointer">💸 قالب سند الصرف (#26)</button>
-                <button type="button" onclick="window.GherbiCaisseTurbo.jumpToPrintStudioForCaisse('payment_receipt')" class="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 border border-emerald-200 font-black text-[11px] cursor-pointer">💵 قالب وصل القبض (#10)</button>
-              </div>
-            </div>
-
-            <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
-              <div class="flex items-center gap-1.5">
-                <button type="button" onclick="window.GherbiCaisseTurbo.switchSubView('shifts')" class="px-4 py-2 rounded-xl font-black text-xs transition cursor-pointer ${
-                  this.activeSubView === 'shifts' ? 'bg-slate-900 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
-                }">
-                  📋 1. سجل الورديات والمناوبات (${this.sessionsCache.length})
-                </button>
-                <button type="button" onclick="window.GherbiCaisseTurbo.switchSubView('transactions')" class="px-4 py-2 rounded-xl font-black text-xs transition cursor-pointer ${
-                  this.activeSubView === 'transactions' ? 'bg-slate-900 text-white shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
-                }">
-                  💳 2. سجل حركات الخزينة وسندات الصرف والقبض (${this.txLogCache.length})
-                </button>
-              </div>
-
-              <div class="flex flex-wrap items-center gap-2">
-                <input id="v63CaisseSearchInp" type="text" value="${this.filters.search}" oninput="window.GherbiCaisseTurbo.onSearchInput(this.value)" placeholder="🔎 ابحث برقم المناوبة، الكاشير، البيان، المبلغ..." class="w-64 px-3.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-xs font-bold outline-none focus:border-blue-500">
+            <div id="v68QuickNewCustBox" class="hidden p-3 rounded-2xl bg-emerald-50 dark:bg-slate-800 border border-emerald-400 space-y-2">
+              <div class="grid grid-cols-3 gap-2">
+                <input id="v68NewCustName" type="text" placeholder="اسم الزبون *" class="px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-900 font-bold">
+                <input id="v68NewCustPhone" type="text" placeholder="رقم الهاتف" class="px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-900 font-mono">
+                <button type="button" onclick="window.GherbiDebtV68.createQuickCustomerInModal()" class="rounded-xl bg-emerald-600 text-white font-black cursor-pointer">حفظ واختيار</button>
               </div>
             </div>
           </div>
 
-          <div id="v63CaisseTableContainer" class="rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden"></div>
+          <!-- إجمالي مبلغ الفاتورة / الدين + المبلغ المدفوع اليوم (إن وجد دفع جزئي) -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+            <div>
+              <label class="block font-black text-rose-700 dark:text-rose-300 mb-1">💰 إجمالي مبلغ الفاتورة / الدين (د.ج) *:</label>
+              <input id="v68DebtTotalAmountInp" type="number" step="any" min="1" value="${total > 0 ? total : ''}" oninput="window.GherbiDebtV68.recalcConfirmModal()" placeholder="أدخل مبلغ الدين..." class="w-full px-3 py-2 rounded-xl border-2 border-rose-500 bg-white dark:bg-slate-900 font-mono font-black text-lg text-center text-rose-600">
+            </div>
+            <div>
+              <label class="block font-black text-emerald-700 dark:text-emerald-300 mb-1">💵 المدفوع نقداً الآن (0 = كريدي كلي):</label>
+              <input id="v68DebtPaidTodayInp" type="number" step="any" min="0" value="${initialPaid}" oninput="window.GherbiDebtV68.recalcConfirmModal()" class="w-full px-3 py-2 rounded-xl border-2 border-emerald-500 bg-white dark:bg-slate-900 font-mono font-black text-lg text-center text-emerald-600">
+            </div>
+          </div>
+
+          <div>
+            <label class="block font-black text-slate-700 dark:text-slate-200 text-xs mb-1">📦 البيان / السلع المسجلة في عملية الدين:</label>
+            <input id="v68DebtNoteInp" type="text" value="${items.length > 0 ? items.map((x) => `${x.custom_product_name} (×${x.quantity})`).join(' + ') : 'مشتريات بضاعة على الحساب (كريدي)'}" class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 font-bold text-xs">
+          </div>
+
+          <div id="v68ConfirmSummaryBox" class="p-3.5 rounded-2xl bg-rose-50/90 dark:bg-slate-800 border-2 border-rose-300 space-y-2 text-xs"></div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+            <button type="button" onclick="window.GherbiDebtV68.executeConfirmDebtNow(true)" class="md:col-span-2 py-3 px-4 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg cursor-pointer">
+              ✅ تأكيد العملية وحفظ الدين + طباعة التذكرة (Enter)
+            </button>
+            <button type="button" onclick="window.GherbiDebtV68.executeConfirmDebtNow(false)" class="py-3 px-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white font-black text-xs cursor-pointer">
+              💾 تأكيد وحفظ بدون طباعة
+            </button>
+          </div>
         </div>
       `;
 
-      this.renderActiveCaisseTableOnly();
+      modal.classList.remove('hidden');
+      this.recalcConfirmModal();
+
+      modal.onkeydown = (ev) => {
+        if (ev.key === 'Enter' && document.activeElement?.id !== 'v68NewCustName') {
+          ev.preventDefault();
+          this.executeConfirmDebtNow(true);
+        } else if (ev.key === 'Escape') {
+          modal.classList.add('hidden');
+        }
+      };
+
+      setTimeout(() => {
+        const totInp = document.getElementById('v68DebtTotalAmountInp');
+        if (totInp && (!totInp.value || Number(totInp.value) <= 0)) {
+          totInp.focus();
+        } else {
+          document.getElementById('v68DebtPaidTodayInp')?.focus();
+          document.getElementById('v68DebtPaidTodayInp')?.select();
+        }
+      }, 50);
     },
 
-    renderActiveCaisseTableOnly() {
-      const container = document.getElementById('v63CaisseTableContainer');
-      if (!container) return;
+    async createQuickCustomerInModal() {
+      const name = document.getElementById('v68NewCustName')?.value?.trim();
+      const phone = document.getElementById('v68NewCustPhone')?.value?.trim() || '';
+      if (!name) return this.notify('⚠️ أدخل اسم الزبون أولاً', 'warning');
+      const res = await window.api.addCustomer({ name, phone, initial_debt: 0, credit_limit: 0 });
+      if (res && res.id) {
+        await this.syncFromSqlite(true);
+        const sel = document.getElementById('v68DebtCustSelect');
+        if (sel) {
+          sel.innerHTML += `<option value="${res.id}" selected>👑 ${name} (FID-${String(res.id).padStart(5, '0')}) — دينه: 0.00 د.ج</option>`;
+          sel.value = String(res.id);
+        }
+        document.getElementById('v68QuickNewCustBox')?.classList.add('hidden');
+        this.recalcConfirmModal();
+        this.notify(`✅ تم تسجيل الزبون (${name}) واختياره!`);
+      }
+    },
 
-      const q = (this.filters.search || '').trim().toLowerCase();
+    recalcConfirmModal() {
+      const box = document.getElementById('v68ConfirmSummaryBox');
+      if (!box) return;
 
-      if (this.activeSubView === 'shifts') {
-        const list = (this.sessionsCache || []).filter((s) => {
-          if (!q) return true;
-          return `${s.id} ${s.user_name || ''} ${s.opening_balance || ''} ${s.closing_balance || ''} ${s.status || ''}`.toLowerCase().includes(q);
+      const cid = Number(document.getElementById('v68DebtCustSelect')?.value || 0);
+      const cust = this.customersById.get(cid);
+      const totalVal = Math.max(0, parseFloat(document.getElementById('v68DebtTotalAmountInp')?.value || '0') || 0);
+      const paidVal = Math.max(0, Math.min(totalVal, parseFloat(document.getElementById('v68DebtPaidTodayInp')?.value || '0') || 0));
+      const newDebtAdded = Math.max(0, Number((totalVal - paidVal).toFixed(2)));
+      const prevDebt = cust ? Math.max(0, Number(cust.total_debt || 0)) : 0;
+      const cumulativeDebt = Number((prevDebt + newDebtAdded).toFixed(2));
+
+      box.innerHTML = `
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
+          <div class="p-2 rounded-xl bg-white dark:bg-slate-900 border">
+            <div class="text-[10px] text-slate-400 font-bold">الدين السابق للزبون</div>
+            <div class="font-mono font-black text-sm">${this.fmtDzd(prevDebt)}</div>
+          </div>
+          <div class="p-2 rounded-xl bg-white dark:bg-slate-900 border">
+            <div class="text-[10px] text-slate-400 font-bold">إجمالي العملية</div>
+            <div class="font-mono font-black text-sm text-blue-600">${this.fmtDzd(totalVal)}</div>
+          </div>
+          <div class="p-2 rounded-xl bg-white dark:bg-slate-900 border">
+            <div class="text-[10px] text-slate-400 font-bold">المدفوع نقداً اليوم</div>
+            <div class="font-mono font-black text-sm text-emerald-600">${this.fmtDzd(paidVal)}</div>
+          </div>
+          <div class="p-2 rounded-xl bg-rose-600 text-white">
+            <div class="text-[10px] font-bold">الدين الصافي المضاف</div>
+            <div class="font-mono font-black text-sm">+${this.fmtDzd(newDebtAdded)}</div>
+          </div>
+        </div>
+        <div class="pt-2 border-t border-rose-200 dark:border-slate-700 flex items-center justify-between font-black">
+          <span>📌 إجمالي ديون (${cust ? cust.name : 'الزبون'}) بعد هذه العملية:</span>
+          <span class="font-mono text-base text-rose-600">${this.fmtDzd(cumulativeDebt)} (${this.fmtCentimes(cumulativeDebt)})</span>
+        </div>
+      `;
+    },
+
+    async executeConfirmDebtNow(shouldPrint = true) {
+      const cid = Number(document.getElementById('v68DebtCustSelect')?.value || 0);
+      const totalVal = Math.max(0, parseFloat(document.getElementById('v68DebtTotalAmountInp')?.value || '0') || 0);
+      const paidVal = Math.max(0, Math.min(totalVal, parseFloat(document.getElementById('v68DebtPaidTodayInp')?.value || '0') || 0));
+      const noteText = document.getElementById('v68DebtNoteInp')?.value?.trim() || 'مشتريات على الحساب (كريدي)';
+
+      if (!cid) {
+        return this.notify('⚠️ يرجى اختيار الزبون الوفي من القائمة أولاً!', 'warning');
+      }
+      if (totalVal <= 0.009) {
+        return this.notify('⚠️ يرجى إدخال مبلغ الفاتورة / الدين (أكبر من الصفر)!', 'warning');
+      }
+
+      const cust = this.customersById.get(cid);
+      const prevDebt = cust ? Math.max(0, Number(cust.total_debt || 0)) : 0;
+      const addedDebt = Math.max(0, Number((totalVal - paidVal).toFixed(2)));
+      const { items } = this.extractCurrentCartItemsAndTotal();
+
+      const saleItems =
+        items.length > 0 && Math.abs(items.reduce((s, x) => s + x.subtotal, 0) - totalVal) < 1
+          ? items
+          : [
+              {
+                product_id: null,
+                batch_id: null,
+                variant_id: null,
+                quantity: 1,
+                price: totalVal,
+                subtotal: totalVal,
+                custom_product_name: noteText
+              }
+            ];
+
+      document.getElementById('v68ConfirmDebtModal')?.classList.add('hidden');
+
+      try {
+        // حفظ الفاتورة مباشرة عبر window.api.processSale الأصلي لضمان تسجيل paid_amount و customer_id في جدول sales 100%!
+        const res = await window.api.processSale({
+          customer_id: cid,
+          user_id: window.AppState?.currentUser?.id || 1,
+          subtotal: totalVal,
+          discount: 0,
+          tax_percentage: 0,
+          stamp_amount: 0,
+          total: totalVal,
+          paid_amount: paidVal,
+          payment_method: paidVal > 0 ? 'split' : 'credit',
+          split_payments_json: paidVal > 0 ? JSON.stringify({ cash: paidVal, card: 0, credit: addedDebt }) : null,
+          items: saleItems
         });
 
-        const rowsHtml =
+        const docNum = (res && res.docNumber) || ('CRED-' + Date.now().toString().slice(-4));
+
+        if (shouldPrint && window.GherbiPrintStudioV45) {
+          const studio = window.GherbiPrintStudioV45;
+          const docData = studio.enrichDocumentDataWithLoyaltyAndDebt({
+            docNumber: docNum,
+            date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+            customerId: cid,
+            partyTitle: 'الزبون الوفي:',
+            partyName: cust ? `${cust.name} (${this.getFidCode(cust)})` : `زبون #${cid}`,
+            partyPhone: (cust && cust.phone) || '-',
+            partyAddress: (cust && cust.address) || '-',
+            paymentMethod: paidVal > 0 ? `دفع جزئي (${paidVal.toFixed(2)}) + الباقي دين (${addedDebt.toFixed(2)} د.ج)` : 'بيع بالدين (À Terme)',
+            previousBalance: prevDebt,
+            items: saleItems.map((it) => ({
+              barcode: '-',
+              name: it.custom_product_name,
+              unit: 'قطعة',
+              qty: it.quantity,
+              price: it.price,
+              discount: 0,
+              tva: 0,
+              subtotal: it.subtotal
+            })),
+            subtotal: totalVal,
+            discount: 0,
+            tvaAmount: 0,
+            stampAmount: 0,
+            total: totalVal,
+            paidAmount: paidVal,
+            receivedAmount: paidVal,
+            remainingDebt: addedDebt
+          });
+
+          const html = await studio.renderAdoptedMasterDocumentHtml('pos_partial_credit_80mm', docData);
+          await window.__gherbiMasterPrintSilent({ html, silent: false });
+        }
+
+        // تصفير عناصر السلة بعد حفظ الفاتورة
+        const stateCart =
+          window.AppState?.carts?.[window.AppState?.activeCartIndex || 0] ||
+          window.AppState?.cart ||
+          window.App?.cart;
+        if (stateCart && Array.isArray(stateCart.items)) {
+          stateCart.items = [];
+          stateCart.discount = 0;
+        }
+        const recInp = document.getElementById('posReceivedCashInput');
+        if (recInp) recInp.value = '';
+        if (typeof window.App?.renderPosCart === 'function') {
+          window.App.renderPosCart();
+        }
+
+        // تحديث البيانات من SQLite وتحديث رصيد ديون الزبون أمامك فوراً!
+        await this.syncFromSqlite(true);
+        const sel = document.getElementById('posCustomerSelect');
+        if (sel) sel.value = String(cid);
+        window.__gherbiActivePosCustomerId = cid;
+        this.mountAllPosDebtControls();
+
+        this.notify(
+          `✅ تم تسجيل الدين (+${this.fmtDzd(addedDebt)}) على الزبون (${cust ? cust.name : cid}) — إجمالي دينه الآن: ${this.fmtDzd(prevDebt + addedDebt)}!`
+        );
+      } catch (err) {
+        this.notify('❌ خطأ أثناء حفظ الدين: ' + err.message, 'error');
+      }
+    },
+
+    // ========================================================================
+    // 6. نافذة تسديد الديون السريعة (Alt + V) — مربوطة بـ SQLite وبدون أي أخطاء!
+    // ========================================================================
+    async openSettleDebtModal(custIdOverride = null) {
+      await this.syncFromSqlite(true);
+      const activeCust = custIdOverride ? this.customersById.get(Number(custIdOverride)) : this.detectActivePosCustomer();
+
+      const debtors = this.customers
+        .filter((c) => Number(c.total_debt || 0) > 0.009)
+        .sort((a, b) => Number(b.total_debt || 0) - Number(a.total_debt || 0));
+
+      const chosenCust = activeCust || debtors[0] || this.customers[0] || null;
+      const chosenId = chosenCust ? Number(chosenCust.id) : 0;
+      const currentDebt = chosenCust ? Math.max(0, Number(chosenCust.total_debt || 0)) : 0;
+
+      let modal = document.getElementById('v68SettleDebtModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'v68SettleDebtModal';
+        modal.style.zIndex = '29910';
+        modal.className = 'fixed inset-0 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4';
+        document.body.appendChild(modal);
+      }
+
+      const custOpts = [
+        `<option value="0">-- 👤 اختر الزبون (${debtors.length} زبون عليه دين حالياً) --</option>`,
+        ...this.customers.map((c) => {
+          const d = Math.max(0, Number(c.total_debt || 0));
+          return `<option value="${c.id}" ${Number(c.id) === chosenId ? 'selected' : ''}>👑 ${c.name} (${this.getFidCode(c)}) — 💳 الدين المستحق: ${d.toFixed(2)} د.ج</option>`;
+        })
+      ].join('');
+
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-slate-900 border-2 border-emerald-500 rounded-3xl max-w-lg w-full p-5 shadow-2xl space-y-4 text-right" dir="rtl">
+          <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
+            <div class="flex items-center gap-2">
+              <span class="px-2.5 py-1 rounded-xl bg-emerald-600 text-white font-mono font-black text-xs">Alt + V</span>
+              <div>
+                <h3 class="text-base font-black text-slate-900 dark:text-white">💵 تسديد ديون الزبون الوفي وطباعة وصل القبض</h3>
+                <p class="text-[11px] text-slate-500">يخصم المبلغ فوراً من ديون الزبون ويغذي الصندوق ويطبع وصل التسديد</p>
+              </div>
+            </div>
+            <button type="button" onclick="document.getElementById('v68SettleDebtModal').classList.add('hidden')" class="px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-rose-600 font-black cursor-pointer">✕</button>
+          </div>
+
+          <div class="space-y-2 text-xs">
+            <label class="block font-black text-slate-700 dark:text-slate-200">👑 الزبون المعني بالتسديد *:</label>
+            <select id="v68SettleCustSelect" onchange="window.GherbiDebtV68.onSettleCustChange(this.value)" class="w-full px-3 py-2.5 rounded-xl bg-emerald-50 dark:bg-slate-800 border-2 border-emerald-500 font-black text-xs cursor-pointer">
+              ${custOpts}
+            </select>
+          </div>
+
+          <div id="v68SettleStatusBanner" class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border text-xs"></div>
+
+          <div class="space-y-2 text-xs">
+            <div class="flex items-center justify-between">
+              <label class="font-black text-slate-700 dark:text-slate-200">💵 المبلغ المستلم لتسديد الدين (د.ج) *:</label>
+              <div class="flex gap-1 font-mono">
+                <button type="button" onclick="window.GherbiDebtV68.fillSettleAmt('ALL')" class="px-2 py-0.5 rounded bg-blue-600 text-white font-black text-[10px] cursor-pointer">كل الدين</button>
+                <button type="button" onclick="window.GherbiDebtV68.fillSettleAmt('HALF')" class="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 font-black text-[10px] cursor-pointer">النصف</button>
+                <button type="button" onclick="window.GherbiDebtV68.fillSettleAmt(500)" class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-black text-[10px] cursor-pointer">500</button>
+                <button type="button" onclick="window.GherbiDebtV68.fillSettleAmt(1000)" class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-black text-[10px] cursor-pointer">1000</button>
+                <button type="button" onclick="window.GherbiDebtV68.fillSettleAmt(2000)" class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-black text-[10px] cursor-pointer">2000</button>
+              </div>
+            </div>
+            <input id="v68SettleAmountInp" type="number" step="any" min="1" value="${currentDebt > 0 ? currentDebt : ''}" oninput="window.GherbiDebtV68.recalcSettleBanner()" placeholder="أدخل المبلغ المقبوض..." class="w-full px-3 py-2.5 rounded-xl border-2 border-emerald-500 bg-white dark:bg-slate-900 font-mono font-black text-xl text-center text-emerald-600">
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+            <button type="button" onclick="window.GherbiDebtV68.executeSettleDebtNow(true)" class="md:col-span-2 py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-lg cursor-pointer">
+              ✅ تأكيد التسديد + طباعة وصل القبض 80mm (Enter)
+            </button>
+            <button type="button" onclick="window.GherbiDebtV68.executeSettleDebtNow(false)" class="py-3 px-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white font-black text-xs cursor-pointer">
+              💾 حفظ بدون طباعة
+            </button>
+          </div>
+        </div>
+      `;
+
+      modal.classList.remove('hidden');
+      this.recalcSettleBanner();
+
+      modal.onkeydown = (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          this.executeSettleDebtNow(true);
+        } else if (ev.key === 'Escape') {
+          modal.classList.add('hidden');
+        }
+      };
+
+      setTimeout(() => {
+        document.getElementById('v68SettleAmountInp')?.focus();
+        document.getElementById('v68SettleAmountInp')?.select();
+      }, 50);
+    },
+
+    onSettleCustChange(cid) {
+      const cust = this.customersById.get(Number(cid));
+      const inp = document.getElementById('v68SettleAmountInp');
+      if (cust && inp) {
+        const d = Math.max(0, Number(cust.total_debt || 0));
+        inp.value = d > 0 ? String(d) : '';
+      }
+      this.recalcSettleBanner();
+    },
+
+    fillSettleAmt(valOrMode) {
+      const cid = Number(document.getElementById('v68SettleCustSelect')?.value || 0);
+      const cust = this.customersById.get(cid);
+      const debt = cust ? Math.max(0, Number(cust.total_debt || 0)) : 0;
+      const inp = document.getElementById('v68SettleAmountInp');
+      if (!inp) return;
+      if (valOrMode === 'ALL') inp.value = String(debt);
+      else if (valOrMode === 'HALF') inp.value = String(Number((debt / 2).toFixed(2)));
+      else inp.value = String(Number(valOrMode));
+      this.recalcSettleBanner();
+    },
+
+    recalcSettleBanner() {
+      const banner = document.getElementById('v68SettleStatusBanner');
+      if (!banner) return;
+      const cid = Number(document.getElementById('v68SettleCustSelect')?.value || 0);
+      const cust = this.customersById.get(cid);
+      if (!cust) {
+        banner.innerHTML = `<div class="text-center text-slate-400 font-bold">اختر الزبون لعرض دينه الحالي</div>`;
+        return;
+      }
+
+      const prevDebt = Math.max(0, Number(cust.total_debt || 0));
+      const payVal = Math.max(0, parseFloat(document.getElementById('v68SettleAmountInp')?.value || '0') || 0);
+      const remAfter = Math.max(0, Number((prevDebt - payVal).toFixed(2)));
+
+      if (prevDebt <= 0.009) {
+        banner.innerHTML = `
+          <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 space-y-2 text-center">
+            <div class="font-black">ℹ️ هذا الزبون (${cust.name}) خالص حالياً (رصيد ديونه 0.00 د.ج).</div>
+            <button type="button" onclick="document.getElementById('v68SettleDebtModal').classList.add('hidden'); window.GherbiDebtV68.openConfirmDebtModal()" class="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-black text-xs cursor-pointer">
+              📝 اضغط هنا لتسجيل دين جديد على (${cust.name}) أولاً (Alt+D)
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      banner.innerHTML = `
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div class="p-2 rounded-xl bg-white dark:bg-slate-900 border">
+            <div class="text-[10px] text-slate-400 font-bold">الدين قبل الدفع</div>
+            <div class="font-mono font-black text-sm text-rose-600">${this.fmtDzd(prevDebt)}</div>
+          </div>
+          <div class="p-2 rounded-xl bg-white dark:bg-slate-900 border">
+            <div class="text-[10px] text-slate-400 font-bold">المبلغ المسدد الآن</div>
+            <div class="font-mono font-black text-sm text-emerald-600">-${this.fmtDzd(payVal)}</div>
+          </div>
+          <div class="p-2 rounded-xl ${remAfter <= 0.05 ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-slate-950'}">
+            <div class="text-[10px] font-bold">الباقي بعد الدفع</div>
+            <div class="font-mono font-black text-sm">${this.fmtDzd(remAfter)}</div>
+          </div>
+        </div>
+      `;
+    },
+
+    async executeSettleDebtNow(shouldPrint = true) {
+      const cid = Number(document.getElementById('v68SettleCustSelect')?.value || 0);
+      const payAmt = Math.max(0, parseFloat(document.getElementById('v68SettleAmountInp')?.value || '0') || 0);
+      if (!cid || payAmt <= 0.009) {
+        return this.notify('⚠️ يرجى اختيار الزبون وإدخال مبلغ تسديد أكبر من الصفر!', 'warning');
+      }
+
+      const cust = this.customersById.get(cid);
+      const prevDebt = cust ? Math.max(0, Number(cust.total_debt || 0)) : 0;
+
+      if (prevDebt <= 0.009) {
+        return this.notify(`⚠️ الزبون (${cust ? cust.name : cid}) دينه 0.00 د.ج حالياً! سجّل عليه ديناً بـ (Alt+D) أولاً.`, 'warning');
+      }
+
+      const effectivePay = Math.min(prevDebt, payAmt);
+      const remAfter = Math.max(0, Number((prevDebt - effectivePay).toFixed(2)));
+
+      document.getElementById('v68SettleDebtModal')?.classList.add('hidden');
+
+      try {
+        const res = await window.api.addCustomerPayment(cid, effectivePay, new Date().toISOString(), {
+          payment_method: 'cash',
+          notes: 'تسديد دفعة من حساب الكريدي',
+          userId: window.AppState?.currentUser?.id || 1
+        });
+
+        const recNum = (res && res.receiptNumber) || ('REC-' + Date.now().toString().slice(-4));
+
+        if (shouldPrint && window.GherbiPrintStudioV45) {
+          const studio = window.GherbiPrintStudioV45;
+          const docData = studio.enrichDocumentDataWithLoyaltyAndDebt({
+            docNumber: recNum,
+            date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+            customerId: cid,
+            partyTitle: 'استلمنا من الزبون الوفي:',
+            partyName: cust ? `${cust.name} (${this.getFidCode(cust)})` : `زبون #${cid}`,
+            partyPhone: (cust && cust.phone) || '-',
+            partyAddress: (cust && cust.address) || '-',
+            paymentMethod: 'نقداً (Espèces)',
+            previousBalance: prevDebt,
+            items: [
+              {
+                barcode: recNum,
+                name: `تسديد دفعة على حساب الكريدي (الدين السابق: ${prevDebt.toFixed(2)} | المدفوع: ${effectivePay.toFixed(2)} | المتبقي: ${remAfter.toFixed(2)} د.ج)`,
+                unit: 'دفعة',
+                qty: 1,
+                price: effectivePay,
+                discount: 0,
+                tva: 0,
+                subtotal: effectivePay
+              }
+            ],
+            subtotal: effectivePay,
+            discount: 0,
+            tvaAmount: 0,
+            stampAmount: 0,
+            total: effectivePay,
+            paidAmount: effectivePay,
+            receivedAmount: effectivePay,
+            remainingDebt: remAfter
+          });
+
+          const html = await studio.renderAdoptedMasterDocumentHtml('payment_receipt', docData);
+          await window.__gherbiMasterPrintSilent({ html, silent: false });
+        }
+
+        await this.syncFromSqlite(true);
+        this.mountAllPosDebtControls();
+        if (!document.getElementById('v68HistoryMasterModal')?.classList.contains('hidden')) {
+          this.renderHistoryModalContent();
+        }
+
+        this.notify(`✅ تم تسديد (${this.fmtDzd(effectivePay)}) بنجاح — الباقي على الزبون: ${this.fmtDzd(remAfter)}!`);
+      } catch (err) {
+        this.notify('❌ تعذر تسجيل التسديد: ' + err.message, 'error');
+      }
+    },
+
+    // ========================================================================
+    // 7. نافذة "هيستوريك الديون الشامل والمنظم" (Alt + H)
+    // ========================================================================
+    async openDebtHistoryModal(custIdFilter = null) {
+      await this.syncFromSqlite(true);
+      if (custIdFilter) {
+        this.historyCustId = String(custIdFilter);
+        this.historyTab = 'invoices';
+      } else {
+        this.historyCustId = 'ALL';
+      }
+
+      let modal = document.getElementById('v68HistoryMasterModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'v68HistoryMasterModal';
+        modal.style.zIndex = '29890';
+        modal.className = 'fixed inset-0 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-3 md:p-5';
+        document.body.appendChild(modal);
+      }
+
+      modal.classList.remove('hidden');
+      this.renderHistoryModalContent();
+    },
+
+    renderHistoryModalContent() {
+      const modal = document.getElementById('v68HistoryMasterModal');
+      if (!modal) return;
+
+      const selCid = this.historyCustId === 'ALL' ? 0 : Number(this.historyCustId || 0);
+      const q = (this.historySearch || '').trim().toLowerCase();
+
+      const debtors = this.customers
+        .filter((c) => Number(c.total_debt || 0) > 0.009)
+        .sort((a, b) => Number(b.total_debt || 0) - Number(a.total_debt || 0));
+
+      const totalDebtAll = debtors.reduce((s, c) => s + Math.max(0, Number(c.total_debt || 0)), 0);
+
+      const creditSales = (this.sales || []).filter((s) => {
+        const rem = Number(s.total || 0) - Number(s.paid_amount ?? s.total ?? 0);
+        if (rem <= 0.009 && s.payment_method !== 'credit' && s.payment_method !== 'split') return false;
+        if (selCid > 0 && Number(s.customer_id) !== selCid) return false;
+        if (q && !`${s.doc_number || ''} ${s.customer_name || ''} ${s.total || ''}`.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      const payments = (this.caisseTxs || []).filter((tx) => {
+        if (tx.type !== 'debt_payment') return false;
+        if (q && !`${tx.description || ''} ${tx.amount || ''}`.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      let bodyHtml = '';
+
+      if (this.historyTab === 'debtors') {
+        const list = (selCid > 0 ? this.customers.filter((c) => Number(c.id) === selCid) : debtors).filter(
+          (c) => !q || `${c.name || ''} ${c.phone || ''} ${this.getFidCode(c)}`.toLowerCase().includes(q)
+        );
+
+        const rows =
           list.length > 0
             ? list
-                .slice(0, 80)
-                .map((s) => {
-                  const isOpen = s.status === 'open';
-                  const openBal = Number(s.opening_balance || 0);
-                  const expBal = Number(s.expected_balance ?? openBal);
-                  const closeBal = s.closing_balance !== null && s.closing_balance !== undefined ? Number(s.closing_balance) : expBal;
-                  const diff = Number(s.difference ?? (closeBal - expBal));
-
+                .map((c) => {
+                  const debt = Math.max(0, Number(c.total_debt || 0));
+                  const pts = Math.floor(Number(c.loyalty_points || 0));
                   return `
-                    <tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-blue-50/30 dark:hover:bg-slate-800/50 transition text-xs">
-                      <td class="py-3 px-3 font-mono font-black text-blue-600">#${s.id}</td>
-                      <td class="py-3 px-3 font-black text-slate-900 dark:text-white">👤 ${s.user_name || 'المدير العام'}</td>
-                      <td class="py-3 px-3 font-mono text-slate-500" dir="ltr">${String(s.opened_at || '').replace('T', ' ').slice(0, 16)}</td>
-                      <td class="py-3 px-3 font-mono text-slate-500" dir="ltr">${s.closed_at ? String(s.closed_at).replace('T', ' ').slice(0, 16) : '—'}</td>
-                      <td class="py-3 px-3 font-mono font-bold">${this.fmtDzd(openBal)}</td>
-                      <td class="py-3 px-3 font-mono font-black text-blue-600">${this.fmtDzd(expBal)}</td>
-                      <td class="py-3 px-3 font-mono font-black text-emerald-600">${isOpen ? '—' : this.fmtDzd(closeBal)}</td>
-                      <td class="py-3 px-3 font-mono font-black ${Math.abs(diff) < 0.05 ? 'text-emerald-600' : 'text-rose-600'}">
-                        ${isOpen ? '<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10.5px]">🟢 مفتوحة</span>' : `${diff.toFixed(2)} د.ج`}
-                      </td>
-                      <td class="py-3 px-3">
+                    <tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-rose-50/30 text-xs">
+                      <td class="py-3 px-3 font-black text-slate-900 dark:text-white">👑 ${c.name} <span class="font-mono text-[10.5px] text-blue-600">(${this.getFidCode(c)})</span></td>
+                      <td class="py-3 px-3 font-mono text-slate-500">${c.phone || '-'}</td>
+                      <td class="py-3 px-3"><span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-black text-[11px]">⭐ ${pts} نقطة</span></td>
+                      <td class="py-3 px-3 font-mono font-bold">${this.fmtDzd(c.total_sales)}</td>
+                      <td class="py-3 px-3 font-mono font-bold text-emerald-600">${this.fmtDzd(c.total_paid)}</td>
+                      <td class="py-3 px-3 font-mono font-black text-sm text-rose-600">${this.fmtDzd(debt)} <div class="text-[10px] text-amber-700">${this.fmtCentimes(debt)}</div></td>
+                      <td class="py-3 px-3 text-center">
                         <div class="flex items-center justify-center gap-1 flex-wrap">
-                          <button type="button" onclick="window.GherbiCaisseTurbo.openDualModeReviewCaisseModal(${s.id})" class="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-[11px] shadow-sm cursor-pointer">
-                            📋 مراجعة ومعاينة التذكرة
-                          </button>
-                          <button type="button" onclick="window.GherbiCaisseTurbo.quickPrintShiftReport(${s.id}, 'studio', '80mm')" class="px-2.5 py-1.5 rounded-xl bg-indigo-100 hover:bg-indigo-600 text-indigo-900 hover:text-white font-black text-[11px] cursor-pointer" title="طباعة بقالب مركز الطباعة المخصص">
-                            🎨 طباعة القالب
-                          </button>
-                          <button type="button" onclick="window.GherbiCaisseTurbo.quickPrintShiftReport(${s.id}, 'classic', '80mm')" class="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-700 text-amber-400 font-black text-[11px] cursor-pointer" title="طباعة Z-Report الكلاسيكي السريع">
-                            ⚡ Z-Report كلاسيكي
-                          </button>
-                          <button type="button" onclick="window.GherbiCaisseTurbo.quickPrintShiftReport(${s.id}, 'studio', 'a4')" class="px-2 py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-600 text-emerald-900 hover:text-white font-mono font-black text-[11px] cursor-pointer">
-                            A4
-                          </button>
+                          <button type="button" onclick="window.GherbiDebtV68.openSettleDebtModal(${c.id})" class="px-2.5 py-1 rounded-xl bg-emerald-600 text-white font-black text-[11px] cursor-pointer">💵 تسديد (Alt+V)</button>
+                          <button type="button" onclick="window.GherbiDebtV68.openDebtHistoryModal(${c.id})" class="px-2.5 py-1 rounded-xl bg-indigo-600 text-white font-black text-[11px] cursor-pointer">🛒 فواتيره والسلع</button>
+                          <button type="button" onclick="window.GherbiDebtV68.printCustomerStatementNow(${c.id}, '80mm')" class="px-2.5 py-1 rounded-xl bg-slate-900 text-amber-400 font-black text-[11px] cursor-pointer">🧾 كرني 80mm</button>
+                          <button type="button" onclick="window.GherbiDebtV68.printCustomerStatementNow(${c.id}, 'a4')" class="px-2 py-1 rounded-xl bg-blue-100 text-blue-900 font-black text-[11px] cursor-pointer">📄 A4</button>
                         </div>
                       </td>
                     </tr>
                   `;
                 })
                 .join('')
-            : `<tr><td colspan="9" class="py-12 text-center text-slate-400 font-bold">لا توجد مناوبات مطابقة للبحث.</td></tr>`;
+            : `<tr><td colspan="7" class="py-10 text-center text-slate-400 font-bold">لا يوجد زبائن مدينون حالياً — اضغط (Alt+D) لتأكيد أول عملية دين!</td></tr>`;
 
-        container.innerHTML = `
-          <div class="overflow-x-auto max-h-[60vh]">
+        bodyHtml = `
+          <div class="overflow-x-auto max-h-[55vh] rounded-2xl border border-slate-200 dark:border-slate-700">
             <table class="w-full text-right border-collapse">
-              <thead class="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-xs font-black border-b border-slate-200 dark:border-slate-700">
+              <thead class="sticky top-0 bg-slate-100 dark:bg-slate-800 text-xs font-black border-b">
                 <tr>
-                  <th class="py-3 px-3">رقم المناوبة</th>
-                  <th class="py-3 px-3">أمين الصندوق</th>
-                  <th class="py-3 px-3">وقت الافتتاح</th>
-                  <th class="py-3 px-3">وقت الإغلاق</th>
-                  <th class="py-3 px-3">الافتتاحي</th>
-                  <th class="py-3 px-3">المتوقع</th>
-                  <th class="py-3 px-3">الفعلي المعدود</th>
-                  <th class="py-3 px-3">الفارق / الحالة</th>
-                  <th class="py-3 px-3 text-center">إجراءات المعاينة والطباعة الفورية</th>
+                  <th class="py-3 px-3">الزبون الوفي</th>
+                  <th class="py-3 px-3">الهاتف</th>
+                  <th class="py-3 px-3">نقاط الوفاء</th>
+                  <th class="py-3 px-3">إجمالي المشتريات</th>
+                  <th class="py-3 px-3">المسدد</th>
+                  <th class="py-3 px-3">صافي الدين المتبقي</th>
+                  <th class="py-3 px-3 text-center">إجراءات التسديد والفواتير والطباعة</th>
                 </tr>
               </thead>
-              <tbody>${rowsHtml}</tbody>
+              <tbody>${rows}</tbody>
             </table>
           </div>
         `;
-      } else {
-        const list = (this.txLogCache || []).filter((tx) => {
-          if (!q) return true;
-          return `${tx.id} ${tx.description || ''} ${tx.category || ''} ${tx.amount || ''} ${tx.user_name || ''}`.toLowerCase().includes(q);
-        });
-
-        const rowsHtml =
-          list.length > 0
-            ? list
-                .slice(0, 100)
-                .map((tx) => {
-                  const isOut = tx.type === 'cash_out' || tx.type === 'expense';
-                  const typeBadge =
-                    tx.type === 'debt_payment'
-                      ? '<span class="px-2.5 py-1 rounded-lg bg-blue-100 text-blue-800 font-black text-[11px]">🤝 تسديد دين زبون</span>'
-                      : tx.type === 'sale'
-                      ? '<span class="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 font-black text-[11px]">🛒 مبيعات نقدية</span>'
-                      : tx.type === 'cash_in'
-                      ? '<span class="px-2.5 py-1 rounded-lg bg-sky-100 text-sky-800 font-black text-[11px]">➕ إيداع نقدي</span>'
-                      : '<span class="px-2.5 py-1 rounded-lg bg-rose-100 text-rose-700 font-black text-[11px]">➖ سحب / مصروف</span>';
-
+      } else if (this.historyTab === 'invoices') {
+        const rows =
+          creditSales.length > 0
+            ? creditSales
+                .slice(0, 80)
+                .map((s) => {
+                  const tot = Number(s.total || 0);
+                  const paid = Number(s.paid_amount ?? 0);
+                  const rem = Math.max(0, Number((tot - paid).toFixed(2)));
                   return `
-                    <tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-blue-50/30 dark:hover:bg-slate-800/50 transition text-xs">
-                      <td class="py-2.5 px-3 font-mono font-bold text-slate-400">#${tx.id}</td>
-                      <td class="py-2.5 px-3 font-mono font-bold text-blue-600">مناوبة #${tx.session_id || '-'}</td>
-                      <td class="py-2.5 px-3">${typeBadge}</td>
-                      <td class="py-2.5 px-3 font-black text-slate-900 dark:text-white">${tx.description || tx.category || '-'}</td>
-                      <td class="py-2.5 px-3 font-mono font-black text-sm ${isOut ? 'text-rose-600' : 'text-emerald-600'}" dir="ltr">
-                        ${isOut ? '-' : '+'}${Number(tx.amount || 0).toFixed(2)} د.ج
-                      </td>
-                      <td class="py-2.5 px-3 font-mono text-slate-500" dir="ltr">${String(tx.created_at || '').replace('T', ' ').slice(0, 16)}</td>
+                    <tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-blue-50/30 text-xs">
+                      <td class="py-2.5 px-3 font-mono font-black text-blue-600">${s.doc_number || ('#' + s.id)}</td>
+                      <td class="py-2.5 px-3 font-mono text-slate-500" dir="ltr">${String(s.sale_date || '').replace('T', ' ').slice(0, 16)}</td>
+                      <td class="py-2.5 px-3 font-black">👑 ${s.customer_name || 'زبون'}</td>
+                      <td class="py-2.5 px-3 font-mono font-bold">${this.fmtDzd(tot)}</td>
+                      <td class="py-2.5 px-3 font-mono font-bold text-emerald-600">${this.fmtDzd(paid)}</td>
+                      <td class="py-2.5 px-3 font-mono font-black text-rose-600">${this.fmtDzd(rem)}</td>
                       <td class="py-2.5 px-3 text-center">
-                        <button type="button" onclick="window.GherbiCaisseTurbo.printSingleCaisseTransactionTicket(${tx.id})" class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-blue-600 text-white font-black text-[11px] shadow-sm cursor-pointer">
-                          🧾 طباعة سند الحركة (80mm / A5)
-                        </button>
+                        <div class="flex items-center justify-center gap-1">
+                          <button type="button" onclick="window.GherbiDebtV68.toggleSaleItems(${s.id})" class="px-2.5 py-1 rounded-xl bg-amber-100 text-amber-900 font-black text-[11px] cursor-pointer">📦 السلع المأخوذة</button>
+                          <button type="button" onclick="window.GherbiDebtV68.reprintDebtSale(${s.id}, '80mm')" class="px-2.5 py-1 rounded-xl bg-slate-900 text-white font-black text-[11px] cursor-pointer">🧾 تذكرة 80mm</button>
+                          <button type="button" onclick="window.GherbiDebtV68.reprintDebtSale(${s.id}, 'a4')" class="px-2 py-1 rounded-xl bg-blue-600 text-white font-black text-[11px] cursor-pointer">📄 A4</button>
+                        </div>
                       </td>
+                    </tr>
+                    <tr id="v68SaleItemsRow_${s.id}" class="hidden bg-amber-50/50 dark:bg-slate-800">
+                      <td colspan="7" class="p-3" id="v68SaleItemsHost_${s.id}"></td>
                     </tr>
                   `;
                 })
                 .join('')
-            : `<tr><td colspan="7" class="py-12 text-center text-slate-400 font-bold">لا توجد حركات خزينة مطابقة للبحث.</td></tr>`;
+            : `<tr><td colspan="7" class="py-10 text-center text-slate-400 font-bold">لا توجد فواتير دين مطابقة.</td></tr>`;
 
-        container.innerHTML = `
-          <div class="overflow-x-auto max-h-[60vh]">
+        bodyHtml = `
+          <div class="overflow-x-auto max-h-[55vh] rounded-2xl border border-slate-200 dark:border-slate-700">
             <table class="w-full text-right border-collapse">
-              <thead class="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-xs font-black border-b border-slate-200 dark:border-slate-700">
+              <thead class="sticky top-0 bg-slate-100 dark:bg-slate-800 text-xs font-black border-b">
                 <tr>
-                  <th class="py-3 px-3">#</th>
-                  <th class="py-3 px-3">المناوبة</th>
-                  <th class="py-3 px-3">نوع الحركة</th>
-                  <th class="py-3 px-3">البيان والتفاصيل</th>
-                  <th class="py-3 px-3">المبلغ</th>
-                  <th class="py-3 px-3">التاريخ والتوقيت</th>
-                  <th class="py-3 px-3 text-center">طباعة التذكرة / السند</th>
+                  <th class="py-3 px-3">رقم الفاتورة</th>
+                  <th class="py-3 px-3">التاريخ والساعة</th>
+                  <th class="py-3 px-3">الزبون</th>
+                  <th class="py-3 px-3">الإجمالي</th>
+                  <th class="py-3 px-3">المدفوع</th>
+                  <th class="py-3 px-3">الباقي دين</th>
+                  <th class="py-3 px-3 text-center">السلع وطباعة التذكرة</th>
                 </tr>
               </thead>
-              <tbody>${rowsHtml}</tbody>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        `;
+      } else {
+        const rows =
+          payments.length > 0
+            ? payments
+                .slice(0, 80)
+                .map(
+                  (tx) => `
+                  <tr class="border-b border-slate-100 dark:border-slate-800 text-xs">
+                    <td class="py-2.5 px-3 font-mono font-black text-emerald-600">#REC-${tx.id}</td>
+                    <td class="py-2.5 px-3 font-mono text-slate-500" dir="ltr">${String(tx.created_at || '').replace('T', ' ').slice(0, 16)}</td>
+                    <td class="py-2.5 px-3 font-black">${tx.description || 'تسديد دفعة دين'}</td>
+                    <td class="py-2.5 px-3 font-mono font-black text-emerald-600">+${this.fmtDzd(tx.amount)}</td>
+                    <td class="py-2.5 px-3 text-center">
+                      <button type="button" onclick="window.GherbiCaisseTurbo ? window.GherbiCaisseTurbo.printSingleCaisseTransactionTicket(${tx.id}) : null" class="px-3 py-1 rounded-xl bg-slate-900 text-white font-black text-[11px] cursor-pointer">🧾 طباعة وصل التسديد 80mm</button>
+                    </td>
+                  </tr>`
+                )
+                .join('')
+            : `<tr><td colspan="5" class="py-10 text-center text-slate-400 font-bold">لا توجد وصولات تسديد مسجلة بعد.</td></tr>`;
+
+        bodyHtml = `
+          <div class="overflow-x-auto max-h-[55vh] rounded-2xl border border-slate-200 dark:border-slate-700">
+            <table class="w-full text-right border-collapse">
+              <thead class="sticky top-0 bg-slate-100 dark:bg-slate-800 text-xs font-black border-b">
+                <tr>
+                  <th class="py-3 px-3">رقم الوصل</th>
+                  <th class="py-3 px-3">التاريخ والتوقيت</th>
+                  <th class="py-3 px-3">البيان</th>
+                  <th class="py-3 px-3">المبلغ المسدد</th>
+                  <th class="py-3 px-3 text-center">طباعة التذكرة</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
             </table>
           </div>
         `;
       }
-    },
 
-    setGlobalZReportMode(mode) {
-      this.setPreferredZReportMode(mode);
-      this.renderTurboCaisseView(false);
-      if (window.showToast) {
-        window.showToast(
-          mode === 'studio'
-            ? '🎨 تم اعتماد (قالب مركز الطباعة المخصص) كخيار افتراضي لطباعة تقارير الصندوق!'
-            : '⚡ تم اعتماد (المعاينة الكلاسيكية الخاصة بالصندوق) كخيار افتراضي لطباعة Z-Report!',
-          'success'
-        );
-      }
-    },
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-slate-900 border-2 border-indigo-500 rounded-3xl max-w-6xl w-full p-5 shadow-2xl space-y-4 text-right max-h-[92vh] flex flex-col" dir="rtl">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-700 pb-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="px-2.5 py-1 rounded-xl bg-indigo-600 text-white font-mono font-black text-xs">Alt + H</span>
+                <h3 class="text-lg font-black text-slate-900 dark:text-white">📜 هيستوريك الديون الشامل، تفاصيل السلع، وطباعة التذاكر</h3>
+                <span class="px-3 py-0.5 rounded-full bg-rose-100 text-rose-700 font-black text-xs">${debtors.length} مدين | الإجمالي: ${this.fmtDzd(totalDebtAll)}</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-0.5">🇩🇿 إجمالي الديون بالسنتيم: <strong class="text-amber-600">${this.fmtCentimes(totalDebtAll)}</strong></p>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button type="button" onclick="document.getElementById('v68HistoryMasterModal').classList.add('hidden'); window.GherbiDebtV68.openConfirmDebtModal()" class="px-3 py-2 rounded-xl bg-rose-600 text-white font-black text-xs cursor-pointer">📝 + تأكيد دين جديد (Alt+D)</button>
+              <button type="button" onclick="document.getElementById('v68HistoryMasterModal').classList.add('hidden'); window.GherbiDebtV68.openSettleDebtModal()" class="px-3 py-2 rounded-xl bg-emerald-600 text-white font-black text-xs cursor-pointer">💵 تسديد دين (Alt+V)</button>
+              <button type="button" onclick="document.getElementById('v68HistoryMasterModal').classList.add('hidden')" class="px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 font-black text-xs cursor-pointer">✕ إغلاق</button>
+            </div>
+          </div>
 
-    switchSubView(viewName) {
-      this.activeSubView = viewName || 'shifts';
-      this.renderTurboCaisseView(false);
-    },
+          <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-50 dark:bg-slate-800 p-2.5 rounded-2xl border text-xs">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <button type="button" onclick="window.GherbiDebtV68.historyTab='debtors'; window.GherbiDebtV68.renderHistoryModalContent()" class="px-3.5 py-2 rounded-xl font-black cursor-pointer ${this.historyTab === 'debtors' ? 'bg-rose-600 text-white shadow' : 'bg-white dark:bg-slate-900 border'}">👥 1. الزبائن المدينون (${debtors.length})</button>
+              <button type="button" onclick="window.GherbiDebtV68.historyTab='invoices'; window.GherbiDebtV68.renderHistoryModalContent()" class="px-3.5 py-2 rounded-xl font-black cursor-pointer ${this.historyTab === 'invoices' ? 'bg-indigo-600 text-white shadow' : 'bg-white dark:bg-slate-900 border'}">🛒 2. فواتير الدين والسلع المأخوذة (${creditSales.length})</button>
+              <button type="button" onclick="window.GherbiDebtV68.historyTab='payments'; window.GherbiDebtV68.renderHistoryModalContent()" class="px-3.5 py-2 rounded-xl font-black cursor-pointer ${this.historyTab === 'payments' ? 'bg-emerald-600 text-white shadow' : 'bg-white dark:bg-slate-900 border'}">💵 3. دفعات التسديد والوصولات (${payments.length})</button>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <select onchange="window.GherbiDebtV68.historyCustId=this.value; window.GherbiDebtV68.renderHistoryModalContent()" class="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border font-black">
+                <option value="ALL">🌐 كل الزبائن</option>
+                ${this.customers.map((c) => `<option value="${c.id}" ${String(this.historyCustId) === String(c.id) ? 'selected' : ''}>👑 ${c.name} (${Number(c.total_debt || 0).toFixed(0)} د.ج)</option>`).join('')}
+              </select>
+              <input id="v68HistSearchInp" type="text" value="${this.historySearch}" oninput="window.GherbiDebtV68.historySearch=this.value; window.GherbiDebtV68.renderHistoryModalContent(); document.getElementById('v68HistSearchInp')?.focus();" placeholder="🔎 بحث..." class="w-48 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border font-bold">
+            </div>
+          </div>
 
-    onSearchInput(val) {
-      this.filters.search = String(val || '');
-      this.renderActiveCaisseTableOnly();
-    },
-
-    openTxModal(type = 'cash_in') {
-      const inpType = document.getElementById('caisseTxTypeInput');
-      const titleEl = document.getElementById('caisseTxModalTitle');
-      const descInp = document.getElementById('caisseTxDescInput');
-      if (inpType) inpType.value = type;
-      if (titleEl) {
-        titleEl.innerHTML =
-          type === 'cash_in'
-            ? '➕ إيداع وتغذية نقدية في الصندوق (Bon d’Entrée)'
-            : '➖ سحب نقدي من الصندوق (Bon de Sortie)';
-      }
-      if (descInp) {
-        descInp.value = type === 'cash_in' ? 'تغذية نقدية لصندوق الكاشير' : 'سحب نقدي من الصندوق';
-      }
-      window.App.openModal('caisseTxModal');
-    },
-
-    async jumpToPrintStudioForCaisse(docType = 'caisse_z_report') {
-      const studio = window.GherbiPrintStudioV45;
-      if (!studio) return;
-      await studio.customizeCardInStudioNow(docType);
-    },
-
-    exportCaisseReportExcel() {
-      const rows = [
-        ['رقم المناوبة', 'أمين الصندوق', 'وقت الافتتاح', 'وقت الإغلاق', 'الرصيد الافتتاحي', 'الرصيد المتوقع', 'الفعلي المعدود', 'الفارق', 'الحالة']
-      ];
-      for (const s of this.sessionsCache || []) {
-        rows.push([
-          s.id,
-          s.user_name || 'المدير العام',
-          String(s.opened_at || '').slice(0, 16),
-          String(s.closed_at || '').slice(0, 16),
-          Number(s.opening_balance || 0).toFixed(2),
-          Number(s.expected_balance || 0).toFixed(2),
-          Number(s.closing_balance || 0).toFixed(2),
-          Number(s.difference || 0).toFixed(2),
-          s.status || 'closed'
-        ]);
-      }
-      const csv = '\uFEFF' + rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Gherbi_Caisse_Shifts_${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      if (window.showToast) window.showToast('📊 تم تصدير سجل المناوبات إلى ملف Excel بنجاح!', 'success');
-    },
-
-    async exportCaisseReportPdf() {
-      const studio = window.GherbiPrintStudioV45;
-      const shop = studio ? studio.getShopIdentity() : { name: 'Gherbi.Ai POS', address: 'الجزائر' };
-      const rowsHtml = (this.sessionsCache || [])
-        .slice(0, 150)
-        .map(
-          (s) => `
-          <tr>
-            <td style="text-align:center;font-family:monospace;font-weight:900;">#${s.id}</td>
-            <td><strong>${s.user_name || 'المدير العام'}</strong></td>
-            <td style="font-family:monospace;" dir="ltr">${String(s.opened_at || '').replace('T', ' ').slice(0, 16)}</td>
-            <td style="font-family:monospace;" dir="ltr">${s.closed_at ? String(s.closed_at).replace('T', ' ').slice(0, 16) : 'مفتوحة'}</td>
-            <td style="font-family:monospace;">${Number(s.opening_balance || 0).toFixed(2)} د.ج</td>
-            <td style="font-family:monospace;font-weight:900;color:#1d4ed8;">${Number(s.expected_balance || 0).toFixed(2)} د.ج</td>
-            <td style="font-family:monospace;font-weight:900;color:#047857;">${Number(s.closing_balance || 0).toFixed(2)} د.ج</td>
-            <td style="font-family:monospace;font-weight:900;color:${Math.abs(Number(s.difference || 0)) < 0.05 ? '#047857' : '#be123c'};">${Number(s.difference || 0).toFixed(2)} د.ج</td>
-          </tr>`
-        )
-        .join('');
-
-      const html = `<!DOCTYPE html><html lang="ar" dir="rtl" data-v52-studio-master="1"><head><meta charset="UTF-8"><style>
-        @page { size: A4 portrait; margin: 10mm; }
-        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        body { font-family: 'Cairo', Tahoma, sans-serif; color: #0f172a; margin: 0; font-size: 11px; }
-        .hdr { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px; }
-        table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
-        th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; }
-        th { background: #0f172a; color: #ffffff; font-weight: 900; }
-      </style></head><body>
-        <div class="hdr">
-          <div><h2 style="margin:0;">🏦 التقرير الرسمي لسجل مناوبات وجرد الصندوق (A4 / PDF)</h2><div>${shop.name} — ${shop.address}</div></div>
-          <div style="text-align:left;font-weight:800;">تاريخ الاستخراج: ${new Date().toLocaleString('fr-DZ')}</div>
+          <div class="flex-1 overflow-hidden">${bodyHtml}</div>
         </div>
-        <table>
-          <thead><tr><th>#</th><th>أمين الصندوق</th><th>الافتتاح</th><th>الإغلاق</th><th>الافتتاحي</th><th>المتوقع</th><th>الفعلي</th><th>الفارق</th></tr></thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
-      </body></html>`;
+      `;
+    },
 
+    async toggleSaleItems(saleId) {
+      const row = document.getElementById('v68SaleItemsRow_' + saleId);
+      const host = document.getElementById('v68SaleItemsHost_' + saleId);
+      if (!row || !host) return;
+      if (!row.classList.contains('hidden')) {
+        row.classList.add('hidden');
+        return;
+      }
+      row.classList.remove('hidden');
+      host.innerHTML = `<div class="text-xs font-bold text-slate-400">⏳ جاري تحميل السلع...</div>`;
+      const det = window.api?.getSaleDetails ? await window.api.getSaleDetails(Number(saleId)) : null;
+      const items = (det && det.items) || [];
+      host.innerHTML =
+        items.length > 0
+          ? `<div class="grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs">${items
+              .map(
+                (it, i) =>
+                  `<div class="p-2 rounded-xl bg-white dark:bg-slate-900 border flex justify-between font-bold"><span>${i + 1}. ${it.product_name || it.custom_product_name || 'صنف'} × ${it.quantity}</span><span class="font-mono font-black text-blue-600">${Number(it.subtotal || 0).toFixed(2)} د.ج</span></div>`
+              )
+              .join('')}</div>`
+          : `<div class="text-xs text-slate-400">لا توجد تفاصيل أصناف مسجلة.</div>`;
+    },
+
+    async reprintDebtSale(saleId, paperSize = '80mm') {
+      const det = window.api?.getSaleDetails ? await window.api.getSaleDetails(Number(saleId)) : null;
+      const studio = window.GherbiPrintStudioV45;
+      if (!det || !studio) return;
+      const docType = paperSize === 'a4' ? 'invoice_a4' : 'pos_partial_credit_80mm';
+      const html = await studio.generateAdoptedHtmlForDocument(docType, saleId, det);
       await window.__gherbiMasterPrintSilent({ html, silent: false });
+    },
+
+    // ========================================================================
+    // 8. نافذة (F8 البطاقة / الزبون الوفي) المطورة التي تعرض النقاط والديون معاً!
+    // ========================================================================
+    async openF8LoyaltyAndDebtModal() {
+      await this.syncFromSqlite(true);
+      const activeCust = this.detectActivePosCustomer();
+
+      let modal = document.getElementById('v68F8MasterModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'v68F8MasterModal';
+        modal.style.zIndex = '29920';
+        modal.className = 'fixed inset-0 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4';
+        document.body.appendChild(modal);
+      }
+
+      const renderCards = (qRaw = '') => {
+        const q = String(qRaw || '').trim().toLowerCase();
+        const filtered = this.customers.filter(
+          (c) => !q || `${c.name || ''} ${c.phone || ''} ${this.getFidCode(c)}`.toLowerCase().includes(q)
+        );
+        return filtered.length > 0
+          ? filtered
+              .slice(0, 50)
+              .map((c) => {
+                const pts = Math.floor(Number(c.loyalty_points || 0));
+                const debt = Math.max(0, Number(c.total_debt || 0));
+                const isSel = activeCust && Number(activeCust.id) === Number(c.id);
+                return `
+                  <div class="p-3 rounded-2xl border-2 transition flex flex-wrap items-center justify-between gap-2 text-xs ${
+                    isSel ? 'bg-amber-50 dark:bg-slate-800 border-amber-500 shadow' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-500'
+                  }">
+                    <div class="cursor-pointer flex-1" onclick="window.GherbiDebtV68.chooseCustomerInF8(${c.id})">
+                      <div class="font-black text-sm text-slate-900 dark:text-white">👑 ${c.name} <span class="font-mono text-xs text-blue-600">(${this.getFidCode(c)})</span></div>
+                      <div class="text-[11px] text-slate-500 mt-0.5">📞 الهاتف: <span class="font-mono">${c.phone || '-'}</span> | إجمالي المشتريات: <span class="font-mono font-bold">${this.fmtDzd(c.total_sales)}</span></div>
+                    </div>
+
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <div class="px-3 py-1.5 rounded-xl bg-amber-100 border border-amber-400 text-amber-950 text-center">
+                        <div class="text-[10px] font-bold">⭐ نقاط الوفاء</div>
+                        <div class="font-mono font-black">${pts} نقطة (${pts * 2} د.ج)</div>
+                      </div>
+                      <div class="px-3 py-1.5 rounded-xl border text-center ${
+                        debt > 0.05 ? 'bg-rose-100 border-rose-400 text-rose-900' : 'bg-emerald-100 border-emerald-400 text-emerald-900'
+                      }">
+                        <div class="text-[10px] font-bold">💳 الديون على الزبون</div>
+                        <div class="font-mono font-black">${debt > 0.05 ? this.fmtDzd(debt) : '0.00 د.ج (خالص ✔)'}</div>
+                      </div>
+                      <div class="flex flex-col gap-1">
+                        <button type="button" onclick="window.GherbiDebtV68.chooseCustomerInF8(${c.id})" class="px-3 py-1 rounded-xl bg-blue-600 text-white font-black text-[11px] cursor-pointer">✅ اختيار الزبون</button>
+                        <div class="flex gap-1">
+                          <button type="button" onclick="document.getElementById('v68F8MasterModal').classList.add('hidden'); window.GherbiDebtV68.chooseCustomerInF8(${c.id}); window.GherbiDebtV68.openConfirmDebtModal()" class="px-2 py-0.5 rounded bg-rose-600 text-white font-black text-[10px] cursor-pointer">+ دين</button>
+                          <button type="button" onclick="document.getElementById('v68F8MasterModal').classList.add('hidden'); window.GherbiDebtV68.openSettleDebtModal(${c.id})" class="px-2 py-0.5 rounded bg-emerald-600 text-white font-black text-[10px] cursor-pointer">💵 تسديد</button>
+                          <button type="button" onclick="document.getElementById('v68F8MasterModal').classList.add('hidden'); window.GherbiDebtV68.openDebtHistoryModal(${c.id})" class="px-2 py-0.5 rounded bg-indigo-600 text-white font-black text-[10px] cursor-pointer">📜 ديونه</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                `;
+              })
+              .join('')
+          : `<div class="py-8 text-center text-slate-400 font-bold text-xs">لا يوجد زبون مطابق.</div>`;
+      };
+
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-slate-900 border-2 border-amber-500 rounded-3xl max-w-4xl w-full p-5 shadow-2xl space-y-4 text-right max-h-[90vh] flex flex-col" dir="rtl">
+          <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
+            <div class="flex items-center gap-2">
+              <span class="px-2.5 py-1 rounded-xl bg-amber-500 text-slate-950 font-mono font-black text-xs">F8</span>
+              <div>
+                <h3 class="text-base font-black text-slate-900 dark:text-white">👑 نافذة الزبون الوفي، رصيد النقاط، ووضعية الديون</h3>
+                <p class="text-[11px] text-slate-500">تعرض رصيد نقاط الوفاء وكم يملك كل زبون وفي من ديون بالدينار والسنتيم</p>
+              </div>
+            </div>
+            <button type="button" onclick="document.getElementById('v68F8MasterModal').classList.add('hidden')" class="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 font-black text-xs cursor-pointer">✕ إغلاق</button>
+          </div>
+
+          <input id="v68F8SearchInput" type="text" placeholder="🔎 امسح باركود البطاقة (FID-00003) أو ابحث باسم الزبون..." class="w-full px-4 py-2.5 rounded-2xl bg-amber-50/60 dark:bg-slate-800 border-2 border-amber-400 font-bold text-xs outline-none">
+
+          <div id="v68F8CardsHost" class="space-y-2 overflow-y-auto flex-1 pr-1 max-h-[60vh]">
+            ${renderCards('')}
+          </div>
+        </div>
+      `;
+
+      modal.classList.remove('hidden');
+      const inp = document.getElementById('v68F8SearchInput');
+      if (inp) {
+        inp.oninput = (e) => {
+          const h = document.getElementById('v68F8CardsHost');
+          if (h) h.innerHTML = renderCards(e.target.value);
+        };
+        setTimeout(() => inp.focus(), 40);
+      }
+    },
+
+    chooseCustomerInF8(cid) {
+      const id = Number(cid);
+      window.__gherbiActivePosCustomerId = id;
+      document.getElementById('v68F8MasterModal')?.classList.add('hidden');
+      const sel = document.getElementById('posCustomerSelect');
+      if (sel) {
+        sel.value = String(id);
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      this.mountAllPosDebtControls();
+      const cust = this.customersById.get(id);
+      if (cust) {
+        this.notify(`👑 تم اختيار الزبون الوفي: ${cust.name} (الديون: ${this.fmtDzd(cust.total_debt)})`);
+      }
     }
   };
 
-  window.GherbiCaisseTurbo = CaisseTurboHub;
+  window.GherbiDebtV68 = DebtEngineV68;
 
-  const waitApp = setInterval(() => {
-    const studio = window.GherbiPrintStudioV45;
-    if (!window.App || !studio) return;
-    clearInterval(waitApp);
+  // ==========================================================================
+  // 9. تفويض نقرات شامل (Global Click Delegation) + اختصارات لوحة المفاتيح (Alt+D / Alt+V / Alt+H / F8)
+  //    يضمن أن الضغط على أي زر من الأزرار الجديدة يعمل في 100% من الحالات!
+  // ==========================================================================
+  if (!window._v68EventsInstalled) {
+    window._v68EventsInstalled = true;
 
-    window.App.loadCaisseView = () => CaisseTurboHub.renderTurboCaisseView(true);
-    window.App.renderCaisseView = () => CaisseTurboHub.renderTurboCaisseView(false);
-    window.App.openReviewCaisseModal = (sid) => CaisseTurboHub.openDualModeReviewCaisseModal(sid);
-    window.App.reviewCaisseSession = (sid) => CaisseTurboHub.openDualModeReviewCaisseModal(sid);
-    window.App.printZReport = (sid) => CaisseTurboHub.quickPrintShiftReport(sid, null, '80mm');
-    window.App.printCaisseSessionReport = (sid) => CaisseTurboHub.quickPrintShiftReport(sid, null, '80mm');
+    document.addEventListener(
+      'click',
+      (e) => {
+        const btn = e.target.closest('[data-v68-action]');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const act = btn.getAttribute('data-v68-action');
+        if (act === 'confirm-debt') DebtEngineV68.openConfirmDebtModal();
+        else if (act === 'settle-debt') DebtEngineV68.openSettleDebtModal();
+        else if (act === 'history-debt') DebtEngineV68.openDebtHistoryModal();
+        else if (act === 'open-f8') DebtEngineV68.openF8LoyaltyAndDebtModal();
+      },
+      true
+    );
 
-    if (typeof window.App.confirmCaisseTx === 'function' && !window.App._v63CaisseTxHooked) {
-      const origConfirmTx = window.App.confirmCaisseTx.bind(window.App);
-      window.App._v63CaisseTxHooked = true;
-      window.App.confirmCaisseTx = async function (...args) {
-        const res = await origConfirmTx(...args);
-        CaisseTurboHub.invalidateCache();
-        await CaisseTurboHub.ensureFreshCaisseData(true);
-        if (document.getElementById('view-caisse')?.classList.contains('active')) {
-          await CaisseTurboHub.renderTurboCaisseView(false);
-        }
-        return res;
-      };
-    }
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        const key = String(e.key || '').toLowerCase();
 
-    if (typeof window.App.confirmCloseShift === 'function' && !window.App._v63CloseShiftHooked) {
-      const origCloseShift = window.App.confirmCloseShift.bind(window.App);
-      window.App._v63CloseShiftHooked = true;
-      window.App.confirmCloseShift = async function (...args) {
-        const sid = Number(document.getElementById('closeShiftSessionId')?.value || CaisseTurboHub.activeSessionInfo?.session?.id || 0);
-        const res = await origCloseShift(...args);
-        CaisseTurboHub.invalidateCache();
-        await CaisseTurboHub.ensureFreshCaisseData(true);
-        if (document.getElementById('view-caisse')?.classList.contains('active')) {
-          await CaisseTurboHub.renderTurboCaisseView(false);
-        }
-        if (sid) {
-          await CaisseTurboHub.openDualModeReviewCaisseModal(sid);
-        }
-        return res;
-      };
-    }
-
-    studio._lastLiveFetchTs = 0;
-    const origFetchAllLiveData = studio.fetchAllLiveData?.bind(studio);
-    if (origFetchAllLiveData) {
-      studio.fetchAllLiveData = async function (force = false) {
-        const now = Date.now();
-        if (!force && this._lastLiveFetchTs > 0 && now - this._lastLiveFetchTs < 6000) {
+        if ((e.altKey || e.ctrlKey) && (key === 'd' || e.code === 'KeyD')) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          DebtEngineV68.openConfirmDebtModal();
           return;
         }
-        this._lastLiveFetchTs = now;
-        return await origFetchAllLiveData();
-      };
-    }
+        if (e.altKey && !e.ctrlKey && (key === 'v' || e.code === 'KeyV')) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          DebtEngineV68.openSettleDebtModal();
+          return;
+        }
+        if ((e.altKey && (key === 'h' || e.code === 'KeyH')) || (e.ctrlKey && (key === 'k' || e.code === 'KeyK'))) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          DebtEngineV68.openDebtHistoryModal();
+          return;
+        }
+        if (e.key === 'F8') {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          DebtEngineV68.openF8LoyaltyAndDebtModal();
+          return;
+        }
+      },
+      true
+    );
+  }
 
-    if (document.getElementById('view-caisse')?.classList.contains('active')) {
-      CaisseTurboHub.renderTurboCaisseView(true);
-    }
+  // التشغيل الدوري الخفيف لضمان بقاء الأزرار وشارة الديون حية دائماً في شاشة الكاشير
+  const bootTimer = setInterval(() => {
+    if (!window.App) return;
+    clearInterval(bootTimer);
 
-    console.log('⚡ [Gherbi V63 Caisse & Print Studio Dual Bridge]: صفحتا إدارة الصندوق ومركز الطباعة متصلتان وتعملان بسرعة البرق مع المعاينة المزدوجة لـ Z-Report!');
+    DebtEngineV68.syncFromSqlite(true).then(() => {
+      DebtEngineV68.mountAllPosDebtControls();
+    });
+
+    setInterval(() => {
+      if (document.getElementById('view-pos')?.classList.contains('active')) {
+        DebtEngineV68.mountAllPosDebtControls();
+      }
+    }, 900);
+
+    console.log('🏆 [Gherbi V68 Direct DOM & SQLite Debt Engine]: جميع أزرار الديون (Alt+D / Alt+V / Alt+H / F8) وعداد ديون الزبون الوفي تعمل بالربط المباشر 100%!');
+  }, 150);
+})();
+
+/* ==================== [V69 STAGE 1: KARNET 80MM & A4 DIRECT PRINT & PREVIEW ENGINE] ==================== */
+(function initV69Stage1KarnetAndA4PrintEngine() {
+  const waitEngine = setInterval(() => {
+    const debtEng = window.GherbiDebtV68;
+    const studio = window.GherbiPrintStudioV45;
+    if (!debtEng || !studio || !window.App) return;
+    clearInterval(waitEngine);
+
+    // ========================================================================
+    // الدالة الحاسمة لطباعة ومعاينة (🧾 كرني 80mm) و (📄 كشف حساب A4) لأي زبون مدين
+    // تعمل فوراً من نافذة هيستوريك الديون (Alt+H) ومن شريط الزبون ومن (F8)
+    // ========================================================================
+    debtEng.printCustomerStatementNow = async function (customerId, format = '80mm', directPrint = false) {
+      const cid = Number(customerId || 0);
+      if (!cid) {
+        return this.notify('⚠️ يرجى تحديد الزبون أولاً لطباعة كشف الديون.', 'warning');
+      }
+
+      await this.syncFromSqlite(true);
+      const cust = this.customersById.get(cid);
+      if (!cust) {
+        return this.notify('❌ لم يتم العثور على بيانات الزبون.', 'error');
+      }
+
+      // جلب جميع فواتير الزبون وتفاصيل السلع بداخلها لبناء كشف حساب وكرني حقيقي 100%
+      const custSales = window.api?.getCustomerSales
+        ? await window.api.getCustomerSales(cid)
+        : (this.sales || []).filter((s) => Number(s.customer_id) === cid);
+
+      const totalSalesVal = Number(cust.total_sales || 0);
+      const totalPaidVal = Number(cust.total_paid || 0);
+      const netDebtVal = Math.max(0, Number(cust.total_debt || 0));
+      const initDebtVal = Math.max(0, Number(cust.initial_debt || 0) - Number(cust.initial_debt_paid || 0));
+      const pts = Math.floor(Number(cust.loyalty_points || 0));
+      const fid = this.getFidCode(cust);
+
+      // بناء بنود الكرني / الكشف من فواتير الزبون الفعلية
+      const statementItems = [];
+      if (initDebtVal > 0.009) {
+        statementItems.push({
+          barcode: 'INIT-DEBT',
+          name: 'رصيد دين أولي سابق مسجل على الحساب',
+          unit: 'رصيد',
+          qty: 1,
+          quantity: 1,
+          price: initDebtVal,
+          discount: 0,
+          tva: 0,
+          subtotal: initDebtVal
+        });
+      }
+
+      const relevantSales = Array.isArray(custSales) ? custSales.slice(0, 35) : [];
+      for (const s of relevantSales) {
+        const tot = Number(s.total || 0);
+        const paid = Number(s.paid_amount ?? tot);
+        const rem = Math.max(0, Number((tot - paid).toFixed(2)));
+        const dtStr = String(s.sale_date || s.created_at || '').replace('T', ' ').slice(0, 16);
+
+        // جلب أسماء السلع داخل فواتير الدين لعرضها في الكشف
+        let itemsSummaryTxt = '';
+        if (rem > 0.009 && window.api?.getSaleDetails) {
+          try {
+            const det = await window.api.getSaleDetails(Number(s.id));
+            if (det && Array.isArray(det.items) && det.items.length > 0) {
+              itemsSummaryTxt =
+                ' — السلع: [' +
+                det.items
+                  .map((it) => `${it.product_name || it.custom_product_name || 'صنف'}×${it.quantity}`)
+                  .join(' + ') +
+                ']';
+            }
+          } catch (_) {}
+        }
+
+        statementItems.push({
+          barcode: s.doc_number || ('#' + s.id),
+          name: `فاتورة (${dtStr}) — الإجمالي: ${tot.toFixed(2)} | المدفوع: ${paid.toFixed(2)} | الباقي دين: ${rem.toFixed(2)} د.ج${itemsSummaryTxt}`,
+          unit: rem > 0.009 ? 'دين قائم' : 'مسددة ✔',
+          qty: 1,
+          quantity: 1,
+          price: tot,
+          discount: 0,
+          tva: 0,
+          subtotal: rem > 0.009 ? rem : tot
+        });
+      }
+
+      if (statementItems.length === 0) {
+        statementItems.push({
+          barcode: fid,
+          name: `وضعية حساب الزبون الوفي (${cust.name}) — صافي الدين الحالي: ${netDebtVal.toFixed(2)} د.ج`,
+          unit: 'حساب',
+          qty: 1,
+          quantity: 1,
+          price: netDebtVal,
+          discount: 0,
+          tva: 0,
+          subtotal: netDebtVal
+        });
+      }
+
+      const targetDocType = format === 'a4' ? 'customer_ledger_a4' : 'customer_carnet_80mm';
+      const targetPaper = format === 'a4' ? 'a4' : '80mm';
+
+      const docData = studio.enrichDocumentDataWithLoyaltyAndDebt({
+        docNumber: `CARNET-${fid}-${new Date().toISOString().slice(0, 10)}`,
+        date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        customerId: cid,
+        isWalkinCustomer: false,
+        partyTitle: 'الزبون الوفي صاحب الكرني:',
+        partyName: `👑 ${cust.name} (${fid})`,
+        partyPhone: cust.phone || '-',
+        partyAddress: `${cust.address || 'الجزائر'} | ⭐ نقاط الوفاء: ${pts} نقطة (${pts * 2} د.ج)`,
+        partyRc: cust.rc || '-',
+        partyNif: cust.nif || '-',
+        paymentMethod: `إجمالي المشتريات: ${this.fmtDzd(totalSalesVal)} | المسدد: ${this.fmtDzd(totalPaidVal)}`,
+        previousBalance: initDebtVal,
+        loyaltyPointsEarned: 0,
+        loyaltyTotalBalance: pts,
+        items: statementItems,
+        subtotal: totalSalesVal,
+        discount: 0,
+        tvaAmount: 0,
+        stampAmount: 0,
+        total: totalSalesVal,
+        paidAmount: totalPaidVal,
+        receivedAmount: totalPaidVal,
+        remainingDebt: netDebtVal
+      });
+
+      if (directPrint) {
+        const fullHtml = await studio.renderAdoptedMasterDocumentHtml(targetDocType, docData, {
+          paperSize: targetPaper
+        });
+        await window.__gherbiMasterPrintSilent({ html: fullHtml, paperSize: targetPaper, silent: false });
+        this.notify(`🖨️ تم إرسال (${format === 'a4' ? 'كشف الحساب A4' : 'كرني الديون 80mm'}) للزبون (${cust.name}) إلى الطباعة!`);
+        return;
+      }
+
+      // فتح نافذة معاينة وطباعة فورية فائقة الوضوح (تظهر فوق نافذة Alt+H بـ z-index: 32000)
+      this.openKarnetLivePreviewModal(cust, docData, format);
+    };
+
+    debtEng.openKarnetLivePreviewModal = async function (cust, docData, format = '80mm') {
+      this._activeKarnetCust = cust;
+      this._activeKarnetDocData = docData;
+      this._activeKarnetFormat = format || '80mm';
+
+      let modal = document.getElementById('v69KarnetPreviewModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'v69KarnetPreviewModal';
+        modal.style.zIndex = '32000';
+        modal.className = 'fixed inset-0 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm p-3 md:p-5';
+        document.body.appendChild(modal);
+      }
+
+      await this.renderKarnetPreviewModalBody();
+      modal.classList.remove('hidden');
+    };
+
+    debtEng.renderKarnetPreviewModalBody = async function () {
+      const modal = document.getElementById('v69KarnetPreviewModal');
+      const cust = this._activeKarnetCust;
+      const docData = this._activeKarnetDocData;
+      const fmt = this._activeKarnetFormat || '80mm';
+      if (!modal || !cust || !docData) return;
+
+      const docType = fmt === 'a4' ? 'customer_ledger_a4' : 'customer_carnet_80mm';
+      const savedProf = studio.config.adoptedProfiles?.[docType] || {};
+      const savedDef = studio.config.defaultsByDocType?.[docType] || {};
+
+      // ضمان تفعيل طبقة كشف حساب الكريدي وجدول الأصناف في المعاينة
+      const previewPaperHtml = studio.buildLiveDocumentPaperHtml(docData, false, {
+        ...savedProf,
+        activeDocType: docType,
+        paperSize: fmt === 'a4' ? 'a4' : '80mm',
+        themeId: savedDef.themeId || savedProf.themeId || (fmt === 'a4' ? 'royal_blue' : 'crimson_bold'),
+        zoomPct: fmt === 'a4' ? 88 : 100
+      });
+
+      const debtVal = Math.max(0, Number(cust.total_debt || 0));
+
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-slate-900 border-2 border-blue-500 rounded-3xl max-w-5xl w-[95vw] max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-right" dir="rtl">
+          <div class="p-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 border-b border-slate-700">
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2.5 py-0.5 rounded-lg bg-amber-500 text-slate-950 font-mono font-black text-xs">${fmt.toUpperCase()}</span>
+                <h3 class="text-base font-black">
+                  ${fmt === 'a4' ? '📄 معاينة وطباعة كشف حساب الزبون المفصل (A4)' : '🧾 معاينة وطباعة تذكرة كرني ديون الزبون (80mm)'} — ${cust.name}
+                </h3>
+              </div>
+              <p class="text-xs text-slate-300 mt-0.5">
+                إجمالي المشتريات: <strong>${this.fmtDzd(cust.total_sales)}</strong> | المسدد: <strong class="text-emerald-400">${this.fmtDzd(cust.total_paid)}</strong> | صافي الدين المتبقي: <strong class="text-rose-400">${this.fmtDzd(debtVal)} (${this.fmtCentimes(debtVal)})</strong>
+              </p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" onclick="window.GherbiDebtV68.switchKarnetPreviewFormat('80mm')" class="px-3 py-2 rounded-xl font-black text-xs cursor-pointer ${
+                fmt === '80mm' ? 'bg-amber-500 text-slate-950 shadow-md' : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+              }">
+                🧾 تذكرة كرني 80mm
+              </button>
+              <button type="button" onclick="window.GherbiDebtV68.switchKarnetPreviewFormat('a4')" class="px-3 py-2 rounded-xl font-black text-xs cursor-pointer ${
+                fmt === 'a4' ? 'bg-amber-500 text-slate-950 shadow-md' : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+              }">
+                📄 كشف مفصل A4
+              </button>
+              <button type="button" onclick="window.GherbiDebtV68.executePrintFromKarnetPreview()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-lg cursor-pointer flex items-center gap-1.5">
+                <span>🖨️ طباعة / حفظ PDF الآن</span>
+              </button>
+              <button type="button" onclick="document.getElementById('v69KarnetPreviewModal').classList.add('hidden'); document.getElementById('v68HistoryMasterModal')?.classList.add('hidden'); window.GherbiPrintStudioV45.customizeCardInStudioNow('${docType}')" class="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs cursor-pointer">
+                🎨 تخصيص القالب في مركز الطباعة ⬅
+              </button>
+              <button type="button" onclick="document.getElementById('v69KarnetPreviewModal').classList.add('hidden')" class="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs cursor-pointer">
+                ✕ إغلاق
+              </button>
+            </div>
+          </div>
+
+          <div class="px-4 py-2 bg-amber-50 dark:bg-slate-800 border-b border-amber-200 dark:border-slate-700 flex items-center justify-between text-xs">
+            <span class="font-black text-amber-900 dark:text-amber-300">✍️ ملاحظة: جميع النصوص داخل الورقة بالأسفل قابلة للتعديل الحر المباشر قبل الطباعة!</span>
+            <span class="font-mono font-bold text-slate-500">القالب المعتمد: ${docType}</span>
+          </div>
+
+          <div class="v45-studio-workspace flex-1 overflow-y-auto" id="v69KarnetPaperHost">
+            ${previewPaperHtml}
+          </div>
+        </div>
+      `;
+    };
+
+    debtEng.switchKarnetPreviewFormat = async function (newFmt) {
+      this._activeKarnetFormat = newFmt || '80mm';
+      await this.renderKarnetPreviewModalBody();
+    };
+
+    debtEng.executePrintFromKarnetPreview = async function () {
+      const paperEl = document.querySelector('#v69KarnetPaperHost .v45-live-paper');
+      if (!paperEl) return;
+      const clone = paperEl.cloneNode(true);
+      clone.querySelectorAll('.v45-layer-handle-bar').forEach((el) => el.remove());
+      clone.querySelectorAll('[contenteditable]').forEach((el) => el.removeAttribute('contenteditable'));
+      clone.style.transform = 'none';
+
+      const fmt = this._activeKarnetFormat || '80mm';
+      const isThermal = fmt === '80mm' || fmt === '58mm';
+      const pageCss = isThermal
+        ? `@page { size: 80mm auto; margin: 2mm; }`
+        : `@page { size: A4 portrait; margin: 8mm; }`;
+
+      const html = `<!DOCTYPE html><html lang="ar" dir="rtl" data-v52-studio-master="1" data-v62-adopted-doc="customer_carnet"><head><meta charset="UTF-8"><style>
+        ${pageCss}
+        * { box-sizing: border-box !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        body { margin: 0; padding: 0; font-family: 'Cairo', Tahoma, sans-serif; color: #0f172a; background: #fff; }
+        .v45-live-paper { box-shadow: none !important; margin: 0 auto !important; width: ${isThermal ? '76mm' : '100%'} !important; min-height: auto !important; }
+        .v45-canvas-layer { border: none !important; box-shadow: none !important; }
+      </style></head><body>${clone.outerHTML}</body></html>`;
+
+      await window.__gherbiMasterPrintSilent({ html, paperSize: fmt, silent: false });
+    };
+
+    // توفير الجسر العام window.GherbiCustomersTurbo لضمان عمل أي زر في أي نافذة يستدعي printCustomerStatement
+    window.GherbiCustomersTurbo = window.GherbiCustomersTurbo || {};
+    window.GherbiCustomersTurbo.printCustomerStatement = (cid, fmt) =>
+      debtEng.printCustomerStatementNow(cid, fmt, false);
+    window.GherbiCustomersTurbo.openFastPaymentModal = (cid) =>
+      debtEng.openSettleDebtModal(cid);
+    window.GherbiCustomersTurbo.openRichCustomerLedger = (cid) =>
+      debtEng.openDebtHistoryModal(cid);
+
+    console.log('🏆 [Gherbi V69 Stage 1]: تم تفعيل زري (🧾 كرني 80mm) و (📄 A4) والربط المحاسبي للديون في الورديات بنجاح 100%!');
   }, 140);
+})();
+
+/* ==================== [V70 PART 1: CLEAN-ROOM MASTER TEMPLATES 1 TO 20 (POS & CREDIT)] ==================== */
+(function initV70Part1Templates1To20() {
+  window.__GHERBI_V70_MASTER_TEMPLATES_PART1 = [
+    // ========================================================================
+    // المجموعة 1: المبيعات والكاشير والتوصيل والضمان (9 مستندات احترافية #1 .. #9)
+    // ========================================================================
+    {
+      id: 'receipt_thermal',
+      num: 1,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '🧾 1. تذكرة كاشير حرارية شاملة (80mm / 58mm)',
+      cleanTitle: 'تذكرة مبيعات الكاشير / Ticket de Caisse',
+      defaultPaper: '80mm',
+      defaultTheme: 'executive_dark',
+      sourcePage: 'pos',
+      sourceLabel: 'شاشة المبيعات والكاشير (Échap / F1)',
+      proDesc: 'تذكرة سوبرماركت حرارية متكاملة تعرض الأصناف، المجموع بالدينار والسنتيم، الصرف المرجع، وبطاقة نقاط الوفاء ووضعية الدين',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'payment_breakdown_layer',
+        'f8_vip_points_and_debt_dual_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'TIC-2026-0150',
+      samplePartyTitle: 'الزبون الوفي:',
+      samplePartyName: '👑 أمين بن يحيى (FID-00003)',
+      samplePaymentMethod: 'نقداً (Espèces)',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'مناديل مبللة ألترا جوي (ULTRA JOY)', unit: 'علبة', qty: 2, price: 75, discount: 0, tva: 0, subtotal: 150 },
+        { barcode: '6130002000011', name: 'حفاضات أطفال جوي 72 قطعة (JOY 72)', unit: 'كيس', qty: 1, price: 145, discount: 0, tva: 0, subtotal: 145 }
+      ],
+      sampleTotal: 295,
+      samplePaid: 295,
+      samplePrevDebt: 270
+    },
+    {
+      id: 'invoice_a4',
+      num: 2,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '📄 2. فاتورة مبيعات تجارية رسمية (A4)',
+      cleanTitle: 'فاتورة مبيعات تجارية رسمية / Facture Commerciale',
+      defaultPaper: 'a4',
+      defaultTheme: 'royal_blue',
+      sourcePage: 'sales',
+      sourceLabel: 'شاشة المبيعات + سجل المبيعات والضمان',
+      proDesc: 'فاتورة مؤسسات رسمية كاملة بالبيانات الجبائية (RC/NIF/AI/NIS)، جدول مفصل، التفقيط بالحروف، كشف الرصيد، والختم الرسمي',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'debt_ledger_layer',
+        'bank_rip_ccp_box_layer',
+        'dual_signature_stamps_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: true, tva: false, subtotal: true },
+      sampleDocNum: 'FAC-2026-0150',
+      samplePartyTitle: 'الزبون / المؤسسة:',
+      samplePartyName: 'مؤسسة الأمل للتجارة والتوزيع (أمين بن يحيى)',
+      samplePaymentMethod: 'نقداً / بشيك بنكي',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'زيت مائدة إيليو 5 لتر (Elio Cevital)', unit: 'قارورة', qty: 10, price: 650, discount: 0, tva: 19, subtotal: 6500 },
+        { barcode: '6130002000011', name: 'حليب كانديا نصف دسم 1 لتر (Candia)', unit: 'كرتونة', qty: 5, price: 1800, discount: 0, tva: 19, subtotal: 9000 },
+        { barcode: '6130006000017', name: 'قهوة مطحونة بونال 250غ (Bonal)', unit: 'علبة', qty: 10, price: 320, discount: 0, tva: 19, subtotal: 3200 }
+      ],
+      sampleTotal: 18700,
+      samplePaid: 18700,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'invoice_a5',
+      num: 3,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '📑 3. فاتورة مبيعات مدمجة نصفية (A5)',
+      cleanTitle: 'فاتورة مبيعات مدمجة / Bon & Facture A5',
+      defaultPaper: 'a5',
+      defaultTheme: 'emerald_dz',
+      sourcePage: 'sales',
+      sourceLabel: 'سجل المبيعات والكاشير',
+      proDesc: 'فاتورة نصف ورقة أنيقة وسريعة لتجارة التجزئة ونصف الجملة مع وضعية الدين السابق والباقي',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'debt_ledger_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'FA5-2026-0089',
+      samplePartyTitle: 'الزبون:',
+      samplePartyName: '👑 أمين بن يحيى (FID-00003)',
+      samplePaymentMethod: 'نقداً (Espèces)',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'مناديل مبللة ألترا جوي جوي', unit: 'علبة', qty: 4, price: 75, discount: 0, tva: 0, subtotal: 300 },
+        { barcode: '6130002000011', name: 'حفاضات أطفال جوي 72 قطعة', unit: 'كيس', qty: 2, price: 145, discount: 0, tva: 0, subtotal: 290 }
+      ],
+      sampleTotal: 590,
+      samplePaid: 590,
+      samplePrevDebt: 270
+    },
+    {
+      id: 'invoice_2xa5',
+      num: 4,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '✂️ 4. فاتورة مزدوجة (2×A5 في ورقة A4 — نسختان)',
+      cleanTitle: 'فاتورة مبيعات (نسخة الزبون + نسخة الأرشيف)',
+      defaultPaper: '2xa5',
+      defaultTheme: 'royal_blue',
+      sourcePage: 'sales',
+      sourceLabel: 'سجل المبيعات (توفير 50% من ورق A4)',
+      proDesc: 'تطبع نسختين متطابقتين جنباً إلى جنب في ورقة A4 واحدة بالعرض (نسخة للزبون ونسخة يوقع عليها للمحل)',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'debt_ledger_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'F2A5-2026-0042',
+      samplePartyTitle: 'الزبون:',
+      samplePartyName: 'مؤسسة الأمل للتجارة',
+      samplePaymentMethod: 'نقداً',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'زيت مائدة إيليو 5 لتر', unit: 'قارورة', qty: 4, price: 650, discount: 0, tva: 0, subtotal: 2600 },
+        { barcode: '6130006000017', name: 'قهوة مطحونة بونال 250غ', unit: 'علبة', qty: 5, price: 320, discount: 0, tva: 0, subtotal: 1600 }
+      ],
+      sampleTotal: 4200,
+      samplePaid: 4200,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'delivery_note',
+      num: 5,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '🚚 5. وصل تسليم وتوصيل بضاعة (Bon de Livraison BL)',
+      cleanTitle: 'وصل تسليم ونقل بضاعة / Bon de Livraison (BL)',
+      defaultPaper: 'a4',
+      defaultTheme: 'emerald_dz',
+      sourcePage: 'sales',
+      sourceLabel: 'سجل المبيعات والتوصيل',
+      proDesc: 'يركز على الأصناف والكميات وملخص الكراتين (Colisage) وبيانات السائق والمركبة وخانات إمضاء المسلّم والمستلم',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'pack_carton_summary_layer',
+        'delivery_driver_layer',
+        'dual_signature_stamps_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: false, discount: false, tva: false, subtotal: false },
+      sampleDocNum: 'BL-2026-0061',
+      samplePartyTitle: 'المرسل إليه (الزبون):',
+      samplePartyName: 'مؤسسة الأمل للتجارة — قسنطينة',
+      samplePaymentMethod: 'تسليم بضاعة مطابقة للمواصفات',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'زيت مائدة إيليو 5 لتر (صندوق 4 قارورات)', unit: 'صندوق', qty: 15, price: 2600, discount: 0, tva: 0, subtotal: 39000 },
+        { barcode: '6130002000011', name: 'حليب كانديا نصف دسم 1 لتر (كرتونة 12 علبة)', unit: 'كرتونة', qty: 20, price: 1800, discount: 0, tva: 0, subtotal: 36000 }
+      ],
+      sampleTotal: 75000,
+      samplePaid: 75000,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'proforma',
+      num: 6,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '📋 6. فاتورة شكلية / عرض سعر (Facture Proforma)',
+      cleanTitle: 'فاتورة شكلية (عرض سعر رسمي) / Facture Proforma',
+      defaultPaper: 'a4',
+      defaultTheme: 'royal_blue',
+      sourcePage: 'proformas',
+      sourceLabel: 'الفواتير الشكلية وعروض الأسعار',
+      proDesc: 'عرض سعر رسمي للشركات والإدارات مع تفصيل المبلغ خارج الرسم HT وضريبة TVA والحساب البنكي RIB/RIP ومدة الصلاحية',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'tax_ifu_breakdown_layer',
+        'totals_words_layer',
+        'bank_rip_ccp_box_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: true, subtotal: true },
+      sampleDocNum: 'PRO-2026-0024',
+      samplePartyTitle: 'الجهة الطالبة للعرض:',
+      samplePartyName: 'مديرية الخدمات الجامعية — قسنطينة',
+      samplePaymentMethod: 'عرض سعر صالح لمدة 15 يوماً',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'تموين مواد غذائية أساسية (زيت مائدة 5 لتر)', unit: 'قارورة', qty: 50, price: 650, discount: 0, tva: 19, subtotal: 32500 },
+        { barcode: '6130008000022', name: 'كسكس ماما ممتاز 1 كغ', unit: 'كيس', qty: 100, price: 160, discount: 0, tva: 19, subtotal: 16000 }
+      ],
+      sampleTotal: 48500,
+      samplePaid: 0,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'customer_order',
+      num: 7,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '📦 7. سند طلبية زبون وحجز مخزون (Bon de Commande)',
+      cleanTitle: 'سند طلبية زبون وحجز بضاعة / Bon de Commande (BC)',
+      defaultPaper: 'a4',
+      defaultTheme: 'amber_gold',
+      sourcePage: 'orders',
+      sourceLabel: 'طلبيات الزبائن',
+      proDesc: 'يوثق الأصناف المحجوزة للزبون في المخزن، مبلغ العربون المدفوع (Acompte)، والباقي المستحق عند التسليم',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'order_reservation_layer',
+        'totals_words_layer',
+        'delivery_driver_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'BC-2026-0033',
+      samplePartyTitle: 'الزبون صاحب الطلبية:',
+      samplePartyName: 'فارس بوزيد (طلبية محجوزة بالمخزن)',
+      samplePaymentMethod: 'عربون مسبق (6,000 د.ج) + الباقي عند التسليم',
+      sampleItems: [
+        { barcode: '6130007000030', name: 'شوكولاتة الطلاء ماكسون 350غ (كرتونة 24 علبة)', unit: 'كرتونة', qty: 2, price: 8000, discount: 0, tva: 0, subtotal: 16000 }
+      ],
+      sampleTotal: 16000,
+      samplePaid: 6000,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'credit_note',
+      num: 8,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: "↩️ 8. إشعار دائن / فاتورة مرتجع مبيعات (Facture d'Avoir)",
+      cleanTitle: "إشعار دائن (مرتجع مبيعات) / Facture d'Avoir",
+      defaultPaper: 'a4',
+      defaultTheme: 'crimson_bold',
+      sourcePage: 'sales',
+      sourceLabel: 'سجل المبيعات والمرتجعات',
+      proDesc: 'وثيقة محاسبية رسمية لإرجاع بضاعة من الزبون وتخفيض دينه أو رد قيمتها نقداً مع ذكر سبب الإرجاع',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'debt_ledger_layer',
+        'return_policy_box_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'AV-2026-0012',
+      samplePartyTitle: 'الزبون المستفيد من الإشعار:',
+      samplePartyName: '👑 أمين بن يحيى (إرجاع من الفاتورة #91)',
+      samplePaymentMethod: 'خصم مباشر من رصيد دين الزبون',
+      sampleItems: [
+        { barcode: '6130006000017', name: 'مرتجع سليم للمخزن: غولد لاين (GOLD LINE)', unit: 'قطعة', qty: 1, price: 125, discount: 0, tva: 0, subtotal: 125 }
+      ],
+      sampleTotal: 125,
+      samplePaid: 125,
+      samplePrevDebt: 270
+    },
+    {
+      id: 'warranty_cert',
+      num: 9,
+      cat: 'POS',
+      catLabel: '🧾 المبيعات والكاشير (9)',
+      name: '🛡️ 9. شهادة ضمان رسمية (Certificat de Garantie)',
+      cleanTitle: 'شهادة ضمان رسمية ومعتمدة / Certificat de Garantie',
+      defaultPaper: 'a5',
+      defaultTheme: 'royal_blue',
+      sourcePage: 'sales',
+      sourceLabel: 'سجل المبيعات والضمان',
+      proDesc: 'شهادة ضمان مختومة تتضمن الرقم التسلسلي (IMEI / S-N)، تاريخ بداية ونهاية الضمان، وشروط الصيانة والاستبدال',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'warranty_imei_layer',
+        'return_policy_box_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: false, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'GAR-2026-0077',
+      samplePartyTitle: 'المستفيد من الضمان:',
+      samplePartyName: '👑 أمين بن يحيى (FID-00003)',
+      samplePaymentMethod: 'ضمان رسمي لمدة 12 شهراً',
+      sampleItems: [
+        { barcode: 'SN-869412005478', name: 'جهاز إلكتروني / كهرومنزلي — مشمول بضمان المصنع لمدة 12 شهراً', unit: 'جهاز', qty: 1, price: 14500, discount: 0, tva: 0, subtotal: 14500 }
+      ],
+      sampleTotal: 14500,
+      samplePaid: 14500,
+      samplePrevDebt: 0
+    },
+
+    // ========================================================================
+    // المجموعة 2: منظومة الديون والكريدي والزبون الوفي المحدثة (11 مستنداً #10 .. #20)
+    // مصممة خصيصاً لأزرار (Alt+D تأكيد الدين | Alt+V تسديد الديون | Alt+H الهيستوريك | F8 النقاط والديون)
+    // ========================================================================
+    {
+      id: 'debt_confirm_ticket_80mm',
+      num: 10,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (11)',
+      name: '📝 10. تذكرة تأكيد عملية دين جديد (Alt+D — 80mm)',
+      cleanTitle: 'وصل تأكيد عملية بيع بالدين / Confirmation de Crédit (Alt+D)',
+      defaultPaper: '80mm',
+      defaultTheme: 'crimson_bold',
+      sourcePage: 'pos',
+      sourceLabel: 'شاشة المبيعات — زر تأكيد عملية الدين (Alt+D)',
+      proDesc: 'تذكرة حرارية فورية توثق السلع المأخوذة بالدين، الدين السابق، المدفوع اليوم، وإجمالي الدين التراكمي الجديد بالسنتيم مع إمضاء الزبون',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'alt_d_debt_confirmation_box_layer',
+        'credit_carnet_layer',
+        'f8_vip_points_and_debt_dual_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'CRED-2026-0115',
+      samplePartyTitle: 'الزبون الوفي المدين:',
+      samplePartyName: '👑 أمين بن يحيى (FID-00003) — 📞 0550112233',
+      samplePaymentMethod: 'تأكيد عملية دين على الحساب (Alt+D)',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'مناديل مبللة ألترا جوي جوي (ULTRA JOY)', unit: 'علبة', qty: 2, price: 75, discount: 0, tva: 0, subtotal: 150 },
+        { barcode: '6130002000011', name: 'حفاضات أطفال جوي 72 قطعة', unit: 'كيس', qty: 1, price: 145, discount: 0, tva: 0, subtotal: 145 }
+      ],
+      sampleTotal: 295,
+      samplePaid: 25,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'pos_partial_credit_80mm',
+      num: 11,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (11)',
+      name: '💸 11. تذكرة بيع بالدفع الجزئي والباقي دين (Alt+D — 80mm)',
+      cleanTitle: 'وصل بيع (دفع جزئي + الباقي مسجل في الدين)',
+      defaultPaper: '80mm',
+      defaultTheme: 'crimson_bold',
+      sourcePage: 'pos',
+      sourceLabel: 'شاشة المبيعات — دفع جزئي والباقي دين (Alt+D)',
+      proDesc: 'تبرز بوضوح السلع المشتراة اليوم، المبلغ المدفوع نقداً للكاشير، والباقي المضاف تلقائياً إلى كرني ديون الزبون الوفي',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'alt_d_debt_confirmation_box_layer',
+        'credit_carnet_layer',
+        'totals_words_layer',
+        'f8_vip_points_and_debt_dual_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'PART-2026-0094',
+      samplePartyTitle: 'الزبون الوفي:',
+      samplePartyName: '👑 أمين بن يحيى (FID-00003)',
+      samplePaymentMethod: 'دفع جزئي (100.00 د.ج) + الباقي دين (195.00 د.ج)',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'مناديل مبللة ألترا جوي جوي', unit: 'علبة', qty: 2, price: 75, discount: 0, tva: 0, subtotal: 150 },
+        { barcode: '6130002000011', name: 'حفاضات أطفال جوي 72 قطعة', unit: 'كيس', qty: 1, price: 145, discount: 0, tva: 0, subtotal: 145 }
+      ],
+      sampleTotal: 295,
+      samplePaid: 100,
+      samplePrevDebt: 75
+    },
+    {
+      id: 'payment_receipt',
+      num: 12,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (11)',
+      name: '💵 12. وصل تسديد وقبض دين زبون (Alt+V — 80mm / A5)',
+      cleanTitle: 'وصل استلام دفعة تسديد دين / Reçu de Règlement (Alt+V)',
+      defaultPaper: '80mm',
+      defaultTheme: 'emerald_dz',
+      sourcePage: 'pos',
+      sourceLabel: 'شاشة المبيعات — زر تسديد الديون (Alt+V) + الزبائن',
+      proDesc: 'يوثق المبلغ المقبوض من الزبون، الدين السابق قبل التسديد، وصافي الدين المتبقي بعد الدفعة بالدينار والسنتيم',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'alt_v_debt_settlement_voucher_layer',
+        'items_table_layer',
+        'credit_carnet_layer',
+        'totals_words_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: false, barcode: false, name: true, unit: false, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'REC-2026-0118',
+      samplePartyTitle: 'استلمنا من الزبون الوفي:',
+      samplePartyName: '👑 أمين بن يحيى (FID-00003) — 📞 0550112233',
+      samplePaymentMethod: 'دفعة نقدية لتسديد الدين (Alt+V)',
+      sampleItems: [
+        { barcode: 'REC-118', name: 'دفعة تسديد نقدية مخصومة من حساب الكريدي (الدين قبل الدفع: 370.00 | المدفوع: 100.00 | المتبقي: 270.00 د.ج)', unit: 'تسديد', qty: 1, price: 100, discount: 0, tva: 0, subtotal: 100 }
+      ],
+      sampleTotal: 100,
+      samplePaid: 100,
+      samplePrevDebt: 370
+    },
+    {
+      id: 'customer_carnet_80mm',
+      num: 13,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (11)',
+      name: '🧾 13. تذكرة كرني ديون الزبون الوفي (كرني 80mm — Alt+H)',
+      cleanTitle: 'تذكرة كرني ديون الزبون الوفي / Carnet de Crédit 80mm',
+      defaultPaper: '80mm',
+      defaultTheme: 'crimson_bold',
+      sourcePage: 'pos',
+      sourceLabel: 'هيستوريك الديون (Alt+H) — زر (🧾 كرني 80mm)',
+      proDesc: 'تذكرة حرارية سريعة تلخص للزبون إجمالي مشترياته، إجمالي ما سدده، وصافي الدين المتبقي عليه بالدينار والسنتيم مع قائمة فواتيره',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'credit_carnet_layer',
+        'items_table_layer',
+        'f8_vip_points_and_debt_dual_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: false, name: true, unit: false, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'CARNET-FID-00003',
+      samplePartyTitle: 'صاحب الكرني (الزبون الوفي):',
+      samplePartyName: '👑 أمين بن يحيى (FID-00003) — 📞 0550112233',
+      samplePaymentMethod: 'إجمالي المشتريات: 22,952.20 د.ج | المسدد: 22,682.20 د.ج',
+      sampleItems: [
+        { barcode: 'FAC-089', name: 'فاتورة دين (2026-11-16) — السلع: [حفاضات جوي 72 ×1 + مناديل ×2]', unit: 'دين قائم', qty: 1, price: 295, discount: 0, tva: 0, subtotal: 270 }
+      ],
+      sampleTotal: 270,
+      samplePaid: 0,
+      samplePrevDebt: 270
+    },
+    {
+      id: 'customer_ledger_a4',
+      num: 14,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (11)',
+      name: '📄 14. كشف حساب وديون الزبون المفصل (كشف A4 — Alt+H)',
+      cleanTitle: 'كشف حساب وديون الزبون المفصل / Relevé de Compte Client A4',
+      defaultPaper: 'a4',
+      defaultTheme: 'royal_blue',
+      sourcePage: 'pos',
+      sourceLabel: 'هيستوريك الديون (Alt+H) — زر (📄 A4) + الزبائن',
+      proDesc: 'تقرير A4 محاسبي رسمي يعرض كافة فواتير الزبون ودفعات التسديد وإجمالي المشتريات والمسدد وصافي الدين المتبقي بالسنتيم',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'debt_ledger_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'bank_rip_ccp_box_layer',
+        'dual_signature_stamps_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'REL-2026-0003',
+      samplePartyTitle: 'كشف حساب الزبون الوفي:',
+      samplePartyName: '👑 أمين بن يحيى (FID-00003) — 📞 0550112233',
+      samplePaymentMethod: 'إجمالي المشتريات: 22,952.20 د.ج | المسدد: 22,682.20 د.ج | الباقي: 270.00 د.ج',
+      sampleItems: [
+        { barcode: 'FAC-071', name: 'فاتورة مبيعات رقم #71 بتاريخ 2026-11-12 (مسددة بالكامل)', unit: 'مسددة ✔', qty: 1, price: 22657.2, discount: 0, tva: 0, subtotal: 0 },
+        { barcode: 'FAC-091', name: 'فاتورة بيع بالدين رقم #91 بتاريخ 2026-11-17 (الإجمالي: 295.00 | المدفوع: 25.00 | الباقي: 270.00 د.ج)', unit: 'دين قائم', qty: 1, price: 295, discount: 0, tva: 0, subtotal: 270 }
+      ],
+      sampleTotal: 270,
+      samplePaid: 0,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'customer_debt_history_a4',
+      num: 15,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (11)',
+      name: '📜 15. هيستوريك فواتير الدين والسلع المأخوذة بالتفصيل (Alt+H — A4)',
+      cleanTitle: 'بيان تفصيلي للسلع المأخوذة بالدين ودفعات التسديد / Historique des Articles à Crédit',
+      defaultPaper: 'a4',
+      defaultTheme: 'indigo_pro',
+      sourcePage: 'pos',
+      sourceLabel: 'نافذة هيستوريك الديون (Alt+H) — تبويب الفواتير والسلع',
+      proDesc: 'يوضح للزبون باليوم والساعة كل سلعة أخذها في فواتير الدين مع كميتها وسعرها والمبالغ التي سددها منها',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'alt_h_items_taken_history_layer',
+        'items_table_layer',
+        'debt_ledger_layer',
+        'totals_words_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'HIST-ITEMS-0003',
+      samplePartyTitle: 'تفصيل السلع المسحوبة بالدين للزبون:',
+      samplePartyName: '👑 أمين بن يحيى (FID-00003) — 📞 0550112233',
+      samplePaymentMethod: 'جرد تفصيلي للسلع المأخوذة على الحساب',
+      sampleItems: [
+        { barcode: 'FAC-091', name: 'مناديل مبللة ألترا جوي جوي (مأخوذة في الفاتورة #91 يوم 2026-11-17)', unit: 'علبة', qty: 2, price: 75, discount: 0, tva: 0, subtotal: 150 },
+        { barcode: 'FAC-091', name: 'حفاضات أطفال جوي 72 قطعة (مأخوذة في الفاتورة #91 يوم 2026-11-17)', unit: 'كيس', qty: 1, price: 145, discount: 0, tva: 0, subtotal: 145 },
+        { barcode: 'REC-118', name: 'دفعة تسديد نقدية مستلمة من الزبون (خصم من إجمالي السلع أعلاه)', unit: 'دفعة ناقصة', qty: 1, price: -25, discount: 0, tva: 0, subtotal: -25 }
+      ],
+      sampleTotal: 270,
+      samplePaid: 0,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'global_debtors_register_a4',
+      num: 16,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (11)',
+      name: '📒 16. السجل العام لجميع الزبائن المدينين بالمتجر (Alt+H — A4)',
+      cleanTitle: 'السجل الرسمي العام لديون الزبائن / État Global des Crédits Clients',
+      defaultPaper: 'a4',
+      defaultTheme: 'executive_dark',
+      sourcePage: 'pos',
+      sourceLabel: 'هيستوريك الديون (Alt+H) — طباعة ملخص الديون العام',
+      proDesc: 'كشف إداري شامل لصاحب المحل يجمع كل الزبائن المدينين مع أرقام هواتفهم وإجمالي مشترياتهم والمسدد وصافي الدين المتبقي',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'dual_signature_stamps_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: false, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'REG-DEBTS-2026',
+      samplePartyTitle: 'إدارة المتجر والخزينة:',
+      samplePartyName: 'جرد شامل للذمم والديون المستحقة لدى الزبائن',
+      samplePaymentMethod: 'إجمالي الديون النشطة: 270.00 د.ج (27 ألف سنتيم)',
+      sampleItems: [
+        { barcode: 'FID-00003', name: '👑 أمين بن يحيى (📞 0550112233) — المشتريات: 22,952.20 | المسدد: 22,682.20 د.ج', unit: '⭐ 79 نقطة', qty: 1, price: 270, discount: 0, tva: 0, subtotal: 270 }
+      ],
+      sampleTotal: 270,
+      samplePaid: 0,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'f8_vip_loyalty_debt_card_80mm',
+      num: 17,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (11)',
+      name: '👑 17. بطاقة الوضعية الشاملة للزبون الوفي: النقاط + الديون (F8 — 80mm)',
+      cleanTitle: 'بطاقة وضعية الزبون الوفي (النقاط + الديون) / Bilan Client VIP (F8)',
+      defaultPaper: '80mm',
+      defaultTheme: 'amber_gold',
+      sourcePage: 'pos',
+      sourceLabel: 'شاشة المبيعات — نافذة الزبون الوفي والبطاقة (F8)',
+      proDesc: 'تذكرة شاملة للزبون الوفي تجمع رصيد نقاط الوفاء وقيمتها النقدية بالدينار + كشف ديونه الحالية في بطاقة واحدة',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'f8_vip_points_and_debt_dual_layer',
+        'items_table_layer',
+        'credit_carnet_layer',
+        'vip_coupon_cut_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: false, barcode: false, name: true, unit: false, qty: true, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'F8-VIP-00003',
+      samplePartyTitle: 'العضو الوفي:',
+      samplePartyName: '👑 أمين بن يحيى (FID-00003) — 📞 0550112233',
+      samplePaymentMethod: '⭐ النقاط: 79 نقطة (158 د.ج) | 💳 الدين: 270.00 د.ج',
+      sampleItems: [
+        { barcode: 'VIP-PTS', name: '⭐ رصيد نقاط الوفاء المتاح للاستبدال (79 نقطة = 158.00 د.ج)', unit: 'مكافأة', qty: 79, price: 2, discount: 0, tva: 0, subtotal: 158 },
+        { barcode: 'VIP-DEBT', name: '💳 صافي الدين المتبقي على الحساب حالياً (27 ألف سنتيم)', unit: 'كريدي', qty: 1, price: 270, discount: 0, tva: 0, subtotal: 270 }
+      ],
+      sampleTotal: 270,
+      samplePaid: 0,
+      samplePrevDebt: 270
+    },
+    {
+      id: 'loyalty_vip_card_80mm',
+      num: 18,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (11)',
+      name: '🎁 18. قسيمة مكافآت واستبدال نقاط الوفاء (Ticket Fidélité F9 — 80mm)',
+      cleanTitle: 'قسيمة مكافآت وتخفيض نقاط الوفاء / Bon Fidélité VIP',
+      defaultPaper: '80mm',
+      defaultTheme: 'amber_gold',
+      sourcePage: 'pos',
+      sourceLabel: 'شاشة المبيعات — خصم نقاط الوفاء (F9)',
+      proDesc: 'توثق عملية خصم أو استبدال نقاط الوفاء بتخفيض نقدي فوري في الفاتورة مع الرصيد المتبقي من النقاط',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'loyalty_points_layer',
+        'savings_promo_layer',
+        'vip_coupon_cut_layer',
+        'qr_social_wifi_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: false, barcode: false, name: true, unit: false, qty: true, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'FID-REDEEM-03',
+      samplePartyTitle: 'الزبون الوفي المستفيد:',
+      samplePartyName: '👑 أمين بن يحيى (FID-00003)',
+      samplePaymentMethod: 'استبدال نقاط الوفاء بتخفيض نقدي (F9)',
+      sampleItems: [
+        { barcode: 'PTS-USED', name: 'خصم نقاط وفاء من البطاقة مقابل تخفيض فوري في السلة', unit: 'نقطة', qty: 50, price: 2, discount: 0, tva: 0, subtotal: 100 }
+      ],
+      sampleTotal: 100,
+      samplePaid: 100,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'recap_invoice_a4',
+      num: 19,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (11)',
+      name: '📑 19. فاتورة مبيعات مجمعة للزبون (Facture Récapitulative A4)',
+      cleanTitle: 'فاتورة مبيعات مجمعة / Facture Récapitulative',
+      defaultPaper: 'a4',
+      defaultTheme: 'executive_dark',
+      sourcePage: 'customers',
+      sourceLabel: 'شاشة المبيعات + الزبائن (الفواتير المجمعة)',
+      proDesc: 'تجمع كافة مسحوبات وفواتير الزبون خلال شهر أو فترة محددة في فاتورة ضريبية ومحاسبية موحدة',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'debt_ledger_layer',
+        'bank_rip_ccp_box_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'FR-2026-0008',
+      samplePartyTitle: 'الزبون / المؤسسة:',
+      samplePartyName: 'مؤسسة الأمل للتجارة (أمين بن يحيى)',
+      samplePaymentMethod: 'تجميع فواتير الفترة (Facture Récapitulative)',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'إجمالي مسحوبات: زيت مائدة إيليو 5 لتر (خلال الفترة)', unit: 'قارورة', qty: 24, price: 650, discount: 0, tva: 0, subtotal: 15600 },
+        { barcode: '6130002000011', name: 'إجمالي مسحوبات: حليب كانديا 1 لتر (خلال الفترة)', unit: 'علبة', qty: 60, price: 150, discount: 0, tva: 0, subtotal: 9000 }
+      ],
+      sampleTotal: 24600,
+      samplePaid: 24330,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'installment_contract',
+      num: 20,
+      cat: 'CREDIT',
+      catLabel: '💳 الكريدي والديون والوفاء (11)',
+      name: '🗓️ 20. عقد بيع بالتقسيط وجدول الأقساط الشهرية (A4)',
+      cleanTitle: 'عقد بيع بالتقسيط وجدولة الأقساط / Contrat de Vente par Facilité',
+      defaultPaper: 'a4',
+      defaultTheme: 'amber_gold',
+      sourcePage: 'customers',
+      sourceLabel: 'الزبائن والأقساط الشهرية',
+      proDesc: 'عقد التزام رسمي يوضح السلعة المباعة، الدفعة الأولى (التسبيق)، وجدول تواريخ ومبالغ الأقساط الشهرية مع إمضاء المشتري',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'installments_schedule_layer',
+        'totals_words_layer',
+        'dual_signature_stamps_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'INST-2026-0019',
+      samplePartyTitle: 'المشتري بالتقسيط:',
+      samplePartyName: '👑 أمين بن يحيى (FID-00003)',
+      samplePaymentMethod: 'بيع بالتقسيط على 3 أشهر (تسبيق: 6,000 د.ج)',
+      sampleItems: [
+        { barcode: '6130099001122', name: 'جهاز كهرومنزلي ممتاز — بيع بالتقسيط المريح', unit: 'جهاز', qty: 1, price: 15000, discount: 0, tva: 0, subtotal: 15000 }
+      ],
+      sampleTotal: 15000,
+      samplePaid: 6000,
+      samplePrevDebt: 0
+    }
+  ];
+
+  console.log('✅ [V70 Part 1]: تم بناء وتجهيز القوالب الـ 20 الأولى (المبيعات + منظومة الديون والوفاء المحدثة) من الصفر!');
+})();
+
+/* ==================== [V70 PART 2: CLEAN-ROOM MASTER TEMPLATES 21 TO 34 (PURCHASES, INVENTORY & CAISSE)] ==================== */
+(function initV70Part2Templates21To34() {
+  window.__GHERBI_V70_MASTER_TEMPLATES_PART2 = [
+    // ========================================================================
+    // المجموعة 3: المشتريات والموردين (4 مستندات احترافية #21 .. #24)
+    // ========================================================================
+    {
+      id: 'purchase_invoice',
+      num: 21,
+      cat: 'PURCHASES',
+      catLabel: '🛍️ المشتريات والموردين (4)',
+      name: '🛍️ 21. سند استلام وفاتورة شراء وتموين (Bon de Réception A4)',
+      cleanTitle: 'سند استلام بضاعة وفاتورة شراء / Bon de Réception (BR)',
+      defaultPaper: 'a4',
+      defaultTheme: 'executive_dark',
+      sourcePage: 'purchases',
+      sourceLabel: 'المشتريات والفواتير',
+      proDesc: 'يوثق البضاعة المستلمة من المورد، كمياتها، سعر الشراء، مطابقة الجودة، والمبلغ المدفوع والمتبقي للمورد',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'supplier_reception_layer',
+        'items_table_layer',
+        'pack_carton_summary_layer',
+        'totals_words_layer',
+        'debt_ledger_layer',
+        'dual_signature_stamps_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'BR-2026-0041',
+      samplePartyTitle: 'المورد / الشركة الممونة:',
+      samplePartyName: 'شركة التوزيع الغذائي الكبرى (Fournisseur)',
+      samplePaymentMethod: 'تموين مخزني — دفع جزئي والباقي لأجل',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'زيت مائدة إيليو 5 لتر (دفعة تموين جديدة)', unit: 'قارورة', qty: 100, price: 580, discount: 0, tva: 0, subtotal: 58000 },
+        { barcode: '6130002000011', name: 'حليب كانديا نصف دسم 1 لتر', unit: 'علبة', qty: 200, price: 130, discount: 0, tva: 0, subtotal: 26000 }
+      ],
+      sampleTotal: 84000,
+      samplePaid: 50000,
+      samplePrevDebt: 15000
+    },
+    {
+      id: 'supplier_payment_receipt',
+      num: 22,
+      cat: 'PURCHASES',
+      catLabel: '🛍️ المشتريات والموردين (4)',
+      name: '💳 22. سند صرف وتسديد دفعة لمورد (Bon de Versement A5 / 80mm)',
+      cleanTitle: 'سند تسديد دفعة لمورد / Bon de Versement Fournisseur',
+      defaultPaper: 'a5',
+      defaultTheme: 'emerald_dz',
+      sourcePage: 'suppliers',
+      sourceLabel: 'إدارة الموردين والدفعات',
+      proDesc: 'يوثق المبلغ المسدد للمورد من الصندوق، دين المورد قبل الدفعة، والرصيد المتبقي للمورد مع إمضاء المستلم',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'debt_ledger_layer',
+        'expense_approval_layer',
+        'totals_words_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: false, name: true, unit: false, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'VERS-2026-0022',
+      samplePartyTitle: 'المورد المستفيد:',
+      samplePartyName: 'شركة التوزيع الغذائي الكبرى',
+      samplePaymentMethod: 'دفعة نقدية من الصندوق',
+      sampleItems: [
+        { barcode: 'VERS-22', name: 'تسديد دفعة نقدية على حساب فواتير التوريد (خصم من دين المورد)', unit: 'دفعة', qty: 1, price: 30000, discount: 0, tva: 0, subtotal: 30000 }
+      ],
+      sampleTotal: 30000,
+      samplePaid: 30000,
+      samplePrevDebt: 49000
+    },
+    {
+      id: 'supplier_return_note',
+      num: 23,
+      cat: 'PURCHASES',
+      catLabel: '🛍️ المشتريات والموردين (4)',
+      name: '↩️ 23. سند إرجاع بضاعة للمورد (Bon de Retour Fournisseur A4)',
+      cleanTitle: 'سند إرجاع بضاعة للمورد / Bon de Retour Fournisseur',
+      defaultPaper: 'a4',
+      defaultTheme: 'crimson_bold',
+      sourcePage: 'purchases',
+      sourceLabel: 'مرتجعات الموردين',
+      proDesc: 'يوثق الأصناف المرجعة للمورد وسبب الإرجاع وقيمتها المخصومة من دين المورد أو المستردة نقداً للصندوق',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'supplier_reception_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'dual_signature_stamps_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'RF-2026-0007',
+      samplePartyTitle: 'المورد المرجعة إليه البضاعة:',
+      samplePartyName: 'شركة التوزيع الغذائي الكبرى',
+      samplePaymentMethod: 'خصم من رصيد دين المورد (Avoir)',
+      sampleItems: [
+        { barcode: '6130003000010', name: 'إرجاع: ياغورت الصومام (قريب انتهاء الصلاحية — استبدال)', unit: 'علبة', qty: 40, price: 28, discount: 0, tva: 0, subtotal: 1120 }
+      ],
+      sampleTotal: 1120,
+      samplePaid: 1120,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'supplier_ledger_a4',
+      num: 24,
+      cat: 'PURCHASES',
+      catLabel: '🛍️ المشتريات والموردين (4)',
+      name: '📒 24. كشف حساب المورد والفواتير (Relevé Fournisseur A4)',
+      cleanTitle: 'كشف حساب مورد مفصل / Relevé de Compte Fournisseur',
+      defaultPaper: 'a4',
+      defaultTheme: 'royal_blue',
+      sourcePage: 'suppliers',
+      sourceLabel: 'إدارة الموردين وكشف الحساب',
+      proDesc: 'تقرير A4 شامل يعرض كافة فواتير الشراء، دفعات التسديد، المرتجعات، وصافي المستحقات المتبقية للمورد',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'debt_ledger_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'dual_signature_stamps_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'RELF-2026-0009',
+      samplePartyTitle: 'كشف حساب المورد:',
+      samplePartyName: 'شركة التوزيع الغذائي الكبرى',
+      samplePaymentMethod: 'كشف حساب شامل للمشتريات والدفعات',
+      sampleItems: [
+        { barcode: 'BR-0041', name: 'فاتورة شراء وتوريد رقم #BR-0041 بتاريخ 2026-11-10', unit: 'فاتورة', qty: 1, price: 84000, discount: 0, tva: 0, subtotal: 84000 },
+        { barcode: 'VERS-022', name: 'دفعة تسديد للمورد رقم #VERS-022 بتاريخ 2026-11-15', unit: 'دفعة', qty: 1, price: -50000, discount: 0, tva: 0, subtotal: -50000 }
+      ],
+      sampleTotal: 84000,
+      samplePaid: 50000,
+      samplePrevDebt: 0
+    },
+
+    // ========================================================================
+    // المجموعة 4: المخزون والجرد والتصنيع (4 مستندات احترافية #25 .. #28)
+    // ========================================================================
+    {
+      id: 'stocktake_sheet_a4',
+      num: 25,
+      cat: 'INVENTORY',
+      catLabel: '📦 المخزون والتصنيع (4)',
+      name: '📋 25. محضر الجرد المخزني وفوارق الكميات (Inventaire A4)',
+      cleanTitle: "محضر الجرد المخزني الرسمي / Procès-Verbal d'Inventaire",
+      defaultPaper: 'a4',
+      defaultTheme: 'executive_dark',
+      sourcePage: 'stocktake',
+      sourceLabel: 'الجرد المخزني',
+      proDesc: 'محضر مطابقة المخزون يعرض الرصيد الدفتري، الرصيد الفعلي المعدود، والفوارق بالكمية والقيمة مع توقيع لجنة الجرد',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'stocktake_variance_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'dual_signature_stamps_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'INV-2026-0008',
+      samplePartyTitle: 'نطاق الجرد والمسؤول:',
+      samplePartyName: 'المخزن الرئيسي — إشراف: المدير العام',
+      samplePaymentMethod: 'محضر جرد وتسوية فوارق المخزون',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'مناديل مبللة ألترا جوي (الدفتري: 25 | المعدود: 25 | الفارق: 0)', unit: 'علبة', qty: 25, price: 75, discount: 0, tva: 0, subtotal: 1875 },
+        { barcode: '6130002000011', name: 'حفاضات أطفال جوي 72 (الدفتري: 14 | المعدود: 13 | الفارق: -1)', unit: 'كيس', qty: 13, price: 145, discount: 0, tva: 0, subtotal: 1885 }
+      ],
+      sampleTotal: 3760,
+      samplePaid: 3760,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'price_catalog_a4',
+      num: 26,
+      cat: 'INVENTORY',
+      catLabel: '📦 المخزون والتصنيع (4)',
+      name: '🏷️ 26. كتالوج وقائمة أسعار المنتجات (Catalogue des Prix A4)',
+      cleanTitle: 'قائمة الأسعار والكتالوج التجاري / Catalogue des Prix',
+      defaultPaper: 'a4',
+      defaultTheme: 'royal_blue',
+      sourcePage: 'inventory',
+      sourceLabel: 'إدارة المخزون وقائمة الأسعار',
+      proDesc: 'قائمة أسعار مطبوعة للزبائن والموزعين توضح الباركود والوحدة والسعر بالدينار والسنتيم',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'items_table_layer',
+        'qr_social_wifi_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: false, unitPrice: true, discount: false, tva: false, subtotal: false },
+      sampleDocNum: 'CAT-2026-02',
+      samplePartyTitle: 'قائمة الأسعار المعتمدة:',
+      samplePartyName: 'الأسعار الرسمية للزبائن بالحبة والباكي',
+      samplePaymentMethod: 'أسعار البيع بالدينار الجزائري والسنتيم',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'زيت مائدة إيليو 5 لتر (Elio Cevital)', unit: 'قارورة', qty: 1, price: 650, discount: 0, tva: 0, subtotal: 650 },
+        { barcode: '6130002000011', name: 'حليب كانديا نصف دسم 1 لتر (Candia)', unit: 'علبة', qty: 1, price: 150, discount: 0, tva: 0, subtotal: 150 },
+        { barcode: '6130006000017', name: 'قهوة مطحونة بونال 250غ (Bonal)', unit: 'علبة', qty: 1, price: 320, discount: 0, tva: 0, subtotal: 320 }
+      ],
+      sampleTotal: 1120,
+      samplePaid: 1120,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'production_order_sheet',
+      num: 27,
+      cat: 'INVENTORY',
+      catLabel: '📦 المخزون والتصنيع (4)',
+      name: '🏭 27. أمر تشغيل وتصنيع داخلي (Ordre de Fabrication BOM A4)',
+      cleanTitle: 'أمر تشغيل وتصنيع داخلي / Ordre de Fabrication (BOM)',
+      defaultPaper: 'a4',
+      defaultTheme: 'emerald_dz',
+      sourcePage: 'manufacturing',
+      sourceLabel: 'التصنيع والإنتاج',
+      proDesc: 'يوثق وصفة التصنيع، المواد الأولية المسحوبة من المخزن، نسبة الهدر، وتكلفة الوحدة المصنعة الناتجة',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'bom_production_cost_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'dual_signature_stamps_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'PRD-2026-0015',
+      samplePartyTitle: 'ورشة الإنتاج / الوصفة:',
+      samplePartyName: 'إنتاج حزمة ترويجية / منتج مصنع جاهز',
+      samplePaymentMethod: 'أمر إنتاج داخلي معتمد',
+      sampleItems: [
+        { barcode: 'RAW-001', name: 'مادة أولية مستهلكة رقم 1 (سحب من المخزون)', unit: 'كغ', qty: 10, price: 120, discount: 0, tva: 0, subtotal: 1200 },
+        { barcode: 'RAW-002', name: 'مواد تغليف وتعبئة', unit: 'قطعة', qty: 20, price: 15, discount: 0, tva: 0, subtotal: 300 }
+      ],
+      sampleTotal: 1500,
+      samplePaid: 1500,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'low_stock_order_a4',
+      num: 28,
+      cat: 'INVENTORY',
+      catLabel: '📦 المخزون والتصنيع (4)',
+      name: '🚨 28. كشف النواقص المخزنية وطلب التموين (État des Ruptures A4)',
+      cleanTitle: 'كشف النواقص المخزنية وطلب التموين / État des Ruptures',
+      defaultPaper: 'a4',
+      defaultTheme: 'amber_gold',
+      sourcePage: 'inventory',
+      sourceLabel: 'إدارة المخزون والتنبيهات',
+      proDesc: 'قائمة الأصناف التي وصلت للحد الأدنى في المخزن مع الكمية المقترحة للتموين لتسليمها للمورد',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'low_stock_reorder_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'RUP-2026-0005',
+      samplePartyTitle: 'موجه إلى قسم:',
+      samplePartyName: 'المشتريات والتموين — طلبية تعويض النواقص',
+      samplePaymentMethod: 'أصناف حرجة تحت الحد الأدنى',
+      sampleItems: [
+        { barcode: '6130001000012', name: 'مناديل مبللة ألترا جوي (المتبقي بالسطوك: 2 — الحد الأدنى: 10)', unit: 'علبة', qty: 30, price: 55, discount: 0, tva: 0, subtotal: 1650 },
+        { barcode: '6130006000017', name: 'غولد لاين (المتبقي بالسطوك: 1 — الحد الأدنى: 12)', unit: 'قطعة', qty: 24, price: 100, discount: 0, tva: 0, subtotal: 2400 }
+      ],
+      sampleTotal: 4050,
+      samplePaid: 0,
+      samplePrevDebt: 0
+    },
+
+    // ========================================================================
+    // المجموعة 5: الصندوق والورديات والجباية والرقابة (6 مستندات احترافية #29 .. #34)
+    // مصممة لفصل سيولة الدرج عن ديون الوردية والمصاريف بدقة محاسبية 100%
+    // ========================================================================
+    {
+      id: 'caisse_z_report',
+      num: 29,
+      cat: 'FINANCE',
+      catLabel: '🏦 الصندوق والجباية والرقابة (6)',
+      name: '🔒 29. تذكرة إغلاق الوردية الشاملة: السيولة والديون والمصاريف (Z-Report 80mm)',
+      cleanTitle: 'محضر إغلاق الوردية الشامل (السيولة + الديون + المصاريف) / Z-Report',
+      defaultPaper: '80mm',
+      defaultTheme: 'executive_dark',
+      sourcePage: 'caisse',
+      sourceLabel: 'إدارة الصندوق — إغلاق الوردية ومعاينة Z-Report',
+      proDesc: 'تذكرة حرارية شاملة تفصل بدقة بين السيولة النقدية في الدرج (الافتتاحي + مبيعات النقد + تحصيل الديون - المصاريف) وبين الديون الآجلة الممنوحة في الوردية',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'shift_cash_vs_debt_reconciliation_layer',
+        'items_table_layer',
+        'shift_expenses_and_inflows_layer',
+        'caisse_z_denoms_layer',
+        'totals_words_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: false, barcode: false, name: true, unit: false, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'Z-SHIFT-0008',
+      samplePartyTitle: 'الوردية / أمين الصندوق:',
+      samplePartyName: 'الوردية #8 — الكاشير: المدير العام',
+      samplePaymentMethod: 'السيولة مطابقة ✔ | ديون الوردية: +270.00 د.ج',
+      sampleItems: [
+        { barcode: '1-OPEN', name: '1. الرصيد الافتتاحي في الدرج (Fond de Caisse)', unit: 'سيولة درج', qty: 1, price: 8000, discount: 0, tva: 0, subtotal: 8000 },
+        { barcode: '2-CASH', name: '2. المبيعات النقدية المحصلة + المدفوع جزئياً (+)', unit: 'سيولة درج', qty: 1, price: 15800, discount: 0, tva: 0, subtotal: 15800 },
+        { barcode: '3-DEBT-IN', name: '3. تسديدات ديون الزبائن المقبوضة نقداً Alt+V (+)', unit: 'تحصيل دين', qty: 1, price: 1199.2, discount: 0, tva: 0, subtotal: 1199.2 },
+        { barcode: '4-EXP', name: '4. المصاريف والمسحوبات النقدية من الدرج (-)', unit: 'خصم درج', qty: 1, price: 0, discount: 0, tva: 0, subtotal: 0 },
+        { barcode: '5-NEW-DEBT', name: '5. [حساب الديون]: ديون جديدة ممنوحة للزبائن اليوم Alt+D (لا تدخل في كاش الدرج)', unit: 'ذمم آجلة', qty: 1, price: 270, discount: 0, tva: 0, subtotal: 0 }
+      ],
+      sampleTotal: 24999.2,
+      samplePaid: 24999.2,
+      samplePrevDebt: 270
+    },
+    {
+      id: 'caisse_shift_full_audit_a4',
+      num: 30,
+      cat: 'FINANCE',
+      catLabel: '🏦 الصندوق والجباية والرقابة (6)',
+      name: '🏦 30. المحضر الرسمي المفصل لإغلاق الوردية والديون والمصاريف (Z-Report A4)',
+      cleanTitle: 'المحضر الرسمي المفصل لإغلاق الوردية، السيولة، الديون، والمصاريف (Z-Report A4)',
+      defaultPaper: 'a4',
+      defaultTheme: 'executive_dark',
+      sourcePage: 'caisse',
+      sourceLabel: 'إدارة الصندوق — طباعة تقرير مفصل (A4)',
+      proDesc: 'تقرير A4 إداري ومحاسبي مفصل يوثق حركة السيولة النقدية، قائمة فواتير الدين الممنوحة في الوردية، وصولات قبض الديون، والمصاريف، وجرد الفئات النقدية',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'shift_cash_vs_debt_reconciliation_layer',
+        'items_table_layer',
+        'shift_expenses_and_inflows_layer',
+        'caisse_z_denoms_layer',
+        'totals_words_layer',
+        'dual_signature_stamps_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'Z-FULL-A4-0008',
+      samplePartyTitle: 'المناوبة / أمين الصندوق:',
+      samplePartyName: 'الوردية #8 — الكاشير: المدير العام',
+      samplePaymentMethod: 'مطابقة السيولة النقدية + جرد ديون ومصاريف الوردية',
+      sampleItems: [
+        { barcode: '1-OPEN', name: '1. الرصيد النقدي الافتتاحي في الدرج (Fond de Caisse)', unit: 'سيولة درج', qty: 1, price: 8000, discount: 0, tva: 0, subtotal: 8000 },
+        { barcode: '2-CASH', name: '2. إجمالي المبيعات النقدية والمدفوع جزئياً في الوردية (+)', unit: 'سيولة درج', qty: 1, price: 15800, discount: 0, tva: 0, subtotal: 15800 },
+        { barcode: '3-DEBT-IN', name: '3. إجمالي تسديدات الديون المقبوضة نقداً في الوردية Alt+V (+)', unit: 'سيولة درج', qty: 1, price: 1199.2, discount: 0, tva: 0, subtotal: 1199.2 },
+        { barcode: '4-NEW-DEBT', name: '4. [مبيعات آجلة]: فاتورة دين #91 للزبون (أمين بن يحيى FID-00003) — باقي غير مقبوض: 270.00 د.ج', unit: 'ذمم آجلة', qty: 1, price: 270, discount: 0, tva: 0, subtotal: 0 }
+      ],
+      sampleTotal: 24999.2,
+      samplePaid: 24999.2,
+      samplePrevDebt: 270
+    },
+    {
+      id: 'caisse_cash_in_voucher_80mm',
+      num: 31,
+      cat: 'FINANCE',
+      catLabel: '🏦 الصندوق والجباية والرقابة (6)',
+      name: "➕ 31. سند إيداع وتغذية نقدية في الصندوق (Bon d'Entrée 80mm)",
+      cleanTitle: "سند إيداع وتغذية صندوق الكاشير / Bon d'Entrée Caisse",
+      defaultPaper: '80mm',
+      defaultTheme: 'emerald_dz',
+      sourcePage: 'caisse',
+      sourceLabel: 'إدارة الصندوق — إيداع نقدي (+ سند)',
+      proDesc: 'وصل حراري لتوثيق المبالغ النقدية المودعة في الدرج (تغذية الفكة/الصرف أو إيداع مالي) مع توقيع المودع وأمين الصندوق',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: false, barcode: false, name: true, unit: false, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'ENT-2026-0018',
+      samplePartyTitle: 'المودع / أمين الصندوق:',
+      samplePartyName: 'تغذية نقدية لصندوق الكاشير — المدير العام',
+      samplePaymentMethod: 'إيداع نقدي مباشر في الدرج (+)',
+      sampleItems: [
+        { barcode: 'ENT-18', name: 'إيداع سيولة نقدية لتغذية الصرف في درج الكاشير', unit: 'إيداع', qty: 1, price: 3000, discount: 0, tva: 0, subtotal: 3000 }
+      ],
+      sampleTotal: 3000,
+      samplePaid: 3000,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'expense_voucher',
+      num: 32,
+      cat: 'FINANCE',
+      catLabel: '🏦 الصندوق والجباية والرقابة (6)',
+      name: '💸 32. سند صرف نقدي / مصروف تشغيلي (Bon de Sortie 80mm)',
+      cleanTitle: 'سند صرف نقدي من الصندوق / Bon de Sortie Caisse',
+      defaultPaper: '80mm',
+      defaultTheme: 'crimson_bold',
+      sourcePage: 'expenses',
+      sourceLabel: 'المصاريف ورأس المال + سحب نقدي من الصندوق',
+      proDesc: 'وصل إثبات سحب مبلغ نقدي من الدرج لتغطية مصروف تشغيلي مع بطاقة اعتماد الصرف وتوقيع المستلم',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'items_table_layer',
+        'expense_approval_layer',
+        'totals_words_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: false, barcode: false, name: true, unit: false, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'EXP-2026-0044',
+      samplePartyTitle: 'فئة المصروف / المستفيد:',
+      samplePartyName: 'مصاريف نقل وشحن وتفريغ البضاعة',
+      samplePaymentMethod: 'سحب نقدي من مناوبة الصندوق (-)',
+      sampleItems: [
+        { barcode: 'EXP-44', name: 'دفع مصاريف نقل وتفريغ البضاعة (خصم مباشر من صندوق الكاشير)', unit: 'سند صرف', qty: 1, price: 1500, discount: 0, tva: 0, subtotal: 1500 }
+      ],
+      sampleTotal: 1500,
+      samplePaid: 1500,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'fiscal_g12_statement',
+      num: 33,
+      cat: 'FINANCE',
+      catLabel: '🏦 الصندوق والجباية والرقابة (6)',
+      name: '🇩🇿 33. استمارة التصريح الجبائي الجزائري (IFU G12 / G50 A4)',
+      cleanTitle: 'استمارة التصريح الجبائي الجزائري (IFU G12 / G50)',
+      defaultPaper: 'a4',
+      defaultTheme: 'emerald_dz',
+      sourcePage: 'analytics',
+      sourceLabel: 'الإحصائيات واستوديو الجباية (التبويب 13)',
+      proDesc: 'كشف جبائي يفصل رقم أعمال المواد المقننة واسعة الاستهلاك (حليب، سميد، زيت، خبز) عن السلع العادية الخاضعة لمعدل 5%',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'tax_ifu_breakdown_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'dual_signature_stamps_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: false, name: true, unit: true, qty: false, unitPrice: false, discount: false, tva: true, subtotal: true },
+      sampleDocNum: 'G12-2026-DZ',
+      samplePartyTitle: 'المكلف بالضريبة الجزافية الوحيدة (IFU):',
+      samplePartyName: 'Gherbi.Ai POS — تجارة بالتجزئة وسوبرماركت',
+      samplePaymentMethod: 'تصريح سنوي IFU G12 (معدل 5%)',
+      sampleItems: [
+        { barcode: 'IFU-REG', name: '1. رقم الأعمال للمواد المقننة السعر (حليب، خبز، سميد، زيت — هامش الربح الصافي الخاضع)', unit: 'مقنن G12', qty: 1, price: 45000, discount: 0, tva: 0, subtotal: 45000 },
+        { barcode: 'IFU-5P', name: '2. رقم الأعمال للسلع التجارية العادية الخاضعة لمعدل 5% (IFU)', unit: 'خاضع 5%', qty: 1, price: 185000, discount: 0, tva: 5, subtotal: 185000 }
+      ],
+      sampleTotal: 230000,
+      samplePaid: 230000,
+      samplePrevDebt: 0
+    },
+    {
+      id: 'forensic_audit_report',
+      num: 34,
+      cat: 'FINANCE',
+      catLabel: '🏦 الصندوق والجباية والرقابة (6)',
+      name: '🛡️ 34. التقرير الجنائي لرقابة الكاشير وحماية الأرباح (Audit A4)',
+      cleanTitle: 'التقرير الجنائي الرسمي لرقابة الكاشير ومنع التلاعب (Anti-Fraude)',
+      defaultPaper: 'a4',
+      defaultTheme: 'crimson_bold',
+      sourcePage: 'analytics',
+      sourceLabel: 'رادار الرقابة الجنائية (التبويب 14) + الدرع العلوي',
+      proDesc: 'تقرير رقابي لصاحب المحل يوثق باليوم والساعة والكاشير السطور المحذوفة بعد المسح، تفريغ السلة، والبيع بأقل من التكلفة',
+      idealLayers: [
+        'header_layer',
+        'doc_banner_layer',
+        'customer_box_layer',
+        'forensic_radar_summary_layer',
+        'items_table_layer',
+        'totals_words_layer',
+        'dual_signature_stamps_layer',
+        'footer_stamp_layer'
+      ],
+      idealCols: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+      sampleDocNum: 'AUDIT-2026-14',
+      samplePartyTitle: 'نطاق الفحص الرقابي:',
+      samplePartyName: 'جميع البائعين ومناوبات الكاشير',
+      samplePaymentMethod: 'تقرير رقابي جنائي لحماية الأرباح',
+      sampleItems: [
+        { barcode: 'VOID-LINE', name: 'حذف سطر من السلة بعد قراءة الباركود (إلغاء قبل التسديد)', unit: 'حركة مرصودة', qty: 2, price: 125, discount: 0, tva: 0, subtotal: 250 },
+        { barcode: 'BELOW-COST', name: 'عمليات بيع بسعر التكلفة أو بأقل من سعر الشراء', unit: 'حركة مرصودة', qty: 0, price: 0, discount: 0, tva: 0, subtotal: 0 }
+      ],
+      sampleTotal: 250,
+      samplePaid: 0,
+      samplePrevDebt: 0
+    }
+  ];
+
+  // توحيد القوالب الـ 34 في مصفوفة واحدة نظيفة ومعتمدة
+  window.__GHERBI_V70_ALL_34_MASTER_TEMPLATES = [
+    ...(window.__GHERBI_V70_MASTER_TEMPLATES_PART1 || []),
+    ...window.__GHERBI_V70_MASTER_TEMPLATES_PART2
+  ];
+
+  console.log('✅ [V70 Part 2]: اكتمل بناء القوالب الـ 34 من الصفر المطلق بنجاح!');
+})();
+
+/* ==================== [V70 PART 3: UPGRADED STUDIO TOOLS & 36 SMART LAYERS LIBRARY] ==================== */
+(function initV70Part3UpgradedToolsAnd36Layers() {
+  // ==========================================================================
+  // مكتبة الـ 36 طبقة ذكية المحدثة (تضم الطبقات الـ 30 السابقة + 6 طبقات جديدة للمميزات الحديثة)
+  // ==========================================================================
+  const FULL_36_SMART_LAYERS = [
+    // ── 1. الأساسية (CORE — 6 طبقات) ──
+    { id: 'header_layer', cat: 'CORE', name: '🏢 1. ترويسة المتجر والشعار والبيانات الجبائية', desc: 'اسم المتجر، الشعار، الهاتف، العنوان، وأرقام RC / NIF / AI / NIS.', defaultVisible: true, forDocs: ['ALL'] },
+    { id: 'doc_banner_layer', cat: 'CORE', name: '🏷️ 2. شريط عنوان ورقم المستند والباركود', desc: 'عنوان التذكرة/الفاتورة، رقمها التسلسلي، تاريخ وساعة الإصدار، والباركود.', defaultVisible: true, forDocs: ['ALL'] },
+    { id: 'customer_box_layer', cat: 'CORE', name: '👤 3. بطاقة بيانات الزبون / المورد والكود (FID)', desc: 'اسم الزبون الوفي أو المورد، كود بطاقة الوفاء FID، الهاتف، والعنوان.', defaultVisible: true, forDocs: ['ALL'] },
+    { id: 'items_table_layer', cat: 'CORE', name: '📋 4. جدول الأصناف والكميات والأسعار الذكي', desc: 'جدول السلع أو الحركات بتخطيط ديناميكي يتكيف مع 80mm و A4 و A5.', defaultVisible: true, forDocs: ['ALL'] },
+    { id: 'totals_words_layer', cat: 'CORE', name: '💰 5. شلال المجاميع بالدينار والسنتيم والتفقيط', desc: 'المجموع الفرعي، التخفيض، الصافي بالدينار والسنتيم، والمبلغ بالحروف.', defaultVisible: true, forDocs: ['ALL'] },
+    { id: 'footer_stamp_layer', cat: 'CORE', name: '✒️ 6. التذييل، شروط الاستبدال، رمز RIP، والختم', desc: 'شروط الإرجاع والاستبدال، حساب BaridiMob RIP، ومربع الختم والإمضاء.', defaultVisible: true, forDocs: ['ALL'] },
+
+    // ── 2. الكريدي والديون المحدثة (CREDIT — 8 طبقات شاملة لـ Alt+D و Alt+V و Alt+H) ──
+    { id: 'alt_d_debt_confirmation_box_layer', cat: 'FINANCE', name: '📝 7. بطاقة تأكيد عملية الدين والمدفوع الجزئي (Alt+D)', desc: 'صندوق مخصص لتذكرة (Alt+D) يفصل الدين السابق + فاتورة اليوم - المدفوع اليوم = الدين الجديد + إمضاء المدين.', defaultVisible: false, forDocs: ['debt_confirm_ticket_80mm', 'pos_partial_credit_80mm', 'invoice_a4', 'invoice_a5'] },
+    { id: 'alt_v_debt_settlement_voucher_layer', cat: 'FINANCE', name: '💵 8. بطاقة وصل تسديد الدين وحساب الباقي بالسنتيم (Alt+V)', desc: 'صندوق مخصص لوصل القبض (Alt+V) يوضح الدين قبل الدفع، المبلغ المقبوض، والرصيد المتبقي بالسنتيم.', defaultVisible: false, forDocs: ['payment_receipt', 'customer_carnet_80mm'] },
+    { id: 'alt_h_items_taken_history_layer', cat: 'FINANCE', name: '📜 9. جدول تفصيل السلع المأخوذة في فواتير الدين (Alt+H)', desc: 'يعرض تفاصيل السلع والكميات المسحوبة على الحساب داخل كل فاتورة دين بالتاريخ والساعة.', defaultVisible: false, forDocs: ['customer_debt_history_a4', 'customer_carnet_80mm', 'customer_ledger_a4'] },
+    { id: 'credit_carnet_layer', cat: 'FINANCE', name: '💳 10. خلاصة كرني الكريدي السريعة (Carnet de Crédit 80mm)', desc: 'صندوق بارز يوضح إجمالي المشتريات، إجمالي المسدد، وصافي الدين المتبقي بالدينار والسنتيم.', defaultVisible: false, forDocs: ['customer_carnet_80mm', 'debt_confirm_ticket_80mm', 'pos_partial_credit_80mm', 'payment_receipt', 'f8_vip_loyalty_debt_card_80mm'] },
+    { id: 'debt_ledger_layer', cat: 'FINANCE', name: '⚖️ 11. جدول وضعية الديون والحساب التراكمي الرسمي (A4 / A5)', desc: 'جدول محاسبي رسمي للفواتير وكشوف الحسابات يوضح الرصيد السابق والحالي والمتبقي.', defaultVisible: false, forDocs: ['invoice_a4', 'invoice_a5', 'customer_ledger_a4', 'customer_debt_history_a4', 'recap_invoice_a4', 'purchase_invoice', 'supplier_payment_receipt', 'supplier_ledger_a4'] },
+    { id: 'payment_breakdown_layer', cat: 'FINANCE', name: '💵 12. تفصيل المقبوض، الصرف المرجع (Rendu)، وطريقة الدفع', desc: 'يعرض المبلغ المستلم من الزبون، الصرف المرجع له بالدينار والسنتيم، واسم الكاشير.', defaultVisible: false, forDocs: ['receipt_thermal', 'pos_partial_credit_80mm', 'payment_receipt'] },
+    { id: 'installments_schedule_layer', cat: 'FINANCE', name: '🗓️ 13. جدول الأقساط الشهرية ومواعيد الاستحقاق والتسبيق', desc: 'يعرض الدفعة الأولى (التسبيق)، عدد الأشهر، قيمة القسط الشهري، وتواريخ الاستحقاق.', defaultVisible: false, forDocs: ['installment_contract', 'invoice_a4'] },
+    { id: 'bank_rip_ccp_box_layer', cat: 'FINANCE', name: '🏦 14. بطاقة الحساب البنكي والبريدي (RIB / CCP / BaridiMob RIP)', desc: 'صندوق رسمي لبيانات الدفع البنكي والبريدي للشركات والزبائن.', defaultVisible: false, forDocs: ['invoice_a4', 'proforma', 'recap_invoice_a4', 'customer_ledger_a4', 'customer_debt_history_a4'] },
+
+    // ── 3. الوفاء والتسويق (LOYALTY — 6 طبقات شاملة لـ F8 و F9) ──
+    { id: 'f8_vip_points_and_debt_dual_layer', cat: 'LOYALTY', name: '👑 15. البطاقة المزدوجة للزبون الوفي: النقاط + الديون (F8)', desc: 'تجمع في شريط واحد رصيد نقاط الوفاء وقيمتها النقدية بالدينار + صافي ديون الزبون الوفي الحالية.', defaultVisible: true, forDocs: ['receipt_thermal', 'f8_vip_loyalty_debt_card_80mm', 'debt_confirm_ticket_80mm', 'pos_partial_credit_80mm', 'customer_carnet_80mm'] },
+    { id: 'loyalty_points_layer', cat: 'LOYALTY', name: '⭐ 16. بطاقة نقاط الوفاء والمخصوم من البطاقة (VIP & عابر)', desc: 'تعرض نوع الزبون، الرصيد السابق، النقاط المكتسبة (+)، المخصومة (-)، والرصيد الجديد.', defaultVisible: false, forDocs: ['receipt_thermal', 'loyalty_vip_card_80mm', 'invoice_a4'] },
+    { id: 'savings_promo_layer', cat: 'LOYALTY', name: '🎉 17. شريط "كم وفّرت اليوم؟" وعداد القطع الإجمالي', desc: 'يبرز للزبون إجمالي ما وفّره في الفاتورة وإجمالي عدد القطع المستلمة.', defaultVisible: false, forDocs: ['receipt_thermal', 'loyalty_vip_card_80mm', 'invoice_a4'] },
+    { id: 'vip_coupon_cut_layer', cat: 'LOYALTY', name: '✂️ 18. قسيمة هدية وتخفيض قابلة للقص للزيارة القادمة (Coupon)', desc: 'كوبون ترويجي منقط قابل للقص في أسفل التذكرة لتحفيز الزبون على العودة.', defaultVisible: false, forDocs: ['receipt_thermal', 'loyalty_vip_card_80mm', 'f8_vip_loyalty_debt_card_80mm'] },
+    { id: 'qr_social_wifi_layer', cat: 'LOYALTY', name: '📱 19. رمز QR المتجر، صفحات التواصل، وكود Wi-Fi الزبائن', desc: 'رمز استجابة سريعة للمتجر مع صفحات فيسبوك/واتساب أو كود Wi-Fi الزبائن.', defaultVisible: false, forDocs: ['receipt_thermal', 'loyalty_vip_card_80mm', 'price_catalog_a4'] },
+    { id: 'return_policy_box_layer', cat: 'LOYALTY', name: '🔄 20. صندوق شروط الإرجاع والاستبدال وحماية المستهلك', desc: 'يوضح شروط استبدال السلع خلال 48 ساعة وإلزامية إحضار الوصل الأصلي.', defaultVisible: false, forDocs: ['receipt_thermal', 'invoice_a4', 'credit_note', 'warranty_cert'] },
+
+    // ── 4. الصندوق والورديات والجباية والرقابة (CAISSE_FISCAL — 7 طبقات شاملة لحسابات الوردية) ──
+    { id: 'shift_cash_vs_debt_reconciliation_layer', cat: 'CAISSE_FISCAL', name: '🏦 21. ميزان الوردية المزدوج: سيولة الدرج مقابل ديون الوردية (Z-Report)', desc: 'يفصل بدقة بين الأموال النقدية المتوقعة في الدرج وبين الديون الآجلة الممنوحة في الوردية لمنع أي خطأ عند الجرد.', defaultVisible: false, forDocs: ['caisse_z_report', 'caisse_shift_full_audit_a4'] },
+    { id: 'shift_expenses_and_inflows_layer', cat: 'CAISSE_FISCAL', name: '💸 22. جدول تفصيل المصاريف والإيداعات وتحصيل الديون بالوردية', desc: 'يعرض ملخص حركات الإيداع النقدي (+)، تحصيل الديون (+)، السحوبات (-)، والمصاريف (-) داخل الوردية.', defaultVisible: false, forDocs: ['caisse_z_report', 'caisse_shift_full_audit_a4', 'expense_voucher', 'caisse_cash_in_voucher_80mm'] },
+    { id: 'caisse_z_denoms_layer', cat: 'CAISSE_FISCAL', name: '🔒 23. جدول جرد الفئات النقدية الجزائرية وفارق الصندوق (Billetage)', desc: 'يفصل عدّ الأوراق النقدية (2000، 1000، 500، 200، 100 د.ج) والرصيد المعدود والفارق.', defaultVisible: false, forDocs: ['caisse_z_report', 'caisse_shift_full_audit_a4'] },
+    { id: 'expense_approval_layer', cat: 'CAISSE_FISCAL', name: '🧾 24. بطاقة اعتماد سند الصرف النقدي وتوقيع المستفيد', desc: 'توثق فئة المصروف، رقم المناوبة، اسم المستلم للمبلغ، وتوقيع المدير.', defaultVisible: false, forDocs: ['expense_voucher', 'supplier_payment_receipt'] },
+    { id: 'tax_ifu_breakdown_layer', cat: 'CAISSE_FISCAL', name: '🇩🇿 25. جدول تفصيل الضرائب الجزائرية (TVA / الطابع / إعفاء G12)', desc: 'يفصل المبلغ خارج الرسم HT، ضريبة TVA، الطابع الجبائي، والسلع المقننة المعفاة.', defaultVisible: false, forDocs: ['fiscal_g12_statement', 'invoice_a4', 'proforma'] },
+    { id: 'forensic_radar_summary_layer', cat: 'CAISSE_FISCAL', name: '🛡️ 26. بطاقة مؤشرات الرقابة الجنائية وحماية الأرباح', desc: 'تلخص عمليات حذف السطور بعد المسح، تفريغ السلة، والبيع بأقل من التكلفة.', defaultVisible: false, forDocs: ['forensic_audit_report', 'caisse_z_report', 'caisse_shift_full_audit_a4'] },
+    { id: 'free_custom_note_layer', cat: 'CAISSE_FISCAL', name: '📝 27. صندوق ملاحظات وتعليمات حرة قابلة للتخصيص', desc: 'صندوق نصي حر يمكنك كتابة أي إعلان، تهنئة، أو شروط خاصة بداخله.', defaultVisible: false, forDocs: ['ALL'] },
+
+    // ── 5. المخزون والمشتريات والتصنيع (INVENTORY — 5 طبقات) ──
+    { id: 'supplier_reception_layer', cat: 'INVENTORY', name: '🛍️ 28. بطاقة مطابقة استلام البضاعة من المورد وفحص الجودة', desc: 'توثق تاريخ الاستلام، رقم فاتورة المورد، حالة الطرود، ومراقب المخزن.', defaultVisible: false, forDocs: ['purchase_invoice', 'supplier_return_note', 'supplier_ledger_a4'] },
+    { id: 'stocktake_variance_layer', cat: 'INVENTORY', name: '📊 29. ملخص محضر الجرد المخزني وفوارق الكميات والقيمة', desc: 'يلخص إجمالي الرصيد الدفتري، الرصيد الفعلي المعدود، وصافي العجز أو الفائض.', defaultVisible: false, forDocs: ['stocktake_sheet_a4'] },
+    { id: 'bom_production_cost_layer', cat: 'INVENTORY', name: '🏭 30. بطاقة تكلفة التصنيع، المواد الأولية، ونسبة الهدر (BOM)', desc: 'تفصل تكلفة المواد الأولية، المصاريف الإضافية، وتكلفة الوحدة المصنعة الناتجة.', defaultVisible: false, forDocs: ['production_order_sheet'] },
+    { id: 'low_stock_reorder_layer', cat: 'INVENTORY', name: '🚨 31. بطاقة أولوية التموين للأصناف الحرجة والنافدة', desc: 'تبرز عدد الأصناف التي وصلت للحد الأدنى والميزانية التقديرية لإعادة تموينها.', defaultVisible: false, forDocs: ['low_stock_order_a4', 'purchase_invoice'] },
+    { id: 'pack_carton_summary_layer', cat: 'INVENTORY', name: '📦 32. ملخص التغليف وإجمالي الكراتين والباكي (Colisage)', desc: 'يحسب إجمالي عدد الطرود والكراتين والقطع لتسهيل التحميل والمراقبة.', defaultVisible: false, forDocs: ['delivery_note', 'invoice_a4', 'purchase_invoice', 'customer_order'] },
+
+    // ── 6. الضمان والتوصيل واللوجستيك (LOGISTICS — 4 طبقات) ──
+    { id: 'delivery_driver_layer', cat: 'LOGISTICS', name: '🚚 33. بطاقة التوصيل، السائق، رقم المركبة، وإمضاء الاستلام', desc: 'اسم السائق، رقم لوحة المركبة (Matricule)، وجهة التوصيل، وخانة إمضاء المستلم.', defaultVisible: false, forDocs: ['delivery_note', 'invoice_a4', 'customer_order'] },
+    { id: 'warranty_imei_layer', cat: 'LOGISTICS', name: '🛡️ 34. شهادة الضمان الرسمي والأرقام التسلسلية (IMEI / S-N)', desc: 'صندوق مخصص لمدة الضمان بالأشهر، الأرقام التسلسلية للأجهزة، وشروط الصيانة.', defaultVisible: false, forDocs: ['warranty_cert', 'invoice_a4', 'receipt_thermal'] },
+    { id: 'order_reservation_layer', cat: 'LOGISTICS', name: '📋 35. بطاقة حجز الطلبية، العربون المدفوع، وتاريخ التسليم', desc: 'توضح حالة حجز السلعة في المخزن، مبلغ العربون (Acompte)، والباقي عند الاستلام.', defaultVisible: false, forDocs: ['customer_order', 'proforma'] },
+    { id: 'dual_signature_stamps_layer', cat: 'LOGISTICS', name: '✍️ 36. مربعات الإمضاء والختم الثلاثي (المسلّم / المراقب / المستلم)', desc: 'ثلاث خانات رسمية للتوقيع والختم في أسفل الفواتير ومحاضر الاستلام والجرد والورديات.', defaultVisible: false, forDocs: ['delivery_note', 'purchase_invoice', 'stocktake_sheet_a4', 'production_order_sheet', 'installment_contract', 'caisse_shift_full_audit_a4', 'global_debtors_register_a4'] }
+  ];
+
+  window.__GHERBI_V70_FULL_36_LAYERS = FULL_36_SMART_LAYERS;
+
+  const waitStudio = setInterval(() => {
+    const studio = window.GherbiPrintStudioV45;
+    if (!studio || !window.__GHERBI_V70_ALL_34_MASTER_TEMPLATES) return;
+    clearInterval(waitStudio);
+
+    studio.ALL_28_MASTER_DOCS = window.__GHERBI_V70_ALL_34_MASTER_TEMPLATES;
+    studio.ALL_34_MASTER_DOCS = window.__GHERBI_V70_ALL_34_MASTER_TEMPLATES;
+    studio.FULL_16_LAYERS_CATALOG = FULL_36_SMART_LAYERS;
+    studio.FULL_30_SMART_LAYERS = FULL_36_SMART_LAYERS;
+    studio.FULL_36_SMART_LAYERS = FULL_36_SMART_LAYERS;
+    studio.showOnlyActiveLayersInStack = studio.showOnlyActiveLayersInStack !== undefined ? studio.showOnlyActiveLayersInStack : true;
+
+    // 1. تحديث دالة ترجمة المتغيرات الحية لتدعم متغيرات الديون والوفاء والورديات الجديدة
+    const origInterpolate = studio.interpolateSmartVariables?.bind(studio);
+    studio.interpolateSmartVariables = function (rawText, docData) {
+      if (!rawText) return '';
+      const base = origInterpolate ? origInterpolate(rawText, docData) : String(rawText);
+      const prevDebt = Number(docData?.previousBalance || 0);
+      const remDebt = Number(docData?.remainingDebt || 0);
+      const netDebt = Number((prevDebt + remDebt).toFixed(2));
+      const pts = Number(docData?.loyaltyTotalBalance || 79);
+      return base
+        .replace(/\{دين_الزبون_السابق\}/g, this.fmtDzd(prevDebt))
+        .replace(/\{المدفوع_اليوم\}/g, this.fmtDzd(docData?.paidAmount || 0))
+        .replace(/\{الدين_المضاف_اليوم\}/g, this.fmtDzd(remDebt))
+        .replace(/\{إجمالي_ديون_الزبون\}/g, this.fmtDzd(netDebt))
+        .replace(/\{نقاط_الوفاء_وقيمتها\}/g, `${pts} نقطة (${pts * 2} د.ج)`)
+        .replace(/\{سيولة_الدرج_المتوقعة\}/g, this.fmtDzd(docData?.total || 24999.2))
+        .replace(/\{ديون_الوردية_الجديدة\}/g, this.fmtDzd(prevDebt || 270));
+    };
+
+    // 2. تحديث مزامنة الـ 36 طبقة مع إعدادات القالب النشط
+    studio.sync30LayersWithActiveConfig = function () {
+      const existing = Array.isArray(this.config.layers) ? this.config.layers : [];
+      const mapById = new Map(existing.map((l) => [l.id, l]));
+      const docMeta =
+        this.ALL_34_MASTER_DOCS.find((d) => d.id === this.config.activeDocType) ||
+        this.ALL_34_MASTER_DOCS[0];
+      const idealSet = new Set((docMeta && docMeta.idealLayers) || ['header_layer', 'doc_banner_layer', 'customer_box_layer', 'items_table_layer', 'totals_words_layer', 'footer_stamp_layer']);
+
+      const merged = [];
+      for (const cat of FULL_36_SMART_LAYERS) {
+        if (mapById.has(cat.id)) {
+          const item = mapById.get(cat.id);
+          merged.push({
+            fontSizeScale: 100,
+            textAlign: 'right',
+            borderStyle: 'default',
+            bgStyle: 'default',
+            paddingMode: 'normal',
+            customTitle: '',
+            customNote: '',
+            ...item,
+            name: item.customLabel || cat.name
+          });
+          mapById.delete(cat.id);
+        } else {
+          merged.push({
+            id: cat.id,
+            name: cat.name,
+            visible: idealSet.has(cat.id),
+            align: 'between',
+            fontSizeScale: 100,
+            textAlign: 'right',
+            borderStyle: 'default',
+            bgStyle: 'default',
+            paddingMode: 'normal',
+            customTitle: '',
+            customNote: ''
+          });
+        }
+      }
+      for (const customL of mapById.values()) {
+        merged.push(customL);
+      }
+      this.config.layers = merged;
+    };
+
+    // 3. تطوير قوالب الأعمدة الجاهزة لتشمل قوالب الديون والورديات الجديدة
+    studio.applyTableColumnsPresetInPlace = function (presetKey) {
+      const presets = {
+        thermal_simple: { index: false, barcode: false, name: true, unit: false, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+        alt_d_credit_ticket: { index: true, barcode: false, name: true, unit: true, qty: true, unitPrice: true, discount: false, tva: false, subtotal: true },
+        alt_h_debt_statement: { index: true, barcode: true, name: true, unit: true, qty: false, unitPrice: true, discount: false, tva: false, subtotal: true },
+        z_report_shift: { index: false, barcode: true, name: true, unit: true, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
+        a4_full: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: true, discount: true, tva: true, subtotal: true },
+        delivery_qty_only: { index: true, barcode: true, name: true, unit: true, qty: true, unitPrice: false, discount: false, tva: false, subtotal: false }
+      };
+      if (presets[presetKey]) {
+        this.config.columns = { ...this.config.columns, ...presets[presetKey] };
+        this.saveConfigLocal();
+        this.refreshLeftSidebarOnly();
+        this.refreshPaperHostOnly();
+      }
+    };
+
+    studio.toggleShowOnlyActiveLayersInStack = function () {
+      this.showOnlyActiveLayersInStack = !this.showOnlyActiveLayersInStack;
+      this.refreshLeftSidebarOnly();
+    };
+
+    // 4. ترقية لوحة الأدوات الجانبية (الصورة image_0e7762.png) لتعمل بـ 36 طبقة وفلاتر ذكية جديدة
+    studio.buildLeftSidebarPanelHtml = function () {
+      this.sync30LayersWithActiveConfig();
+      const cfg = this.config;
+      const full36 = FULL_36_SMART_LAYERS;
+      const activeLayersCount = (cfg.layers || []).filter((l) => l.visible).length;
+      const subTab = this.leftPanelTab || 'catalog_30';
+      const catFilter = this.catalogCategoryFilter || 'ALL';
+      const searchQ = (this.layerCatalogSearch || '').trim().toLowerCase();
+      const shop = this.getShopIdentity();
+      const ct = cfg.customTexts || {};
+      const activeDocMeta = this.ALL_34_MASTER_DOCS.find((d) => d.id === cfg.activeDocType) || this.ALL_34_MASTER_DOCS[0];
+
+      let subTabBodyHtml = '';
+
+      if (subTab === 'catalog_30') {
+        const filtered36 = full36.filter((item) => {
+          if (catFilter === 'FOR_DOC') {
+            const isRec =
+              item.forDocs.includes('ALL') ||
+              item.forDocs.includes(cfg.activeDocType) ||
+              (activeDocMeta?.idealLayers || []).includes(item.id);
+            if (!isRec) return false;
+          } else if (catFilter !== 'ALL' && item.cat !== catFilter) {
+            return false;
+          }
+          if (searchQ && !`${item.name} ${item.desc}`.toLowerCase().includes(searchQ)) {
+            return false;
+          }
+          return true;
+        });
+
+        const cardsHtml = filtered36
+          .map((catItem) => {
+            const layerState = cfg.layers.find((l) => l.id === catItem.id);
+            const isVis = Boolean(layerState && layerState.visible);
+            const isExpanded = this.expandedInspectorLayerId === catItem.id;
+
+            return `
+              <div class="p-3 rounded-2xl border transition ${
+                isExpanded
+                  ? 'bg-white dark:bg-slate-800 border-2 border-blue-500 shadow-md'
+                  : isVis
+                  ? 'bg-emerald-50/75 dark:bg-emerald-950/30 border-emerald-400'
+                  : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+              }">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="space-y-0.5 flex-1 min-w-0 cursor-pointer" onclick="window.GherbiPrintStudioV45.toggleLayerInPlace('${catItem.id}')">
+                    <div class="font-black text-xs text-slate-900 dark:text-white leading-snug">${catItem.name}</div>
+                    <div class="text-[10.5px] text-slate-500 dark:text-slate-400 leading-snug">${catItem.desc}</div>
+                  </div>
+                  <div class="flex items-center gap-1.5 shrink-0">
+                    <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.toggleInlineInspector('${catItem.id}')" class="px-2.5 py-1.5 rounded-xl border font-black text-xs transition cursor-pointer ${
+                      isExpanded
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:border-blue-500'
+                    }" title="فتح/إغلاق محرر خصائص هذه الطبقة">
+                      ⚙️
+                    </button>
+                    <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.toggleLayerInPlace('${catItem.id}')" class="px-3 py-1.5 rounded-xl font-black text-[11px] transition cursor-pointer ${
+                      isVis
+                        ? 'bg-emerald-600 text-white shadow-sm hover:bg-rose-600'
+                        : 'bg-blue-600 text-white shadow-sm hover:bg-blue-500'
+                    }">
+                      ${isVis ? '✅ مفعّلة' : '+ إضافة'}
+                    </button>
+                  </div>
+                </div>
+                ${isExpanded ? this.buildInlineAccordionInspectorHtml(catItem.id) : ''}
+              </div>
+            `;
+          })
+          .join('');
+
+        subTabBodyHtml = `
+          <div class="space-y-3">
+            <div class="flex items-center gap-1.5">
+              <input id="v61CatalogSearchInp" type="text" value="${this.layerCatalogSearch || ''}" oninput="window.GherbiPrintStudioV45.onCatalogSearchInPlace(this.value)" placeholder="🔎 ابحث في الـ 36 طبقة (Alt+D، تسديد، سلع الدين، F8، وردية...)" class="flex-1 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-xs font-bold outline-none focus:border-blue-500">
+              <button type="button" onclick="window.GherbiPrintStudioV45.applySingleProDefaultTemplate('${cfg.activeDocType}')" class="px-2.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-900 dark:text-amber-300 hover:text-slate-950 border border-amber-400 font-black text-[10.5px] whitespace-nowrap transition cursor-pointer" title="تطبيق الطبقات المثالية لهذا المستند">
+                ⚡ مثالي للقالب
+              </button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.enableAllSuggestedLayersInPlace()" class="px-2.5 py-2 rounded-xl bg-indigo-100 hover:bg-indigo-600 text-indigo-900 hover:text-white font-black text-[10.5px] whitespace-nowrap transition cursor-pointer">
+                ✨ تفعيل الكل
+              </button>
+            </div>
+
+            <!-- أزرار الفلترة المحدثة لـ 36 طبقة ذكية -->
+            <div class="flex flex-wrap items-center gap-1 text-[11px]">
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('ALL')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'ALL' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}">الكل (36)</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('FOR_DOC')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'FOR_DOC' ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-50 dark:bg-slate-700 text-blue-800 dark:text-blue-300'}">🎯 طبقات هذا القالب</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('CORE')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'CORE' ? 'bg-slate-800 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'}">🏛️ الأساسية (6)</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('FINANCE')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'FINANCE' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-emerald-50 dark:bg-slate-700 text-emerald-800 dark:text-emerald-300'}">💳 الديون والكريدي (8)</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('LOYALTY')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'LOYALTY' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'bg-amber-50 dark:bg-slate-700 text-amber-800 dark:text-amber-300'}">👑 الوفاء F8/F9 (6)</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('CAISSE_FISCAL')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'CAISSE_FISCAL' ? 'bg-rose-600 text-white shadow-sm' : 'bg-rose-50 dark:bg-slate-700 text-rose-800 dark:text-rose-300'}">🏦 الصندوق والوردية (7)</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('INVENTORY')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'INVENTORY' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-indigo-50 dark:bg-slate-700 text-indigo-800 dark:text-indigo-300'}">📦 المخزون والمشتريات (5)</button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.setCatalogFilterInPlace('LOGISTICS')" class="px-2.5 py-1 rounded-xl font-black cursor-pointer ${catFilter === 'LOGISTICS' ? 'bg-teal-600 text-white shadow-sm' : 'bg-teal-50 dark:bg-slate-700 text-teal-800 dark:text-teal-300'}">🚚 الضمان والتوصيل (4)</button>
+            </div>
+
+            <div id="v61LeftScrollContainer" class="space-y-2 max-h-[58vh] overflow-y-auto pr-1">
+              ${cardsHtml}
+            </div>
+          </div>
+        `;
+      } else if (subTab === 'layers_stack') {
+        const layersToShow = this.showOnlyActiveLayersInStack
+          ? cfg.layers.filter((l) => l.visible)
+          : cfg.layers;
+
+        const stackRowsHtml = layersToShow
+          .map((l) => {
+            const realIdx = cfg.layers.findIndex((x) => x.id === l.id);
+            const isExpanded = this.expandedInspectorLayerId === l.id;
+            return `
+              <div class="p-2.5 rounded-2xl border transition ${
+                isExpanded
+                  ? 'bg-white dark:bg-slate-800 border-2 border-blue-500 shadow-md'
+                  : l.visible
+                  ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 font-bold hover:border-blue-400'
+                  : 'bg-slate-50/70 dark:bg-slate-900/40 border-slate-200/60 dark:border-slate-800 text-slate-400'
+              }">
+                <div class="flex items-center justify-between gap-2 text-xs">
+                  <div class="flex items-center gap-2 truncate flex-1 min-w-0 cursor-pointer" onclick="window.GherbiPrintStudioV45.toggleLayerInPlace('${l.id}')">
+                    <input type="checkbox" ${l.visible ? 'checked' : ''} onclick="event.stopPropagation(); window.GherbiPrintStudioV45.toggleLayerInPlace('${l.id}')" class="w-4 h-4 accent-blue-600 rounded cursor-pointer shrink-0">
+                    <span class="truncate ${l.visible ? 'font-black text-slate-900 dark:text-white' : 'line-through'}">${l.name}</span>
+                  </div>
+                  <div class="flex items-center gap-1 shrink-0">
+                    <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.toggleInlineInspector('${l.id}')" class="px-2 py-1 rounded-lg ${
+                      isExpanded ? 'bg-blue-600 text-white' : 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-300'
+                    } font-black text-[10.5px] hover:bg-blue-600 hover:text-white cursor-pointer">
+                      ⚙️ تعديل
+                    </button>
+                    <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.moveLayerInPlace('${l.id}', -1)" ${realIdx === 0 ? 'disabled' : ''} class="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 text-[10.5px] hover:bg-blue-600 hover:text-white disabled:opacity-30 cursor-pointer">▲</button>
+                    <button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.moveLayerInPlace('${l.id}', 1)" ${realIdx === cfg.layers.length - 1 ? 'disabled' : ''} class="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 text-[10.5px] hover:bg-blue-600 hover:text-white disabled:opacity-30 cursor-pointer">▼</button>
+                    ${
+                      l.id.startsWith('custom_')
+                        ? `<button type="button" onclick="event.stopPropagation(); window.GherbiPrintStudioV45.deleteCustomLayerInPlace('${l.id}')" class="px-2 py-1 rounded-lg bg-rose-100 text-rose-600 text-[10.5px] hover:bg-rose-600 hover:text-white cursor-pointer">✕</button>`
+                        : ''
+                    }
+                  </div>
+                </div>
+                ${isExpanded ? this.buildInlineAccordionInspectorHtml(l.id) : ''}
+              </div>
+            `;
+          })
+          .join('');
+
+        subTabBodyHtml = `
+          <div class="space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-1.5">
+              <button type="button" onclick="window.GherbiPrintStudioV45.toggleShowOnlyActiveLayersInStack()" class="px-2.5 py-1.5 rounded-xl font-black text-[11px] border cursor-pointer ${
+                this.showOnlyActiveLayersInStack
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                  : 'bg-slate-100 text-slate-700 border-slate-300'
+              }">
+                ${this.showOnlyActiveLayersInStack ? `👁️ عرض المفعّلة فقط (${activeLayersCount}) — اضغط لعرض كل الـ 36` : '🌐 عرض جميع الـ 36 طبقة'}
+              </button>
+              <button type="button" onclick="window.GherbiPrintStudioV45.addCustomLayerInPlace()" class="px-3 py-1.5 rounded-xl bg-blue-600 text-white font-black text-xs hover:bg-blue-500 cursor-pointer shrink-0 shadow-sm">
+                + طبقة نصية حرة
+              </button>
+            </div>
+            <div id="v61LeftScrollContainer" class="space-y-2 max-h-[62vh] overflow-y-auto pr-1">
+              ${stackRowsHtml}
+            </div>
+          </div>
+        `;
+      } else {
+        subTabBodyHtml = `
+          <div id="v61LeftScrollContainer" class="space-y-4 max-h-[64vh] overflow-y-auto pr-1 text-xs">
+            <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 space-y-3">
+              <div class="border-b border-slate-200 dark:border-slate-700 pb-2 space-y-2">
+                <h4 class="font-black text-slate-900 dark:text-white">📊 قوالب الأعمدة السريعة وتخصيص الجدول</h4>
+                <div class="flex flex-wrap gap-1 text-[10px]">
+                  <button type="button" onclick="window.GherbiPrintStudioV45.applyTableColumnsPresetInPlace('thermal_simple')" class="px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border font-black cursor-pointer">🧾 تذكرة 80mm</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.applyTableColumnsPresetInPlace('alt_d_credit_ticket')" class="px-2 py-1 rounded-lg bg-rose-600 text-white font-black cursor-pointer">📝 تأكيد دين Alt+D</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.applyTableColumnsPresetInPlace('alt_h_debt_statement')" class="px-2 py-1 rounded-lg bg-indigo-600 text-white font-black cursor-pointer">📜 كشف ديون Alt+H</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.applyTableColumnsPresetInPlace('z_report_shift')" class="px-2 py-1 rounded-lg bg-slate-900 text-amber-400 font-black cursor-pointer">🔒 وردية Z-Report</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.applyTableColumnsPresetInPlace('a4_full')" class="px-2 py-1 rounded-lg bg-blue-600 text-white font-black cursor-pointer">📄 فاتورة A4 كاملة</button>
+                  <button type="button" onclick="window.GherbiPrintStudioV45.applyTableColumnsPresetInPlace('delivery_qty_only')" class="px-2 py-1 rounded-lg bg-emerald-600 text-white font-black cursor-pointer">🚚 وصل كميات BL</button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2.5 font-bold">
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.index ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('index')" class="w-4 h-4 accent-blue-600"> <span>رقم السطر (#)</span></label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.barcode ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('barcode')" class="w-4 h-4 accent-blue-600"> <span>الباركود / الكود</span></label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.name ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('name')" class="w-4 h-4 accent-blue-600"> <span>التعيين / البيان</span></label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.unit ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('unit')" class="w-4 h-4 accent-blue-600"> <span>الوحدة / الحالة</span></label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.qty ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('qty')" class="w-4 h-4 accent-blue-600"> <span>الكمية</span></label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.unitPrice ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('unitPrice')" class="w-4 h-4 accent-blue-600"> <span>سعر الوحدة / القيمة</span></label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.discount ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('discount')" class="w-4 h-4 accent-blue-600"> <span>الخصم</span></label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.columns.tva ? 'checked' : ''} onchange="window.GherbiPrintStudioV45.toggleColumnInPlace('tva')" class="w-4 h-4 accent-blue-600"> <span>ضريبة TVA</span></label>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                <div><label class="block text-[10.5px] font-bold text-slate-500 mb-0.5">عنوان عمود الصنف:</label><input type="text" value="${ct.colName || 'التعيين / الصنف'}" oninput="window.GherbiPrintStudioV45.updateCustomColumnHeaderTitle('colName', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-bold"></div>
+                <div><label class="block text-[10.5px] font-bold text-slate-500 mb-0.5">عنوان عمود الكمية:</label><input type="text" value="${ct.colQty || 'الكمية'}" oninput="window.GherbiPrintStudioV45.updateCustomColumnHeaderTitle('colQty', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-bold"></div>
+                <div><label class="block text-[10.5px] font-bold text-slate-500 mb-0.5">عنوان عمود السعر:</label><input type="text" value="${ct.colPrice || 'سعر الوحدة'}" oninput="window.GherbiPrintStudioV45.updateCustomColumnHeaderTitle('colPrice', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-bold"></div>
+                <div><label class="block text-[10.5px] font-bold text-slate-500 mb-0.5">عنوان عمود المجموع:</label><input type="text" value="${ct.colSubtotal || 'المجموع'}" oninput="window.GherbiPrintStudioV45.updateCustomColumnHeaderTitle('colSubtotal', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-bold"></div>
+              </div>
+            </div>
+
+            <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 space-y-2.5">
+              <h4 class="font-black text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-1.5">🏢 بيانات المتجر والبيانات الجبائية والتذييل</h4>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="col-span-2"><label class="block font-bold mb-0.5">اسم المتجر / المؤسسة:</label><input type="text" value="${shop.name}" oninput="window.GherbiPrintStudioV45.updateShopIdentityQuickField('shop_name', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-black"></div>
+                <div><label class="block font-bold mb-0.5">رقم الهاتف:</label><input type="text" value="${shop.phone}" oninput="window.GherbiPrintStudioV45.updateShopIdentityQuickField('shop_phone', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-mono"></div>
+                <div><label class="block font-bold mb-0.5">العنوان:</label><input type="text" value="${shop.address}" oninput="window.GherbiPrintStudioV45.updateShopIdentityQuickField('shop_address', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800"></div>
+                <div><label class="block font-bold mb-0.5">السجل التجاري (RC):</label><input type="text" value="${shop.rc}" oninput="window.GherbiPrintStudioV45.updateShopIdentityQuickField('shop_rc', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-mono"></div>
+                <div><label class="block font-bold mb-0.5">الرقم الجبائي (NIF):</label><input type="text" value="${shop.nif}" oninput="window.GherbiPrintStudioV45.updateShopIdentityQuickField('shop_nif', this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-mono"></div>
+                <div class="col-span-2"><label class="block font-bold mb-0.5">عبارة التذييل وشروط الاستبدال:</label><input type="text" value="${cfg.customFooterTerms || ''}" oninput="window.GherbiPrintStudioV45.updateFooterTermsInPlace(this.value)" class="w-full px-2.5 py-1.5 rounded-xl border bg-white dark:bg-slate-800 font-bold"></div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="rounded-3xl bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 p-4 shadow-sm space-y-3.5">
+          <div class="grid grid-cols-3 gap-1.5 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl text-xs">
+            <button type="button" onclick="window.GherbiPrintStudioV45.switchLeftSubTab('catalog_30')" class="py-2 px-2 rounded-xl font-black transition cursor-pointer ${
+              subTab === 'catalog_30' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-white/60'
+            }">
+              🧩 1. مكتبة الـ 36 طبقة
+            </button>
+            <button type="button" onclick="window.GherbiPrintStudioV45.switchLeftSubTab('layers_stack')" class="py-2 px-2 rounded-xl font-black transition cursor-pointer ${
+              subTab === 'layers_stack' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-white/60'
+            }">
+              🗂️ 2. الترتيب (${activeLayersCount})
+            </button>
+            <button type="button" onclick="window.GherbiPrintStudioV45.switchLeftSubTab('columns_and_shop')" class="py-2 px-2 rounded-xl font-black transition cursor-pointer ${
+              subTab === 'columns_and_shop' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-white/60'
+            }">
+              📊 3. الأعمدة والمتجر
+            </button>
+          </div>
+
+          ${subTabBodyHtml}
+        </div>
+      `;
+    };
+
+    console.log('✅ [V70 Part 3]: تمت ترقية لوحة الأدوات الجانبية وتفعيل الـ 36 طبقة ذكية بنجاح!');
+  }, 160);
+})();
+
+/* ==================== [V70 PART 4: LIVE PAPER RENDERER FOR 36 LAYERS & 34 PRO COCKPIT] ==================== */
+(function initV70Part4LiveRendererAnd34Cockpit() {
+  const waitStudio = setInterval(() => {
+    const studio = window.GherbiPrintStudioV45;
+    const all34 = window.__GHERBI_V70_ALL_34_MASTER_TEMPLATES;
+    const full36 = window.__GHERBI_V70_FULL_36_LAYERS;
+    if (!studio || !all34 || !full36) return;
+    clearInterval(waitStudio);
+
+    studio.ALL_28_MASTER_DOCS = all34;
+    studio.ALL_34_MASTER_DOCS = all34;
+    studio.FULL_16_LAYERS_CATALOG = full36;
+    studio.FULL_30_SMART_LAYERS = full36;
+    studio.FULL_36_SMART_LAYERS = full36;
+
+    // 1. بناء البروفايل المثالي (Par Défaut) لأي مستند من الـ 34 مستنداً بناءً على تعريفه الجديد من الصفر
+    studio.buildIdealProfileObjectForDoc = function (docMeta) {
+      const activeSet = new Set(
+        docMeta.idealLayers || [
+          'header_layer',
+          'doc_banner_layer',
+          'customer_box_layer',
+          'items_table_layer',
+          'totals_words_layer',
+          'footer_stamp_layer'
+        ]
+      );
+      const layersList = full36.map((cat) => ({
+        id: cat.id,
+        name: cat.name,
+        visible: activeSet.has(cat.id),
+        align: 'between',
+        fontSizeScale: 100,
+        textAlign: 'right',
+        borderStyle: 'default',
+        bgStyle: 'default',
+        paddingMode: 'normal',
+        customTitle: '',
+        customNote: ''
+      }));
+
+      return {
+        _v70CleanBuilt: true,
+        paperSize: docMeta.defaultPaper,
+        themeId: docMeta.defaultTheme,
+        fontFamily: 'Cairo',
+        baseFontSizePx: docMeta.defaultPaper === '80mm' || docMeta.defaultPaper === '58mm' ? 11.5 : 12,
+        marginMode: 'normal',
+        densityMode: 'normal',
+        borderMode: docMeta.defaultPaper === '80mm' ? 'dashed' : 'grid',
+        watermarkText: '',
+        customHeaderTitle: docMeta.cleanTitle,
+        customFooterTerms:
+          this.config.customFooterTerms ||
+          'البضاعة المباعة تستبدل خلال 48 ساعة بشرط سلامة الغلاف الأصلي وإحضار التذكرة. شكراً لثقتكم!',
+        showCentimesEquivalent: true,
+        showAmountInWords: true,
+        showCustomerBalance: true,
+        showBaridimobQr: true,
+        showDocBarcode: true,
+        showStampSignature: true,
+        customTexts: JSON.parse(JSON.stringify(this.config.customTexts || {})),
+        columns: {
+          ...(docMeta.idealCols || {
+            index: true,
+            barcode: false,
+            name: true,
+            unit: true,
+            qty: true,
+            unitPrice: true,
+            discount: false,
+            tva: false,
+            subtotal: true
+          })
+        },
+        layers: layersList
+      };
+    };
+
+    // تهيئة القوالب الـ 34 الجديدة تلقائياً عند الإقلاع
+    if (!studio.config.defaultsByDocType) studio.config.defaultsByDocType = {};
+    if (!studio.config.adoptedProfiles) studio.config.adoptedProfiles = {};
+
+    for (const docMeta of all34) {
+      if (!studio.config.defaultsByDocType[docMeta.id]) {
+        studio.config.defaultsByDocType[docMeta.id] = {
+          paperSize: docMeta.defaultPaper,
+          themeId: docMeta.defaultTheme,
+          lang: 'ar',
+          adopted: true
+        };
+      }
+      const existingProf = studio.config.adoptedProfiles[docMeta.id];
+      if (!existingProf || !existingProf._v70CleanBuilt) {
+        studio.config.adoptedProfiles[docMeta.id] = studio.buildIdealProfileObjectForDoc(docMeta);
+      }
+    }
+
+    // 2. تزويد الورقة الحية بمحرك رسم الطبقات الـ 6 الجديدة (Alt+D, Alt+V, Alt+H, F8, Z-Report Cash vs Debt, Shift Expenses)
+    const baseBuildPaper = studio.buildLiveDocumentPaperHtml.bind(studio);
+    studio.buildLiveDocumentPaperHtml = function (docData, forPrintOutput = false, customOverrides = null) {
+      const cfg = customOverrides ? { ...this.config, ...customOverrides } : this.config;
+      const isThermal = cfg.paperSize === '80mm' || cfg.paperSize === '58mm';
+      const editAttr = forPrintOutput ? '' : 'contenteditable="true" spellcheck="false"';
+
+      let html = baseBuildPaper(docData, forPrintOutput, customOverrides);
+
+      const prevDebt = Number(docData?.previousBalance || 0);
+      const totalToday = Number(docData?.total || 0);
+      const paidToday = Number(docData?.paidAmount ?? totalToday);
+      const remToday = Math.max(0, Number((totalToday - paidToday).toFixed(2)));
+      const newCumulativeDebt = Number((prevDebt + remToday).toFixed(2));
+      const pts = Number(docData?.loyaltyTotalBalance || 79);
+
+      const renderV70NewLayerHtml = (layer) => {
+        const lid = layer.id;
+        const cTitle = this.interpolateSmartVariables(layer.customTitle, docData);
+        const cNote = this.interpolateSmartVariables(layer.customNote, docData);
+        const noteLine = cNote
+          ? `<div ${editAttr} style="margin-top:4px;padding-top:3px;border-top:1px dashed #cbd5e1;font-size:9.5px;font-weight:800;">📌 ${cNote}</div>`
+          : '';
+
+        if (lid === 'alt_d_debt_confirmation_box_layer') {
+          return `
+            <div style="border:2px solid #e11d48;border-radius:9px;padding:7px 9px;background:#fff1f2;color:#881337;font-size:${isThermal ? '10px' : '11px'};">
+              <div ${editAttr} style="font-weight:900;font-size:${isThermal ? '11px' : '12px'};border-bottom:1.5px dashed #fda4af;padding-bottom:3px;margin-bottom:5px;color:#be123c;text-align:center;">
+                📝 ${cTitle || 'بطاقة تأكيد عملية البيع بالدين (Alt + D)'}
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;font-weight:800;line-height:1.5;">
+                <div ${editAttr}>• الدين السابق للزبون: <strong style="font-family:monospace;">${this.fmtDzd(prevDebt)}</strong></div>
+                <div ${editAttr}>• إجمالي سلة اليوم: <strong style="font-family:monospace;">${this.fmtDzd(totalToday)}</strong></div>
+                <div ${editAttr} style="color:#047857;">• المدفوع نقداً اليوم: <strong style="font-family:monospace;">${this.fmtDzd(paidToday)}</strong></div>
+                <div ${editAttr} style="color:#be123c;">• الدين المضاف اليوم: <strong style="font-family:monospace;">+${this.fmtDzd(remToday)}</strong></div>
+              </div>
+              <div ${editAttr} style="margin-top:5px;padding:4px 6px;border-radius:6px;background:#be123c;color:#ffffff;font-weight:900;display:flex;justify-content:space-between;align-items:center;">
+                <span>📌 إجمالي الدين التراكمي الجديد:</span>
+                <span style="font-family:monospace;font-size:${isThermal ? '11.5px' : '13px'};">${this.fmtDzd(newCumulativeDebt)}</span>
+              </div>
+              <div ${editAttr} style="margin-top:5px;text-align:center;font-weight:800;font-size:9.5px;color:#475569;">
+                ✍️ إمضاء الزبون بالقبول والاستلام: ........................................
+              </div>
+              ${noteLine}
+            </div>`;
+        }
+
+        if (lid === 'alt_v_debt_settlement_voucher_layer') {
+          const debtBefore = prevDebt > 0 ? prevDebt : totalToday + 270;
+          const paidNow = totalToday;
+          const debtAfter = Math.max(0, Number((debtBefore - paidNow).toFixed(2)));
+          return `
+            <div style="border:2px solid #059669;border-radius:9px;padding:7px 9px;background:#ecfdf5;color:#064e3b;font-size:${isThermal ? '10px' : '11px'};">
+              <div ${editAttr} style="font-weight:900;font-size:${isThermal ? '11px' : '12px'};border-bottom:1.5px dashed #6ee7b7;padding-bottom:3px;margin-bottom:5px;color:#047857;text-align:center;">
+                💵 ${cTitle || 'بطاقة تسديد وقبض دين زبون (Alt + V)'}
+              </div>
+              <div style="line-height:1.65;font-weight:800;">
+                <div style="display:flex;justify-content:space-between;"><span ${editAttr}>1. الرصيد المدين قبل الدفع:</span><strong style="font-family:monospace;color:#be123c;">${this.fmtDzd(debtBefore)}</strong></div>
+                <div style="display:flex;justify-content:space-between;color:#047857;"><span ${editAttr}>2. المبلغ المقبوض اليوم (-):</span><strong style="font-family:monospace;">-${this.fmtDzd(paidNow)}</strong></div>
+                <div style="display:flex;justify-content:space-between;font-weight:900;border-top:1px solid #6ee7b7;margin-top:3px;padding-top:3px;font-size:${isThermal ? '11px' : '12px'};">
+                  <span ${editAttr}>3. صافي الدين المتبقي بعد الدفعة:</span>
+                  <strong style="font-family:monospace;color:${debtAfter > 0.05 ? '#be123c' : '#047857'};">${this.fmtDzd(debtAfter)}</strong>
+                </div>
+              </div>
+              ${noteLine}
+            </div>`;
+        }
+
+        if (lid === 'alt_h_items_taken_history_layer') {
+          return `
+            <div style="border:1.5px solid #4f46e5;border-radius:9px;padding:7px 10px;background:#eef2ff;color:#1e1b4b;font-size:${isThermal ? '9.5px' : '11px'};">
+              <div ${editAttr} style="font-weight:900;color:#4338ca;margin-bottom:3px;">
+                📜 ${cTitle || 'ملخص هيستوريك السلع المسحوبة على الحساب (Alt + H):'}
+              </div>
+              <div ${editAttr} style="font-weight:700;line-height:1.45;">
+                يوضح الجدول أدناه كافة السلع والكميات التي استلمها الزبون الوفي في فواتير الدين مع التواريخ والدفعات المسددة منها.
+              </div>
+              ${noteLine}
+            </div>`;
+        }
+
+        if (lid === 'f8_vip_points_and_debt_dual_layer') {
+          const displayDebt = docData.isWalkinCustomer ? 0 : (newCumulativeDebt > 0 ? newCumulativeDebt : prevDebt);
+          return `
+            <div style="border:1.5px solid #f59e0b;border-radius:9px;padding:6px 8px;background:linear-gradient(135deg,#fffbeb 0%,#fff1f2 100%);color:#0f172a;font-size:${isThermal ? '9.5px' : '11px'};">
+              <div ${editAttr} style="font-weight:900;text-align:center;color:#b45309;margin-bottom:4px;border-bottom:1px dashed #fcd34d;padding-bottom:2px;">
+                👑 ${cTitle || 'بطاقة الوضعية الشاملة للزبون الوفي (F8: النقاط + الديون)'}
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:5px;text-align:center;font-weight:900;">
+                <div ${editAttr} style="background:#ffffff;border:1px solid #fcd34d;border-radius:6px;padding:3px;">
+                  <div style="font-size:9px;color:#b45309;">⭐ رصيد نقاط الوفاء</div>
+                  <div style="font-family:monospace;color:#78350f;">${docData.isWalkinCustomer ? '0 نقطة' : `${pts} ن (${pts * 2} د.ج)`}</div>
+                </div>
+                <div ${editAttr} style="background:#ffffff;border:1px solid #fda4af;border-radius:6px;padding:3px;">
+                  <div style="font-size:9px;color:#be123c;">💳 إجمالي الديون الحالية</div>
+                  <div style="font-family:monospace;color:${displayDebt > 0.05 ? '#be123c' : '#047857'};">${this.fmtDzd(displayDebt)}</div>
+                </div>
+              </div>
+              ${noteLine}
+            </div>`;
+        }
+
+        if (lid === 'shift_cash_vs_debt_reconciliation_layer') {
+          return `
+            <div style="border:2px solid #0f172a;border-radius:9px;padding:7px 9px;background:#f8fafc;color:#0f172a;font-size:${isThermal ? '9.5px' : '11px'};">
+              <div ${editAttr} style="font-weight:900;text-align:center;background:#0f172a;color:#ffffff;padding:3px 6px;border-radius:5px;margin-bottom:5px;">
+                🏦 ${cTitle || 'ميزان الوردية المزدوج: سيولة الدرج مقابل ديون الوردية'}
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;text-align:center;font-weight:900;">
+                <div ${editAttr} style="background:#eff6ff;border:1.5px solid #93c5fd;border-radius:7px;padding:4px;">
+                  <div style="font-size:9px;color:#1d4ed8;">💵 السيولة النقدية المتوقعة بالدرج</div>
+                  <div style="font-family:monospace;font-size:11.5px;color:#1e3a8a;">${this.fmtDzd(totalToday)}</div>
+                </div>
+                <div ${editAttr} style="background:#fff1f2;border:1.5px solid #fda4af;border-radius:7px;padding:4px;">
+                  <div style="font-size:9px;color:#be123c;">💳 ديون ممنوحة بالوردية (آجلة)</div>
+                  <div style="font-family:monospace;font-size:11.5px;color:#881337;">${this.fmtDzd(prevDebt)}</div>
+                </div>
+              </div>
+              <div ${editAttr} style="margin-top:4px;font-size:9px;font-weight:800;color:#475569;text-align:center;">
+                ✔ الديون الممنوحة (Alt+D) مسجلة في ذمة الزبائن ولا تدخل في عدّ أوراق الدرج، بينما تسديدات الديون (Alt+V) مضافة في الدرج.
+              </div>
+              ${noteLine}
+            </div>`;
+        }
+
+        if (lid === 'shift_expenses_and_inflows_layer') {
+          return `
+            <div style="border:1.5px dashed #475569;border-radius:8px;padding:6px 8px;background:#ffffff;font-size:${isThermal ? '9.5px' : '10.5px'};color:#1e293b;">
+              <div ${editAttr} style="font-weight:900;color:#0f172a;margin-bottom:3px;">
+                💸 ${cTitle || 'ملخص المصاريف والإيداعات وتحصيل الديون في الوردية:'}
+              </div>
+              <div ${editAttr} style="display:flex;justify-content:space-between;font-weight:800;">
+                <span>• تحصيلات الديون (Alt+V): مقبوضة بالدرج ✔</span>
+                <span>• المصاريف والسحوبات: مخصومة من الدرج ✔</span>
+              </div>
+              ${noteLine}
+            </div>`;
+        }
+
+        return null;
+      };
+
+      // حقن الطبقات الـ 6 الجديدة داخل الـ HTML الحي للورقة
+      for (const layer of cfg.layers || []) {
+        if (!layer.visible) continue;
+        const customInner = renderV70NewLayerHtml(layer);
+        if (!customInner) continue;
+
+        const layerBlockRegex = new RegExp(
+          `(<div[^>]*data-v47-layer-id="${layer.id}"[\\s\\S]*?<\\/div>\\s*)<div[^>]*>[\\s\\S]*?<\\/div>(\\s*<\\/div>)`
+        );
+        if (layerBlockRegex.test(html)) {
+          html = html.replace(layerBlockRegex, `$1<div>${customInner}</div>$2`);
+        } else {
+          // إذا لم يكن المحرك القديم يعرف الـ ID الجديد، نضيف الطبقة مباشرةً قبل التذييل داخل .v45-live-paper
+          const handleHtml = forPrintOutput
+            ? ''
+            : `<div class="v45-layer-handle-bar"><span>${layer.name}</span><span>⚙️ طبقة ذكية V70</span></div>`;
+          const fullLayerNode = `<div class="v45-canvas-layer" data-v47-layer-id="${layer.id}">${handleHtml}<div>${customInner}</div></div>`;
+          const footerPos = html.indexOf('data-v47-layer-id="footer_stamp_layer"');
+          if (footerPos !== -1) {
+            const insertAt = html.lastIndexOf('<div', footerPos);
+            html = html.slice(0, insertAt) + fullLayerNode + html.slice(insertAt);
+          }
+        }
+      }
+
+      return html;
+    };
+
+    // تحديث العرض إذا كان مركز الطباعة مفتوحاً
+    studio.loadProfileForDocType(studio.config.activeDocType || 'receipt_thermal');
+    studio.saveConfigLocal();
+    if (document.getElementById('view-print')?.classList.contains('active')) {
+      studio.renderStudioIntoRoot();
+    }
+
+    console.log('🏆 [Gherbi V70 Part 4 Complete]: اكتملت إعادة بناء الـ 34 مستنداً افتراضياً والـ 36 طبقة ذكية وأدوات الاستوديو من الصفر المطلق بنجاح 100%!');
+  }, 180);
 })();
