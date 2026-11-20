@@ -4990,3 +4990,541 @@ app.on('before-quit', () => {
     });
   } catch (_) {}
 })();
+
+/* === [GHERBI WAR STAGE 1: PRECISION 80MM/58MM THERMAL & MULTI-SIZE PDF/PRINT ENGINE] === */
+(function installWarStage1ThermalPrintPdfEngine() {
+  if (global.__GHERBI_WAR_STAGE1_PRINT_INSTALLED) return;
+  global.__GHERBI_WAR_STAGE1_PRINT_INSTALLED = true;
+
+  const PDF_CHANNELS = ["export-pdf","export-html-to-pdf","print-to-pdf","save-html-to-pdf"];
+  const PRINT_CHANNELS = ["print-html","print-silent","print-document","print-receipt","silent-print"];
+
+  function detectPaperSizeFromHtmlAndOpts(html, opts) {
+    const raw = String((opts && (opts.paperSize || opts.paper || opts.format)) || '').trim().toLowerCase();
+    if (['80mm', '58mm', 'a4', 'a5', '2xa5'].includes(raw)) return raw;
+    if (raw === '80' || raw === 'thermal' || raw === 'receipt') return '80mm';
+    if (raw === '58') return '58mm';
+
+    const src = String(html || '');
+    const attrMatch = src.match(/data-psp-paper=["']([^"']+)["']/i);
+    if (attrMatch && attrMatch[1]) {
+      const v = attrMatch[1].toLowerCase().trim();
+      if (['80mm', '58mm', 'a4', 'a5', '2xa5'].includes(v)) return v;
+    }
+    if (/size-58mm|paper-58mm|@page\s*\{[^}]*58mm/i.test(src)) return '58mm';
+    if (/size-80mm|paper-80mm|@page\s*\{[^}]*80mm/i.test(src)) return '80mm';
+    if (/size-2xa5|paper-2xa5/i.test(src)) return '2xa5';
+    if (/size-a5|paper-a5|@page\s*\{[^}]*A5/i.test(src)) return 'a5';
+    return 'a4';
+  }
+
+  function normalizeInvokePayload(arg1, arg2) {
+    if (typeof arg1 === 'string') {
+      const extra = typeof arg2 === 'string' ? { filename: arg2 } : (typeof arg2 === 'object' && arg2 ? arg2 : {});
+      return { ...extra, html: arg1 };
+    }
+    if (arg1 && typeof arg1 === 'object') {
+      const extra = typeof arg2 === 'string' ? { filename: arg2 } : (typeof arg2 === 'object' && arg2 ? arg2 : {});
+      return { ...extra, ...arg1 };
+    }
+    return {};
+  }
+
+  async function withHiddenRenderWindow(html, paperSize, workFn) {
+    const isThermal = paperSize === '80mm' || paperSize === '58mm';
+    const widthMm =
+      paperSize === '58mm' ? 58 :
+      paperSize === '80mm' ? 80 :
+      paperSize === 'a5' ? 148 :
+      paperSize === '2xa5' ? 297 : 210;
+
+    const winWidthPx = Math.round((widthMm / 25.4) * 96);
+    const tmpFile = path.join(
+      os.tmpdir(),
+      'gherbi_psp_' + Date.now() + '_' + Math.random().toString(36).slice(2) + '.html'
+    );
+    let finalHtmlForWin = String(html || '');
+    if (!/<base\s/i.test(finalHtmlForWin)) {
+      const baseTag = '<base data-id="__pspInjectedBaseHref" href="file:///E:/GHERBI.AI%20POS%20REAL/Gherbi_Ai_POS_Clean/">';
+      finalHtmlForWin = /<head[^>]*>/i.test(finalHtmlForWin)
+        ? finalHtmlForWin.replace(/<head[^>]*>/i, (m) => m + baseTag)
+        : baseTag + finalHtmlForWin;
+    }
+    fs.writeFileSync(tmpFile, finalHtmlForWin, 'utf8');
+
+    const win = new BrowserWindow({
+      show: false,
+      width: winWidthPx,
+      height: isThermal ? 900 : 1123,
+      useContentSize: true,
+      backgroundColor: '#ffffff',
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false
+      }
+    });
+
+    try {
+      await win.loadFile(tmpFile);
+      await win.webContents.executeJavaScript(
+        '(async () => { if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (_) {} } await new Promise((r) => setTimeout(r, 90)); return true; })()'
+      );
+
+      let heightMm = paperSize === 'a5' ? 210 : paperSize === '2xa5' ? 210 : 297;
+
+      if (isThermal) {
+        const measureScript =
+          '(() => {' +
+          '  var w = "' + widthMm + 'mm";' +
+          '  document.documentElement.style.margin = "0";' +
+          '  document.documentElement.style.padding = "0";' +
+          '  document.documentElement.style.width = w;' +
+          '  document.body.style.margin = "0";' +
+          '  document.body.style.padding = "0";' +
+          '  document.body.style.width = w;' +
+          '  var paperEl = document.querySelector(".psp-paper") || document.querySelector(".v45-live-paper") || document.body;' +
+          '  if (paperEl && paperEl !== document.body) { paperEl.style.width = w; paperEl.style.margin = "0"; }' +
+          '  var rectH = paperEl && paperEl.getBoundingClientRect ? Math.ceil(paperEl.getBoundingClientRect().height) : 0;' +
+          '  var scrollH = Math.max(paperEl ? (paperEl.scrollHeight || 0) : 0, document.body.scrollHeight || 0);' +
+          '  return Math.max(rectH, scrollH, 220);' +
+          '})()';
+
+        const measuredPx = await win.webContents.executeJavaScript(measureScript);
+        heightMm = Math.max(60, Math.min(1200, Math.ceil((Number(measuredPx || 300) / 96) * 25.4) + 6));
+
+        await win.webContents.insertCSS(
+          '@page { size: ' + widthMm + 'mm ' + heightMm + 'mm !important; margin: 0 !important; }' +
+          'html, body { width: ' + widthMm + 'mm !important; min-height: auto !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }'
+        );
+      }
+
+      return await workFn(win, { isThermal, widthMm, heightMm, paperSize });
+    } finally {
+      try { if (!win.isDestroyed()) win.destroy(); } catch (_) {}
+      try { fs.unlinkSync(tmpFile); } catch (_) {}
+    }
+  }
+
+  async function handlePrecisionPdfExport(_event, arg1, arg2) {
+    const opts = normalizeInvokePayload(arg1, arg2);
+    const html = String(opts.html || '');
+    if (!html) return { success: false, ok: false, error: 'empty_html' };
+
+    const paper = detectPaperSizeFromHtmlAndOpts(html, opts);
+
+    const { pdfBuf, widthMm, heightMm } = await withHiddenRenderWindow(html, paper, async (win, dim) => {
+      if (dim.isThermal) {
+        const buf = await win.webContents.printToPDF({
+          printBackground: true,
+          landscape: false,
+          preferCSSPageSize: false,
+          margins: { top: 0, bottom: 0, left: 0, right: 0 },
+          pageSize: {
+            width: Number((dim.widthMm / 25.4).toFixed(4)),
+            height: Number((dim.heightMm / 25.4).toFixed(4))
+          }
+        });
+        return { pdfBuf: buf, widthMm: dim.widthMm, heightMm: dim.heightMm };
+      }
+
+      const isLandscape = dim.paperSize === '2xa5';
+      const stdSize = dim.paperSize === 'a5' ? 'A5' : 'A4';
+      const buf = await win.webContents.printToPDF({
+        printBackground: true,
+        landscape: isLandscape,
+        preferCSSPageSize: true,
+        margins: { top: 0.2, bottom: 0.2, left: 0.2, right: 0.2 },
+        pageSize: stdSize
+      });
+      return { pdfBuf: buf, widthMm: dim.widthMm, heightMm: dim.heightMm };
+    });
+
+    let targetPath = opts.filePath || opts.savePath || '';
+    if (!targetPath) {
+      const defName = String(opts.filename || opts.defaultPath || ('gherbi_' + paper + '_' + Date.now() + '.pdf')).replace(/[<>:"/\\|?*]+/g, '_');
+      const dlgRes = await dialog.showSaveDialog(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined, {
+        title: 'حفظ المستند بصيغة PDF (' + paper.toUpperCase() + ')',
+        defaultPath: defName.endsWith('.pdf') ? defName : defName + '.pdf',
+        filters: [{ name: 'PDF Document', extensions: ['pdf'] }]
+      });
+      if (dlgRes.canceled || !dlgRes.filePath) {
+        return { success: false, ok: false, canceled: true };
+      }
+      targetPath = dlgRes.filePath;
+    }
+
+    fs.writeFileSync(targetPath, pdfBuf);
+    if (opts.openAfterSave !== false) {
+      try { shell.openPath(targetPath); } catch (_) {}
+    }
+    return { success: true, ok: true, filePath: targetPath, path: targetPath, paperSize: paper, widthMm, heightMm };
+  }
+
+  async function handlePrecisionPrint(_event, arg1, arg2) {
+    const opts = normalizeInvokePayload(arg1, arg2);
+    const html = String(opts.html || '');
+    if (!html) return { success: false, ok: false, error: 'empty_html' };
+    if (opts.asPdf === true) return await handlePrecisionPdfExport(_event, opts);
+
+    const paper = detectPaperSizeFromHtmlAndOpts(html, opts);
+    const isThermalPaper = paper === '80mm' || paper === '58mm';
+    const silent = Boolean(opts.silent);
+    const copies = Math.max(1, Number(opts.copies || 1));
+    const deviceName = String(opts.printerName || opts.deviceName || '').trim() || undefined;
+
+    // التحقق من الطابعة الافتراضية على ويندوز:
+    // إذا كانت الطابعة الافتراضية أو المختارة هي طابعة PDF افتراضية (Microsoft Print to PDF / XPS / OneNote / Fax)
+    // فإن نافذة ويندوز تفرض A4 دائماً؛ لذلك نحوّل التذاكر الحرارية 80mm/58mm مباشرةً إلى printToPDF بمقاسها الدقيق!
+    const VIRTUAL_PDF_RE = /microsoft\s+print\s+to\s+pdf|save\s+as\s+pdf|pdf24|foxit.*pdf|adobe\s+pdf|cutepdf|xps|onenote|fax/i;
+    let shouldRouteToTrueThermalPdf = false;
+    try {
+      if (deviceName && VIRTUAL_PDF_RE.test(deviceName)) {
+        shouldRouteToTrueThermalPdf = true;
+      } else if (isThermalPaper && !deviceName && mainWindow && !mainWindow.isDestroyed()) {
+        const printers = typeof mainWindow.webContents.getPrintersAsync === 'function'
+          ? await mainWindow.webContents.getPrintersAsync()
+          : [];
+        const defPrinter = (printers || []).find((p) => p && p.isDefault);
+        if (!defPrinter || VIRTUAL_PDF_RE.test(String(defPrinter.name || defPrinter.displayName || ''))) {
+          shouldRouteToTrueThermalPdf = true;
+        }
+      }
+    } catch (_) {}
+
+    if (shouldRouteToTrueThermalPdf) {
+      return await handlePrecisionPdfExport(_event, { ...opts, paperSize: paper, asPdf: true });
+    }
+
+    return await withHiddenRenderWindow(html, paper, (win, dim) => {
+      return new Promise((resolve) => {
+        const printOpts = {
+          silent,
+          printBackground: true,
+          copies,
+          deviceName,
+          landscape: dim.paperSize === '2xa5',
+          margins: { marginType: dim.isThermal ? 'none' : 'default' },
+          pageSize: dim.isThermal
+            ? { width: dim.widthMm * 1000, height: dim.heightMm * 1000 }
+            : dim.paperSize === 'a5'
+            ? 'A5'
+            : 'A4'
+        };
+        win.webContents.print(printOpts, (success, failureReason) => {
+          resolve({
+            success: Boolean(success),
+            ok: Boolean(success),
+            error: success ? null : String(failureReason || 'print_canceled'),
+            paperSize: paper,
+            widthMm: dim.widthMm,
+            heightMm: dim.heightMm
+          });
+        });
+      });
+    });
+  }
+
+  const pdfChannelSet = new Set(PDF_CHANNELS);
+  const printChannelSet = new Set(PRINT_CHANNELS);
+  const origIpcHandle = ipcMain.handle.bind(ipcMain);
+
+  // اعتراض آمن لقنوات الطباعة والـ PDF يمنع تماماً خطأ التسجيل المكرر (Attempted to register a second handler)
+  ipcMain.handle = function warStage1SafeHandle(channel, listener) {
+    if (pdfChannelSet.has(channel)) {
+      try { ipcMain.removeHandler(channel); } catch (_) {}
+      return origIpcHandle(channel, handlePrecisionPdfExport);
+    }
+    if (printChannelSet.has(channel)) {
+      try { ipcMain.removeHandler(channel); } catch (_) {}
+      return origIpcHandle(channel, handlePrecisionPrint);
+    }
+    return origIpcHandle(channel, listener);
+  };
+
+  function registerPrecisionHandlersNow() {
+    for (const ch of PDF_CHANNELS) {
+      try { ipcMain.removeHandler(ch); } catch (_) {}
+      origIpcHandle(ch, handlePrecisionPdfExport);
+    }
+    for (const ch of PRINT_CHANNELS) {
+      try { ipcMain.removeHandler(ch); } catch (_) {}
+      origIpcHandle(ch, handlePrecisionPrint);
+    }
+    console.log('🖨️ [Gherbi War Stage 1]: محرك الطباعة الحرارية 80mm/58mm والـ PDF الدقيق نشط 100% (محمي ضد التكرار).');
+  }
+
+  app.whenReady().then(() => {
+    setTimeout(registerPrecisionHandlersNow, 250);
+  });
+})();
+
+/* === [GHERBI 80MM TRUE PDF ENFORCER V2] === */
+(function installGherbi80mmTruePdfEnforcerV2() {
+  if (global.__GHERBI_80MM_ENFORCER_V2) return;
+  global.__GHERBI_80MM_ENFORCER_V2 = true;
+
+  const { pathToFileURL } = require('url');
+  const ROOT_BASE_URL = pathToFileURL(__dirname).href.replace(/\/?$/, '/');
+  const THERMAL_PRINTER_RE = /thermal|pos|receipt|ticket|80mm|58mm|xp-|xprinter|rongta|bixolon|tm-t|tm-m|star\s|citizen|munbyn|gprinter|zywell|hprt|sewoo|metapace|sunmi|generic.*text/i;
+  const VIRTUAL_PDF_RE = /microsoft\s+print\s+to\s+pdf|save\s+as\s+pdf|pdf24|foxit.*pdf|adobe\s+pdf|cutepdf|xps|onenote|fax|pdfcreator|bullzip/i;
+
+  function detectPaperStrict(html, opts) {
+    const src = String(html || '');
+
+    // الأولوية #1 المطلقة: السمة الموثّقة الصادرة من Print Studio Pro داخل الـ HTML (لا يستطيع أي كود قديم تزويرها إلى a4!)
+    const mAttr = src.match(/data-psp-paper=["']([^"']+)["']/i);
+    if (mAttr && mAttr[1]) {
+      const v = mAttr[1].trim().toLowerCase();
+      if (['80mm', '58mm', 'a4', 'a5', '2xa5'].includes(v)) return v;
+    }
+
+    // الأولوية #2: علامات CSS الحرارية الصريحة داخل الـ HTML
+    if (/size-58mm|paper-58mm|@page\s*\{[^}]*58mm/i.test(src)) return '58mm';
+    if (/size-80mm|paper-80mm|@page\s*\{[^}]*80mm/i.test(src)) return '80mm';
+
+    // الأولوية #3: معاملات opts القادمة من المتصل
+    const raw = String((opts && (opts.paperSize || opts.paper || opts.format)) || '').trim().toLowerCase();
+    if (['80mm', '58mm', 'a4', 'a5', '2xa5'].includes(raw)) return raw;
+    if (raw === '80' || raw === 'thermal' || raw === 'receipt') return '80mm';
+    if (raw === '58') return '58mm';
+    if (opts && Number(opts.widthMm || 0) > 0 && Number(opts.widthMm || 0) <= 62) return '58mm';
+    if (opts && Number(opts.widthMm || 0) > 62 && Number(opts.widthMm || 0) <= 85) return '80mm';
+
+    if (/size-2xa5|paper-2xa5/i.test(src)) return '2xa5';
+    if (/size-a5|paper-a5|@page\s*\{[^}]*A5/i.test(src)) return 'a5';
+    return 'a4';
+  }
+
+  function normArgs(arg1, arg2) {
+    if (typeof arg1 === 'string') {
+      const extra = typeof arg2 === 'string' ? { filename: arg2 } : (typeof arg2 === 'object' && arg2 ? arg2 : {});
+      return { ...extra, html: arg1 };
+    }
+    if (arg1 && typeof arg1 === 'object') {
+      const extra = typeof arg2 === 'string' ? { filename: arg2 } : (typeof arg2 === 'object' && arg2 ? arg2 : {});
+      return { ...extra, ...arg1 };
+    }
+    return {};
+  }
+
+  async function renderInHiddenWindowV2(html, paperSize, workFn) {
+    const isThermal = paperSize === '80mm' || paperSize === '58mm';
+    const widthMm =
+      paperSize === '58mm' ? 58 :
+      paperSize === '80mm' ? 80 :
+      paperSize === 'a5' ? 148 :
+      paperSize === '2xa5' ? 297 : 210;
+
+    const winWidthPx = Math.round((widthMm / 25.4) * 96);
+    const tmpFile = path.join(os.tmpdir(), 'gherbi_80mm_' + Date.now() + '_' + Math.random().toString(36).slice(2) + '.html');
+
+    let finalHtml = String(html || '');
+    if (!/<base\s/i.test(finalHtml)) {
+      const baseTag = '<base href="' + ROOT_BASE_URL + '">';
+      finalHtml = /<head[^>]*>/i.test(finalHtml)
+        ? finalHtml.replace(/<head[^>]*>/i, (m) => m + baseTag)
+        : baseTag + finalHtml;
+    }
+    fs.writeFileSync(tmpFile, finalHtml, 'utf8');
+
+    const win = new BrowserWindow({
+      show: false,
+      width: winWidthPx,
+      height: isThermal ? 900 : 1123,
+      useContentSize: true,
+      backgroundColor: '#ffffff',
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false
+      }
+    });
+
+    try {
+      await win.loadFile(tmpFile);
+      await win.webContents.executeJavaScript(
+        '(async () => { if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (_) {} } await new Promise((r) => setTimeout(r, 100)); return true; })()'
+      );
+
+      let heightMm = paperSize === 'a5' ? 210 : paperSize === '2xa5' ? 210 : 297;
+
+      if (isThermal) {
+        const measuredPx = await win.webContents.executeJavaScript(
+          '(() => {' +
+          '  var w = "' + widthMm + 'mm";' +
+          '  document.documentElement.style.cssText = "margin:0!important;padding:0!important;width:" + w + "!important;overflow:visible!important;";' +
+          '  document.body.style.cssText = "margin:0!important;padding:0!important;width:" + w + "!important;overflow:visible!important;";' +
+          '  var p = document.querySelector(".psp-paper") || document.querySelector(".v45-live-paper") || document.body;' +
+          '  if (p && p !== document.body) { p.style.width = w; p.style.margin = "0"; p.style.minHeight = "auto"; }' +
+          '  var rectH = p && p.getBoundingClientRect ? Math.ceil(p.getBoundingClientRect().height) : 0;' +
+          '  var scrollH = Math.max(p ? (p.scrollHeight || 0) : 0, document.body.scrollHeight || 0);' +
+          '  return Math.max(rectH, scrollH, 220);' +
+          '})()'
+        );
+
+        heightMm = Math.max(65, Math.min(1200, Math.ceil((Number(measuredPx || 320) / 96) * 25.4) + 8));
+
+        await win.webContents.insertCSS(
+          '@page { size: ' + widthMm + 'mm ' + heightMm + 'mm !important; margin: 0mm !important; }' +
+          'html, body { width: ' + widthMm + 'mm !important; min-height: auto !important; margin: 0 !important; padding: 0 !important; }'
+        );
+      }
+
+      return await workFn(win, { isThermal, widthMm, heightMm, paperSize });
+    } finally {
+      try { if (!win.isDestroyed()) win.destroy(); } catch (_) {}
+      try { fs.unlinkSync(tmpFile); } catch (_) {}
+    }
+  }
+
+  async function pspPrecisionPdfHandler(_event, arg1, arg2) {
+    const opts = normArgs(arg1, arg2);
+    const html = String(opts.html || '');
+    if (!html) return { success: false, ok: false, error: 'empty_html' };
+
+    const paper = detectPaperStrict(html, opts);
+
+    const { pdfBuf, widthMm, heightMm } = await renderInHiddenWindowV2(html, paper, async (win, dim) => {
+      if (dim.isThermal) {
+        const wIn = Number((dim.widthMm / 25.4).toFixed(4));
+        const hIn = Number((dim.heightMm / 25.4).toFixed(4));
+        const buf = await win.webContents.printToPDF({
+          printBackground: true,
+          landscape: false,
+          preferCSSPageSize: false,
+          scale: 1,
+          margins: { top: 0, bottom: 0, left: 0, right: 0 },
+          pageSize: { width: wIn, height: hIn }
+        });
+        return { pdfBuf: buf, widthMm: dim.widthMm, heightMm: dim.heightMm };
+      }
+
+      const buf = await win.webContents.printToPDF({
+        printBackground: true,
+        landscape: dim.paperSize === '2xa5',
+        preferCSSPageSize: true,
+        margins: { top: 0.2, bottom: 0.2, left: 0.2, right: 0.2 },
+        pageSize: dim.paperSize === 'a5' ? 'A5' : 'A4'
+      });
+      return { pdfBuf: buf, widthMm: dim.widthMm, heightMm: dim.heightMm };
+    });
+
+    // التحقق الفعلي من مقاس الـ MediaBox داخل ملف الـ PDF الناتج
+    let actualMediaBoxMm = widthMm + 'mm x ' + heightMm + 'mm';
+    try {
+      const mb = pdfBuf.toString('latin1').match(/\/MediaBox\s*\[\s*0\s+0\s+([0-9.]+)\s+([0-9.]+)\s*\]/);
+      if (mb) {
+        const wMmReal = ((parseFloat(mb[1]) * 25.4) / 72).toFixed(1);
+        const hMmReal = ((parseFloat(mb[2]) * 25.4) / 72).toFixed(1);
+        actualMediaBoxMm = wMmReal + 'mm x ' + hMmReal + 'mm';
+      }
+    } catch (_) {}
+
+    let targetPath = opts.filePath || opts.savePath || '';
+    if (!targetPath) {
+      const baseName = String(opts.filename || opts.defaultPath || ('ticket_' + paper + '_' + Date.now() + '.pdf')).replace(/[<>:"/\\|?*]+/g, '_');
+      const dlgRes = await dialog.showSaveDialog(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined, {
+        title: 'حفظ التذكرة بصيغة PDF (' + paper.toUpperCase() + ' حقيقي)',
+        defaultPath: baseName.endsWith('.pdf') ? baseName : baseName + '.pdf',
+        filters: [{ name: 'PDF Document', extensions: ['pdf'] }]
+      });
+      if (dlgRes.canceled || !dlgRes.filePath) {
+        return { success: false, ok: false, canceled: true };
+      }
+      targetPath = dlgRes.filePath;
+    }
+
+    fs.writeFileSync(targetPath, pdfBuf);
+    console.log('[PSP-80MM-ENFORCER] PDF Saved -> ' + actualMediaBoxMm + ' | File: ' + path.basename(targetPath));
+    if (opts.openAfterSave !== false) {
+      try { shell.openPath(targetPath); } catch (_) {}
+    }
+    return { success: true, ok: true, filePath: targetPath, path: targetPath, paperSize: paper, actualMediaBoxMm };
+  }
+
+  async function pspPrecisionPrintHandler(_event, arg1, arg2) {
+    const opts = normArgs(arg1, arg2);
+    const html = String(opts.html || '');
+    if (!html) return { success: false, ok: false, error: 'empty_html' };
+    if (opts.asPdf === true) return await pspPrecisionPdfHandler(_event, opts);
+
+    const paper = detectPaperStrict(html, opts);
+    const isThermal = paper === '80mm' || paper === '58mm';
+    console.log('[PSP-80MM-TRACE] Print Request -> detectedPaper=' + paper + ' | optsPaper=' + String(opts.paperSize || '') + ' | silent=' + Boolean(opts.silent) + ' | printer=' + String(opts.printerName || opts.deviceName || '(default)'));
+    const silent = Boolean(opts.silent);
+    const copies = Math.max(1, Number(opts.copies || 1));
+    const deviceName = String(opts.printerName || opts.deviceName || '').trim() || undefined;
+
+    // للتذاكر الحرارية (80mm / 58mm):
+    // إذا لم يحدد المستخدم طابعة في مركز الطباعة، نفحص الطابعة الافتراضية على ويندوز:
+    // إذا لم تكن طابعة حرارية حقيقية (مثلاً Microsoft Print to PDF أو طابعة A4 أو افتراضية وهمية)،
+    // نُخرج PDF حرارياً حقيقياً بمقاس 80mm / 58mm مباشرةً حتى لا تفرض Microsoft Print to PDF مقاس A4!
+    if (isThermal) {
+      if (deviceName && VIRTUAL_PDF_RE.test(deviceName)) {
+        return await pspPrecisionPdfHandler(_event, { ...opts, paperSize: paper, asPdf: true });
+      }
+      if (!deviceName) {
+        let defPrinterName = '';
+        try {
+          if (mainWindow && !mainWindow.isDestroyed() && typeof mainWindow.webContents.getPrintersAsync === 'function') {
+            const printers = await mainWindow.webContents.getPrintersAsync();
+            const defP = (printers || []).find((p) => p && p.isDefault);
+            defPrinterName = defP ? String(defP.name || defP.displayName || '') : '';
+          }
+        } catch (_) {}
+
+        const isRealThermalDefault = defPrinterName && THERMAL_PRINTER_RE.test(defPrinterName) && !VIRTUAL_PDF_RE.test(defPrinterName);
+        if (!isRealThermalDefault) {
+          console.log('[PSP-80MM-ENFORCER] Default printer ("' + (defPrinterName || 'none') + '") is not a thermal printer -> routing to TRUE ' + paper + ' PDF.');
+          return await pspPrecisionPdfHandler(_event, { ...opts, paperSize: paper, asPdf: true });
+        }
+      }
+    }
+
+    return await renderInHiddenWindowV2(html, paper, (win, dim) => {
+      return new Promise((resolve) => {
+        const printOpts = {
+          silent,
+          printBackground: true,
+          copies,
+          deviceName,
+          landscape: dim.paperSize === '2xa5',
+          margins: { marginType: dim.isThermal ? 'none' : 'default' },
+          pageSize: dim.isThermal
+            ? { width: dim.widthMm * 1000, height: dim.heightMm * 1000 }
+            : dim.paperSize === 'a5'
+            ? 'A5'
+            : 'A4'
+        };
+        win.webContents.print(printOpts, (success, failureReason) => {
+          resolve({
+            success: Boolean(success),
+            ok: Boolean(success),
+            error: success ? null : String(failureReason || 'print_canceled'),
+            paperSize: paper
+          });
+        });
+      });
+    });
+  }
+
+  function registerEnforcerChannels() {
+    const pdfList = ['psp-precision-pdf', 'export-pdf', 'export-html-to-pdf', 'print-to-pdf', 'save-html-to-pdf'];
+    const printList = ['psp-precision-print', 'print-html', 'print-silent', 'print-document', 'print-receipt'];
+    for (const ch of pdfList) {
+      try { ipcMain.removeHandler(ch); } catch (_) {}
+      ipcMain.handle(ch, pspPrecisionPdfHandler);
+    }
+    for (const ch of printList) {
+      try { ipcMain.removeHandler(ch); } catch (_) {}
+      ipcMain.handle(ch, pspPrecisionPrintHandler);
+    }
+    console.log('[PSP-80MM-ENFORCER] True 80mm/58mm Thermal PDF & Print Engine V2 READY.');
+  }
+
+  app.whenReady().then(() => {
+    setTimeout(registerEnforcerChannels, 50);
+    setTimeout(registerEnforcerChannels, 650);
+  });
+})();

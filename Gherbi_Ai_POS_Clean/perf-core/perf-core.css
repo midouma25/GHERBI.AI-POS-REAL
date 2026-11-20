@@ -1,0 +1,141 @@
+/* ============================================================================
+ * perf-core/perf-core.css
+ * الشطر 2 — تسريع العرض والعزل الرسومي الشامل لجميع الصفحات الـ 18 (Zero-Reflow)
+ * ============================================================================ */
+
+/* 1. إلغاء تكلفة الرسم والتخطيط تماماً للصفحات غير النشطة */
+.view-section:not(.active) {
+  display: none !important;
+  content-visibility: hidden !important;
+  contain: strict !important;
+}
+
+.view-section.active {
+  contain: layout style;
+}
+
+/* 2. تسريع الجداول الطويلة في سجل المبيعات والمخزون والزبائن والمشتريات والصندوق */
+#sales-view-root tbody tr,
+#inventory-view-root tbody tr,
+#customers-view-root tbody tr,
+#suppliers-view-root tbody tr,
+#purchases-view-root tbody tr,
+#caisse-view-root tbody tr,
+#expenses-view-root tbody tr,
+#proformas-view-root tbody tr,
+#orders-view-root tbody tr,
+#auditLogModalBody tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: 44px;
+}
+
+/* 3. عزل حاويات التمرير والبطاقات لتفادي Layout Thrashing */
+#sales-view-root,
+#caisse-view-root,
+#inventory-view-root,
+#bundles-view-root,
+#manufacturing-view-root,
+#stocktake-view-root,
+#suppliers-view-root,
+#purchases-view-root,
+#customers-view-root,
+#proformas-view-root,
+#orders-view-root,
+#expenses-view-root,
+#analytics-view-root,
+#users-view-root,
+#settings-view-root {
+  contain: layout style;
+}
+
+/* 4. تسريع النوافذ المنبثقة المغلقة */
+.modal-overlay:not(.active) {
+  content-visibility: hidden;
+  pointer-events: none;
+}
+
+/* 5. إزالة التأثيرات الحركية المكلفة أثناء التمرير السريع في الجداول الكبيرة */
+.perf-table-scroll {
+  contain: content;
+  will-change: scroll-position;
+}
+
+/* === [WAR STAGE 4: MANAGEMENT TABLES GPU CONTAINMENT] === */
+#view-inventory tbody tr,
+#view-sales tbody tr,
+#view-purchases tbody tr,
+#view-customers tbody tr,
+#view-suppliers tbody tr,
+#view-proformas tbody tr,
+#view-orders tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: 46px;
+}
+
+#view-inventory table,
+#view-sales table,
+#view-purchases table,
+#view-customers table,
+#view-suppliers table,
+#view-proformas table,
+#view-orders table {
+  contain: layout style;
+}
+
+tr.s4-deferred-row {
+  display: none !important;
+}
+
+.s4-load-more-row td {
+  text-align: center !important;
+  padding: 10px !important;
+  background: linear-gradient(90deg, rgba(37,99,235,0.06), rgba(37,99,235,0.12), rgba(37,99,235,0.06));
+}
+.s4-load-more-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 800;
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.s4-load-more-btn:hover {
+  opacity: 0.9;
+}
+.s4-show-all-btn {
+  margin-right: 8px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 800;
+  background: #0f172a;
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+}
+
+/* === [WAR STAGE 5: CAISSE, EXPENSES, BOM, STOCKTAKE & BUNDLES GPU] === */
+#view-caisse tbody tr,
+#view-expenses tbody tr,
+#view-manufacturing tbody tr,
+#view-stocktake tbody tr,
+#view-bundles tbody tr,
+#reviewCaisseModalBody tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: 46px;
+}
+
+#view-caisse table,
+#view-expenses table,
+#view-manufacturing table,
+#view-stocktake table,
+#view-bundles table,
+#reviewCaisseModalBody table {
+  contain: layout style;
+}

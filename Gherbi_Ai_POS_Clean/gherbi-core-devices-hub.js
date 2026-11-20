@@ -12430,7 +12430,8 @@
             remainingDebt: addedDebt
           });
 
-          const html = await studio.renderAdoptedMasterDocumentHtml('pos_partial_credit_80mm', docData);
+          const _altDDocType = Number(docData.paidAmount || 0) <= 0.009 ? 'debt_confirm_ticket_80mm' : 'pos_partial_credit_80mm';
+          const html = await studio.renderAdoptedMasterDocumentHtml(_altDDocType, docData);
           await window.__gherbiMasterPrintSilent({ html, silent: false });
         }
 

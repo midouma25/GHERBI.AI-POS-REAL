@@ -21,6 +21,9 @@ function createEventSubscriber(channel) {
 }
 
 const api = {
+  pspPrint80mm: (opts) => ipcRenderer.invoke('psp-precision-print', opts),
+  pspExportPdf: (opts) => ipcRenderer.invoke('psp-precision-pdf', opts),
+  registerPspAbsolutePrintHook: (fn) => { _pspAbsolutePrintHook = typeof fn === 'function' ? fn : null; },
   // 1. المراجعات، الإعدادات، ومعلومات التطبيق
   getDataRevision: () => invoke('get-data-revision'),
   getAppVersion: () => invoke('get-app-version'),
@@ -340,6 +343,7 @@ const api = {
 };
 
 /* === [V52_PRELOAD_IPC_INTERCEPTOR] === */
+let _pspAbsolutePrintHook = null;
 let _v52Hooks = { onProcessSale: null, onPrintSilent: null };
 const _origIpcInvoke = ipcRenderer.invoke.bind(ipcRenderer);
 ipcRenderer.invoke = async function (channel, payload, ...rest) {
@@ -350,7 +354,25 @@ ipcRenderer.invoke = async function (channel, payload, ...rest) {
     }
     return res;
   }
-  if (channel === 'print-silent') {
+  if ((channel === 'print-silent' || channel === 'export-pdf') && typeof _pspAbsolutePrintHook === 'function') {
+      try {
+        const _origArg = (typeof payload !== 'undefined' ? payload : (arguments.length > 1 ? arguments[1] : undefined));
+        const _upgraded = await _pspAbsolutePrintHook(channel, _origArg);
+        if (_upgraded && typeof _upgraded === 'object' && _upgraded.html) {
+          const _targetCh = (channel === 'export-pdf' || _upgraded.asPdf === true) ? 'psp-precision-pdf' : 'psp-precision-print';
+          return ipcRenderer.invoke(_targetCh, _upgraded);
+        }
+      } catch (_pspErr) {
+        console.warn('[PSP Absolute Preload Hook Warning]:', _pspErr && _pspErr.message);
+      }
+    }
+    if (channel === 'print-silent') {
+      /* [PSP_PRELOAD_BYPASS_V52_HOOK] */
+      const _pspPayload = (typeof payload !== 'undefined' ? payload : (arguments.length > 1 ? arguments[1] : undefined));
+      const _pspHtml = String((_pspPayload && _pspPayload.html) || (typeof _pspPayload === 'string' ? _pspPayload : '') || '');
+      if (_pspHtml.includes('data-psp-rendered="1"') || _pspHtml.includes('data-psp-paper=')) {
+        return ipcRenderer.invoke('psp-precision-print', _pspPayload);
+      }
     let finalPayload = payload;
     if (typeof _v52Hooks.onPrintSilent === 'function') {
       try {

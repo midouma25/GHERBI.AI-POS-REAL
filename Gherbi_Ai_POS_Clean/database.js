@@ -1885,3 +1885,53 @@ module.exports = db;
     }
   } catch (_) {}
 })();
+
+/* === [WAR STAGE 4: SQLITE COMPOSITE TURBO INDEXES] === */
+(function installWarStage4CompositeIndexes() {
+  try {
+    if (typeof db === 'undefined' || !db || typeof db._rawRun !== 'function') return;
+    const compositeIndexes = [
+      'CREATE INDEX IF NOT EXISTS idx_s4_sales_del_date_id ON sales(deleted_at, sale_date DESC, id DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_s4_sales_cust_del_tot ON sales(customer_id, deleted_at, total, paid_amount)',
+      'CREATE INDEX IF NOT EXISTS idx_s4_sale_items_sale_del ON sale_items(sale_id, deleted_at)',
+      'CREATE INDEX IF NOT EXISTS idx_s4_batches_prod_del_stk ON inventory_batches(product_id, deleted_at, stock)',
+      'CREATE INDEX IF NOT EXISTS idx_s4_purch_del_date_id ON purchase_invoices(deleted_at, date DESC, id DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_s4_purch_sup_del ON purchase_invoices(supplier_id, deleted_at, total, paid_amount)',
+      'CREATE INDEX IF NOT EXISTS idx_s4_sale_pay_cust_del ON sale_payments(customer_id, deleted_at, id DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_s4_inv_pay_sup_del ON invoice_payments(supplier_id, deleted_at, id DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_s4_caisse_tx_sess_del ON caisse_transactions(session_id, deleted_at, id DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_s4_audit_del_id ON audit_logs(deleted_at, id DESC)'
+    ];
+    db.serialize(() => {
+      if (db._isEnvironmentClosing) return;
+      for (const sql of compositeIndexes) {
+        db._rawRun(sql, () => {});
+      }
+      db._rawRun('PRAGMA optimize', () => {});
+    });
+  } catch (_) {}
+})();
+
+/* === [WAR STAGE 5: CAISSE, EXPENSES, BOM & STOCKTAKE INDEXES] === */
+(function installWarStage5OpsIndexes() {
+  try {
+    if (typeof db === 'undefined' || !db || typeof db._rawRun !== 'function') return;
+    const opsIndexes = [
+      'CREATE INDEX IF NOT EXISTS idx_s5_caisse_sess_del_stat_id ON caisse_sessions(deleted_at, status, id DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_s5_expenses_del_date_id ON expenses(deleted_at, date DESC, id DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_s5_capital_del_date_id ON capital_injections(deleted_at, date DESC, id DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_s5_bom_rec_prod_del ON bom_recipes(product_id, deleted_at, is_active)',
+      'CREATE INDEX IF NOT EXISTS idx_s5_bom_comp_rec_del ON bom_components(recipe_id, deleted_at)',
+      'CREATE INDEX IF NOT EXISTS idx_s5_prod_ord_del_date_id ON production_orders(deleted_at, order_date DESC, id DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_s5_stocktake_del_id ON stocktakes(deleted_at, id DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_s5_stocktake_items_st_del ON stocktake_items(stocktake_id, deleted_at)'
+    ];
+    db.serialize(() => {
+      if (db._isEnvironmentClosing) return;
+      for (const sql of opsIndexes) {
+        db._rawRun(sql, () => {});
+      }
+      db._rawRun('PRAGMA optimize', () => {});
+    });
+  } catch (_) {}
+})();

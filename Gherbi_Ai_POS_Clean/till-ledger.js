@@ -428,3 +428,415 @@ module.exports = {
     return baseResult;
   };
 })();
+
+/* === [WAR STAGE 5D: FORENSIC SHIFT DOSSIER ENRICHER] === */
+(function installTillLedgerStage5DForensicEnricher(exportsObj) {
+  'use strict';
+  if (!exportsObj || typeof exportsObj.computeSessionSummary !== 'function' || exportsObj._stage5DForensicInstalled) {
+    return;
+  }
+  exportsObj._stage5DForensicInstalled = true;
+  const origCompute = exportsObj.computeSessionSummary;
+
+  function toNum(v) {
+    const n = Number(v || 0);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function extractTimeHHMM(dtStr) {
+    const s = String(dtStr || '');
+    const m = s.match(/(\d{2}:\d{2})/);
+    return m ? m[1] : s.slice(11, 16) || '';
+  }
+
+  function parseBeneficiaryAndReason(tx, expRow, supMap) {
+    const rawDesc = String(tx.description || (expRow && expRow.description) || '').trim();
+    const rawCat = String(tx.category || (expRow && expRow.category) || '').trim();
+    const tp = String(tx.type || '').toLowerCase();
+
+    let beneficiary = '';
+    let reason = rawDesc;
+
+    // 1. استخراج [المستفيد: فلان]
+    const mBen = rawDesc.match(/\[\s*المستفيد\s*:\s*([^\]]+)\]/i);
+    if (mBen && mBen[1]) {
+      beneficiary = mBen[1].trim();
+      reason = reason.replace(mBen[0], '').trim();
+    }
+
+    // 2. استخراج سلفة عامل إن وجدت
+    const mAdv = rawDesc.match(/\[\s*سلفة\s+عامل[^\]]*\]/i);
+    let tagLabel = '';
+    if (mAdv) {
+      tagLabel = mAdv[0].replace(/^\[|\]$/g, '').trim();
+      reason = reason.replace(mAdv[0], '').trim();
+    }
+
+    // 3. ربط تسديد المورد باسمه الحقيقي من جدول suppliers
+    const mSup = rawDesc.match(/المورد\s*#(\d+)/);
+    if (mSup && supMap.has(Number(mSup[1]))) {
+      const supName = supMap.get(Number(mSup[1]));
+      if (!beneficiary) beneficiary = 'المورد: ' + supName;
+      reason = reason.replace(mSup[0], 'المورد ' + supName);
+    }
+
+    if (!beneficiary) {
+      if (tp === 'cash_out') beneficiary = 'سحب إداري / المالك';
+      else if (tp === 'refund' || tp === 'sale_refund') beneficiary = 'مرتجع لزبون';
+      else if (rawCat && rawCat !== 'عام' && rawCat !== 'sales') beneficiary = rawCat;
+      else beneficiary = 'مصروف المحل';
+    }
+
+    const typeLabel =
+      tagLabel ||
+      (tp === 'cash_out'
+        ? 'سحب نقدي'
+        : tp === 'refund' || tp === 'sale_refund'
+        ? 'مرتجع نقدي'
+        : rawCat === 'suppliers'
+        ? 'تسديد مورد'
+        : rawCat === 'purchases'
+        ? 'فاتورة شراء'
+        : rawCat || 'مصروف تشغيلي');
+
+    if (!reason) reason = typeLabel;
+    return { beneficiary, reason, typeLabel };
+  }
+
+  exportsObj.computeSessionSummary = async function computeSessionSummaryWithForensicDossier(db, sessionId) {
+    const base = await origCompute.call(this, db, sessionId);
+    if (!base || !base.session) return base;
+
+    try {
+      const dbAll = (sql, params = []) =>
+        typeof db.dbAll === 'function' ? db.dbAll(sql, params) : typeof db.allAsync === 'function' ? db.allAsync(sql, params) : Promise.resolve([]);
+      const dbGet = (sql, params = []) =>
+        typeof db.dbGet === 'function' ? db.dbGet(sql, params) : typeof db.getAsync === 'function' ? db.getAsync(sql, params) : Promise.resolve(null);
+
+      const sess = base.session;
+      const sid = Number(sess.id || sessionId);
+      const openedAt = String(sess.opened_at || '').replace('T', ' ').slice(0, 19);
+      const closedAt = sess.closed_at ? String(sess.closed_at).replace('T', ' ').slice(0, 19) : new Date().toISOString().replace('T', ' ').slice(0, 19);
+      const txs = Array.isArray(base.transactions) ? base.transactions : [];
+
+      // 1. جلب خرائط الزبائن والموردين والمصاريف
+      const [custRows, supRows, expRows, spRows, shiftSalesRows, auditRows] = await Promise.all([
+        dbAll(
+          `SELECT
+             c.id, c.name, c.phone, c.loyalty_card_code,
+             (COALESCE(SUM(s.total - s.paid_amount), 0) + (COALESCE(c.initial_debt, 0) - COALESCE(c.initial_debt_paid, 0))) AS live_debt
+           FROM customers c
+           LEFT JOIN sales s ON s.customer_id = c.id AND s.deleted_at IS NULL
+           WHERE c.deleted_at IS NULL
+           GROUP BY c.id`
+        ).catch(() => []),
+        dbAll('SELECT id, name, phone FROM suppliers WHERE deleted_at IS NULL').catch(() => []),
+        dbAll('SELECT id, category, description, amount, date, session_id FROM expenses WHERE deleted_at IS NULL AND (session_id = ? OR date(created_at) BETWEEN date(?) AND date(?))', [sid, openedAt || '2000-01-01', closedAt || '2099-12-31']).catch(() => []),
+        dbAll(
+          `SELECT sp.id, sp.sale_id, sp.customer_id, sp.amount, sp.payment_method, sp.notes, c.name AS customer_name, c.phone AS customer_phone
+           FROM sale_payments sp
+           LEFT JOIN customers c ON c.id = sp.customer_id
+           WHERE sp.deleted_at IS NULL`
+        ).catch(() => []),
+        dbAll(
+          `SELECT
+             s.id, s.doc_number, s.customer_id, s.subtotal, s.discount, s.total, s.paid_amount,
+             s.payment_method, s.sale_date, s.created_at, s.session_id,
+             c.name AS customer_name, c.phone AS customer_phone, c.loyalty_card_code
+           FROM sales s
+           LEFT JOIN customers c ON c.id = s.customer_id
+           WHERE s.deleted_at IS NULL
+             AND (
+               s.session_id = ?
+               OR (
+                 (s.session_id IS NULL OR s.session_id = 0)
+                 AND datetime(replace(substr(COALESCE(s.created_at, s.sale_date), 1, 19), 'T', ' '))
+                     BETWEEN datetime(replace(substr(?, 1, 19), 'T', ' '))
+                         AND datetime(replace(substr(?, 1, 19), 'T', ' '))
+               )
+             )
+           ORDER BY s.id DESC`,
+          [sid, openedAt || '2000-01-01 00:00:00', closedAt || '2099-12-31 23:59:59']
+        ).catch(() => []),
+        dbAll(
+          `SELECT id, user_name, action_type, severity, details_json, created_at
+           FROM audit_logs
+           WHERE deleted_at IS NULL
+             AND datetime(replace(substr(created_at, 1, 19), 'T', ' '))
+                 BETWEEN datetime(replace(substr(?, 1, 19), 'T', ' '))
+                     AND datetime(replace(substr(?, 1, 19), 'T', ' '))
+             AND (severity IN ('warning', 'critical', 'danger') OR action_type LIKE '%DELETE%' OR action_type LIKE '%credit_note%' OR action_type LIKE '%BELOW_COST%')
+           ORDER BY id DESC LIMIT 20`,
+          [openedAt || '2000-01-01 00:00:00', closedAt || '2099-12-31 23:59:59']
+        ).catch(() => [])
+      ]);
+
+      const custMap = new Map();
+      let storeTotalDebtReal = 0;
+      const debtorsList = [];
+      for (let i = 0; i < custRows.length; i++) {
+        const c = custRows[i];
+        const liveDebt = Number(Math.max(0, toNum(c.live_debt)).toFixed(2));
+        custMap.set(Number(c.id), { ...c, live_debt: liveDebt });
+        if (liveDebt > 0.009) {
+          storeTotalDebtReal += liveDebt;
+          debtorsList.push({
+            id: Number(c.id),
+            name: c.name || 'زبون #' + c.id,
+            phone: c.phone || '',
+            cardCode: c.loyalty_card_code || '',
+            debt: liveDebt
+          });
+        }
+      }
+      storeTotalDebtReal = Number(storeTotalDebtReal.toFixed(2));
+      debtorsList.sort((a, b) => b.debt - a.debt);
+
+      const supMap = new Map();
+      for (let i = 0; i < supRows.length; i++) supMap.set(Number(supRows[i].id), supRows[i].name);
+
+      const expMap = new Map();
+      for (let i = 0; i < expRows.length; i++) expMap.set(Number(expRows[i].id), expRows[i]);
+
+      const spMap = new Map();
+      for (let i = 0; i < spRows.length; i++) spMap.set(Number(spRows[i].id), spRows[i]);
+
+      // 2. تصنيف حركات الدرج بدقة: الخارج (مصاريف/سلف/سحوبات)، تحصيلات الديون بأسماء الزبائن، الإيداعات
+      const outflows = [];
+      const inflows = [];
+      const debtCollections = [];
+      let totalOutflows = 0;
+      let totalInflows = 0;
+      let totalDebtCollected = 0;
+      let txCashSalesTotal = 0;
+
+      for (let i = 0; i < txs.length; i++) {
+        const tx = txs[i];
+        if (!tx) continue;
+        const tp = String(tx.type || '').toLowerCase();
+        const amt = Number(Math.abs(toNum(tx.amount)).toFixed(2));
+        const timeStr = extractTimeHHMM(tx.created_at);
+
+        if (tp === 'sale' || tp === 'cash_sale' || tp === 'sale_cash') {
+          txCashSalesTotal += amt;
+        } else if (tp === 'expense' || tp === 'cash_out' || tp === 'refund' || tp === 'sale_refund') {
+          const expRow = tx.reference_id ? expMap.get(Number(tx.reference_id)) : null;
+          const parsed = parseBeneficiaryAndReason(tx, expRow, supMap);
+          totalOutflows += amt;
+          outflows.push({
+            id: tx.id,
+            time: timeStr,
+            type: tp,
+            typeLabel: parsed.typeLabel,
+            beneficiary: parsed.beneficiary,
+            reason: parsed.reason,
+            amount: amt
+          });
+        } else if (tp === 'cash_in' || tp === 'order_deposit') {
+          totalInflows += amt;
+          inflows.push({
+            id: tx.id,
+            time: timeStr,
+            type: tp,
+            typeLabel: tp === 'order_deposit' ? 'عربون طلبية' : 'إيداع وتغذية درج',
+            source: tx.category && tx.category !== 'عام' ? tx.category : 'الصندوق',
+            reason: tx.description || (tp === 'order_deposit' ? 'عربون طلبية زبون' : 'تغذية الصندوق'),
+            amount: amt
+          });
+        } else if (tp === 'debt_payment' || tp === 'customer_payment') {
+          totalDebtCollected += amt;
+          let custName = '';
+          let custPhone = '';
+          let custId = null;
+
+          // أولاً: من sale_payments عبر reference_id
+          const sp = tx.reference_id ? spMap.get(Number(tx.reference_id)) : null;
+          if (sp && sp.customer_id) {
+            custId = Number(sp.customer_id);
+            const cObj = custMap.get(custId);
+            custName = (cObj && cObj.name) || sp.customer_name || '';
+            custPhone = (cObj && cObj.phone) || sp.customer_phone || '';
+          }
+
+          // ثانياً: من النص "زبون #3"
+          if (!custName) {
+            const mCust = String(tx.description || '').match(/زبون\s*#(\d+)/);
+            if (mCust) {
+              custId = Number(mCust[1]);
+              const cObj = custMap.get(custId);
+              if (cObj) {
+                custName = cObj.name;
+                custPhone = cObj.phone || '';
+              }
+            }
+          }
+
+          // ثالثاً: من "فاتورة بيع #101"
+          if (!custName) {
+            const mSale = String(tx.description || '').match(/فاتورة\s+بيع\s*#?(\d+)/);
+            if (mSale) {
+              const sRow = await dbGet(
+                'SELECT s.customer_id, c.name, c.phone FROM sales s LEFT JOIN customers c ON c.id = s.customer_id WHERE s.id = ?',
+                [Number(mSale[1])]
+              ).catch(() => null);
+              if (sRow && sRow.name) {
+                custId = Number(sRow.customer_id || 0) || null;
+                custName = sRow.name;
+                custPhone = sRow.phone || '';
+              }
+            }
+          }
+
+          const cLive = custId && custMap.has(custId) ? custMap.get(custId).live_debt : null;
+          debtCollections.push({
+            id: tx.id,
+            time: timeStr,
+            customerId: custId,
+            customerName: custName || tx.description || 'زبون',
+            customerPhone: custPhone,
+            note: (sp && sp.notes) || tx.description || 'تسديد دين',
+            amount: amt,
+            remainingDebtNow: cLive
+          });
+        }
+      }
+
+      // 3. تحليل مبيعات الوردية: الزبائن المدينين اليوم + تفصيل وسائل الدفع + التخفيضات
+      const creditSalesToday = [];
+      let totalCreditAddedToday = 0;
+      let totalSalesRevenue = 0;
+      let totalDiscounts = 0;
+      const payMethods = {
+        cash: 0,
+        cib: 0,
+        baridimob: 0,
+        cheque: 0,
+        credit: 0,
+        other: 0
+      };
+
+      for (let i = 0; i < shiftSalesRows.length; i++) {
+        const s = shiftSalesRows[i];
+        const tot = toNum(s.total);
+        const paid = Math.min(tot, Math.max(0, toNum(s.paid_amount)));
+        const disc = Math.max(0, toNum(s.discount));
+        const creditAdded = Number(Math.max(0, tot - paid).toFixed(2));
+        const pm = String(s.payment_method || 'cash').toLowerCase();
+
+        totalSalesRevenue += tot;
+        totalDiscounts += disc;
+
+        if (paid > 0.009) {
+          if (pm === 'cib' || pm === 'card' || pm === 'edahabia') payMethods.cib += paid;
+          else if (pm === 'baridimob' || pm === 'ccp') payMethods.baridimob += paid;
+          else if (pm === 'cheque') payMethods.cheque += paid;
+          else if (pm === 'cash' || pm === 'credit' || pm === 'split' || pm === 'installment') payMethods.cash += paid;
+          else payMethods.other += paid;
+        }
+        if (creditAdded > 0.009) {
+          payMethods.credit += creditAdded;
+          totalCreditAddedToday += creditAdded;
+          const cid = s.customer_id ? Number(s.customer_id) : null;
+          const cObj = cid && custMap.has(cid) ? custMap.get(cid) : null;
+          creditSalesToday.push({
+            saleId: s.id,
+            docNumber: s.doc_number || '#' + s.id,
+            time: extractTimeHHMM(s.created_at || s.sale_date),
+            customerId: cid,
+            customerName: (cObj && cObj.name) || s.customer_name || 'زبون غير محدد',
+            customerPhone: (cObj && cObj.phone) || s.customer_phone || '',
+            cardCode: (cObj && cObj.loyalty_card_code) || s.loyalty_card_code || '',
+            invoiceTotal: Number(tot.toFixed(2)),
+            paidToday: Number(paid.toFixed(2)),
+            creditAdded,
+            cumulativeDebtNow: cObj ? cObj.live_debt : creditAdded
+          });
+        }
+      }
+
+      // تجميع تحصيلات الديون حسب الزبون لنسخة 80mm المختصرة
+      const collectedByCustomerMap = new Map();
+      for (let i = 0; i < debtCollections.length; i++) {
+        const dc = debtCollections[i];
+        const key = dc.customerName;
+        const prev = collectedByCustomerMap.get(key) || { customerName: key, count: 0, total: 0, lastTime: dc.time, remainingDebtNow: dc.remainingDebtNow };
+        prev.count += 1;
+        prev.total = Number((prev.total + dc.amount).toFixed(2));
+        collectedByCustomerMap.set(key, prev);
+      }
+      const debtCollectionsGrouped = Array.from(collectedByCustomerMap.values()).sort((a, b) => b.total - a.total);
+
+      // 4. توليد تنبيهات المستشار الرقابي لصاحب المتجر
+      const ownerAlerts = [];
+      const expectedBal = toNum(base.summary && base.summary.expectedBalance !== undefined ? base.summary.expectedBalance : sess.expected_balance);
+      const hasCounted = sess.closing_balance !== null && sess.closing_balance !== undefined;
+      const diff = hasCounted ? Number((toNum(sess.closing_balance) - expectedBal).toFixed(2)) : 0;
+
+      if (diff < -0.009) {
+        ownerAlerts.push({ level: 'danger', text: 'عجز في جرد الدرج بقيمة ' + Math.abs(diff).toFixed(2) + ' د.ج — يتطلب مراجعة فورية مع الكاشير.' });
+      } else if (diff > 0.009) {
+        ownerAlerts.push({ level: 'warning', text: 'فائض غير مبرر في الدرج بقيمة +' + diff.toFixed(2) + ' د.ج (قد توجد عملية بيع غير مسجلة).' });
+      }
+      if (expectedBal < -0.009) {
+        ownerAlerts.push({ level: 'danger', text: 'رصيد الدرج المتوقع سالب (' + expectedBal.toFixed(2) + ' د.ج) لأن المصاريف/السلَف تجاوزت المداخيل النقدية.' });
+      }
+      if (totalOutflows > 0 && txCashSalesTotal > 0 && totalOutflows > txCashSalesTotal) {
+        ownerAlerts.push({ level: 'warning', text: 'الأموال الخارجة (' + totalOutflows.toFixed(2) + ' د.ج) أكبر من مبيعات الكاش (' + txCashSalesTotal.toFixed(2) + ' د.ج).' });
+      }
+      if (totalCreditAddedToday > 0.009) {
+        ownerAlerts.push({ level: 'info', text: 'تم منح ديون جديدة بقيمة ' + totalCreditAddedToday.toFixed(2) + ' د.ج لـ (' + creditSalesToday.length + ') عملية بيع آجلة.' });
+      }
+      if (totalDiscounts > 0.009 && totalSalesRevenue > 0 && totalDiscounts / totalSalesRevenue >= 0.08) {
+        ownerAlerts.push({ level: 'warning', text: 'نسبة التخفيضات الممنوحة مرتفعة (' + totalDiscounts.toFixed(2) + ' د.ج).' });
+      }
+      if (auditRows.length > 0) {
+        ownerAlerts.push({ level: 'danger', text: 'سُجل (' + auditRows.length + ') حدثاً رقابياً حساساً خلال الوردية (حذف فاتورة / مرتجع / تنبيه أمان).' });
+      }
+
+      base.forensicDossier = {
+        outflows,
+        inflows,
+        debtCollections,
+        debtCollectionsGrouped,
+        creditSalesToday,
+        topDebtors: debtorsList.slice(0, 8),
+        auditEventsCount: auditRows.length,
+        auditEvents: auditRows.slice(0, 5),
+        ownerAlerts,
+        kpis: {
+          salesCount: shiftSalesRows.length,
+          totalSalesRevenue: Number(totalSalesRevenue.toFixed(2)),
+          avgBasket: shiftSalesRows.length > 0 ? Number((totalSalesRevenue / shiftSalesRows.length).toFixed(2)) : 0,
+          totalDiscounts: Number(totalDiscounts.toFixed(2)),
+          totalOutflows: Number(totalOutflows.toFixed(2)),
+          totalInflows: Number(totalInflows.toFixed(2)),
+          totalDebtCollected: Number(totalDebtCollected.toFixed(2)),
+          totalCreditAddedToday: Number(totalCreditAddedToday.toFixed(2)),
+          storeTotalDebtReal,
+          debtorsCount: debtorsList.length
+        },
+        paymentBreakdown: {
+          cash: Number(payMethods.cash.toFixed(2)),
+          cib: Number(payMethods.cib.toFixed(2)),
+          baridimob: Number(payMethods.baridimob.toFixed(2)),
+          cheque: Number(payMethods.cheque.toFixed(2)),
+          credit: Number(payMethods.credit.toFixed(2)),
+          other: Number(payMethods.other.toFixed(2))
+        }
+      };
+
+      // تحديث حقول summary الأساسية بالأرقام الحقيقية من SQLite
+      if (!base.summary) base.summary = {};
+      base.summary.newCreditGiven = Number(totalCreditAddedToday.toFixed(2));
+      base.summary.totalStoreCustomerDebt = storeTotalDebtReal;
+      base.summary.totalDebtCollected = Number(totalDebtCollected.toFixed(2));
+      base.summary.totalOutflows = Number(totalOutflows.toFixed(2));
+      base.summary.totalDiscounts = Number(totalDiscounts.toFixed(2));
+      base.summary.salesCount = shiftSalesRows.length;
+    } catch (e) {
+      // حماية تامة: لا نكسر استدعاء الصندوق أبداً
+    }
+
+    return base;
+  };
+})(module.exports);

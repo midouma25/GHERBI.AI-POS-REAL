@@ -12,6 +12,12 @@
   </script>
   <script src="./assets/js/chart.umd.min.js"></script>
   <link rel="stylesheet" href="./styles.css">
+  <!-- [PERF_CORE_CSS_START] -->
+  <link rel="stylesheet" href="./perf-core/perf-core.css">
+  <!-- [PERF_CORE_CSS_END] -->
+  <!-- [PRINT_STUDIO_PRO_CSS_START] -->
+  <link rel="stylesheet" href="./print-studio-pro/studio-pro.css">
+  <!-- [PRINT_STUDIO_PRO_CSS_END] -->
   <script src="./assets/js/svg-icons.js"></script>
 </head>
 <body class="select-none">
@@ -1870,13 +1876,15 @@
     </div>
   </div>
 
+  <!-- [PERF_CORE_JS_START] -->
+  <script src="./perf-core/perf-core.js"></script>
+  <!-- [PERF_CORE_JS_END] -->
   <script src="./assets/js/translations.js"></script>
   <script src="./assets/js/numberToWords.js"></script>
   <script src="./print-engine.js"></script>
-  <script src="./template-designer/template-i18n.js"></script>
-  <script src="./template-designer/template-presets.js"></script>
-  <script src="./template-designer/template-renderer.js"></script>
-  <script src="./template-designer/template-builder.js"></script>
+  <!-- [DEAD_TEMPLATE_DESIGNER_PRUNED_START] -->
+  <script src="./perf-core/legacy-template-stubs.js"></script>
+  <!-- [DEAD_TEMPLATE_DESIGNER_PRUNED_END] -->
   <script src="./manufacturing/manufacturing.js"></script>
   <script src="./manufacturing/manufacturing-ui.js"></script>
   <script src="./manufacturing/pos-produce.js"></script>
@@ -1887,5 +1895,23 @@
   <script src="./gherbi-core-pos-engine.js"></script>
   <script src="./gherbi-core-loyalty-audit.js"></script>
   <script src="./gherbi-core-devices-hub.js"></script>
+  <!-- [PRINT_STUDIO_PRO_JS_START] -->
+  <script src="./print-studio-pro/studio-bootstrap.js"></script>
+  <script src="./print-studio-pro/studio-templates-34.js"></script>
+  <script src="./print-studio-pro/studio-state.js"></script>
+  <script src="./print-studio-pro/studio-renderer.js"></script>
+  <script src="./print-studio-pro/studio-ui.js"></script>
+  <script src="./print-studio-pro/studio-router.js"></script>
+    <script src="./print-studio-pro/studio-global-unifier.js"></script>
+  <!-- [PRINT_STUDIO_PRO_JS_END] -->
+  <!-- [WAR_STAGE3_POS_JS_START] -->
+  <script src="./perf-core/pos-debt-stage3.js"></script>
+  <!-- [WAR_STAGE3_POS_JS_END] -->
+  <!-- [WAR_STAGE4_INV_SALES_JS_START] -->
+  <script src="./perf-core/inventory-sales-stage4.js"></script>
+  <!-- [WAR_STAGE4_INV_SALES_JS_END] -->
+  <!-- [WAR_STAGE5_OPS_JS_START] -->
+  <script src="./perf-core/caisse-bom-stocktake-stage5.js"></script>
+  <!-- [WAR_STAGE5_OPS_JS_END] -->
 </body>
 </html>
