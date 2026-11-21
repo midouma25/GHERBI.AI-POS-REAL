@@ -1505,9 +1505,64 @@ function registerIpcHandlers() {
   });
 
   // 5. الموردون، المشتريات، ومرتجعات الموردين
+  
+  /* === [WAR STAGE 6A: UNIFIED TREASURY STATUS IPC] === */
+  ipcMain.handle('get-treasury-status', async (_e, userId = null) => {
+    if (await isLanClientMode() && typeof lanClient.getActiveSession === 'function') {
+      const remoteSess = await lanClient.getActiveSession(userId).catch(() => null);
+      return {
+        hasOpenShift: Boolean(remoteSess && remoteSess.session && remoteSess.session.id),
+        sessionId: remoteSess && remoteSess.session ? remoteSess.session.id : null,
+        cashierName: remoteSess && remoteSess.session ? (remoteSess.session.user_name || '') : '',
+        drawerExpectedCash: remoteSess && remoteSess.summary ? Number(remoteSess.summary.expectedBalance || 0) : 0,
+        vaultBalance: 0
+      };
+    }
+
+    const deviceId = await getSetting('instance_id', 'local');
+    const sessId = await tillLedger.resolveOpenSession(db, null, userId, deviceId);
+    let activeInfo = null;
+    if (sessId) {
+      activeInfo = await tillLedger.computeSessionSummary(db, sessId).catch(() => null);
+    }
+
+    // حساب رصيد الخزينة الرئيسية التقريبي: إيداعات رأس المال + مبالغ إغلاق الورديات المغلقة - مصروفات الخزينة الرئيسية
+    const capRow = await dbGet(
+      "SELECT COALESCE(SUM(CASE WHEN category LIKE '%مسحوبات%' THEN -ABS(amount) ELSE ABS(amount) END), 0) AS net_cap FROM capital_injections WHERE deleted_at IS NULL"
+    ).catch(() => null);
+    const closedShiftsRow = await dbGet(
+      "SELECT COALESCE(SUM(COALESCE(closing_balance, expected_balance, 0)), 0) AS closed_cash FROM caisse_sessions WHERE status = 'closed' AND deleted_at IS NULL"
+    ).catch(() => null);
+    const vaultOutRow = await dbGet(
+      "SELECT COALESCE(SUM(CASE WHEN direction = 'in' THEN amount ELSE -amount END), 0) AS net_vault FROM treasury_ledger WHERE source_type = 'shop_vault' AND deleted_at IS NULL"
+    ).catch(() => null);
+
+    const vaultBalance = Number(
+      (
+        Number((capRow && capRow.net_cap) || 0) +
+        Number((closedShiftsRow && closedShiftsRow.closed_cash) || 0) +
+        Number((vaultOutRow && vaultOutRow.net_vault) || 0)
+      ).toFixed(2)
+    );
+
+    const extTodayRow = await dbGet(
+      "SELECT COALESCE(SUM(amount), 0) AS total_ext FROM treasury_ledger WHERE source_type = 'external_owner' AND deleted_at IS NULL AND (? IS NULL OR session_id = ?)",
+      [sessId || null, sessId || null]
+    ).catch(() => null);
+
+    return {
+      hasOpenShift: Boolean(sessId),
+      sessionId: sessId || null,
+      cashierName: (activeInfo && activeInfo.session && activeInfo.session.user_name) || '',
+      drawerExpectedCash: activeInfo && activeInfo.summary ? Number(activeInfo.summary.expectedBalance || 0) : 0,
+      vaultBalance,
+      externalPaidInShift: Number((extTodayRow && extTodayRow.total_ext) || 0)
+    };
+  });
+
   ipcMain.handle('get-suppliers', async () => {
     if (await isLanClientMode()) return lanClient.getSuppliers();
-    return await dbAll(
+    const rows = await dbAll(
       `SELECT
          sup.*,
          COALESCE(SUM(pi.total), 0) AS total_purchases,
@@ -1523,6 +1578,15 @@ function registerIpcHandlers() {
        GROUP BY sup.id
        ORDER BY sup.id DESC`
     );
+    return (rows || []).map((r) => {
+      const signed = Number(Number(r.total_debt || 0).toFixed(2));
+      return {
+        ...r,
+        total_debt: signed,
+        debt_due: signed > 0.009 ? signed : 0,
+        advance_balance: signed < -0.009 ? Number(Math.abs(signed).toFixed(2)) : 0
+      };
+    });
   });
 
   ipcMain.handle('add-supplier', async (_e, s = {}) => {
@@ -1585,70 +1649,179 @@ function registerIpcHandlers() {
   ipcMain.handle('add-supplier-payment', async (_e, supplierId, amount, date, meta = {}) => {
     if (await isLanClientMode()) return lanClient.addSupplierPayment(supplierId, amount, date, meta);
     const sid = Number(supplierId);
-    let rem = Number(amount || 0);
-    if (!Number.isFinite(rem) || rem <= 0.009) throw new Error('يرجى إدخال مبلغ تسديد صحيح أكبر من الصفر');
+    const requestedAmt = Number(Number(amount || 0).toFixed(2));
+    if (!Number.isFinite(requestedAmt) || requestedAmt <= 0.009) {
+      return { success: false, error: 'invalid_amount', message: 'يرجى إدخال مبلغ تسديد صحيح أكبر من الصفر' };
+    }
+
     const payDate = date || new Date().toISOString();
+    const payMethod = String(meta.payment_method || 'cash').trim().toLowerCase();
+    const fundingSource = String(
+      meta.funding_source || (payMethod === 'cash' ? 'active_shift' : 'bank_ccp')
+    ).trim().toLowerCase();
+    const externalPayer = String(meta.external_payer || '').trim();
+    const allowAdvance = Boolean(meta.allow_advance);
+    const notesText = String(meta.notes || '').trim();
+
+    const sup = await dbGet('SELECT * FROM suppliers WHERE id = ? AND deleted_at IS NULL', [sid]);
+    if (!sup) {
+      return { success: false, error: 'supplier_not_found', message: 'المورد غير موجود في قاعدة البيانات' };
+    }
+    const supName = String(sup.name || ('المورد #' + sid)).trim();
+
+    // 1. فحص قفل الوردية عند اختيار الخصم من درج الوردية المفتوحة
+    const activeSess = await tillLedger.resolveOpenSession(db, meta.session_id || null, meta.userId || meta.user_id || null);
+    if (fundingSource === 'active_shift' && !activeSess) {
+      return {
+        success: false,
+        error: 'shift_closed',
+        message: 'لا توجد وردية صندوق مفتوحة حالياً! افتح وردية من إدارة الصندوق أو اختر "الخزينة الرئيسية" أو "مال خارجي / المالك".'
+      };
+    }
+
+    // 2. حساب الدين الحقيقي المستحق للمورد قبل الخصم
+    const initRem = Math.max(0, Number(sup.initial_debt || 0) - Number(sup.initial_debt_paid || 0));
+    const openInvoices = await dbAll(
+      'SELECT id, total, paid_amount FROM purchase_invoices WHERE supplier_id = ? AND (total - paid_amount) > 0.009 AND deleted_at IS NULL ORDER BY date ASC, id ASC',
+      [sid]
+    );
+    const invDebtTotal = openInvoices.reduce((acc, inv) => acc + Math.max(0, Number(inv.total || 0) - Number(inv.paid_amount || 0)), 0);
+    const returnsCreditRow = await dbGet(
+      'SELECT COALESCE(SUM(credit_applied), 0) AS cr FROM supplier_returns WHERE supplier_id = ? AND deleted_at IS NULL',
+      [sid]
+    ).catch(() => null);
+    const rawTotalDebt = Number(Math.max(0, initRem + invDebtTotal - Number((returnsCreditRow && returnsCreditRow.cr) || 0)).toFixed(2));
+
+    if (rawTotalDebt <= 0.009 && !allowAdvance) {
+      return {
+        success: false,
+        error: 'no_debt',
+        currentDebt: 0,
+        message: 'لا يوجد دين مستحق للمورد (' + supName + ') حالياً (الرصيد 0.00 د.ج). فعّل خيار "تسجيلها كتسبقة (Avance)" إن أردت الدفع مقدماً.'
+      };
+    }
+
+    if (requestedAmt > rawTotalDebt + 0.009 && !allowAdvance) {
+      return {
+        success: false,
+        error: 'exceeds_debt',
+        currentDebt: rawTotalDebt,
+        message: 'المبلغ المدخل (' + requestedAmt.toFixed(2) + ' د.ج) يتجاوز الدين المستحق (' + rawTotalDebt.toFixed(2) + ' د.ج). عدّل المبلغ أو فعّل خيار التسبقة (Avance).'
+      };
+    }
+
     const receiptNum = await generateNextDocNumber('payment_receipt');
 
     return await db.withTransaction(async () => {
-      const sup = await dbGet('SELECT * FROM suppliers WHERE id = ?', [sid]);
-      if (sup) {
-        const initRem = Math.max(0, Number(sup.initial_debt || 0) - Number(sup.initial_debt_paid || 0));
-        if (initRem > 0 && rem > 0) {
-          const take = Math.min(initRem, rem);
-          await dbRun(
-            'UPDATE suppliers SET initial_debt_paid = COALESCE(initial_debt_paid, 0) + ? WHERE id = ?',
-            [take, sid]
-          );
-          rem = Number((rem - take).toFixed(2));
-        }
+      let rem = requestedAmt;
+
+      // خصم الدين الأولي أولاً
+      if (initRem > 0 && rem > 0) {
+        const take = Math.min(initRem, rem);
+        await dbRun(
+          'UPDATE suppliers SET initial_debt_paid = COALESCE(initial_debt_paid, 0) + ? WHERE id = ?',
+          [take, sid]
+        );
+        rem = Number((rem - take).toFixed(2));
       }
 
-      const openInvoices = await dbAll(
-        'SELECT id, total, paid_amount FROM purchase_invoices WHERE supplier_id = ? AND (total - paid_amount) > 0.009 AND deleted_at IS NULL ORDER BY date ASC, id ASC',
-        [sid]
-      );
+      // ثم خصم فواتير الشراء المفتوحة بالأقدمية (FIFO)
       for (const inv of openInvoices) {
         if (rem <= 0.009) break;
         const due = Number((Number(inv.total) - Number(inv.paid_amount)).toFixed(2));
         const apply = Math.min(due, rem);
-        await dbRun('UPDATE purchase_invoices SET paid_amount = paid_amount + ? WHERE id = ?', [
-          apply,
-          inv.id
-        ]);
+        await dbRun('UPDATE purchase_invoices SET paid_amount = paid_amount + ? WHERE id = ?', [apply, inv.id]);
         rem = Number((rem - apply).toFixed(2));
       }
 
-      /* [V27_EXACT_SUPPLIER_DEBT_APPLIED] */
-      const appliedSupAmt = Number((Number(amount || 0) - rem).toFixed(2));
-      if (appliedSupAmt <= 0.009) {
-        throw new Error('لا يوجد دين مستحق لهذا المورد لتسديده');
+      // أي مبلغ إضافي (أو كامل المبلغ عند الرصيد الصفري مع allowAdvance) يُسجّل كتسبقة مسبقة لصالحنا لدى المورد
+      let advanceApplied = 0;
+      if (rem > 0.009 && allowAdvance) {
+        advanceApplied = rem;
+        await dbRun(
+          'UPDATE suppliers SET initial_debt_paid = COALESCE(initial_debt_paid, 0) + ? WHERE id = ?',
+          [advanceApplied, sid]
+        );
+        rem = 0;
       }
+
+      const appliedSupAmt = Number((requestedAmt - rem).toFixed(2));
+      const isAdvancePayment = advanceApplied > 0.009 ? 1 : 0;
+
+      const sourceLabels = {
+        active_shift: 'درج الوردية #' + (activeSess || ''),
+        shop_vault: 'الخزينة الرئيسية للمتجر',
+        bank_ccp: 'الحساب البنكي / CCP / شيك',
+        external_owner: externalPayer ? ('مال خارجي: ' + externalPayer) : 'مال خارجي / المالك'
+      };
+      const srcLabel = sourceLabels[fundingSource] || sourceLabels.active_shift;
+      const enrichedNotes = [
+        isAdvancePayment ? '[تسبقة مورد Avance]' : '',
+        '[المصدر: ' + srcLabel + ']',
+        notesText
+      ].filter(Boolean).join(' ').trim();
+
       const ins = await dbRun(
-        `INSERT INTO invoice_payments (invoice_id, supplier_id, amount, date, payment_method, reference, receipt_number, notes)
-         VALUES (NULL, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO invoice_payments (
+          invoice_id, supplier_id, amount, date, payment_method, reference, receipt_number, notes, funding_source, external_payer, is_advance
+        ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           sid,
           appliedSupAmt,
           payDate,
-          meta.payment_method || 'cash',
+          payMethod,
           meta.reference || null,
           receiptNum,
-          meta.notes || null
+          enrichedNotes,
+          fundingSource,
+          externalPayer,
+          isAdvancePayment
         ]
       );
 
-      /* [V17_SUPPLIER_PAYMENT_CAISSE_TX] */
-      const activeSess = await tillLedger.resolveOpenSession(db, null, meta.userId);
-      if (activeSess && (!meta.payment_method || meta.payment_method === 'cash')) {
+      // خصم من درج الوردية المفتوحة حصراً عندما يختار المستخدم "درج الوردية"
+      if (fundingSource === 'active_shift' && activeSess) {
+        const txDesc = '[المستفيد: ' + supName + '] ' + (isAdvancePayment ? 'تسبقة للمورد' : 'تسديد دفعة للمورد') + (notesText ? (' — ' + notesText) : '');
         await dbRun(
-          `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
-           VALUES (?, 'expense', ?, 'suppliers', ?, ?)`,
-          [activeSess, appliedSupAmt, `تسديد دفعة للمورد #${sid}`, ins.lastID]
+          `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id, funding_source)
+           VALUES (?, 'expense', ?, 'suppliers', ?, ?, 'active_shift')`,
+          [activeSess, appliedSupAmt, txDesc, ins.lastID]
         ).catch(() => {});
       }
 
-      return { success: true, paymentId: ins.lastID, receiptNumber: receiptNum };
+      // توثيق موحّد في سجل الخزائن (treasury_ledger) لمتابعة الخزينة الرئيسية والمال الخارجي في نهاية الوردية
+      await dbRun(
+        `INSERT INTO treasury_ledger (
+          source_type, direction, amount, category, party_type, party_id, party_name, payer_name,
+          payment_method, reference_type, reference_id, session_id, notes, date
+        ) VALUES (?, 'out', ?, 'supplier_payment', 'supplier', ?, ?, ?, ?, 'invoice_payment', ?, ?, ?, ?)`,
+        [
+          fundingSource,
+          appliedSupAmt,
+          sid,
+          supName,
+          externalPayer || (fundingSource === 'active_shift' ? 'درج الكاشير' : srcLabel),
+          payMethod,
+          ins.lastID,
+          activeSess || null,
+          enrichedNotes,
+          String(payDate).slice(0, 10)
+        ]
+      ).catch(() => {});
+
+      const newDebtAfter = Number((rawTotalDebt - appliedSupAmt).toFixed(2));
+      return {
+        success: true,
+        paymentId: ins.lastID,
+        receiptNumber: receiptNum,
+        appliedAmount: appliedSupAmt,
+        isAdvance: Boolean(isAdvancePayment),
+        fundingSource,
+        fundingLabel: srcLabel,
+        sessionId: activeSess || null,
+        remainingDebtAfter: newDebtAfter,
+        supplierName: supName
+      };
     });
   });
 
@@ -1745,6 +1918,20 @@ function registerIpcHandlers() {
     );
     const extraCostPerUnit = totalUnits > 0 ? additionalCosts / totalUnits : 0;
 
+    /* [WAR_STAGE6B_SAVE_PURCHASE_FUNDING] */
+    const fundingSource = String(
+      data.funding_source || (paymentMethod === 'cash' ? 'active_shift' : 'bank_ccp')
+    ).trim().toLowerCase();
+    const externalPayer = String(data.external_payer || '').trim();
+    const activeSessForPurch = await tillLedger.resolveOpenSession(db, data.session_id || null, data.user_id || data.userId || null);
+    if (paidAmount > 0.009 && fundingSource === 'active_shift' && !activeSessForPurch) {
+      return {
+        success: false,
+        error: 'shift_closed',
+        message: '⛔ لا يمكن دفع مبلغ فاتورة الشراء من درج الوردية لأن الوردية مغلقة! افتح وردية أو اختر "الخزينة الرئيسية" أو "مال خارجي / المالك".'
+      };
+    }
+
     return await db.withTransaction(async () => {
       /* [V18_TX_SAFE_PURCHASE_EDIT] */
       if (data.editInvoiceId || data.edit_invoice_id) {
@@ -1772,26 +1959,51 @@ function registerIpcHandlers() {
       );
       const invoiceId = ins.lastID;
 
+      const supRow = supplierId ? await dbGet('SELECT name FROM suppliers WHERE id = ?', [supplierId]) : null;
+      const supNameForTx = (supRow && supRow.name) || ('مورد #' + (supplierId || ''));
+
       if (paidAmount > 0) {
         const recNum = await generateNextDocNumber('payment_receipt');
+        const srcLabelsPurch = {
+          active_shift: 'درج الوردية #' + (activeSessForPurch || ''),
+          shop_vault: 'الخزينة الرئيسية للمتجر',
+          bank_ccp: 'الحساب البنكي / CCP / شيك',
+          external_owner: externalPayer ? ('مال خارجي: ' + externalPayer) : 'مال خارجي / المالك'
+        };
+        const pSrcLbl = srcLabelsPurch[fundingSource] || srcLabelsPurch.active_shift;
+        const pNotes = ['[المصدر: ' + pSrcLbl + ']', String(data.notes || '').trim()].filter(Boolean).join(' ');
         const payIns = await dbRun(
-          'INSERT INTO invoice_payments (invoice_id, supplier_id, amount, date, payment_method, receipt_number, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [invoiceId, supplierId, paidAmount, invDate, paymentMethod, recNum, data.notes || null]
+          'INSERT INTO invoice_payments (invoice_id, supplier_id, amount, date, payment_method, receipt_number, notes, funding_source, external_payer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [invoiceId, supplierId, paidAmount, invDate, paymentMethod, recNum, pNotes, fundingSource, externalPayer]
         );
-        /* [V19_PURCHASE_INIT_CASH_TILL] */
-        if (!paymentMethod || paymentMethod === 'cash') {
-          const activeSess = await tillLedger.resolveOpenSession(db, null, data.user_id || data.userId);
-          if (activeSess) {
-            await dbRun(
-              `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
-               VALUES (?, 'expense', ?, 'purchases', ?, ?)`,
-              [activeSess, paidAmount, `دفعة فاتورة شراء #${invNumber}`, payIns.lastID]
-            ).catch(() => {});
-          }
+        if (fundingSource === 'active_shift' && activeSessForPurch) {
+          await dbRun(
+            `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id, funding_source)
+             VALUES (?, 'expense', ?, 'purchases', ?, ?, 'active_shift')`,
+            [activeSessForPurch, paidAmount, '[المستفيد: ' + supNameForTx + '] دفعة فاتورة شراء #' + invNumber, payIns.lastID]
+          ).catch(() => {});
         }
+        await dbRun(
+          `INSERT INTO treasury_ledger (
+            source_type, direction, amount, category, party_type, party_id, party_name, payer_name,
+            payment_method, reference_type, reference_id, session_id, notes, date
+          ) VALUES (?, 'out', ?, 'purchase_payment', 'supplier', ?, ?, ?, ?, 'invoice_payment', ?, ?, ?, ?)`,
+          [
+            fundingSource,
+            paidAmount,
+            supplierId,
+            supNameForTx,
+            externalPayer || (fundingSource === 'active_shift' ? 'درج الكاشير' : pSrcLbl),
+            paymentMethod,
+            payIns.lastID,
+            activeSessForPurch || null,
+            pNotes,
+            String(invDate).slice(0, 10)
+          ]
+        ).catch(() => {});
       }
 
-      const supRow = supplierId ? await dbGet('SELECT name FROM suppliers WHERE id = ?', [supplierId]) : null;
+      
 
       for (const it of items) {
         const pid = Number(it.product_id || it.productId);
@@ -1914,33 +2126,95 @@ function registerIpcHandlers() {
 
   ipcMain.handle('add-invoice-payment', async (_e, invoiceId, amount, date, meta = {}) => {
     if (await isLanClientMode()) return lanClient.addInvoicePayment(invoiceId, amount, date, meta);
+    /* [WAR STAGE 6B: 4-SOURCE INVOICE PAYMENT HANDLER] */
     const id = Number(invoiceId);
-    const amt = Number(amount || 0);
-    if (!Number.isFinite(amt) || amt <= 0.009) throw new Error('يرجى إدخال مبلغ تسديد صحيح أكبر من الصفر');
-    const inv = await dbGet('SELECT * FROM purchase_invoices WHERE id = ?', [id]);
-    if (!inv) throw new Error('فاتورة الشراء غير موجودة');
-    /* [V26_INVOICE_OVERPAYMENT_CAP] */
-    const maxInvDue = Number(Math.max(0, Number(inv.total || 0) - Number(inv.paid_amount || 0)).toFixed(2));
-    if (maxInvDue <= 0.009) throw new Error('فاتورة الشراء هذه مسددة بالكامل مسبقاً');
-    const effectiveInvAmt = Number(Math.min(amt, maxInvDue).toFixed(2));
+    const amt = Number(Number(amount || 0).toFixed(2));
+    if (!Number.isFinite(amt) || amt <= 0.009) {
+      return { success: false, error: 'invalid_amount', message: 'يرجى إدخال مبلغ تسديد صحيح أكبر من الصفر' };
+    }
 
+    const inv = await dbGet('SELECT * FROM purchase_invoices WHERE id = ? AND deleted_at IS NULL', [id]);
+    if (!inv) {
+      return { success: false, error: 'invoice_not_found', message: 'فاتورة الشراء غير موجودة' };
+    }
+
+    const maxInvDue = Number(Math.max(0, Number(inv.total || 0) - Number(inv.paid_amount || 0)).toFixed(2));
+    if (maxInvDue <= 0.009) {
+      return { success: false, error: 'already_paid', message: 'فاتورة الشراء هذه مسددة بالكامل مسبقاً' };
+    }
+
+    const payMethod = String(meta.payment_method || 'cash').trim().toLowerCase();
+    const fundingSource = String(
+      meta.funding_source || (payMethod === 'cash' ? 'active_shift' : 'bank_ccp')
+    ).trim().toLowerCase();
+    const externalPayer = String(meta.external_payer || '').trim();
+
+    const activeSess = await tillLedger.resolveOpenSession(db, meta.session_id || null, meta.userId || meta.user_id || null);
+    if (fundingSource === 'active_shift' && !activeSess) {
+      return {
+        success: false,
+        error: 'shift_closed',
+        message: '⛔ لا توجد وردية صندوق مفتوحة! افتح وردية أو اختر "الخزينة الرئيسية" أو "مال خارجي / المالك".'
+      };
+    }
+
+    const effectiveInvAmt = Number(Math.min(amt, maxInvDue).toFixed(2));
+    const supRow = inv.supplier_id ? await dbGet('SELECT name FROM suppliers WHERE id = ?', [inv.supplier_id]).catch(() => null) : null;
+    const supName = (supRow && supRow.name) || ('مورد #' + (inv.supplier_id || ''));
+    const payDate = date || new Date().toISOString();
     const receiptNum = await generateNextDocNumber('payment_receipt');
-    /* [V18_ATOMIC_INVOICE_PAYMENT_AND_TILL] */
+
+    const sourceLabels = {
+      active_shift: 'درج الوردية #' + (activeSess || ''),
+      shop_vault: 'الخزينة الرئيسية للمتجر',
+      bank_ccp: 'الحساب البنكي / CCP / شيك',
+      external_owner: externalPayer ? ('مال خارجي: ' + externalPayer) : 'مال خارجي / المالك'
+    };
+    const srcLabel = sourceLabels[fundingSource] || sourceLabels.active_shift;
+    const noteText = ['[المصدر: ' + srcLabel + ']', String(meta.notes || '').trim()].filter(Boolean).join(' ');
+
     return await db.withTransaction(async () => {
       await dbRun('UPDATE purchase_invoices SET paid_amount = MIN(total, COALESCE(paid_amount, 0) + ?) WHERE id = ?', [effectiveInvAmt, id]);
       const ins = await dbRun(
-        'INSERT INTO invoice_payments (invoice_id, supplier_id, amount, date, payment_method, receipt_number) VALUES (?, ?, ?, ?, ?, ?)',
-        [id, inv.supplier_id, effectiveInvAmt, date || new Date().toISOString(), meta.payment_method || 'cash', receiptNum]
+        'INSERT INTO invoice_payments (invoice_id, supplier_id, amount, date, payment_method, receipt_number, notes, funding_source, external_payer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, inv.supplier_id, effectiveInvAmt, payDate, payMethod, receiptNum, noteText, fundingSource, externalPayer]
       );
-      const activeSess = await tillLedger.resolveOpenSession(db, null, meta.userId);
-      if (activeSess && (!meta.payment_method || meta.payment_method === 'cash') && effectiveInvAmt > 0) {
+
+      if (fundingSource === 'active_shift' && activeSess && effectiveInvAmt > 0) {
         await dbRun(
-          `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
-           VALUES (?, 'expense', ?, 'purchases', ?, ?)`,
-          [activeSess, effectiveInvAmt, `تسديد فاتورة شراء #${inv.invoice_number || id}`, ins.lastID]
+          `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id, funding_source)
+           VALUES (?, 'expense', ?, 'purchases', ?, ?, 'active_shift')`,
+          [activeSess, effectiveInvAmt, '[المستفيد: ' + supName + '] تسديد فاتورة شراء #' + (inv.invoice_number || id), ins.lastID]
         ).catch(() => {});
       }
-      return { success: true, paymentId: ins.lastID, receiptNumber: receiptNum };
+
+      await dbRun(
+        `INSERT INTO treasury_ledger (
+          source_type, direction, amount, category, party_type, party_id, party_name, payer_name,
+          payment_method, reference_type, reference_id, session_id, notes, date
+        ) VALUES (?, 'out', ?, 'purchase_payment', 'supplier', ?, ?, ?, ?, 'invoice_payment', ?, ?, ?, ?)`,
+        [
+          fundingSource,
+          effectiveInvAmt,
+          inv.supplier_id || null,
+          supName,
+          externalPayer || (fundingSource === 'active_shift' ? 'درج الكاشير' : srcLabel),
+          payMethod,
+          ins.lastID,
+          activeSess || null,
+          noteText,
+          String(payDate).slice(0, 10)
+        ]
+      ).catch(() => {});
+
+      return {
+        success: true,
+        paymentId: ins.lastID,
+        receiptNumber: receiptNum,
+        appliedAmount: effectiveInvAmt,
+        fundingSource,
+        fundingLabel: srcLabel
+      };
     });
   });
 
@@ -2510,26 +2784,78 @@ function registerIpcHandlers() {
 
   ipcMain.handle('add-caisse-transaction', async (_e, tx = {}) => {
     if (await isLanClientMode()) return lanClient.addCaisseTransaction(tx);
-    const txAmt = Number(tx.amount || 0);
+    /* [WAR STAGE 6B: 4-SOURCE CAISSE TX & WORKER ADVANCE HANDLER] */
+    const txAmt = Number(Number(tx.amount || 0).toFixed(2));
     if (!Number.isFinite(txAmt) || Math.abs(txAmt) <= 0.009) {
-      throw new Error('يرجى إدخال مبلغ حركة نقدية صحيح أكبر من الصفر');
+      return { success: false, error: 'invalid_amount', message: 'يرجى إدخال مبلغ حركة نقدية صحيح أكبر من الصفر' };
     }
-    const sessId =
-      tx.session_id || tx.sessionId || (await tillLedger.resolveOpenSession(db, null, tx.user_id));
-    if (!sessId) throw new Error('لا توجد مناوبة صندوق مفتوحة حالياً');
 
-    const ins = await dbRun(
-      `INSERT INTO caisse_transactions (session_id, type, amount, category, description)
-       VALUES (?, ?, ?, ?, ?)`,
+    const txType = String(tx.type || 'cash_in').trim().toLowerCase();
+    const fundingSource = String(tx.funding_source || 'active_shift').trim().toLowerCase();
+    const externalPayer = String(tx.external_payer || '').trim();
+    const beneficiary = String(tx.beneficiary || '').trim();
+    const rawDesc = String(tx.description || '').trim();
+    const category = String(tx.category || 'عام').trim();
+
+    const sessId = tx.session_id || tx.sessionId || (await tillLedger.resolveOpenSession(db, null, tx.user_id || tx.userId || null));
+    if (fundingSource === 'active_shift' && !sessId) {
+      return {
+        success: false,
+        error: 'shift_closed',
+        message: '⛔ لا توجد مناوبة صندوق مفتوحة حالياً! افتح وردية أو اختر "الخزينة الرئيسية" أو "مال خارجي / المالك".'
+      };
+    }
+
+    const sourceLabels = {
+      active_shift: 'درج الوردية #' + (sessId || ''),
+      shop_vault: 'الخزينة الرئيسية للمتجر',
+      bank_ccp: 'الحساب البنكي / CCP / شيك',
+      external_owner: externalPayer ? ('مال خارجي: ' + externalPayer) : 'مال خارجي / المالك'
+    };
+    const srcLabel = sourceLabels[fundingSource] || sourceLabels.active_shift;
+
+    let finalDesc = rawDesc || (txType === 'cash_in' ? 'إيداع نقدي' : 'سحب نقدي');
+    if (beneficiary && !/\[\s*المستفيد\s*:/i.test(finalDesc)) {
+      finalDesc = '[المستفيد: ' + beneficiary + '] ' + finalDesc;
+    }
+
+    let insertedId = 0;
+    if (fundingSource === 'active_shift' && sessId) {
+      const ins = await dbRun(
+        `INSERT INTO caisse_transactions (session_id, type, amount, category, description, funding_source)
+         VALUES (?, ?, ?, ?, ?, 'active_shift')`,
+        [Number(sessId), txType, Math.abs(txAmt), category, finalDesc]
+      );
+      insertedId = ins.lastID;
+    }
+
+    const dir = (txType === 'cash_in' || txType === 'capital_in' || txType === 'order_deposit') ? 'in' : 'out';
+    const trIns = await dbRun(
+      `INSERT INTO treasury_ledger (
+        source_type, direction, amount, category, party_type, party_id, party_name, payer_name,
+        payment_method, reference_type, reference_id, session_id, notes, date
+      ) VALUES (?, ?, ?, ?, 'caisse', NULL, ?, ?, 'cash', 'caisse_tx', ?, ?, ?, ?)`,
       [
-        Number(sessId),
-        tx.type || 'cash_in',
+        fundingSource,
+        dir,
         Math.abs(txAmt),
-        tx.category || 'عام',
-        tx.description || null
+        category,
+        beneficiary || category,
+        externalPayer || (fundingSource === 'active_shift' ? 'درج الكاشير' : srcLabel),
+        insertedId || null,
+        sessId || null,
+        finalDesc + (fundingSource !== 'active_shift' ? (' [المصدر: ' + srcLabel + ']') : ''),
+        new Date().toISOString().slice(0, 10)
       ]
-    );
-    return { success: true, id: ins.lastID };
+    ).catch(() => ({ lastID: insertedId }));
+
+    return {
+      success: true,
+      id: insertedId || (trIns && trIns.lastID) || 1,
+      fundingSource,
+      fundingLabel: srcLabel,
+      sessionId: sessId || null
+    };
   });
 
   ipcMain.handle('get-caisse-summary', async (_e, filters = {}) => {
@@ -2551,6 +2877,430 @@ function registerIpcHandlers() {
     );
   });
 
+  
+  /* === [WAR STAGE 6B2: UNIFIED OUTFLOWS REPORT & OPEN PURCHASES IPC] === */
+  
+  /* === [WAR STAGE 6B3: TREASURY LEDGER IPC] === */
+  
+  /* === [WAR STAGE 6C: SHIFT EXTERNAL FUNDING IPC] === */
+  ipcMain.handle('get-shift-external-funding', async (_e, sessionId) => {
+    const sid = Number(sessionId || 0);
+    if (!sid) {
+      return {
+        success: true,
+        sessionId: 0,
+        items: [],
+        totals: { shop_vault: 0, bank_ccp: 0, external_owner: 0, grandTotal: 0, count: 0 }
+      };
+    }
+
+    const sRow = await dbGet(
+      'SELECT id, opened_at, closed_at, status FROM caisse_sessions WHERE id = ?',
+      [sid]
+    ).catch(() => null);
+
+    const openedAt = sRow && sRow.opened_at ? String(sRow.opened_at).replace('T', ' ').slice(0, 19) : '1970-01-01 00:00:00';
+    const closedAt = sRow && sRow.closed_at ? String(sRow.closed_at).replace('T', ' ').slice(0, 19) : '2999-12-31 23:59:59';
+
+    const rows = await dbAll(
+      `SELECT * FROM treasury_ledger
+       WHERE deleted_at IS NULL
+         AND source_type IN ('shop_vault', 'bank_ccp', 'external_owner')
+         AND (
+           session_id = ?
+           OR (
+             session_id IS NULL
+             AND datetime(COALESCE(NULLIF(created_at, ''), date)) >= datetime(?)
+             AND datetime(COALESCE(NULLIF(created_at, ''), date)) <= datetime(?)
+           )
+         )
+       ORDER BY id DESC LIMIT 300`,
+      [sid, openedAt, closedAt]
+    ).catch(() => []);
+
+    const cleanNote = (txt) =>
+      String(txt || '')
+        .replace(/\[\s*المستفيد\s*:[^\]]+\]/gi, '')
+        .replace(/\[\s*المصدر\s*:[^\]]+\]/gi, '')
+        .replace(/\[([^\]]+)\]/g, '$1 — ')
+        .replace(/\s*—\s*$/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+    const totals = { shop_vault: 0, bank_ccp: 0, external_owner: 0, grandTotal: 0, count: 0 };
+    const items = (rows || []).map((r) => {
+      const src = String(r.source_type || 'shop_vault').toLowerCase();
+      const amt = Number(Math.abs(Number(r.amount || 0)).toFixed(2));
+      const payer = String(r.payer_name || '').trim();
+      const sourceLabel =
+        src === 'shop_vault'
+          ? 'الخزينة الرئيسية'
+          : src === 'bank_ccp'
+          ? 'بنك / CCP / شيك'
+          : payer
+          ? 'مال خارجي: ' + payer
+          : 'مال خارجي / المالك';
+
+      if (totals[src] !== undefined) totals[src] = Number((totals[src] + amt).toFixed(2));
+      totals.grandTotal = Number((totals.grandTotal + amt).toFixed(2));
+      totals.count += 1;
+
+      return {
+        id: Number(r.id),
+        sourceType: src,
+        sourceLabel,
+        direction: String(r.direction || 'out'),
+        amount: amt,
+        category: String(r.category || 'مدفوعات خارج الدرج'),
+        partyName: String(r.party_name || r.category || 'طرف خارجي').trim(),
+        payerName: payer,
+        paymentMethod: String(r.payment_method || 'cash'),
+        notes: cleanNote(r.notes) || String(r.category || 'عملية مموّلة من خارج درج الكاشير'),
+        date: String(r.date || r.created_at || '').slice(0, 10),
+        time: String(r.created_at || '').slice(11, 16) || '--:--',
+        sessionId: sid
+      };
+    });
+
+    return { success: true, sessionId: sid, items, totals };
+  });
+
+  ipcMain.handle('get-treasury-ledger', async (_e, filters = {}) => {
+    const f = filters && typeof filters === 'object' ? filters : {};
+    const conds = ['deleted_at IS NULL'];
+    const params = [];
+    if (f.sourceType && f.sourceType !== 'all') {
+      conds.push('source_type = ?');
+      params.push(String(f.sourceType));
+    }
+    if (f.dateFrom) {
+      conds.push('date(COALESCE(NULLIF(date, ""), created_at)) >= date(?)');
+      params.push(String(f.dateFrom).slice(0, 10));
+    }
+    if (f.dateTo) {
+      conds.push('date(COALESCE(NULLIF(date, ""), created_at)) <= date(?)');
+      params.push(String(f.dateTo).slice(0, 10));
+    }
+    return await dbAll(
+      `SELECT * FROM treasury_ledger WHERE ${conds.join(' AND ')} ORDER BY id DESC LIMIT 300`,
+      params
+    ).catch(() => []);
+  });
+
+  ipcMain.handle('get-open-purchase-invoices', async () => {
+    if (await isLanClientMode()) {
+      const list = await lanClient.getPurchases().catch(() => []);
+      return (list || []).filter((p) => Number(p.total || 0) - Number(p.paid_amount || 0) > 0.009);
+    }
+    return await dbAll(
+      `SELECT pi.*, sup.name AS supplier_name, sup.phone AS supplier_phone,
+              (COALESCE(pi.total, 0) - COALESCE(pi.paid_amount, 0)) AS remaining_due
+       FROM purchase_invoices pi
+       LEFT JOIN suppliers sup ON sup.id = pi.supplier_id
+       WHERE pi.deleted_at IS NULL AND (COALESCE(pi.total, 0) - COALESCE(pi.paid_amount, 0)) > 0.009
+       ORDER BY pi.id DESC LIMIT 200`
+    );
+  });
+
+  ipcMain.handle('get-unified-outflows-report', async (_e, filters = {}) => {
+    const f = filters && typeof filters === 'object' ? filters : {};
+    const scope = String(f.scope || 'all').toLowerCase();
+    const fundingFilter = String(f.fundingSource || 'all').toLowerCase();
+    const catFilter = String(f.category || '').trim();
+    const searchQ = String(f.search || '').trim().toLowerCase();
+    const includeSuppliers = f.includeSuppliers !== false;
+    const includePurchases = f.includePurchases !== false;
+    const includeCaisseOut = f.includeCaisseOut !== false;
+    const targetSessionId = f.sessionId ? Number(f.sessionId) : null;
+
+    const _fmtLocalYMD = (dt) => {
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, '0');
+      const d = String(dt.getDate()).padStart(2, '0');
+      return y + '-' + m + '-' + d;
+    };
+    const _normAnyDateYMD = (raw) => {
+      const s = String(raw || '').trim();
+      const iso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+      if (iso) return iso[1] + '-' + iso[2].padStart(2, '0') + '-' + iso[3].padStart(2, '0');
+      const dmy = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+      if (dmy) {
+        const a = Number(dmy[1]); const b = Number(dmy[2]);
+        const month = a > 12 ? b : (b > 12 ? a : b);
+        const day = a > 12 ? a : (b > 12 ? b : a);
+        return dmy[3] + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+      }
+      return s.slice(0, 10);
+    };
+    const todayStr = _fmtLocalYMD(new Date());
+    const yesterdayDate = _fmtLocalYMD(new Date(Date.now() - 86400000));
+    const weekAgoDate = _fmtLocalYMD(new Date(Date.now() - 6 * 86400000));
+    const monthStart = todayStr.slice(0, 7) + '-01';
+
+    let dFrom = '';
+    let dTo = '';
+    let periodLabel = 'جميع الفترات';
+    let sessionWindow = null;
+
+    if (scope === 'today') {
+      dFrom = todayStr; dTo = todayStr; periodLabel = 'اليوم (' + todayStr + ')';
+    } else if (scope === 'yesterday') {
+      dFrom = yesterdayDate; dTo = yesterdayDate; periodLabel = 'الأمس (' + yesterdayDate + ')';
+    } else if (scope === 'week') {
+      dFrom = weekAgoDate; dTo = todayStr; periodLabel = 'آخر 7 أيام (' + weekAgoDate + ' إلى ' + todayStr + ')';
+    } else if (scope === 'month') {
+      dFrom = monthStart; dTo = todayStr; periodLabel = 'هذا الشهر (' + monthStart + ' إلى ' + todayStr + ')';
+    } else if (scope === 'range') {
+      dFrom = String(f.dateFrom || '').slice(0, 10);
+      dTo = String(f.dateTo || '').slice(0, 10);
+      periodLabel = 'فترة من ' + (dFrom || 'البداية') + ' إلى ' + (dTo || 'الآن');
+    } else if (scope === 'shift' && targetSessionId) {
+      const sRow = await dbGet(
+        'SELECT cs.*, u.name AS user_name FROM caisse_sessions cs LEFT JOIN users u ON u.id = cs.user_id WHERE cs.id = ?',
+        [targetSessionId]
+      ).catch(() => null);
+      if (sRow) {
+        sessionWindow = {
+          id: Number(sRow.id),
+          openedAt: String(sRow.opened_at || '').replace('T', ' ').slice(0, 19),
+          closedAt: sRow.closed_at ? String(sRow.closed_at).replace('T', ' ').slice(0, 19) : new Date().toISOString().replace('T', ' ').slice(0, 19),
+          userName: sRow.user_name || ''
+        };
+        periodLabel = 'الوردية #' + sRow.id + (sRow.user_name ? (' — ' + sRow.user_name) : '');
+      }
+    }
+
+    const [expRows, invPayRows, caisseOutRows, sessionsList, treasuryLedRows] = await Promise.all([
+      dbAll('SELECT * FROM expenses WHERE deleted_at IS NULL ORDER BY id DESC LIMIT 1000').catch(() => []),
+      dbAll(
+        `SELECT ip.*, sup.name AS supplier_name, pi.invoice_number
+         FROM invoice_payments ip
+         LEFT JOIN suppliers sup ON sup.id = ip.supplier_id
+         LEFT JOIN purchase_invoices pi ON pi.id = ip.invoice_id
+         WHERE ip.deleted_at IS NULL ORDER BY ip.id DESC LIMIT 1000`
+      ).catch(() => []),
+      dbAll(
+        `SELECT ct.*, u.name AS user_name
+         FROM caisse_transactions ct
+         LEFT JOIN caisse_sessions cs ON cs.id = ct.session_id
+         LEFT JOIN users u ON u.id = cs.user_id
+         WHERE ct.deleted_at IS NULL AND ct.type IN ('cash_out', 'withdrawal', 'refund', 'sale_refund')
+         ORDER BY ct.id DESC LIMIT 500`
+      ).catch(() => []),
+      dbAll(
+        `SELECT cs.id, cs.status, cs.opened_at, cs.closed_at, cs.opening_balance, cs.expected_balance, u.name AS user_name
+         FROM caisse_sessions cs LEFT JOIN users u ON u.id = cs.user_id
+         WHERE cs.deleted_at IS NULL ORDER BY cs.id DESC LIMIT 60`
+      ).catch(() => []),
+      dbAll('SELECT reference_type, reference_id, session_id, source_type, payer_name FROM treasury_ledger WHERE deleted_at IS NULL').catch(() => [])
+    ]);
+
+    const tlMap = new Map();
+    for (const r of treasuryLedRows || []) {
+      if (r.reference_type && r.reference_id) {
+        tlMap.set(r.reference_type + ':' + r.reference_id, r);
+      }
+    }
+
+    function srcLabelFor(src, extPayer) {
+      if (src === 'shop_vault') return 'الخزينة الرئيسية';
+      if (src === 'bank_ccp') return 'بنك / CCP / شيك';
+      if (src === 'external_owner') return extPayer ? ('مال خارجي: ' + extPayer) : 'مال خارجي / المالك';
+      return 'درج الوردية';
+    }
+
+    function parseBeneficiary(rawDesc, fallback) {
+      const m = String(rawDesc || '').match(/\[\s*المستفيد\s*:\s*([^\]]+)\]/i);
+      return m && m[1] ? m[1].trim() : fallback;
+    }
+
+    function stripMetaTags(rawDesc) {
+      return String(rawDesc || '')
+        .replace(/\[\s*المستفيد\s*:[^\]]+\]/gi, '')
+        .replace(/\[\s*المصدر\s*:[^\]]+\]/gi, '')
+        .replace(/\[([^\]]+)\]/g, '$1 — ')
+        .replace(/\s*—\s*$/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    }
+
+    function matchesTimeScope(itemDate, itemCreatedAt, itemSessionId) {
+      if (scope === 'shift' && sessionWindow) {
+        if (itemSessionId && Number(itemSessionId) === sessionWindow.id) return true;
+        const dt = String(itemCreatedAt || itemDate || '').replace('T', ' ').slice(0, 19);
+        if (dt.length >= 16 && sessionWindow.openedAt && sessionWindow.closedAt) {
+          return dt >= sessionWindow.openedAt.slice(0, 16) && dt <= sessionWindow.closedAt.slice(0, 16);
+        }
+        return false;
+      }
+      const d = _normAnyDateYMD(itemDate || itemCreatedAt || '');
+      if (dFrom && d && d < dFrom) return false;
+      if (dTo && d && d > dTo) return false;
+      return true;
+    }
+
+    const unified = [];
+
+    // 1. المصاريف التشغيلية وسلَف العمال (بدون ازدواجية مع caisse_transactions)
+    for (const e of expRows || []) {
+      const tl = tlMap.get('expense:' + e.id);
+      const src = String(e.funding_source || (tl && tl.source_type) || (e.session_id ? 'active_shift' : 'shop_vault')).toLowerCase();
+      const extPayer = String(e.external_payer || (tl && tl.payer_name) || '').trim();
+      const sessId = e.session_id || (tl && tl.session_id) || null;
+      const itemDate = String(e.date || e.created_at || '').slice(0, 10);
+      if (!matchesTimeScope(itemDate, e.created_at, sessId)) continue;
+
+      const isWorker = /سلفة|عامل|رواتب|أجور/i.test((e.category || '') + ' ' + (e.description || ''));
+      const ben = parseBeneficiary(e.description, isWorker ? 'عامل بالمتجر' : (e.category || 'مصروف المحل'));
+      unified.push({
+        uid: 'exp-' + e.id,
+        rawId: Number(e.id),
+        kind: isWorker ? 'worker_advance' : 'expense',
+        kindLabel: isWorker ? 'رواتب وسلف العمال' : 'مصروف تشغيلي',
+        date: itemDate,
+        time: String(e.created_at || '').slice(11, 16) || '--:--',
+        category: String(e.category || 'مصاريف عامة'),
+        beneficiary: ben,
+        description: stripMetaTags(e.description) || String(e.category || 'مصروف تشغيلي'),
+        amount: Number(Math.abs(Number(e.amount || 0)).toFixed(2)),
+        fundingSource: src,
+        fundingLabel: srcLabelFor(src, extPayer),
+        externalPayer: extPayer,
+        paymentMethod: src === 'bank_ccp' ? 'cib' : 'cash',
+        sessionId: sessId ? Number(sessId) : null,
+        docRef: 'EXP-' + String(e.id).padStart(4, '0')
+      });
+    }
+
+    // 2. تسديدات وتسبقات الموردين + دفعات فواتير الشراء (من invoice_payments بدون ازدواجية)
+    for (const ip of invPayRows || []) {
+      const isPurchaseInv = Boolean(ip.invoice_id);
+      if (isPurchaseInv && !includePurchases) continue;
+      if (!isPurchaseInv && !includeSuppliers) continue;
+
+      const tl = tlMap.get('invoice_payment:' + ip.id);
+      const pm = String(ip.payment_method || 'cash').toLowerCase();
+      const src = String(ip.funding_source || (tl && tl.source_type) || (pm === 'cash' ? 'active_shift' : 'bank_ccp')).toLowerCase();
+      const extPayer = String(ip.external_payer || (tl && tl.payer_name) || '').trim();
+      const sessId = (tl && tl.session_id) || null;
+      const itemDate = String(ip.date || ip.created_at || '').slice(0, 10);
+      if (!matchesTimeScope(itemDate, ip.created_at, sessId)) continue;
+
+      const isAdv = Boolean(ip.is_advance) || /تسبقة مورد|Avance/i.test(ip.notes || '');
+      const supName = String(ip.supplier_name || ('مورد #' + (ip.supplier_id || ''))).trim();
+      unified.push({
+        uid: 'ip-' + ip.id,
+        rawId: Number(ip.id),
+        kind: isPurchaseInv ? 'purchase_payment' : 'supplier_payment',
+        kindLabel: isPurchaseInv ? 'دفعة فاتورة شراء' : (isAdv ? 'تسبقة مورد (Avance)' : 'تسديد حساب مورد'),
+        date: itemDate,
+        time: String(ip.created_at || '').slice(11, 16) || '--:--',
+        category: isPurchaseInv ? 'مشتريات وتموين' : (isAdv ? 'تسبقات الموردين' : 'تسديد الموردين'),
+        beneficiary: supName,
+        description: stripMetaTags(ip.notes) || (isPurchaseInv ? ('دفعة فاتورة شراء #' + (ip.invoice_number || ip.invoice_id)) : (isAdv ? 'تسبقة مسبقة للمورد' : 'تسديد دفعة لحساب المورد')),
+        amount: Number(Math.abs(Number(ip.amount || 0)).toFixed(2)),
+        fundingSource: src,
+        fundingLabel: srcLabelFor(src, extPayer),
+        externalPayer: extPayer,
+        paymentMethod: pm,
+        sessionId: sessId ? Number(sessId) : null,
+        docRef: String(ip.receipt_number || ('SUP-' + String(ip.id).padStart(4, '0')))
+      });
+    }
+
+    // 3. السحوبات النقدية المباشرة والمرتجعات النقدية من الصندوق
+    if (includeCaisseOut) {
+      for (const ct of caisseOutRows || []) {
+        const itemDate = String(ct.created_at || '').slice(0, 10);
+        if (!matchesTimeScope(itemDate, ct.created_at, ct.session_id)) continue;
+        const src = String(ct.funding_source || 'active_shift').toLowerCase();
+        unified.push({
+          uid: 'ct-' + ct.id,
+          rawId: Number(ct.id),
+          kind: 'cash_out',
+          kindLabel: ct.type === 'refund' || ct.type === 'sale_refund' ? 'مرتجع نقدي' : 'سحب نقدي من الدرج',
+          date: itemDate,
+          time: String(ct.created_at || '').slice(11, 16) || '--:--',
+          category: String(ct.category || 'سحوبات الصندوق'),
+          beneficiary: parseBeneficiary(ct.description, ct.user_name || 'سحب إداري'),
+          description: stripMetaTags(ct.description) || 'سحب نقدي من الصندوق',
+          amount: Number(Math.abs(Number(ct.amount || 0)).toFixed(2)),
+          fundingSource: src,
+          fundingLabel: srcLabelFor(src, ''),
+          externalPayer: '',
+          paymentMethod: 'cash',
+          sessionId: ct.session_id ? Number(ct.session_id) : null,
+          docRef: 'OUT-' + String(ct.id).padStart(4, '0')
+        });
+      }
+    }
+
+    // تطبيق فلاتر مصدر التمويل والفئة والبحث النصي
+    const filtered = unified.filter((it) => {
+      if (fundingFilter && fundingFilter !== 'all' && it.fundingSource !== fundingFilter) return false;
+      if (catFilter && it.category !== catFilter && !it.category.includes(catFilter)) return false;
+      if (searchQ) {
+        const hay = (it.beneficiary + ' ' + it.category + ' ' + it.description + ' ' + it.fundingLabel + ' ' + it.docRef).toLowerCase();
+        if (!hay.includes(searchQ)) return false;
+      }
+      return true;
+    });
+
+    filtered.sort((a, b) => String(b.date + ' ' + b.time).localeCompare(String(a.date + ' ' + a.time)));
+
+    const totals = {
+      grandTotal: 0,
+      expensesTotal: 0,
+      workersTotal: 0,
+      suppliersTotal: 0,
+      purchasesTotal: 0,
+      cashOutTotal: 0,
+      count: filtered.length
+    };
+    const byFundingSource = { active_shift: 0, shop_vault: 0, bank_ccp: 0, external_owner: 0 };
+    const catMap = new Map();
+
+    for (const it of filtered) {
+      totals.grandTotal += it.amount;
+      if (it.kind === 'expense') totals.expensesTotal += it.amount;
+      else if (it.kind === 'worker_advance') totals.workersTotal += it.amount;
+      else if (it.kind === 'supplier_payment') totals.suppliersTotal += it.amount;
+      else if (it.kind === 'purchase_payment') totals.purchasesTotal += it.amount;
+      else totals.cashOutTotal += it.amount;
+
+      const fsKey = byFundingSource[it.fundingSource] !== undefined ? it.fundingSource : 'active_shift';
+      byFundingSource[fsKey] = Number((byFundingSource[fsKey] + it.amount).toFixed(2));
+
+      const prevC = catMap.get(it.category) || { category: it.category, total: 0, count: 0 };
+      prevC.total = Number((prevC.total + it.amount).toFixed(2));
+      prevC.count += 1;
+      catMap.set(it.category, prevC);
+    }
+
+    for (const k of Object.keys(totals)) {
+      if (k !== 'count') totals[k] = Number(totals[k].toFixed(2));
+    }
+
+    const byCategory = Array.from(catMap.values())
+      .sort((a, b) => b.total - a.total)
+      .map((c) => ({
+        ...c,
+        pct: totals.grandTotal > 0 ? Math.round((c.total / totals.grandTotal) * 100) : 0
+      }));
+
+    return {
+      success: true,
+      periodLabel,
+      scope,
+      fundingFilter,
+      items: filtered,
+      totals,
+      byFundingSource,
+      byCategory,
+      sessions: sessionsList || []
+    };
+  });
+
   ipcMain.handle('get-expenses', async () => {
     if (await isLanClientMode()) return lanClient.getExpenses();
     return await dbAll('SELECT * FROM expenses WHERE deleted_at IS NULL ORDER BY id DESC');
@@ -2558,32 +3308,104 @@ function registerIpcHandlers() {
 
   ipcMain.handle('add-expense', async (_e, exp = {}) => {
     if (await isLanClientMode()) return lanClient.addExpense(exp);
-    /* [V26_ACID_EXPENSE_AND_CAPITAL_GUARDS] */
-    const amt = Number(exp.amount || 0);
-    if (!Number.isFinite(amt) || amt <= 0.009) throw new Error('يرجى إدخال مبلغ مصروف صحيح أكبر من الصفر');
+    /* [WAR STAGE 6B: 4-SOURCE EXPENSE & WORKER ADVANCE HANDLER] */
+    const amt = Number(Number(exp.amount || 0).toFixed(2));
+    if (!Number.isFinite(amt) || amt <= 0.009) {
+      return { success: false, error: 'invalid_amount', message: 'يرجى إدخال مبلغ صحيح أكبر من الصفر' };
+    }
+
+    const category = String(exp.category || 'عام').trim();
+    const beneficiary = String(exp.beneficiary || exp.worker_name || '').trim();
+    const rawDesc = String(exp.description || '').trim();
+    const payMethod = String(exp.payment_method || 'cash').trim().toLowerCase();
+    const externalPayer = String(exp.external_payer || '').trim();
+
+    let fundingSource = String(exp.funding_source || '').trim().toLowerCase();
+    if (!fundingSource) {
+      if (exp.deductFromCaisse === false) fundingSource = 'shop_vault';
+      else fundingSource = payMethod === 'cash' ? 'active_shift' : 'bank_ccp';
+    }
+
+    const activeSess = await tillLedger.resolveOpenSession(db, exp.session_id || null, exp.user_id || exp.userId || null);
+    if (fundingSource === 'active_shift' && !activeSess) {
+      return {
+        success: false,
+        error: 'shift_closed',
+        message: '⛔ لا توجد وردية صندوق مفتوحة حالياً! افتح وردية من إدارة الصندوق أو اختر "الخزينة الرئيسية" أو "مال خارجي / المالك".'
+      };
+    }
+
+    const isWorkerAdvance = /سلفة|عامل|أجور|رواتب/i.test(category + ' ' + rawDesc);
+    const sourceLabels = {
+      active_shift: 'درج الوردية #' + (activeSess || ''),
+      shop_vault: 'الخزينة الرئيسية للمتجر',
+      bank_ccp: 'الحساب البنكي / CCP / شيك',
+      external_owner: externalPayer ? ('مال خارجي: ' + externalPayer) : 'مال خارجي / المالك'
+    };
+    const srcLabel = sourceLabels[fundingSource] || sourceLabels.active_shift;
+
+    let finalDesc = rawDesc || (isWorkerAdvance ? 'سلفة نقدية للعامل' : category);
+    if (beneficiary && !/\[\s*المستفيد\s*:/i.test(finalDesc)) {
+      finalDesc = '[المستفيد: ' + beneficiary + '] ' + finalDesc;
+    }
+    if (fundingSource !== 'active_shift' && !finalDesc.includes('[المصدر:')) {
+      finalDesc = finalDesc + ' [المصدر: ' + srcLabel + ']';
+    }
+
+    const expDate = exp.date || new Date().toISOString().slice(0, 10);
+
     return await db.withTransaction(async () => {
-      const sessId = (exp.deductFromCaisse || exp.session_id)
-        ? await tillLedger.resolveOpenSession(db, exp.session_id, exp.user_id)
-        : null;
       const ins = await dbRun(
-        'INSERT INTO expenses (category, description, amount, date, user_id, session_id) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO expenses (category, description, amount, date, user_id, session_id, funding_source, external_payer) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         [
-          exp.category || 'عام',
-          exp.description || null,
+          category,
+          finalDesc,
           amt,
-          exp.date || new Date().toISOString().slice(0, 10),
-          exp.user_id || null,
-          sessId || exp.session_id || null
+          expDate,
+          exp.user_id || exp.userId || null,
+          fundingSource === 'active_shift' ? activeSess : null,
+          fundingSource,
+          externalPayer
         ]
       );
-      if (sessId) {
+
+      if (fundingSource === 'active_shift' && activeSess) {
         await dbRun(
-          `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id)
-           VALUES (?, 'expense', ?, ?, ?, ?)`,
-          [sessId, amt, exp.category || 'عام', exp.description || 'مصروف', ins.lastID]
+          `INSERT INTO caisse_transactions (session_id, type, amount, category, description, reference_id, funding_source)
+           VALUES (?, 'expense', ?, ?, ?, ?, 'active_shift')`,
+          [activeSess, amt, category, finalDesc, ins.lastID]
         );
       }
-      return { success: true, id: ins.lastID };
+
+      await dbRun(
+        `INSERT INTO treasury_ledger (
+          source_type, direction, amount, category, party_type, party_id, party_name, payer_name,
+          payment_method, reference_type, reference_id, session_id, notes, date
+        ) VALUES (?, 'out', ?, ?, ?, NULL, ?, ?, ?, 'expense', ?, ?, ?, ?)`,
+        [
+          fundingSource,
+          amt,
+          isWorkerAdvance ? 'worker_advance' : 'expense',
+          isWorkerAdvance ? 'worker' : 'expense',
+          beneficiary || category,
+          externalPayer || (fundingSource === 'active_shift' ? 'درج الكاشير' : srcLabel),
+          payMethod,
+          ins.lastID,
+          activeSess || null,
+          finalDesc,
+          String(expDate).slice(0, 10)
+        ]
+      ).catch(() => {});
+
+      return {
+        success: true,
+        id: ins.lastID,
+        amount: amt,
+        fundingSource,
+        fundingLabel: srcLabel,
+        sessionId: fundingSource === 'active_shift' ? activeSess : null,
+        description: finalDesc
+      };
     });
   });
 
@@ -5358,12 +6180,12 @@ app.on('before-quit', () => {
           '  var p = document.querySelector(".psp-paper") || document.querySelector(".v45-live-paper") || document.body;' +
           '  if (p && p !== document.body) { p.style.width = w; p.style.margin = "0"; p.style.minHeight = "auto"; }' +
           '  var rectH = p && p.getBoundingClientRect ? Math.ceil(p.getBoundingClientRect().height) : 0;' +
-          '  var scrollH = Math.max(p ? (p.scrollHeight || 0) : 0, document.body.scrollHeight || 0);' +
+          '  var scrollH = Math.max(p ? (p.scrollHeight || 0) : 0, document.body.scrollHeight || 0, document.documentElement ? (document.documentElement.scrollHeight || 0) : 0);' +
           '  return Math.max(rectH, scrollH, 220);' +
           '})()'
         );
 
-        heightMm = Math.max(65, Math.min(1200, Math.ceil((Number(measuredPx || 320) / 96) * 25.4) + 8));
+        heightMm = Math.max(65, Math.min(2000, Math.ceil((Number(measuredPx || 320) / 96) * 25.4) + 18));
 
         await win.webContents.insertCSS(
           '@page { size: ' + widthMm + 'mm ' + heightMm + 'mm !important; margin: 0mm !important; }' +

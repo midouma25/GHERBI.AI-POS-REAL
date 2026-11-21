@@ -1935,3 +1935,46 @@ module.exports = db;
     });
   } catch (_) {}
 })();
+
+/* === [WAR STAGE 6A: MULTI-TREASURY & FUNDING SOURCE SCHEMA] === */
+(function installWarStage6ATreasurySchema() {
+  try {
+    if (typeof db === 'undefined' || !db || typeof db._rawRun !== 'function') return;
+    db.serialize(() => {
+      if (db._isEnvironmentClosing) return;
+      db._rawRun(`
+        CREATE TABLE IF NOT EXISTS treasury_ledger (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source_type TEXT NOT NULL DEFAULT 'active_shift',
+          direction TEXT NOT NULL DEFAULT 'out',
+          amount REAL NOT NULL DEFAULT 0,
+          category TEXT DEFAULT 'general',
+          party_type TEXT DEFAULT '',
+          party_id INTEGER,
+          party_name TEXT DEFAULT '',
+          payer_name TEXT DEFAULT '',
+          payment_method TEXT DEFAULT 'cash',
+          reference_type TEXT DEFAULT '',
+          reference_id INTEGER,
+          session_id INTEGER,
+          notes TEXT DEFAULT '',
+          date TEXT DEFAULT '',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          deleted_at TEXT
+        )
+      `, () => {});
+
+      db._rawRun('CREATE INDEX IF NOT EXISTS idx_s6a_treasury_sess_del ON treasury_ledger(session_id, deleted_at, id DESC)', () => {});
+      db._rawRun('CREATE INDEX IF NOT EXISTS idx_s6a_treasury_src_del ON treasury_ledger(source_type, deleted_at, date DESC)', () => {});
+
+      if (typeof db.safeAddColumn === 'function') {
+        db.safeAddColumn('invoice_payments', "funding_source TEXT DEFAULT 'active_shift'");
+        db.safeAddColumn('invoice_payments', "external_payer TEXT DEFAULT ''");
+        db.safeAddColumn('invoice_payments', 'is_advance INTEGER DEFAULT 0');
+        db.safeAddColumn('expenses', "funding_source TEXT DEFAULT 'active_shift'");
+        db.safeAddColumn('expenses', "external_payer TEXT DEFAULT ''");
+        db.safeAddColumn('caisse_transactions', "funding_source TEXT DEFAULT 'active_shift'");
+      }
+    });
+  } catch (_) {}
+})();

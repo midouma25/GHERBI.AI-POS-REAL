@@ -887,6 +887,18 @@
             <label class="font-bold">المبلغ المدفوع للمورد:</label>
             <input id="purchPaidInput" type="number" step="any" value="0" class="w-32 px-2.5 py-1.5 rounded-lg font-mono font-bold">
           </div>
+          <div class="flex items-center gap-2">
+            <label class="font-bold text-blue-700 dark:text-blue-400">🏦 مصدر المال:</label>
+            <select id="purchFundingSourceSelect" class="px-2.5 py-1.5 rounded-lg font-bold text-xs border border-blue-500/30">
+              <option value="active_shift">💵 درج الوردية</option>
+              <option value="shop_vault">🔐 الخزينة الرئيسية</option>
+              <option value="bank_ccp">🏦 بنك / CCP / شيك</option>
+              <option value="external_owner">👤 مال خارجي / المالك</option>
+            </select>
+            <input id="purchExternalPayerInput" type="text" placeholder="اسم الدافع..." class="hidden w-28 px-2 py-1.5 rounded-lg text-xs font-bold">
+          </div>
+          <div id="purchInlineAlert" class="hidden w-full p-2 rounded-xl text-xs font-black border bg-rose-500/10 border-rose-500/40 text-rose-600">
+          </div>
         </div>
         <div class="flex gap-2">
           <button onclick="App.closeModal('purchaseInvoiceModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-bold">إلغاء</button>
@@ -973,27 +985,83 @@
 
   <!-- 17. نافذة تسديد دفعة للمورد + نافذة كشف حساب المورد الشامل (Supplier Payment & Ledger Modals) -->
   <div id="supplierPaymentModal" class="modal-overlay">
-    <div class="modal-content w-full max-w-md p-6 space-y-4">
+    <div class="modal-content w-full max-w-lg p-6 space-y-4 overflow-y-auto">
       <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
         <h3 id="supPayModalTitle" class="text-lg font-black">تسديد دفعة للمورد</h3>
         <button onclick="App.closeModal('supplierPaymentModal')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>
       </div>
       <input id="supPaySupplierId" type="hidden">
-      <div class="space-y-3 text-xs">
-        <div><label class="block font-bold mb-1">المبلغ المدفوع للمورد (د.ج) *</label><input id="supPayAmountInput" type="number" step="any" class="w-full px-3 py-2.5 rounded-xl font-mono font-black text-base text-center"></div>
+
+      <!-- بطاقة حالة دين المورد الحية -->
+      <div id="supPayDebtBanner" class="p-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 flex items-center justify-between text-xs">
         <div>
-          <label class="block font-bold mb-1">طريقة الدفع</label>
-          <select id="supPayMethodSelect" class="w-full px-3 py-2 rounded-xl font-bold">
-            <option value="cash">نقداً (Espèces)</option>
-            <option value="cheque">شيك بنكي</option>
-            <option value="cib">تحويل بنكي / CCP</option>
-          </select>
+          <div class="text-slate-500 font-bold">الدين المستحق حالياً لهذا المورد:</div>
+          <div id="supPayCurrentDebtVal" class="text-xl font-black font-mono text-rose-600 mt-0.5">0.00 د.ج</div>
         </div>
-        <div><label class="block font-bold mb-1">ملاحظة / مرجع</label><input id="supPayNotesInput" type="text" class="w-full px-3 py-2 rounded-xl"></div>
+        <button id="supPayFillFullBtn" type="button" class="px-3 py-1.5 rounded-xl bg-blue-600/15 text-blue-600 font-black hover:bg-blue-600 hover:text-white transition">ملء كامل الدين</button>
       </div>
-      <div class="flex justify-end gap-2 pt-3">
+
+      <!-- تنبيه داخلي فوري للتحذيرات والأخطاء -->
+      <div id="supPayInlineAlert" class="hidden p-3 rounded-xl text-xs font-black border"></div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-bold mb-1">المبلغ المدفوع للمورد (د.ج) *</label>
+          <input id="supPayAmountInput" type="number" step="any" class="w-full px-3 py-2.5 rounded-xl font-mono font-black text-lg text-center">
+        </div>
+
+        <!-- خيار التسجيل كتسبقة (Avance) عند عدم وجود دين أو تجاوز المبلغ للدين -->
+        <div id="supPayAllowAdvanceBox" class="hidden p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/35 text-amber-800 dark:text-amber-300">
+          <label class="flex items-center gap-2 cursor-pointer font-black">
+            <input id="supPayAllowAdvanceChk" type="checkbox" class="w-4 h-4 accent-amber-600">
+            <span>تسجيل هذا المبلغ كتسبقة / رصيد دائن لنا لدى المورد (Avance Fournisseur)</span>
+          </label>
+        </div>
+
+        <!-- مصفوفة مصادر التمويل الأربعة -->
+        <div class="p-3 rounded-2xl bg-blue-500/5 border border-blue-500/20 space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="font-black text-blue-700 dark:text-blue-400">🏦 مصدر المال (من أين سيخرج هذا المبلغ؟) *</label>
+            <span id="supPayShiftStatusBadge" class="px-2 py-0.5 rounded-lg text-[10px] font-black bg-slate-200 dark:bg-slate-700">جاري الفحص...</span>
+          </div>
+          <select id="supPayFundingSourceSelect" class="w-full px-3 py-2.5 rounded-xl font-bold border border-blue-500/30">
+            <option value="active_shift">💵 درج الوردية المفتوحة حالياً (Caisse Active)</option>
+            <option value="shop_vault">🔐 الخزينة الرئيسية للمتجر (Coffre-Fort / خارج الدرج)</option>
+            <option value="bank_ccp">🏦 الحساب البنكي / بريدي موب / شيك (CCP / Banque)</option>
+            <option value="external_owner">👤 مال خارجي / من جيب المالك (خارج الصندوق تماماً)</option>
+          </select>
+          <div id="supPayFundingHint" class="text-[11px] font-bold text-slate-600 dark:text-slate-300"></div>
+          <div id="supPayQuickOpenShiftRow" class="hidden pt-1">
+            <button id="supPayQuickOpenShiftBtn" type="button" class="w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-black text-xs">
+              🔓 الوردية مغلقة — افتح مناوبة جديدة الآن أو غيّر المصدر إلى "مال خارجي"
+            </button>
+          </div>
+        </div>
+
+        <div id="supPayExternalPayerBox" class="hidden">
+          <label class="block font-bold mb-1">اسم الدافع الخارجي / مصدر المال (يظهر في تقرير الوردية)</label>
+          <input id="supPayExternalPayerInput" type="text" placeholder="مثال: صاحب المتجر / شريك / حساب خاص..." class="w-full px-3 py-2 rounded-xl font-bold">
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block font-bold mb-1">طريقة الدفع</label>
+            <select id="supPayMethodSelect" class="w-full px-3 py-2 rounded-xl font-bold">
+              <option value="cash">نقداً (Espèces)</option>
+              <option value="cheque">شيك بنكي</option>
+              <option value="cib">تحويل بنكي / CCP / BaridiMob</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold mb-1">ملاحظة / رقم مرجع</label>
+            <input id="supPayNotesInput" type="text" placeholder="اختياري..." class="w-full px-3 py-2 rounded-xl">
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
         <button onclick="App.closeModal('supplierPaymentModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء</button>
-        <button onclick="App.submitSupplierPaymentModal(true)" class="px-5 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold">تسديد وطباعة وصل</button>
+        <button id="supPaySubmitBtn" onclick="App.submitSupplierPaymentModal(true)" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black">✅ تأكيد التسديد وطباعة الوصل</button>
       </div>
     </div>
   </div>
@@ -1180,16 +1248,33 @@
   </div>
 
   <div id="caisseTxModal" class="modal-overlay">
-    <div class="modal-content w-full max-w-sm p-6 space-y-4">
-      <h3 id="caisseTxModalTitle" class="text-lg font-black">حركة نقدية في الصندوق</h3>
+    <div class="modal-content w-full max-w-md p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2.5">
+        <h3 id="caisseTxModalTitle" class="text-lg font-black">حركة نقدية في الصندوق</h3>
+        <button onclick="App.closeModal('caisseTxModal')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>
+      </div>
       <input id="caisseTxTypeInput" type="hidden" value="cash_in">
+      <div id="caisseTxInlineAlert" class="hidden p-2.5 rounded-xl text-xs font-black border"></div>
       <div class="space-y-3 text-xs">
         <div><label class="block font-bold mb-1">المبلغ (د.ج) *</label><input id="caisseTxAmountInput" type="number" step="any" value="1000" class="w-full px-3 py-2 rounded-xl font-mono font-black text-base text-center"></div>
-        <div><label class="block font-bold mb-1">البيان / السبب</label><input id="caisseTxDescInput" type="text" placeholder="تغذية الصندوق / سحب نقدي" class="w-full px-3 py-2 rounded-xl"></div>
+        <div><label class="block font-bold mb-1">اسم المستفيد / الشخص (اختياري — يظهر في Z-Report)</label><input id="caisseTxBeneficiaryInput" type="text" placeholder="مثال: اسم العامل أو المالك..." class="w-full px-3 py-2 rounded-xl font-bold"></div>
+        <div><label class="block font-bold mb-1">البيان / السبب</label><input id="caisseTxDescInput" type="text" placeholder="تغذية الصندوق / سحب نقدي / سلفة..." class="w-full px-3 py-2 rounded-xl"></div>
+        <div id="caisseTxFundingWrap" class="p-2.5 rounded-xl bg-blue-500/5 border border-blue-500/20 space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label class="font-black text-blue-700 dark:text-blue-400">🏦 مصدر المال / الخزينة:</label>
+            <span id="caisseTxShiftBadge" class="px-2 py-0.5 rounded-lg text-[10px] font-black bg-slate-200 dark:bg-slate-700">جاري الفحص...</span>
+          </div>
+          <select id="caisseTxFundingSourceSelect" class="w-full px-3 py-2 rounded-xl font-bold border border-blue-500/30">
+            <option value="active_shift">💵 درج الوردية المفتوحة حالياً</option>
+            <option value="shop_vault">🔐 الخزينة الرئيسية للمتجر (خارج الدرج)</option>
+            <option value="external_owner">👤 مال خارجي / المالك (خارج الصندوق)</option>
+          </select>
+          <input id="caisseTxExternalPayerInput" type="text" placeholder="اسم الدافع الخارجي (عند اختيار مال خارجي)..." class="hidden w-full px-3 py-1.5 rounded-lg font-bold mt-1">
+        </div>
       </div>
-      <div class="flex justify-end gap-2 pt-3">
+      <div class="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
         <button onclick="App.closeModal('caisseTxModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء</button>
-        <button onclick="App.confirmCaisseTx()" class="px-5 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold">تأكيد الحركة</button>
+        <button id="caisseTxSubmitBtn" onclick="App.confirmCaisseTx()" class="px-5 py-2 rounded-xl bg-blue-600 text-white text-xs font-black">تأكيد الحركة</button>
       </div>
     </div>
   </div>
@@ -1255,31 +1340,69 @@
 
   <!-- 26. نوافذ المصاريف ورأس المال (Expense & Capital Modals) -->
   <div id="expenseModal" class="modal-overlay">
-    <div class="modal-content w-full max-w-md p-6 space-y-4">
-      <h3 class="text-lg font-black">تسجيل مصروف تشغيلي جديد</h3>
-      <div class="space-y-3 text-xs">
-        <div>
-          <label class="block font-bold mb-1">فئة المصروف</label>
-          <select id="expCategoryInput" class="w-full px-3 py-2 rounded-xl font-bold">
-            <option value="كراء المحل">كراء المحل</option>
-            <option value="كهرباء وغاز وماء">كهرباء وغاز وماء</option>
-            <option value="رواتب وأجور العمال">رواتب وأجور العمال</option>
-            <option value="نقل وشحن">نقل وشحن</option>
-            <option value="صيانة ومعدات">صيانة ومعدات</option>
-            <option value="ضرائب ورسوم">ضرائب ورسوم</option>
-            <option value="مصاريف عامة">مصاريف عامة</option>
-          </select>
-        </div>
-        <div><label class="block font-bold mb-1">المبلغ (د.ج) *</label><input id="expAmountInput" type="number" step="any" value="0" class="w-full px-3 py-2 rounded-xl font-mono font-black text-base"></div>
-        <div><label class="block font-bold mb-1">البيان / التفاصيل</label><input id="expDescInput" type="text" class="w-full px-3 py-2 rounded-xl"></div>
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input id="expDeductCaisseCheckbox" type="checkbox" checked>
-          <span class="font-bold">خصم المبلغ من مناوبة الصندوق المفتوحة حالياً</span>
-        </label>
+    <div class="modal-content w-full max-w-lg p-6 space-y-4 overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2.5">
+        <h3 class="text-lg font-black">💸 تسجيل مصروف تشغيلي / سلفة عامل</h3>
+        <button onclick="App.closeModal('expenseModal')" class="text-slate-400 hover:text-rose-500"><span class="material-symbols-rounded">close</span></button>
       </div>
-      <div class="flex justify-end gap-2 pt-3">
+      <div id="expInlineAlert" class="hidden p-2.5 rounded-xl text-xs font-black border"></div>
+      <div class="space-y-3 text-xs">
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block font-bold mb-1">فئة المصروف / النوع</label>
+            <select id="expCategoryInput" class="w-full px-3 py-2 rounded-xl font-bold">
+              <option value="سلفة عامل">👷 سلفة عامل (Avance Ouvrier)</option>
+              <option value="رواتب وأجور العمال">رواتب وأجور العمال</option>
+              <option value="كراء المحل">كراء المحل</option>
+              <option value="كهرباء وغاز وماء">كهرباء وغاز وماء</option>
+              <option value="نقل وشحن">نقل وشحن</option>
+              <option value="صيانة ومعدات">صيانة ومعدات</option>
+              <option value="ضرائب ورسوم">ضرائب ورسوم</option>
+              <option value="مصاريف عامة" selected>مصاريف عامة</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold mb-1">المبلغ (د.ج) *</label>
+            <input id="expAmountInput" type="number" step="any" value="0" class="w-full px-3 py-2 rounded-xl font-mono font-black text-base text-center">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block font-bold mb-1">اسم المستفيد / الآخذ (يظهر في Z-Report)</label>
+            <input id="expBeneficiaryInput" type="text" placeholder="مثال: محمد (العامل) / سونلغاز..." class="w-full px-3 py-2 rounded-xl font-bold">
+          </div>
+          <div>
+            <label class="block font-bold mb-1">البيان / السبب التفصيلي</label>
+            <input id="expDescInput" type="text" placeholder="سبب الصرف أو السلفة..." class="w-full px-3 py-2 rounded-xl">
+          </div>
+        </div>
+
+        <!-- مصفوفة مصادر التمويل الأربعة للمصاريف والسلَف -->
+        <div class="p-3 rounded-2xl bg-blue-500/5 border border-blue-500/20 space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="font-black text-blue-700 dark:text-blue-400">🏦 مصدر المال (من أين يخرج المصروف / السلفة؟) *</label>
+            <span id="expShiftStatusBadge" class="px-2 py-0.5 rounded-lg text-[10px] font-black bg-slate-200 dark:bg-slate-700">جاري الفحص...</span>
+          </div>
+          <select id="expFundingSourceSelect" class="w-full px-3 py-2 rounded-xl font-bold border border-blue-500/30">
+            <option value="active_shift">💵 درج الوردية المفتوحة حالياً (Caisse Active)</option>
+            <option value="shop_vault">🔐 الخزينة الرئيسية للمتجر (Coffre-Fort / خارج الدرج)</option>
+            <option value="bank_ccp">🏦 الحساب البنكي / بريدي موب / شيك (CCP / Banque)</option>
+            <option value="external_owner">👤 مال خارجي / من جيب المالك (خارج الصندوق تماماً)</option>
+          </select>
+          <div id="expFundingHint" class="text-[11px] font-bold text-slate-600 dark:text-slate-300"></div>
+        </div>
+
+        <div id="expExternalPayerBox" class="hidden">
+          <label class="block font-bold mb-1">اسم الدافع الخارجي (يُذكر في تقرير نهاية الوردية)</label>
+          <input id="expExternalPayerInput" type="text" placeholder="مثال: صاحب المتجر / شريك..." class="w-full px-3 py-2 rounded-xl font-bold">
+        </div>
+
+        <!-- الحفاظ على المعرّف القديم مخفياً للتوافق الخلفي -->
+        <input id="expDeductCaisseCheckbox" type="checkbox" checked class="hidden">
+      </div>
+      <div class="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
         <button onclick="App.closeModal('expenseModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold">إلغاء</button>
-        <button onclick="App.confirmSaveExpense()" class="px-5 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold">حفظ المصروف</button>
+        <button id="expSubmitBtn" onclick="App.confirmSaveExpense()" class="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black">✅ حفظ المصروف وتوثيق المصدر</button>
       </div>
     </div>
   </div>
@@ -1913,5 +2036,20 @@
   <!-- [WAR_STAGE5_OPS_JS_START] -->
   <script src="./perf-core/caisse-bom-stocktake-stage5.js"></script>
   <!-- [WAR_STAGE5_OPS_JS_END] -->
+  <!-- [WAR_STAGE6A_TREASURY_JS_START] -->
+  <script src="./perf-core/treasury-funding-stage6a.js"></script>
+  <!-- [WAR_STAGE6A_TREASURY_JS_END] -->
+  <!-- [WAR_STAGE6B_TREASURY_JS_START] -->
+  <script src="./perf-core/treasury-stage6b-expenses-purchases-workers.js"></script>
+  <!-- [WAR_STAGE6B_TREASURY_JS_END] -->
+  <!-- [WAR_STAGE6B2_EXPENSES_HUB_JS_START] -->
+  <script src="./perf-core/expenses-hub-and-purchases-stage6b2.js"></script>
+  <!-- [WAR_STAGE6B2_EXPENSES_HUB_JS_END] -->
+  <!-- [WAR_EXPENSES_MASTER_V2_JS_START] -->
+  <script src="./perf-core/expenses-master-page-v2.js"></script>
+  <!-- [WAR_EXPENSES_MASTER_V2_JS_END] -->
+  <!-- [WAR_STAGE6C_ZREPORT_EXT_JS_START] -->
+  <script src="./perf-core/zreport-external-funding-stage6c.js"></script>
+  <!-- [WAR_STAGE6C_ZREPORT_EXT_JS_END] -->
 </body>
 </html>

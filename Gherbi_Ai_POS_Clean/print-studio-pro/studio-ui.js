@@ -291,7 +291,7 @@
           return `
             <div class="psp-topbar" id="pspTopbarHost">
               <div class="psp-topbar-group">
-                <button type="button" class="psp-btn" data-psp-act="switch-view" data-val="gallery" title="العودة إلى معرض الـ 34 مستنداً">
+                <button type="button" class="psp-btn" data-psp-act="switch-view" data-val="gallery" title="العودة إلى معرض الـ 37 مستنداً">
                   <span class="material-symbols-rounded" style="font-size:17px;">arrow_forward</span>
                   <span>المعرض</span>
                 </button>
@@ -333,7 +333,7 @@
                 <span>مركز الطباعة الشامل</span>
               </div>
               <div class="psp-segmented">
-                <button type="button" class="psp-seg-btn ${view === 'gallery' ? 'is-active' : ''}" data-psp-act="switch-view" data-val="gallery">📚 معرض الـ 34 مستنداً</button>
+                <button type="button" class="psp-seg-btn ${view === 'gallery' ? 'is-active' : ''}" data-psp-act="switch-view" data-val="gallery">📚 معرض الـ 37 مستنداً</button>
                 <button type="button" class="psp-seg-btn ${view === 'studio' ? 'is-active' : ''}" data-psp-act="switch-view" data-val="studio">🎨 المصمم البصري</button>
                 <button type="button" class="psp-seg-btn ${view === 'barcodes' ? 'is-active' : ''}" data-psp-act="switch-view" data-val="barcodes">🏷️ الباركود والرفوف</button>
                 <button type="button" class="psp-seg-btn ${view === 'word_editor' ? 'is-active' : ''}" data-psp-act="switch-view" data-val="word_editor">📝 محرر الوثائق الحر</button>
@@ -347,7 +347,7 @@
       },
 
       // ======================================================================
-      // 3. الشاشة الأولى: معرض الـ 34 مستنداً (Zoho Books Style)
+      // 3. الشاشة الأولى: معرض الـ 37 مستنداً (Zoho Books Style)
       // ======================================================================
       buildGalleryCardsHtml() {
         const docs = PSP.state.getTemplatesRegistry();
@@ -424,7 +424,7 @@
           <div class="psp-gallery-shell">
             <div class="psp-gallery-toolbar">
               <div class="psp-cat-pills" id="pspGalleryCatsHost">${catPills}</div>
-              <input type="text" id="pspGallerySearchInp" class="psp-search-input" value="${esc(this.gallerySearch)}" data-psp-input="gallery-search" placeholder="🔎 ابحث في الـ 34 مستنداً (كريدي، Z-Report، F8، فاتورة...)">
+              <input type="text" id="pspGallerySearchInp" class="psp-search-input" value="${esc(this.gallerySearch)}" data-psp-input="gallery-search" placeholder="🔎 ابحث في الـ 37 مستنداً (كريدي، Z-Report، F8، فاتورة...)">
             </div>
             <div class="psp-gallery-grid" id="pspGalleryGridHost">
               ${this.buildGalleryCardsHtml()}
@@ -498,7 +498,7 @@
             <div class="psp-card">
               <div style="margin-bottom:4px;">
                 <button type="button" class="psp-btn psp-btn-primary" style="width:100%;height:32px;font-size:11px;" data-psp-act="apply-style-all">
-                  🌐 تعميم هذا المظهر والخط والمقاس الحراري على كل الـ 34 مستنداً
+                  🌐 تعميم هذا المظهر والخط والمقاس الحراري على كل الـ 37 مستنداً
                 </button>
               </div>
               <div class="psp-card-title"><span>🖼️ الشعار وعنوان المستند</span></div>
@@ -1146,7 +1146,7 @@
           if (act === 'reset-all-defaults') {
             PSP.state.resetAllTemplatesToDefault();
             this.renderFull();
-            toast('⚡ تم اعتماد القوالب الافتراضية المثالية لجميع الـ 34 مستنداً!');
+            toast('⚡ تم اعتماد القوالب الافتراضية المثالية لجميع الـ 37 مستنداً!');
             return;
           }
 
@@ -1646,4 +1646,465 @@
 
     console.log('✅ [Print Studio Pro — Stage 4/UI]: الواجهة العالمية (معرض الـ 34 + المصمم البصري + الباركود + المحرر الحر) جاهزة 100%.');
   })();
+})();
+
+/* === [PSP NATIVE Z-REPORT EXECUTIVE TOOLS PANEL IN PRINT STUDIO UI] === */
+(function installPspNativeZReportStudioToolsPanelV2() {
+  'use strict';
+
+  const Z_DOC_IDS = new Set(['caisse_z_report', 'caisse_shift_full_audit_a4']);
+  const Z_ALL_SECTIONS = [
+    { id: 'shop_header', label: '🏢 ترويسة المتجر والشعار' },
+    { id: 'shift_cash_debt_balance', label: '🏦 ميزان الوردية المزدوج (الدرج + السنتيم + الديون)' },
+    { id: 'shift_flows_summary', label: '📊 معادلة حركة السيولة النقدية بالدرج' },
+    { id: 'shift_owner_alerts', label: '🛡️ رادار تنبيهات الرقابة لصاحب المتجر' },
+    { id: 'shift_outflows_detail', label: '💸 دفتر الأموال الخارجة (المستفيد + السبب + الساعة)' },
+    { id: 'shift_credit_sales_today', label: '📝 دفتر زبائن الكريدي اليوم (ديون الوردية)' },
+    { id: 'shift_debt_collections', label: '🤝 سجل تحصيلات الديون بأسماء الزبائن' },
+    { id: 'shift_payment_kpis', label: '💳 تفصيل وسائل الدفع ومؤشرات الأداء (KPIs)' },
+    { id: 'shift_top_debtors', label: '📌 قائمة أكبر المدينين للمتابعة غداً' },
+    { id: 'items_table', label: '📋 جدول سطور الحركات الكلاسيكي (اختياري)' },
+    { id: 'caisse_billetage', label: '🔒 صندوق مطابقة الجرد الإضافي (اختياري)' },
+    { id: 'dual_signatures', label: '✍️ مربعات التوقيع والمصادقة (أسفل المحضر)' },
+    { id: 'footer_terms', label: '✒️ التذييل الرسمي المعتمد للوثيقة' }
+  ];
+
+  function refreshStudioAndCaisse(PSP) {
+    if (PSP.ui && typeof PSP.ui.renderLivePreview === 'function') {
+      PSP.ui.renderLivePreview();
+    } else if (PSP.ui && typeof PSP.ui.refreshEditor === 'function') {
+      PSP.ui.refreshEditor();
+    }
+    // إخطار نافذة مراجعة الصندوق إن كانت مفتوحة لإعادة قراءة القالب المحدث فوراً
+    const bodyEl = document.getElementById('reviewCaisseModalBody');
+    if (bodyEl && bodyEl.dataset) delete bodyEl.dataset.pspAdoptedSession;
+    const modalEl = document.getElementById('reviewCaisseModal');
+    if (modalEl && modalEl.dataset) delete modalEl.dataset.pspCaisseAdoptedSig;
+  }
+
+  function injectOrUpdateZToolsPanelV2() {
+    const PSP = window.GherbiPrintStudioPro;
+    if (!PSP || !PSP.state) return;
+
+    const rootEl = PSP.getMountRoot ? PSP.getMountRoot() : document.getElementById('print-view-root');
+    if (!rootEl) return;
+
+    const existing = rootEl.querySelector('#pspNativeZReportToolsCard');
+    const activeDocId = PSP.state.activeDocId;
+
+    if (!Z_DOC_IDS.has(activeDocId)) {
+      if (existing) existing.remove();
+      return;
+    }
+
+    const tpl = PSP.state.getTemplate(activeDocId);
+    const sOpts = tpl.shiftOptions || {};
+
+    const sidebarHost =
+      rootEl.querySelector('.psp-sidebar-body') ||
+      rootEl.querySelector('.psp-sidebar, .psp-editor-sidebar, .psp-inspector, .psp-panel');
+    if (!sidebarHost) return;
+
+    const card = existing || document.createElement('div');
+    card.id = 'pspNativeZReportToolsCard';
+    card.style.cssText =
+      'margin:8px 0;padding:10px;border-radius:12px;border:1.5px solid #0284c7;background:linear-gradient(180deg,#f0f9ff 0%,#ffffff 100%);direction:rtl;text-align:right;';
+
+    const secChecksHtml = Z_ALL_SECTIONS.map((item) => {
+      const secObj = (tpl.sections || []).find((s) => s && s.id === item.id);
+      const checked = secObj && secObj.enabled ? 'checked' : '';
+      return (
+        `<label style="display:flex;align-items:center;gap:6px;font-size:10.8px;font-weight:800;color:#0f172a;padding:2.5px 0;cursor:pointer;">` +
+        `<input type="checkbox" data-ztool-sec="${item.id}" ${checked} style="width:14px;height:14px;accent-color:#0284c7;cursor:pointer;" />` +
+        `<span>${item.label}</span>` +
+        `</label>`
+      );
+    }).join('');
+
+    const lim = Number(sOpts.topDebtorsLimit || 5);
+    const sigM = sOpts.signatureMode || (tpl.paperSize === 'a4' ? 'triple' : 'dual');
+
+    card.innerHTML =
+      `<div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1.5px dashed #7dd3fc;padding-bottom:6px;margin-bottom:6px;">` +
+      `<span style="font-size:12px;font-weight:900;color:#0369a1;">🎛️ أدوات محضر إغلاق الوردية الشامل</span>` +
+      `<span style="font-size:9.5px;font-weight:800;background:#0284c7;color:#fff;padding:2px 6px;border-radius:6px;">${tpl.paperSize.toUpperCase()}</span>` +
+      `</div>` +
+      `<div style="font-size:10.5px;font-weight:900;color:#334155;margin-bottom:3px;">1️⃣ أقسام المحضر (إظهار / إخفاء فوري):</div>` +
+      `<div style="max-height:215px;overflow-y:auto;padding-left:4px;margin-bottom:8px;border:1px solid #e0f2fe;border-radius:8px;padding:4px 6px;background:#fff;">${secChecksHtml}</div>` +
+      `<div style="font-size:10.5px;font-weight:900;color:#334155;border-top:1px dashed #bae6fd;padding-top:6px;margin-bottom:4px;">2️⃣ خيارات التفاصيل الدقيقة (تُطبَّق على الصندوق):</div>` +
+      `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10.2px;font-weight:800;color:#1e293b;margin-bottom:6px;">` +
+      `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" data-ztool-opt="showShiftTimes" ${sOpts.showShiftTimes !== false ? 'checked' : ''} /> الافتتاح والإغلاق</label>` +
+      `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" data-ztool-opt="showDrawerCentimes" ${sOpts.showDrawerCentimes !== false ? 'checked' : ''} /> الرصيد بالسنتيم</label>` +
+      `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" data-ztool-opt="showBeneficiary" ${sOpts.showBeneficiary !== false ? 'checked' : ''} /> اسم المستفيد</label>` +
+      `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" data-ztool-opt="showOutflowTime" ${sOpts.showOutflowTime !== false ? 'checked' : ''} /> ساعة الصرف</label>` +
+      `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" data-ztool-opt="showCustomerPhone" ${sOpts.showCustomerPhone !== false ? 'checked' : ''} /> هاتف الزبون</label>` +
+      `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" data-ztool-opt="showCumulativeDebt" ${sOpts.showCumulativeDebt !== false ? 'checked' : ''} /> الدين التراكمي</label>` +
+      `<label style="grid-column:span 2;display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" data-ztool-opt="showZeroEmptySections" ${sOpts.showZeroEmptySections !== false ? 'checked' : ''} /> إظهار الأقسام الفارغة (أوقفه لاختصار طول الورق الحراري)</label>` +
+      `</div>` +
+      `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">` +
+      `<div><div style="font-size:10px;font-weight:800;color:#475569;margin-bottom:2px;">عدد أكبر المدينين:</div>` +
+      `<select data-ztool-sel="topDebtorsLimit" style="width:100%;height:28px;border-radius:7px;border:1px solid #cbd5e1;font-size:10.5px;font-weight:800;padding:0 5px;">` +
+      `<option value="3" ${lim === 3 ? 'selected' : ''}>أعلى 3 مدينين</option>` +
+      `<option value="5" ${lim === 5 ? 'selected' : ''}>أعلى 5 مدينين</option>` +
+      `<option value="8" ${lim === 8 ? 'selected' : ''}>أعلى 8 مدينين</option>` +
+      `<option value="12" ${lim === 12 ? 'selected' : ''}>أعلى 12 مدين</option>` +
+      `</select></div>` +
+      `<div><div style="font-size:10px;font-weight:800;color:#475569;margin-bottom:2px;">نمط التوقيعات:</div>` +
+      `<select data-ztool-sel="signatureMode" style="width:100%;height:28px;border-radius:7px;border:1px solid #cbd5e1;font-size:10.5px;font-weight:800;padding:0 5px;">` +
+      `<option value="dual" ${sigM === 'dual' ? 'selected' : ''}>مزدوج (كاشير + مدير)</option>` +
+      `<option value="triple" ${sigM === 'triple' ? 'selected' : ''}>ثلاثي (كاشير + مراجع + مدير)</option>` +
+      `</select></div>` +
+      `</div>` +
+      `<div style="display:grid;grid-template-columns:1fr 1.6fr;gap:6px;">` +
+      `<button type="button" data-ztool-reset-order="1" style="height:32px;border-radius:8px;border:1px solid #0284c7;background:#ffffff;color:#0369a1;font-size:10.5px;font-weight:900;cursor:pointer;">↺ ترتيب مثالي</button>` +
+      `<button type="button" data-ztool-adopt="1" style="height:32px;border-radius:8px;border:none;background:#047857;color:#ffffff;font-size:10.8px;font-weight:900;cursor:pointer;">✅ اعتماد وتطبيق بالصندوق</button>` +
+      `</div>`;
+
+    if (!existing) {
+      sidebarHost.insertBefore(card, sidebarHost.firstChild);
+    }
+
+    if (!card._zEventsBoundV2) {
+      card._zEventsBoundV2 = true;
+      card.addEventListener('change', (ev) => {
+        const el = ev.target;
+        if (!el) return;
+        const secId = el.getAttribute('data-ztool-sec');
+        const optKey = el.getAttribute('data-ztool-opt');
+        const selKey = el.getAttribute('data-ztool-sel');
+
+        if (secId) {
+          PSP.state.mutateActiveTemplate((t) => {
+            const targetSec = (t.sections || []).find((s) => s && s.id === secId);
+            if (targetSec) targetSec.enabled = Boolean(el.checked);
+          }, 'تبديل قسم الوردية: ' + secId);
+          refreshStudioAndCaisse(PSP);
+        } else if (optKey) {
+          PSP.state.mutateActiveTemplate((t) => {
+            if (!t.shiftOptions) t.shiftOptions = {};
+            t.shiftOptions[optKey] = Boolean(el.checked);
+          }, 'تعديل أداة الوردية: ' + optKey);
+          refreshStudioAndCaisse(PSP);
+        } else if (selKey) {
+          PSP.state.mutateActiveTemplate((t) => {
+            if (!t.shiftOptions) t.shiftOptions = {};
+            t.shiftOptions[selKey] = selKey === 'topDebtorsLimit' ? Number(el.value) : String(el.value);
+          }, 'تعديل إعداد الوردية: ' + selKey);
+          refreshStudioAndCaisse(PSP);
+        }
+      });
+
+      card.addEventListener('click', (ev) => {
+        const resetBtn = ev.target && ev.target.closest ? ev.target.closest('[data-ztool-reset-order="1"]') : null;
+        if (resetBtn) {
+          PSP.state.mutateActiveTemplate((t) => {
+            if (typeof PSP.state.applyIdealZReportOrder === 'function') {
+              PSP.state.applyIdealZReportOrder(t);
+            }
+          }, 'الترتيب الاحترافي المثالي للوردية');
+          refreshStudioAndCaisse(PSP);
+          setTimeout(injectOrUpdateZToolsPanelV2, 30);
+          if (window.App && typeof window.App.showToast === 'function') {
+            window.App.showToast('✨ تم ضبط الترتيب الاحترافي المثالي بدون أي تكرار!', 'success');
+          }
+          return;
+        }
+
+        const adoptBtn = ev.target && ev.target.closest ? ev.target.closest('[data-ztool-adopt="1"]') : null;
+        if (adoptBtn) {
+          PSP.state.persistLocal();
+          PSP.state.saveToDatabase(true);
+          refreshStudioAndCaisse(PSP);
+          if (window.App && typeof window.App.showToast === 'function') {
+            window.App.showToast('✅ تم اعتماد التصميم وحفظه — سيُطبَّق فوراً في إدارة الصندوق وكافة الصفحات!', 'success');
+          }
+        }
+      });
+    }
+  }
+
+  function bootZToolsV2() {
+    const PSP = window.GherbiPrintStudioPro;
+    if (!PSP || !PSP.state) return false;
+    if (PSP._zToolsPanelInstalledV2) return true;
+    PSP._zToolsPanelInstalledV2 = true;
+
+    if (typeof PSP.state.on === 'function') {
+      PSP.state.on('doc-changed', () => setTimeout(injectOrUpdateZToolsPanelV2, 30));
+      PSP.state.on('template-changed', () => setTimeout(injectOrUpdateZToolsPanelV2, 30));
+      PSP.state.on('reset', () => setTimeout(injectOrUpdateZToolsPanelV2, 30));
+    }
+
+    if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
+      const rootEl = document.getElementById('print-view-root');
+      if (rootEl && !rootEl._zToolsObsV2) {
+        rootEl._zToolsObsV2 = true;
+        let t = null;
+        const obs = new MutationObserver(() => {
+          clearTimeout(t);
+          t = setTimeout(injectOrUpdateZToolsPanelV2, 50);
+        });
+        obs.observe(rootEl, { childList: true, subtree: true });
+      }
+    }
+
+    setTimeout(injectOrUpdateZToolsPanelV2, 80);
+    return true;
+  }
+
+  if (!bootZToolsV2()) {
+    let n = 0;
+    const iv = setInterval(() => {
+      n++;
+      if (bootZToolsV2() || n >= 40) clearInterval(iv);
+    }, 100);
+  }
+})();
+
+/* === [WAR STAGE 6B2: EXPENSE VOUCHERS & OUTFLOWS STUDIO TOOLS PANEL] === */
+(function installPspNativeExpenseStudioToolsPanel() {
+  'use strict';
+
+  const EXP_DOC_IDS = new Set(['expense_voucher', 'expense_voucher_a4', 'expenses_period_report_a4', 'expenses_period_report_80mm']);
+  const VOUCHER_SECS = [
+    { id: 'shop_header', label: '🏢 ترويسة المتجر والشعار' },
+    { id: 'expense_voucher_card', label: '🧾 بطاقة سند الصرف (المبلغ + المستفيد + المصدر)' },
+    { id: 'dual_signatures', label: '✍️ مربعات التوقيع والمصادقة' },
+    { id: 'footer_terms', label: '✒️ التذييل الرسمي المعتمد' }
+  ];
+  const REPORT_SECS = [
+    { id: 'shop_header', label: '🏢 ترويسة المتجر والشعار' },
+    { id: 'outflows_report_kpis', label: '📊 بطاقات مؤشرات إجمالي المصاريف والمدفوعات' },
+    { id: 'outflows_by_source_box', label: '🏦 توزيع الأموال حسب الـ 4 مصادر' },
+    { id: 'outflows_by_category_box', label: '🗂️ توزيع الفئات والنسب المئوية %' },
+    { id: 'outflows_detail_table', label: '📋 جدول السندات والعمليات التفصيلي' },
+    { id: 'dual_signatures', label: '✍️ مربعات التوقيع والمصادقة' },
+    { id: 'footer_terms', label: '✒️ التذييل الرسمي المعتمد' }
+  ];
+
+  function injectOrUpdateExpenseToolsPanel() {
+    const PSP = window.GherbiPrintStudioPro;
+    if (!PSP || !PSP.state) return;
+    const rootEl = PSP.getMountRoot ? PSP.getMountRoot() : document.getElementById('print-view-root');
+    if (!rootEl) return;
+
+    const existing = rootEl.querySelector('#pspNativeExpenseToolsCard');
+    const activeDocId = PSP.state.activeDocId;
+    if (!EXP_DOC_IDS.has(activeDocId)) {
+      if (existing) existing.remove();
+      return;
+    }
+
+    const sidebarHost = rootEl.querySelector('.psp-sidebar-body') || rootEl.querySelector('.psp-sidebar, .psp-editor-sidebar');
+    if (!sidebarHost) return;
+
+    const tpl = PSP.state.getTemplate(activeDocId);
+    const eOpts = tpl.expenseOptions || {};
+    const isVoucher = activeDocId === 'expense_voucher' || activeDocId === 'expense_voucher_a4';
+    const secList = isVoucher ? VOUCHER_SECS : REPORT_SECS;
+
+    const card = existing || document.createElement('div');
+    card.id = 'pspNativeExpenseToolsCard';
+    card.style.cssText = 'margin:8px 0;padding:10px;border-radius:12px;border:1.5px solid #e11d48;background:linear-gradient(180deg,#fff1f2 0%,#ffffff 100%);direction:rtl;text-align:right;';
+
+    const checksHtml = secList.map((item) => {
+      const secObj = (tpl.sections || []).find((s) => s && s.id === item.id);
+      const checked = secObj && secObj.enabled ? 'checked' : '';
+      return `<label style="display:flex;align-items:center;gap:6px;font-size:10.8px;font-weight:800;color:#0f172a;padding:2.5px 0;cursor:pointer;"><input type="checkbox" data-exptool-sec="${item.id}" ${checked} style="width:14px;height:14px;accent-color:#e11d48;" /><span>${item.label}</span></label>`;
+    }).join('');
+
+    const sigM = eOpts.signatureMode || (tpl.paperSize === 'a4' ? 'triple' : 'dual');
+
+    card.innerHTML =
+      `<div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1.5px dashed #fda4af;padding-bottom:6px;margin-bottom:6px;">` +
+      `<span style="font-size:11.8px;font-weight:900;color:#9f1239;">🎛️ أدوات سندات وتقارير المصاريف</span>` +
+      `<span style="font-size:9.5px;font-weight:800;background:#e11d48;color:#fff;padding:2px 6px;border-radius:6px;">${tpl.paperSize.toUpperCase()}</span>` +
+      `</div>` +
+      `<div style="font-size:10.5px;font-weight:900;color:#334155;margin-bottom:3px;">1️⃣ أقسام السند / التقرير:</div>` +
+      `<div style="background:#fff;border:1px solid #fecdd3;border-radius:8px;padding:4px 6px;margin-bottom:8px;">${checksHtml}</div>` +
+      `<div style="font-size:10.5px;font-weight:900;color:#334155;border-top:1px dashed #fda4af;padding-top:6px;margin-bottom:4px;">2️⃣ خيارات التفاصيل:</div>` +
+      `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10.2px;font-weight:800;color:#1e293b;margin-bottom:6px;">` +
+      `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" data-exptool-opt="showFundingSource" ${eOpts.showFundingSource !== false ? 'checked' : ''} /> مصدر المال</label>` +
+      `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" data-exptool-opt="showBeneficiary" ${eOpts.showBeneficiary !== false ? 'checked' : ''} /> اسم المستفيد</label>` +
+      `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" data-exptool-opt="showCentimes" ${eOpts.showCentimes !== false ? 'checked' : ''} /> المبلغ بالسنتيم</label>` +
+      `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" data-exptool-opt="showAmountInWords" ${eOpts.showAmountInWords !== false ? 'checked' : ''} /> التفقيط بالحروف</label>` +
+      `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" data-exptool-opt="showShiftRef" ${eOpts.showShiftRef !== false ? 'checked' : ''} /> رقم الوردية</label>` +
+      `</div>` +
+      `<div style="margin-bottom:8px;">` +
+      `<div style="font-size:10px;font-weight:800;color:#475569;margin-bottom:2px;">نمط التوقيعات:</div>` +
+      `<select data-exptool-sel="signatureMode" style="width:100%;height:28px;border-radius:7px;border:1px solid #cbd5e1;font-size:10.5px;font-weight:800;padding:0 6px;">` +
+      `<option value="dual" ${sigM === 'dual' ? 'selected' : ''}>مزدوج (المستفيد / الكاشير + صاحب المتجر)</option>` +
+      `<option value="triple" ${sigM === 'triple' ? 'selected' : ''}>ثلاثي (المستفيد + المحاسب + صاحب المتجر)</option>` +
+      `</select></div>` +
+      `<button type="button" data-exptool-adopt="1" style="width:100%;height:32px;border-radius:8px;border:none;background:#047857;color:#ffffff;font-size:11px;font-weight:900;cursor:pointer;">✅ اعتماد وتطبيق على صفحة المصاريف فوراً</button>`;
+
+    if (!existing) sidebarHost.insertBefore(card, sidebarHost.firstChild);
+
+    if (!card._expToolsBound) {
+      card._expToolsBound = true;
+      card.addEventListener('change', (ev) => {
+        const el = ev.target;
+        if (!el) return;
+        const secId = el.getAttribute('data-exptool-sec');
+        const optKey = el.getAttribute('data-exptool-opt');
+        const selKey = el.getAttribute('data-exptool-sel');
+        if (secId) {
+          PSP.state.mutateActiveTemplate((t) => {
+            const target = (t.sections || []).find((s) => s && s.id === secId);
+            if (target) target.enabled = Boolean(el.checked);
+          }, 'تبديل قسم سند/تقرير المصاريف');
+        } else if (optKey) {
+          PSP.state.mutateActiveTemplate((t) => {
+            if (!t.expenseOptions) t.expenseOptions = {};
+            t.expenseOptions[optKey] = Boolean(el.checked);
+          }, 'تعديل خيار المصاريف');
+        } else if (selKey) {
+          PSP.state.mutateActiveTemplate((t) => {
+            if (!t.expenseOptions) t.expenseOptions = {};
+            t.expenseOptions[selKey] = String(el.value);
+          }, 'تعديل توقيعات المصاريف');
+        }
+        PSP.ui?.renderLivePreview?.();
+      });
+
+      card.addEventListener('click', (ev) => {
+        const btn = ev.target && ev.target.closest ? ev.target.closest('[data-exptool-adopt="1"]') : null;
+        if (!btn) return;
+        PSP.state.persistLocal();
+        PSP.state.saveToDatabase(true);
+        window.App?.showToast?.('✅ تم اعتماد تصميم سند/تقرير المصاريف وسيُطبَّق فوراً في صفحة المصاريف!', 'success');
+      });
+    }
+  }
+
+  function bootExpTools() {
+    const PSP = window.GherbiPrintStudioPro;
+    if (!PSP || !PSP.state) return false;
+    if (PSP._expToolsPanelInstalled) return true;
+    PSP._expToolsPanelInstalled = true;
+
+    if (typeof PSP.state.on === 'function') {
+      PSP.state.on('doc-changed', () => setTimeout(injectOrUpdateExpenseToolsPanel, 30));
+      PSP.state.on('template-changed', () => setTimeout(injectOrUpdateExpenseToolsPanel, 30));
+    }
+
+    if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
+      const rootEl = document.getElementById('print-view-root');
+      if (rootEl && !rootEl._expToolsObs) {
+        rootEl._expToolsObs = true;
+        let t = null;
+        const obs = new MutationObserver(() => {
+          clearTimeout(t);
+          t = setTimeout(injectOrUpdateExpenseToolsPanel, 50);
+        });
+        obs.observe(rootEl, { childList: true, subtree: true });
+      }
+    }
+    setTimeout(injectOrUpdateExpenseToolsPanel, 90);
+    return true;
+  }
+
+  if (!bootExpTools()) {
+    let k = 0;
+    const iv = setInterval(() => {
+      k++;
+      if (bootExpTools() || k >= 40) clearInterval(iv);
+    }, 100);
+  }
+})();
+
+/* === [WAR STAGE 6C: Z-REPORT EXTERNAL FUNDING SIDEBAR TOGGLE] === */
+(function installPspStage6CZReportExtFundingTool() {
+  'use strict';
+
+  const Z_IDS = new Set(["receipt_thermal","caisse_z_report","caisse_shift_full_audit_a4","caisse_cash_in_voucher_80mm"]);
+
+  function syncZReportExtTool() {
+    const PSP = window.GherbiPrintStudioPro;
+    if (!PSP || !PSP.state) return;
+    const rootEl = PSP.getMountRoot ? PSP.getMountRoot() : document.getElementById('print-view-root');
+    if (!rootEl) return;
+
+    const existing = rootEl.querySelector('#pspStage6CShiftExtToolBox');
+    const activeDocId = PSP.state.activeDocId;
+    if (!Z_IDS.has(activeDocId)) {
+      if (existing) existing.remove();
+      return;
+    }
+
+    const sidebarHost = rootEl.querySelector('.psp-sidebar-body') || rootEl.querySelector('.psp-sidebar, .psp-editor-sidebar');
+    if (!sidebarHost) return;
+
+    const tpl = PSP.state.getTemplate(activeDocId);
+    const secObj = (tpl.sections || []).find((s) => s && s.id === 'shift_external_funding_box');
+    const isEnabled = Boolean((tpl.shiftOptions ? tpl.shiftOptions.showExternalFundingSection !== false : true) && (!secObj || secObj.enabled !== false));
+
+    const box = existing || document.createElement('div');
+    box.id = 'pspStage6CShiftExtToolBox';
+    box.style.cssText = 'margin:6px 0;padding:8px 10px;border-radius:10px;border:1.5px solid #0284c7;background:linear-gradient(135deg,#f0f9ff 0%,#ffffff 100%);direction:rtl;text-align:right;';
+    box.innerHTML =
+      '<label style="display:flex;align-items:flex-start;gap:7px;cursor:pointer;font-size:11px;font-weight:900;color:#0c4a6e;">' +
+      '<input type="checkbox" data-s6c-zext-toggle="1" ' + (isEnabled ? 'checked' : '') + ' style="width:15px;height:15px;margin-top:2px;accent-color:#0284c7;" />' +
+      '<span>🏦 إظهار قسم "المعاملات المموّلة خارج درج الكاشير" (الخزينة الرئيسية / البنك-CCP / المال الخارجي — بدون خصم من الدرج)</span>' +
+      '</label>';
+
+    if (!existing) {
+      const zToolsCard = rootEl.querySelector('#pspNativeZReportToolsCard');
+      if (zToolsCard && zToolsCard.parentNode) {
+        zToolsCard.parentNode.insertBefore(box, zToolsCard.nextSibling);
+      } else {
+        sidebarHost.insertBefore(box, sidebarHost.firstChild);
+      }
+    }
+
+    if (!box._s6cBound) {
+      box._s6cBound = true;
+      box.addEventListener('change', (ev) => {
+        const chk = ev.target && ev.target.getAttribute && ev.target.getAttribute('data-s6c-zext-toggle') ? ev.target : null;
+        if (!chk) return;
+        const val = Boolean(chk.checked);
+        PSP.state.mutateActiveTemplate((t) => {
+          if (!t.shiftOptions) t.shiftOptions = {};
+          t.shiftOptions.showExternalFundingSection = val;
+          const target = (t.sections || []).find((s) => s && s.id === 'shift_external_funding_box');
+          if (target) target.enabled = val;
+        }, 'تبديل قسم المعاملات خارج درج الكاشير');
+        PSP.ui?.renderLivePreview?.();
+      });
+    }
+  }
+
+  function bootS6CTool() {
+    const PSP = window.GherbiPrintStudioPro;
+    if (!PSP || !PSP.state) return false;
+    if (PSP._s6cZExtToolBooted) return true;
+    PSP._s6cZExtToolBooted = true;
+
+    if (typeof PSP.state.on === 'function') {
+      PSP.state.on('doc-changed', () => setTimeout(syncZReportExtTool, 35));
+      PSP.state.on('template-changed', () => setTimeout(syncZReportExtTool, 35));
+    }
+    if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
+      const rootEl = document.getElementById('print-view-root');
+      if (rootEl && !rootEl._s6cZToolObs) {
+        rootEl._s6cZToolObs = true;
+        let t = null;
+        const obs = new MutationObserver(() => {
+          clearTimeout(t);
+          t = setTimeout(syncZReportExtTool, 50);
+        });
+        obs.observe(rootEl, { childList: true, subtree: true });
+      }
+    }
+    setTimeout(syncZReportExtTool, 100);
+    return true;
+  }
+
+  if (!bootS6CTool()) {
+    let k = 0;
+    const iv = setInterval(() => {
+      k++;
+      if (bootS6CTool() || k >= 40) clearInterval(iv);
+    }, 100);
+  }
 })();

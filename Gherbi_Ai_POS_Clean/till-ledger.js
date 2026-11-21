@@ -430,12 +430,12 @@ module.exports = {
 })();
 
 /* === [WAR STAGE 5D: FORENSIC SHIFT DOSSIER ENRICHER] === */
-(function installTillLedgerStage5DForensicEnricher(exportsObj) {
+(function installTillLedgerExactAccountingV2(exportsObj) {
   'use strict';
-  if (!exportsObj || typeof exportsObj.computeSessionSummary !== 'function' || exportsObj._stage5DForensicInstalled) {
+  if (!exportsObj || typeof exportsObj.computeSessionSummary !== 'function' || exportsObj._stage5DForensicV2) {
     return;
   }
-  exportsObj._stage5DForensicInstalled = true;
+  exportsObj._stage5DForensicV2 = true;
   const origCompute = exportsObj.computeSessionSummary;
 
   function toNum(v) {
@@ -449,6 +449,22 @@ module.exports = {
     return m ? m[1] : s.slice(11, 16) || '';
   }
 
+  function computeDurationLabel(startIso, endIso) {
+    try {
+      const s = new Date(String(startIso || '').replace(' ', 'T'));
+      const e = new Date(String(endIso || '').replace(' ', 'T'));
+      if (isNaN(s.getTime()) || isNaN(e.getTime())) return '';
+      const diffMin = Math.max(0, Math.round((e.getTime() - s.getTime()) / 60000));
+      const h = Math.floor(diffMin / 60);
+      const m = diffMin % 60;
+      if (h > 0 && m > 0) return `${h} سا و ${m} د`;
+      if (h > 0) return `${h} ساعة`;
+      return `${m} دقيقة`;
+    } catch (_) {
+      return '';
+    }
+  }
+
   function parseBeneficiaryAndReason(tx, expRow, supMap) {
     const rawDesc = String(tx.description || (expRow && expRow.description) || '').trim();
     const rawCat = String(tx.category || (expRow && expRow.category) || '').trim();
@@ -456,23 +472,20 @@ module.exports = {
 
     let beneficiary = '';
     let reason = rawDesc;
+    let tagLabel = '';
 
-    // 1. استخراج [المستفيد: فلان]
     const mBen = rawDesc.match(/\[\s*المستفيد\s*:\s*([^\]]+)\]/i);
     if (mBen && mBen[1]) {
       beneficiary = mBen[1].trim();
       reason = reason.replace(mBen[0], '').trim();
     }
 
-    // 2. استخراج سلفة عامل إن وجدت
     const mAdv = rawDesc.match(/\[\s*سلفة\s+عامل[^\]]*\]/i);
-    let tagLabel = '';
     if (mAdv) {
       tagLabel = mAdv[0].replace(/^\[|\]$/g, '').trim();
       reason = reason.replace(mAdv[0], '').trim();
     }
 
-    // 3. ربط تسديد المورد باسمه الحقيقي من جدول suppliers
     const mSup = rawDesc.match(/المورد\s*#(\d+)/);
     if (mSup && supMap.has(Number(mSup[1]))) {
       const supName = supMap.get(Number(mSup[1]));
@@ -503,7 +516,7 @@ module.exports = {
     return { beneficiary, reason, typeLabel };
   }
 
-  exportsObj.computeSessionSummary = async function computeSessionSummaryWithForensicDossier(db, sessionId) {
+  exportsObj.computeSessionSummary = async function computeExactForensicSessionSummaryV2(db, sessionId) {
     const base = await origCompute.call(this, db, sessionId);
     if (!base || !base.session) return base;
 
@@ -519,7 +532,6 @@ module.exports = {
       const closedAt = sess.closed_at ? String(sess.closed_at).replace('T', ' ').slice(0, 19) : new Date().toISOString().replace('T', ' ').slice(0, 19);
       const txs = Array.isArray(base.transactions) ? base.transactions : [];
 
-      // 1. جلب خرائط الزبائن والموردين والمصاريف
       const [custRows, supRows, expRows, spRows, shiftSalesRows, auditRows] = await Promise.all([
         dbAll(
           `SELECT
@@ -531,7 +543,10 @@ module.exports = {
            GROUP BY c.id`
         ).catch(() => []),
         dbAll('SELECT id, name, phone FROM suppliers WHERE deleted_at IS NULL').catch(() => []),
-        dbAll('SELECT id, category, description, amount, date, session_id FROM expenses WHERE deleted_at IS NULL AND (session_id = ? OR date(created_at) BETWEEN date(?) AND date(?))', [sid, openedAt || '2000-01-01', closedAt || '2099-12-31']).catch(() => []),
+        dbAll(
+          'SELECT id, category, description, amount, date, session_id FROM expenses WHERE deleted_at IS NULL AND (session_id = ? OR date(created_at) BETWEEN date(?) AND date(?))',
+          [sid, openedAt || '2000-01-01', closedAt || '2099-12-31']
+        ).catch(() => []),
         dbAll(
           `SELECT sp.id, sp.sale_id, sp.customer_id, sp.amount, sp.payment_method, sp.notes, c.name AS customer_name, c.phone AS customer_phone
            FROM sale_payments sp
@@ -601,14 +616,20 @@ module.exports = {
       const spMap = new Map();
       for (let i = 0; i < spRows.length; i++) spMap.set(Number(spRows[i].id), spRows[i]);
 
-      // 2. تصنيف حركات الدرج بدقة: الخارج (مصاريف/سلف/سحوبات)، تحصيلات الديون بأسماء الزبائن، الإيداعات
+      // ======================================================================
+      // الحقيقة المحاسبية الوحيدة لدرج الخزينة: caisse_transactions (منع أي ازدواجية!)
+      // ======================================================================
+      const openingBalance = Number(toNum(sess.opening_balance).toFixed(2));
+      let txCashSales = 0;
+      let txDebtPayments = 0;
+      let txOrderDeposits = 0;
+      let txCashIn = 0;
+      let txCashOut = 0;
+      let txExpenses = 0;
+
       const outflows = [];
       const inflows = [];
       const debtCollections = [];
-      let totalOutflows = 0;
-      let totalInflows = 0;
-      let totalDebtCollected = 0;
-      let txCashSalesTotal = 0;
 
       for (let i = 0; i < txs.length; i++) {
         const tx = txs[i];
@@ -618,38 +639,14 @@ module.exports = {
         const timeStr = extractTimeHHMM(tx.created_at);
 
         if (tp === 'sale' || tp === 'cash_sale' || tp === 'sale_cash') {
-          txCashSalesTotal += amt;
-        } else if (tp === 'expense' || tp === 'cash_out' || tp === 'refund' || tp === 'sale_refund') {
-          const expRow = tx.reference_id ? expMap.get(Number(tx.reference_id)) : null;
-          const parsed = parseBeneficiaryAndReason(tx, expRow, supMap);
-          totalOutflows += amt;
-          outflows.push({
-            id: tx.id,
-            time: timeStr,
-            type: tp,
-            typeLabel: parsed.typeLabel,
-            beneficiary: parsed.beneficiary,
-            reason: parsed.reason,
-            amount: amt
-          });
-        } else if (tp === 'cash_in' || tp === 'order_deposit') {
-          totalInflows += amt;
-          inflows.push({
-            id: tx.id,
-            time: timeStr,
-            type: tp,
-            typeLabel: tp === 'order_deposit' ? 'عربون طلبية' : 'إيداع وتغذية درج',
-            source: tx.category && tx.category !== 'عام' ? tx.category : 'الصندوق',
-            reason: tx.description || (tp === 'order_deposit' ? 'عربون طلبية زبون' : 'تغذية الصندوق'),
-            amount: amt
-          });
+          txCashSales += amt;
         } else if (tp === 'debt_payment' || tp === 'customer_payment') {
-          totalDebtCollected += amt;
+          txDebtPayments += amt;
+
           let custName = '';
           let custPhone = '';
           let custId = null;
 
-          // أولاً: من sale_payments عبر reference_id
           const sp = tx.reference_id ? spMap.get(Number(tx.reference_id)) : null;
           if (sp && sp.customer_id) {
             custId = Number(sp.customer_id);
@@ -658,7 +655,6 @@ module.exports = {
             custPhone = (cObj && cObj.phone) || sp.customer_phone || '';
           }
 
-          // ثانياً: من النص "زبون #3"
           if (!custName) {
             const mCust = String(tx.description || '').match(/زبون\s*#(\d+)/);
             if (mCust) {
@@ -671,7 +667,6 @@ module.exports = {
             }
           }
 
-          // ثالثاً: من "فاتورة بيع #101"
           if (!custName) {
             const mSale = String(tx.description || '').match(/فاتورة\s+بيع\s*#?(\d+)/);
             if (mSale) {
@@ -698,22 +693,82 @@ module.exports = {
             amount: amt,
             remainingDebtNow: cLive
           });
+        } else if (tp === 'order_deposit' || tp === 'deposit') {
+          txOrderDeposits += amt;
+          inflows.push({
+            id: tx.id,
+            time: timeStr,
+            type: tp,
+            typeLabel: 'عربون طلبية',
+            source: 'طلبية زبون',
+            reason: tx.description || 'عربون طلبية زبون',
+            amount: amt
+          });
+        } else if (tp === 'cash_in' || tp === 'capital_in') {
+          txCashIn += amt;
+          inflows.push({
+            id: tx.id,
+            time: timeStr,
+            type: tp,
+            typeLabel: 'إيداع وتغذية درج',
+            source: tx.category && tx.category !== 'عام' ? tx.category : 'الصندوق',
+            reason: tx.description || 'تغذية الصندوق',
+            amount: amt
+          });
+        } else if (tp === 'cash_out' || tp === 'withdrawal') {
+          txCashOut += amt;
+          const parsed = parseBeneficiaryAndReason(tx, null, supMap);
+          outflows.push({
+            id: tx.id,
+            time: timeStr,
+            type: tp,
+            typeLabel: parsed.typeLabel,
+            beneficiary: parsed.beneficiary,
+            reason: parsed.reason,
+            amount: amt
+          });
+        } else if (tp === 'expense' || tp === 'refund' || tp === 'sale_refund') {
+          txExpenses += amt;
+          const expRow = tx.reference_id ? expMap.get(Number(tx.reference_id)) : null;
+          const parsed = parseBeneficiaryAndReason(tx, expRow, supMap);
+          outflows.push({
+            id: tx.id,
+            time: timeStr,
+            type: tp,
+            typeLabel: parsed.typeLabel,
+            beneficiary: parsed.beneficiary,
+            reason: parsed.reason,
+            amount: amt
+          });
         }
       }
 
-      // 3. تحليل مبيعات الوردية: الزبائن المدينين اليوم + تفصيل وسائل الدفع + التخفيضات
+      txCashSales = Number(txCashSales.toFixed(2));
+      txDebtPayments = Number(txDebtPayments.toFixed(2));
+      txOrderDeposits = Number(txOrderDeposits.toFixed(2));
+      txCashIn = Number(txCashIn.toFixed(2));
+      txCashOut = Number(txCashOut.toFixed(2));
+      txExpenses = Number(txExpenses.toFixed(2));
+      const totalOutflows = Number((txCashOut + txExpenses).toFixed(2));
+      const totalInflows = Number((txOrderDeposits + txCashIn).toFixed(2));
+
+      const expectedBalance = Number(
+        (openingBalance + txCashSales + txDebtPayments + txOrderDeposits + txCashIn - txCashOut - txExpenses).toFixed(2)
+      );
+      const hasCounted = sess.closing_balance !== null && sess.closing_balance !== undefined && sess.closing_balance !== '';
+      const countedBalance = hasCounted ? Number(toNum(sess.closing_balance).toFixed(2)) : expectedBalance;
+      const difference = Number((countedBalance - expectedBalance).toFixed(2));
+
+      // تحليل فواتير الوردية (للمؤشرات والديون اليوم بدون تلويث كاش الدرج!)
       const creditSalesToday = [];
       let totalCreditAddedToday = 0;
       let totalSalesRevenue = 0;
       let totalDiscounts = 0;
-      const payMethods = {
-        cash: 0,
-        cib: 0,
-        baridimob: 0,
-        cheque: 0,
-        credit: 0,
-        other: 0
-      };
+      let totalPaidOnSalesTable = 0;
+      let cibPaid = 0;
+      let baridimobPaid = 0;
+      let chequePaid = 0;
+      let otherPaid = 0;
 
       for (let i = 0; i < shiftSalesRows.length; i++) {
         const s = shiftSalesRows[i];
@@ -725,16 +780,16 @@ module.exports = {
 
         totalSalesRevenue += tot;
         totalDiscounts += disc;
+        totalPaidOnSalesTable += paid;
 
         if (paid > 0.009) {
-          if (pm === 'cib' || pm === 'card' || pm === 'edahabia') payMethods.cib += paid;
-          else if (pm === 'baridimob' || pm === 'ccp') payMethods.baridimob += paid;
-          else if (pm === 'cheque') payMethods.cheque += paid;
-          else if (pm === 'cash' || pm === 'credit' || pm === 'split' || pm === 'installment') payMethods.cash += paid;
-          else payMethods.other += paid;
+          if (pm === 'cib' || pm === 'card' || pm === 'edahabia') cibPaid += paid;
+          else if (pm === 'baridimob' || pm === 'ccp') baridimobPaid += paid;
+          else if (pm === 'cheque') chequePaid += paid;
+          else if (pm !== 'cash' && pm !== 'credit' && pm !== 'split' && pm !== 'installment') otherPaid += paid;
         }
+
         if (creditAdded > 0.009) {
-          payMethods.credit += creditAdded;
           totalCreditAddedToday += creditAdded;
           const cid = s.customer_id ? Number(s.customer_id) : null;
           const cObj = cid && custMap.has(cid) ? custMap.get(cid) : null;
@@ -754,52 +809,63 @@ module.exports = {
         }
       }
 
-      // تجميع تحصيلات الديون حسب الزبون لنسخة 80mm المختصرة
-      const collectedByCustomerMap = new Map();
+      const settledViaDebtPayments = Number(
+        Math.max(0, totalPaidOnSalesTable - txCashSales - cibPaid - baridimobPaid - chequePaid - otherPaid).toFixed(2)
+      );
+
+      // تجميع تحصيلات الديون حسب الزبون لنسخة 80mm
+      const colMap = new Map();
       for (let i = 0; i < debtCollections.length; i++) {
         const dc = debtCollections[i];
         const key = dc.customerName;
-        const prev = collectedByCustomerMap.get(key) || { customerName: key, count: 0, total: 0, lastTime: dc.time, remainingDebtNow: dc.remainingDebtNow };
+        const prev = colMap.get(key) || {
+          customerName: key,
+          count: 0,
+          total: 0,
+          lastTime: dc.time,
+          remainingDebtNow: dc.remainingDebtNow
+        };
         prev.count += 1;
         prev.total = Number((prev.total + dc.amount).toFixed(2));
-        collectedByCustomerMap.set(key, prev);
+        colMap.set(key, prev);
       }
-      const debtCollectionsGrouped = Array.from(collectedByCustomerMap.values()).sort((a, b) => b.total - a.total);
+      const debtCollectionsGrouped = Array.from(colMap.values()).sort((a, b) => b.total - a.total);
 
-      // 4. توليد تنبيهات المستشار الرقابي لصاحب المتجر
+      // تنبيهات رادار الرقابة المحسوبة على الفارق الحقيقي (لا توجد إنذارات عجز وهمية!)
       const ownerAlerts = [];
-      const expectedBal = toNum(base.summary && base.summary.expectedBalance !== undefined ? base.summary.expectedBalance : sess.expected_balance);
-      const hasCounted = sess.closing_balance !== null && sess.closing_balance !== undefined;
-      const diff = hasCounted ? Number((toNum(sess.closing_balance) - expectedBal).toFixed(2)) : 0;
-
-      if (diff < -0.009) {
-        ownerAlerts.push({ level: 'danger', text: 'عجز في جرد الدرج بقيمة ' + Math.abs(diff).toFixed(2) + ' د.ج — يتطلب مراجعة فورية مع الكاشير.' });
-      } else if (diff > 0.009) {
-        ownerAlerts.push({ level: 'warning', text: 'فائض غير مبرر في الدرج بقيمة +' + diff.toFixed(2) + ' د.ج (قد توجد عملية بيع غير مسجلة).' });
+      if (difference < -0.009) {
+        ownerAlerts.push({ level: 'danger', text: `عجز فعلي في جرد الدرج بقيمة ${Math.abs(difference).toFixed(2)} د.ج — يتطلب مراجعة فورية.` });
+      } else if (difference > 0.009) {
+        ownerAlerts.push({ level: 'warning', text: `فائض في جرد الدرج بقيمة +${difference.toFixed(2)} د.ج (قد توجد عملية غير مسجلة).` });
       }
-      if (expectedBal < -0.009) {
-        ownerAlerts.push({ level: 'danger', text: 'رصيد الدرج المتوقع سالب (' + expectedBal.toFixed(2) + ' د.ج) لأن المصاريف/السلَف تجاوزت المداخيل النقدية.' });
+      if (expectedBalance < -0.009) {
+        ownerAlerts.push({ level: 'danger', text: `رصيد الدرج المتوقع سالب (${expectedBalance.toFixed(2)} د.ج) لأن المصاريف/السلَف تجاوزت المداخيل النقدية.` });
       }
-      if (totalOutflows > 0 && txCashSalesTotal > 0 && totalOutflows > txCashSalesTotal) {
-        ownerAlerts.push({ level: 'warning', text: 'الأموال الخارجة (' + totalOutflows.toFixed(2) + ' د.ج) أكبر من مبيعات الكاش (' + txCashSalesTotal.toFixed(2) + ' د.ج).' });
+      if (totalOutflows > 0 && txCashSales + txDebtPayments > 0 && totalOutflows > txCashSales + txDebtPayments) {
+        ownerAlerts.push({ level: 'warning', text: `الأموال الخارجة (${totalOutflows.toFixed(2)} د.ج) تجاوزت مداخيل الوردية النقدية.` });
       }
       if (totalCreditAddedToday > 0.009) {
-        ownerAlerts.push({ level: 'info', text: 'تم منح ديون جديدة بقيمة ' + totalCreditAddedToday.toFixed(2) + ' د.ج لـ (' + creditSalesToday.length + ') عملية بيع آجلة.' });
+        ownerAlerts.push({ level: 'info', text: `تم منح ديون جديدة بقيمة ${totalCreditAddedToday.toFixed(2)} د.ج لـ (${creditSalesToday.length}) عملية بيع آجلة.` });
       }
       if (totalDiscounts > 0.009 && totalSalesRevenue > 0 && totalDiscounts / totalSalesRevenue >= 0.08) {
-        ownerAlerts.push({ level: 'warning', text: 'نسبة التخفيضات الممنوحة مرتفعة (' + totalDiscounts.toFixed(2) + ' د.ج).' });
+        ownerAlerts.push({ level: 'warning', text: `نسبة التخفيضات الممنوحة مرتفعة (${totalDiscounts.toFixed(2)} د.ج).` });
       }
       if (auditRows.length > 0) {
-        ownerAlerts.push({ level: 'danger', text: 'سُجل (' + auditRows.length + ') حدثاً رقابياً حساساً خلال الوردية (حذف فاتورة / مرتجع / تنبيه أمان).' });
+        ownerAlerts.push({ level: 'danger', text: `سُجل (${auditRows.length}) حدثاً رقابياً حساساً خلال الوردية (حذف فاتورة / مرتجع / تنبيه أمان).` });
       }
 
+      const durationLabel = computeDurationLabel(openedAt, closedAt);
+
       base.forensicDossier = {
+        openedAt: openedAt.slice(0, 16),
+        closedAt: closedAt.slice(0, 16),
+        durationLabel,
         outflows,
         inflows,
         debtCollections,
         debtCollectionsGrouped,
         creditSalesToday,
-        topDebtors: debtorsList.slice(0, 8),
+        topDebtors: debtorsList.slice(0, 12),
         auditEventsCount: auditRows.length,
         auditEvents: auditRows.slice(0, 5),
         ownerAlerts,
@@ -808,34 +874,51 @@ module.exports = {
           totalSalesRevenue: Number(totalSalesRevenue.toFixed(2)),
           avgBasket: shiftSalesRows.length > 0 ? Number((totalSalesRevenue / shiftSalesRows.length).toFixed(2)) : 0,
           totalDiscounts: Number(totalDiscounts.toFixed(2)),
-          totalOutflows: Number(totalOutflows.toFixed(2)),
-          totalInflows: Number(totalInflows.toFixed(2)),
-          totalDebtCollected: Number(totalDebtCollected.toFixed(2)),
+          cashSalesDirect: txCashSales,
+          settledViaDebtPayments,
+          totalOutflows,
+          totalInflows,
+          totalDebtCollected: txDebtPayments,
           totalCreditAddedToday: Number(totalCreditAddedToday.toFixed(2)),
           storeTotalDebtReal,
           debtorsCount: debtorsList.length
         },
         paymentBreakdown: {
-          cash: Number(payMethods.cash.toFixed(2)),
-          cib: Number(payMethods.cib.toFixed(2)),
-          baridimob: Number(payMethods.baridimob.toFixed(2)),
-          cheque: Number(payMethods.cheque.toFixed(2)),
-          credit: Number(payMethods.credit.toFixed(2)),
-          other: Number(payMethods.other.toFixed(2))
+          cash: txCashSales,
+          debtCollectedCash: txDebtPayments,
+          settledViaDebtPayments,
+          cib: Number(cibPaid.toFixed(2)),
+          baridimob: Number(baridimobPaid.toFixed(2)),
+          cheque: Number(chequePaid.toFixed(2)),
+          credit: Number(totalCreditAddedToday.toFixed(2)),
+          other: Number(otherPaid.toFixed(2))
         }
       };
 
-      // تحديث حقول summary الأساسية بالأرقام الحقيقية من SQLite
-      if (!base.summary) base.summary = {};
-      base.summary.newCreditGiven = Number(totalCreditAddedToday.toFixed(2));
-      base.summary.totalStoreCustomerDebt = storeTotalDebtReal;
-      base.summary.totalDebtCollected = Number(totalDebtCollected.toFixed(2));
-      base.summary.totalOutflows = Number(totalOutflows.toFixed(2));
-      base.summary.totalDiscounts = Number(totalDiscounts.toFixed(2));
-      base.summary.salesCount = shiftSalesRows.length;
-    } catch (e) {
-      // حماية تامة: لا نكسر استدعاء الصندوق أبداً
-    }
+      // تثبيت أرقام summary الدقيقة الخالية من أي ازدواجية!
+      base.summary = {
+        ...(base.summary || {}),
+        openingBalance,
+        cashSales: txCashSales,
+        debtPayments: txDebtPayments,
+        orderDeposits: txOrderDeposits,
+        cashIn: txCashIn,
+        cashOut: txCashOut,
+        expenses: txExpenses,
+        totalOutflows,
+        expectedBalance,
+        countedBalance,
+        difference,
+        newCreditGiven: Number(totalCreditAddedToday.toFixed(2)),
+        totalStoreCustomerDebt: storeTotalDebtReal,
+        totalDebtCollected: txDebtPayments,
+        totalDiscounts: Number(totalDiscounts.toFixed(2)),
+        salesCount: shiftSalesRows.length,
+        openedAt: openedAt.slice(0, 16),
+        closedAt: closedAt.slice(0, 16),
+        durationLabel
+      };
+    } catch (_) {}
 
     return base;
   };

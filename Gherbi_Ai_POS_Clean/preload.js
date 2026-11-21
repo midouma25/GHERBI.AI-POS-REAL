@@ -23,6 +23,12 @@ function createEventSubscriber(channel) {
 const api = {
   pspPrint80mm: (opts) => ipcRenderer.invoke('psp-precision-print', opts),
   pspExportPdf: (opts) => ipcRenderer.invoke('psp-precision-pdf', opts),
+  getTreasuryStatus: (userId) => invoke('get-treasury-status', userId),
+  getUnifiedOutflowsReport: (filters) => invoke('get-unified-outflows-report', filters),
+  getOpenPurchaseInvoices: () => invoke('get-open-purchase-invoices'),
+  getTreasuryLedger: (filters) => invoke('get-treasury-ledger', filters),
+  getShiftExternalFunding: (sessionId) => invoke('get-shift-external-funding', sessionId),
+  registerStage6BFundingHook: (fn) => { _s6bFundingHook = typeof fn === 'function' ? fn : null; },
   registerPspAbsolutePrintHook: (fn) => { _pspAbsolutePrintHook = typeof fn === 'function' ? fn : null; },
   // 1. المراجعات، الإعدادات، ومعلومات التطبيق
   getDataRevision: () => invoke('get-data-revision'),
@@ -121,10 +127,10 @@ const api = {
   getSupplierReturnDetails: (returnId) => invoke('get-supplier-return-details', returnId),
   deleteSupplierReturn: (returnId) => invoke('delete-supplier-return', returnId),
   getPurchases: (filters) => invoke('get-purchases', filters),
-  savePurchase: (purchaseData) => invoke('save-purchase', purchaseData),
+  savePurchase: (purchaseData) => invoke('save-purchase', _s6bMergeFunding('save-purchase', purchaseData)),
   getInvoiceDetails: (invoiceId) => invoke('get-invoice-details', invoiceId),
   addInvoicePayment: (invoiceId, amount, date, meta) =>
-    invoke('add-invoice-payment', invoiceId, amount, date, meta),
+    invoke('add-invoice-payment', invoiceId, amount, date, _s6bMergeFunding('add-invoice-payment', meta || {})),
   deletePurchase: (invoiceId) => invoke('delete-purchase', invoiceId),
 
   // 6. الفواتير الشكلية والطلبيات
@@ -152,12 +158,22 @@ const api = {
   closeCaisseSession: (payload) => invoke('close-caisse-session', payload),
   getActiveSession: (userId) => invoke('get-active-session', userId),
   getCaisseSessions: (filters) => invoke('get-caisse-sessions', filters),
-  getSessionDetails: (sessionId) => invoke('get-session-details', sessionId),
+  getSessionDetails: async (sessionId) => {
+    const [det, ext] = await Promise.all([
+      invoke('get-session-details', sessionId),
+      invoke('get-shift-external-funding', sessionId).catch(() => null)
+    ]);
+    if (det && typeof det === 'object' && ext && ext.success) {
+      det.externalFundedTx = ext.items || [];
+      det.externalFundedTotals = ext.totals || { shop_vault: 0, bank_ccp: 0, external_owner: 0, grandTotal: 0, count: 0 };
+    }
+    return det;
+  },
   addCaisseTransaction: (txData) => invoke('add-caisse-transaction', txData),
   getCaisseSummary: (filters) => invoke('get-caisse-summary', filters),
   getCaisseTransactionsLog: (filters) => invoke('get-caisse-transactions-log', filters),
   getExpenses: (filters) => invoke('get-expenses', filters),
-  addExpense: (data) => invoke('add-expense', data),
+  addExpense: (data) => invoke('add-expense', _s6bMergeFunding('add-expense', data)),
   updateExpense: (id, data) => invoke('update-expense', id, data),
   deleteExpense: (id) => invoke('delete-expense', id),
   getCapital: (filters) => invoke('get-capital', filters),
@@ -331,7 +347,7 @@ const api = {
   saveEmployee: (payload) => invoke('save-employee', payload),
   deleteEmployee: (id) => invoke('delete-employee', id),
   getPayrollPayments: () => invoke('get-payroll-payments'),
-  payEmployeeSalary: (payload) => invoke('pay-employee-salary', payload),
+  payEmployeeSalary: (payload) => invoke('pay-employee-salary', _s6bMergeFunding('pay-employee-salary', payload || {})),
   getServiceTickets: (filters) => invoke('get-service-tickets', filters),
   saveServiceTicket: (payload) => invoke('save-service-ticket', payload),
   convertServiceTicketToSale: (payload) => invoke('convert-service-ticket-to-sale', payload),
@@ -344,6 +360,22 @@ const api = {
 
 /* === [V52_PRELOAD_IPC_INTERCEPTOR] === */
 let _pspAbsolutePrintHook = null;
+let _s6bFundingHook = null;
+function _s6bMergeFunding(ch, arg) {
+  try {
+    if (typeof _s6bFundingHook === 'function' && arg && typeof arg === 'object' && !arg.funding_source) {
+      const extra = _s6bFundingHook(ch, arg);
+      if (extra && typeof extra === 'object' && extra.funding_source) {
+        return Object.assign({}, arg, {
+          funding_source: extra.funding_source,
+          external_payer: arg.external_payer || extra.external_payer || ''
+        });
+      }
+    }
+  } catch (_) {}
+  return arg;
+}
+
 let _v52Hooks = { onProcessSale: null, onPrintSilent: null };
 const _origIpcInvoke = ipcRenderer.invoke.bind(ipcRenderer);
 ipcRenderer.invoke = async function (channel, payload, ...rest) {

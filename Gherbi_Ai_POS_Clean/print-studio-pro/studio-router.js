@@ -1219,3 +1219,59 @@
     }, 100);
   }
 })();
+
+/* === [WAR STAGE 6B2: ROUTER CUSTOM PAYLOAD PRESERVER] === */
+(function installRouterCustomPayloadPreserverV2() {
+  'use strict';
+  const PSP = window.GherbiPrintStudioPro;
+  if (!PSP || !PSP.router || !PSP.renderer || PSP.router._s6b2PayloadPreservedV2) return;
+  PSP.router._s6b2PayloadPreservedV2 = true;
+
+  const origRenderDoc = PSP.router.renderDoc.bind(PSP.router);
+  const origPrintByType = typeof PSP.router.printDocumentByType === 'function'
+    ? PSP.router.printDocumentByType.bind(PSP.router)
+    : null;
+  const origRenderDocument = PSP.renderer.renderDocument.bind(PSP.renderer);
+
+  let activeRealPayload = null;
+
+  function mergeCustomFields(baseDoc, realPayload) {
+    if (!realPayload || typeof realPayload !== 'object') return baseDoc;
+    const out = Object.assign({}, baseDoc && typeof baseDoc === 'object' ? baseDoc : {});
+    if (realPayload.expenseVoucher) out.expenseVoucher = realPayload.expenseVoucher;
+    if (realPayload.outflowsReport) out.outflowsReport = realPayload.outflowsReport;
+    if (realPayload.forensicDossier) out.forensicDossier = realPayload.forensicDossier;
+    if (realPayload.shiftSummary) out.shiftSummary = realPayload.shiftSummary;
+    if (realPayload.externalFundedTx) out.externalFundedTx = realPayload.externalFundedTx;
+    if (realPayload.externalFundedTotals) out.externalFundedTotals = realPayload.externalFundedTotals;
+    if (realPayload.docNumber && !out.docNumber) out.docNumber = realPayload.docNumber;
+    return out;
+  }
+
+  PSP.renderer.renderDocument = function wrappedRenderDocumentV2(tplCfg, rawDoc, mode, opts) {
+    const finalDoc = mergeCustomFields(rawDoc, activeRealPayload);
+    return origRenderDocument(tplCfg, finalDoc, mode, opts);
+  };
+
+  PSP.router.renderDoc = function wrappedRenderDocV2(docId, docData, mode, opts) {
+    const prev = activeRealPayload;
+    if (docData && typeof docData === 'object') activeRealPayload = docData;
+    try {
+      return origRenderDoc(docId, docData, mode, opts);
+    } finally {
+      activeRealPayload = prev;
+    }
+  };
+
+  if (origPrintByType) {
+    PSP.router.printDocumentByType = async function wrappedPrintDocumentByTypeV2(docType, docData, opts) {
+      const prev = activeRealPayload;
+      if (docData && typeof docData === 'object') activeRealPayload = docData;
+      try {
+        return await origPrintByType(docType, docData, opts);
+      } finally {
+        activeRealPayload = prev;
+      }
+    };
+  }
+})();

@@ -104,6 +104,12 @@
       { id: 'shift_cash_debt_balance', cat: 'FINANCE', name: '🏦 ميزان الوردية المزدوج: سيولة الدرج مقابل الديون', desc: 'يفصل بدقة بين الكاش الفعلي في الدرج والديون الآجلة الممنوحة (Z-Report).' },
       { id: 'shift_flows_summary', cat: 'FINANCE', name: '💸 ملخص المصاريف والإيداعات وتحصيل الديون بالوردية', desc: 'تفصيل المداخيل النقدية والمصاريف المسحوبة خلال المناوبة.' },
       { id: 'caisse_billetage', cat: 'FINANCE', name: '🔒 جرد الفئات النقدية وفارق الصندوق (Billetage)', desc: 'مطابقة الرصيد المتوقع بالدرج مع المبلغ المعدود والفارق (Écart).' },
+      { id: 'shift_owner_radar_alerts', cat: 'FINANCE', name: '🛡️ رادار تنبيهات الرقابة لصاحب المتجر (Z-Report)', desc: 'تنبيهات آلية عند عجز الدرج، الرصيد السالب، تجاوز المصاريف، أو حذف فواتير.' },
+      { id: 'shift_outflows_detail', cat: 'FINANCE', name: '💸 دفتر الأموال الخارجة والمصاريف والسلَف (المستفيد + السبب)', desc: 'يعرض من أخذ المال، السبب، الساعة، والمبلغ الخارج من الدرج بالتفصيل.' },
+      { id: 'shift_credit_sales_detail', cat: 'FINANCE', name: '📝 دفتر زبائن الكريدي اليوم (الزبائن المدينون بالوردية)', desc: 'أسماء الزبائن الذين أخذوا بالدين اليوم، المدفوع، دين اليوم، ودينهم الكلي الآن.' },
+      { id: 'shift_debt_collections_detail', cat: 'FINANCE', name: '🤝 سجل تحصيلات الديون بالوردية (بأسماء الزبائن)', desc: 'تفصيل الديون المقبوضة في الدرج بأسماء الزبائن الحقيقية بدلاً من أرقامها.' },
+      { id: 'shift_payment_methods_kpis', cat: 'FINANCE', name: '💳 تفصيل وسائل الدفع ومؤشرات الأداء (Cash/CIB/CCP/آجل)', desc: 'عدد الفواتير، رقم الأعمال، متوسط السلة، التخفيضات، وتقسيم طرق الدفع.' },
+      { id: 'shift_top_debtors_followup', cat: 'FINANCE', name: '📌 قائمة أكبر المدينين في المتجر للمتابعة (A4)', desc: 'أكبر الزبائن المدينين حالياً بالهاتف والمبلغ الإجمالي للتحصيل.' },
       { id: 'expense_approval', cat: 'FINANCE', name: '🧾 بطاقة اعتماد سند الصرف وتوقيع المستفيد', desc: 'توثيق فئة المصروف أو الدفعة واسم وتوقيع المستلم.' },
       { id: 'tax_ifu_g12', cat: 'FINANCE', name: '🇩🇿 تفصيل الجباية الجزائرية (IFU G12 / TVA / الطابع)', desc: 'فصل المواد المقننة المعفاة عن السلع العادية الخاضعة لمعدل 5% أو TVA.' },
       { id: 'forensic_radar', cat: 'FINANCE', name: '🛡️ خلاصة الرقابة الجنائية وحماية الأرباح', desc: 'ملخص حركات الحذف بعد المسح والبيع بأقل من التكلفة.' },
@@ -624,6 +630,14 @@
           columns: deepClone(meta.defaultColumns || FALLBACK_DOC_META.defaultColumns),
           columnLabels: deepClone(DEFAULT_COLUMN_LABELS[meta.defaultLang || 'ar'] || DEFAULT_COLUMN_LABELS.ar),
           sections,
+          shiftOptions: {
+            showBeneficiary: true,
+            showOutflowTime: true,
+            showCustomerPhone: true,
+            showCumulativeDebt: true,
+            topDebtorsLimit: 5,
+            signatureMode: isThermal ? 'dual' : 'triple'
+          },
           isCustomized: false
         };
       },
@@ -653,6 +667,32 @@
       },
 
       ensureAllTemplatesInitialized() {
+        /* === [PSP NATIVE Z-REPORT 6 SECTIONS MIGRATION] === */
+        const zNewIds80 = ['shift_owner_radar_alerts', 'shift_outflows_detail', 'shift_credit_sales_detail', 'shift_debt_collections_detail', 'shift_payment_methods_kpis', 'dual_signatures'];
+        const zNewIdsA4 = ['shift_owner_radar_alerts', 'shift_outflows_detail', 'shift_credit_sales_detail', 'shift_debt_collections_detail', 'shift_payment_methods_kpis', 'shift_top_debtors_followup'];
+        const ensureZSections = (docKey, enableIds) => {
+          const tpl = this.templates && this.templates[docKey];
+          if (!tpl || !Array.isArray(tpl.sections)) return;
+          const existingIds = new Set(tpl.sections.map((s) => s.id));
+          const missing = SECTIONS_CATALOG.filter((c) => !existingIds.has(c.id));
+          if (missing.length === 0) return;
+          const footerIdx = tpl.sections.findIndex((s) => s.id === 'footer_terms');
+          const insertPos = footerIdx !== -1 ? footerIdx : tpl.sections.length;
+          const toInsert = missing.map((catMeta) => ({
+            id: catMeta.id,
+            enabled: enableIds.includes(catMeta.id),
+            title: '',
+            note: '',
+            align: 'right',
+            fontScale: 100,
+            border: 'default',
+            bg: 'default',
+            label: catMeta.name
+          }));
+          tpl.sections.splice(insertPos, 0, ...toInsert);
+        };
+        ensureZSections('caisse_z_report', zNewIds80);
+        ensureZSections('caisse_shift_full_audit_a4', zNewIdsA4);
         const list = this.getTemplatesRegistry();
         for (const meta of list) {
           if (!this.templates[meta.id]) {
@@ -977,4 +1017,477 @@
 
     console.log('✅ [Print Studio Pro — Stage 2/State]: مخزن الحالة الموحد + Undo/Redo + حارس الزبون العابر جاهز 100%.');
   })();
+})();
+
+/* === [PSP NATIVE Z-REPORT SHIFT OPTIONS & DOSSIER PRESERVER] === */
+(function installPspNativeShiftStateCleanerV2() {
+  'use strict';
+
+  const CANONICAL_Z80_ORDER = [
+    'shop_header',
+    'doc_banner',
+    'party_box',
+    'shift_cash_debt_balance',
+    'shift_flows_summary',
+    'shift_owner_alerts',
+    'shift_outflows_detail',
+    'shift_credit_sales_today',
+    'shift_debt_collections',
+    'shift_payment_kpis',
+    'dual_signatures',
+    'footer_terms'
+  ];
+
+  const CANONICAL_ZA4_ORDER = [
+    'shop_header',
+    'doc_banner',
+    'party_box',
+    'shift_cash_debt_balance',
+    'shift_flows_summary',
+    'shift_owner_alerts',
+    'shift_outflows_detail',
+    'shift_credit_sales_today',
+    'shift_debt_collections',
+    'shift_payment_kpis',
+    'shift_top_debtors',
+    'totals_waterfall',
+    'dual_signatures',
+    'footer_terms'
+  ];
+
+  const CANONICAL_SHIFT_IDS = new Set([
+    'shift_cash_debt_balance',
+    'shift_flows_summary',
+    'shift_owner_alerts',
+    'shift_outflows_detail',
+    'shift_credit_sales_today',
+    'shift_debt_collections',
+    'shift_payment_kpis',
+    'shift_top_debtors'
+  ]);
+
+  const NEW_SECTIONS_META = {
+    shift_owner_alerts: { cat: 'FINANCE', name: '🛡️ رادار تنبيهات الرقابة لصاحب المتجر', desc: 'تنبيهات فورية للعجز، الرصيد السالب، تجاوز المصاريف للكاش، وأحداث الأمان.' },
+    shift_outflows_detail: { cat: 'FINANCE', name: '💸 دفتر الأموال الخارجة (المستفيد، السبب، الساعة)', desc: 'يكشف كل مصروف وسلفة وسحب باسم المستفيد والسبب والتوقيت.' },
+    shift_credit_sales_today: { cat: 'FINANCE', name: '📝 دفتر زبائن الكريدي اليوم (ديون الوردية)', desc: 'أسماء الزبائن الذين أخذوا بالدين اليوم والمدفوع والدين التراكمي.' },
+    shift_debt_collections: { cat: 'FINANCE', name: '🤝 سجل تحصيلات الديون بأسماء الزبائن', desc: 'تفصيل الديون المقبوضة في الدرج بأسماء الزبائن الحقيقية.' },
+    shift_payment_kpis: { cat: 'FINANCE', name: '💳 تفصيل وسائل الدفع ومؤشرات الأداء (KPIs)', desc: 'نقداً، CIB/ذهبية، بريدي موب، شيك، آجل، التخفيضات، ومتوسط السلة.' },
+    shift_top_debtors: { cat: 'FINANCE', name: '📌 قائمة أكبر المدينين في المتجر للمتابعة غداً', desc: 'أبرز الزبائن المدينين مع أرقام هواتفهم وإجمالي ذمم المتجر.' }
+  };
+
+  function defaultShiftOptions(isThermal) {
+    return {
+      showShiftTimes: true,
+      showDrawerCentimes: true,
+      showBeneficiary: true,
+      showOutflowTime: true,
+      showCustomerPhone: true,
+      showCumulativeDebt: true,
+      showZeroEmptySections: true,
+      topDebtorsLimit: 5,
+      signatureMode: isThermal ? 'dual' : 'triple'
+    };
+  }
+
+  function applyStateCleanerV2() {
+    const PSP = window.GherbiPrintStudioPro;
+    if (!PSP || !PSP.state || PSP.state._nativeShiftCleanerV2) return false;
+    PSP.state._nativeShiftCleanerV2 = true;
+
+    const st = PSP.state;
+
+    // 1. تنظيف SECTIONS_CATALOG من أي معرفات shift_ قديمة مكررة، وضمان وجود المعرفات الـ 6 المعتمدة
+    if (Array.isArray(st.SECTIONS_CATALOG)) {
+      const seenCat = new Set();
+      const cleanedCatalog = [];
+      for (let i = 0; i < st.SECTIONS_CATALOG.length; i++) {
+        const item = st.SECTIONS_CATALOG[i];
+        if (!item || !item.id) continue;
+        if (item.id.startsWith('shift_') && !CANONICAL_SHIFT_IDS.has(item.id)) continue;
+        if (seenCat.has(item.id)) continue;
+        seenCat.add(item.id);
+        cleanedCatalog.push(item);
+      }
+      for (const [sid, meta] of Object.entries(NEW_SECTIONS_META)) {
+        if (!seenCat.has(sid)) {
+          cleanedCatalog.push({ id: sid, cat: meta.cat, name: meta.name, desc: meta.desc });
+          seenCat.add(sid);
+        }
+      }
+      st.SECTIONS_CATALOG.length = 0;
+      cleanedCatalog.forEach((x) => st.SECTIONS_CATALOG.push(x));
+    }
+
+    // 2. دالة إعادة الترتيب الاحترافي النظيف (قابلة للاستدعاء مباشرةً من زر في مركز الطباعة!)
+    st.applyIdealZReportOrder = function applyIdealZOrder(tpl) {
+      if (!tpl || typeof tpl !== 'object') return tpl;
+      const isZ80 = tpl.id === 'caisse_z_report';
+      const isZA4 = tpl.id === 'caisse_shift_full_audit_a4';
+      if (!isZ80 && !isZA4) return tpl;
+
+      const idealOrder = isZ80 ? CANONICAL_Z80_ORDER : CANONICAL_ZA4_ORDER;
+      const byId = new Map();
+      const existing = Array.isArray(tpl.sections) ? tpl.sections : [];
+
+      for (let i = 0; i < existing.length; i++) {
+        const s = existing[i];
+        if (!s || !s.id) continue;
+        if (s.id.startsWith('shift_') && !CANONICAL_SHIFT_IDS.has(s.id)) continue;
+        if (!byId.has(s.id)) byId.set(s.id, s);
+      }
+
+      const catalog = Array.isArray(st.SECTIONS_CATALOG) ? st.SECTIONS_CATALOG : [];
+      const rebuilt = [];
+      const used = new Set();
+
+      // أولاً: الأقسام المثالية بالترتيب المعتمد ومفعّلة
+      for (let i = 0; i < idealOrder.length; i++) {
+        const sid = idealOrder[i];
+        used.add(sid);
+        const old = byId.get(sid);
+        const cMeta = catalog.find((c) => c && c.id === sid) || NEW_SECTIONS_META[sid];
+        rebuilt.push({
+          id: sid,
+          enabled: true,
+          title: (old && old.title) || '',
+          note: (old && old.note) || '',
+          align: (old && old.align) || (sid === 'shop_header' || sid === 'doc_banner' || sid === 'footer_terms' ? 'center' : 'right'),
+          fontScale: (old && old.fontScale) || 100,
+          border: (old && old.border) || 'default',
+          bg: (old && old.bg) || 'default',
+          label: (cMeta && cMeta.name) || (old && old.label) || sid
+        });
+      }
+
+      // ثانياً: بقية الأقسام (مثل items_table / caisse_billetage / shift_top_debtors في 80mm) معطلة افتراضياً ولكن متاحة في مركز الطباعة
+      for (let i = 0; i < catalog.length; i++) {
+        const cMeta = catalog[i];
+        if (!cMeta || !cMeta.id || used.has(cMeta.id)) continue;
+        if (cMeta.id.startsWith('shift_') && !CANONICAL_SHIFT_IDS.has(cMeta.id)) continue;
+        used.add(cMeta.id);
+        const old = byId.get(cMeta.id);
+        rebuilt.push({
+          id: cMeta.id,
+          enabled: false,
+          title: (old && old.title) || '',
+          note: (old && old.note) || '',
+          align: (old && old.align) || 'right',
+          fontScale: (old && old.fontScale) || 100,
+          border: (old && old.border) || 'default',
+          bg: (old && old.bg) || 'default',
+          label: cMeta.name || cMeta.id
+        });
+      }
+
+      tpl.sections = rebuilt;
+      tpl.shiftOptions = Object.assign(defaultShiftOptions(isZ80), tpl.shiftOptions || {});
+      tpl._zCleanV2Migrated = true;
+      return tpl;
+    };
+
+    // 3. ضمان خلو كل قالب من التكرار وترقية قوالب Z-Report المحفوظة تلقائياً مرة واحدة لـ _zCleanV2Migrated
+    st.ensureNativeShiftTemplateUpgraded = function cleanAndUpgradeTemplateV2(tpl) {
+      if (!tpl || typeof tpl !== 'object') return tpl;
+      const isZ80 = tpl.id === 'caisse_z_report';
+      const isZA4 = tpl.id === 'caisse_shift_full_audit_a4';
+      const isThermal = tpl.paperSize === '80mm' || tpl.paperSize === '58mm';
+
+      tpl.shiftOptions = Object.assign(defaultShiftOptions(isThermal), tpl.shiftOptions || {});
+
+      if (Array.isArray(tpl.sections)) {
+        const seen = new Set();
+        tpl.sections = tpl.sections.filter((s) => {
+          if (!s || !s.id) return false;
+          if (s.id.startsWith('shift_') && !CANONICAL_SHIFT_IDS.has(s.id)) return false;
+          if (seen.has(s.id)) return false;
+          seen.add(s.id);
+          return true;
+        });
+      } else {
+        tpl.sections = [];
+      }
+
+      if ((isZ80 || isZA4) && !tpl._zCleanV2Migrated) {
+        st.applyIdealZReportOrder(tpl);
+      } else {
+        // التأكد من وجود المعرفات الـ 6 في القائمة حتى لو كان القالب مخصصاً بالفعل
+        for (const [sid, meta] of Object.entries(NEW_SECTIONS_META)) {
+          if (!tpl.sections.some((s) => s && s.id === sid)) {
+            tpl.sections.push({
+              id: sid,
+              enabled: false,
+              title: '',
+              note: '',
+              align: 'right',
+              fontScale: 100,
+              border: 'default',
+              bg: 'default',
+              label: meta.name
+            });
+          }
+        }
+      }
+
+      return tpl;
+    };
+
+    const origGetTpl = st.getTemplate.bind(st);
+    st.getTemplate = function getTemplateCleanedV2(docId) {
+      const tpl = origGetTpl(docId);
+      return st.ensureNativeShiftTemplateUpgraded(tpl);
+    };
+
+    if (typeof st.normalizeDocData === 'function' && !st._normFdPreservedV2) {
+      st._normFdPreservedV2 = true;
+      const origNorm = st.normalizeDocData.bind(st);
+      st.normalizeDocData = function (docId, rawData) {
+        const out = origNorm(docId, rawData);
+        if (rawData && typeof rawData === 'object') {
+          if (rawData.forensicDossier) out.forensicDossier = rawData.forensicDossier;
+          if (rawData.shiftSummary) out.shiftSummary = rawData.shiftSummary;
+        }
+        return out;
+      };
+    }
+
+    if (st.templates && typeof st.templates === 'object') {
+      Object.values(st.templates).forEach((t) => st.ensureNativeShiftTemplateUpgraded(t));
+    }
+
+    return true;
+  }
+
+  if (!applyStateCleanerV2()) {
+    let k = 0;
+    const iv = setInterval(() => {
+      k++;
+      if (applyStateCleanerV2() || k >= 40) clearInterval(iv);
+    }, 80);
+  }
+})();
+
+/* === [WAR STAGE 6B2: NATIVE EXPENSE VOUCHERS & OUTFLOWS REPORT STATE] === */
+(function installPspNativeExpenseStateV1() {
+  'use strict';
+
+  const EXP_DOC_IDS = new Set(['expense_voucher', 'expense_voucher_a4', 'expenses_period_report_a4', 'expenses_period_report_80mm']);
+  const EXP_NEW_SECTIONS = {
+    expense_voucher_card: { cat: 'FINANCE', name: '🧾 بطاقة سند الصرف التفصيلية (المستفيد + المصدر + السنتيم)', desc: 'تعرض تفاصيل سند الصرف أو السلفة، مصدر المال، المبلغ بالسنتيم وبالحروف، ورقم الوردية.' },
+    outflows_report_kpis: { cat: 'FINANCE', name: '📊 بطاقات مؤشرات إجمالي المصاريف والمدفوعات الخارجة', desc: 'إجمالي المصاريف، سلف العمال، تسديدات الموردين، ودفعات المشتريات.' },
+    outflows_by_source_box: { cat: 'FINANCE', name: '🏦 توزيع الأموال الخارجة حسب مصادر التمويل الأربعة', desc: 'يفصل ما خرج من درج الوردية، الخزينة الرئيسية، البنك/CCP، والمال الخارجي.' },
+    outflows_by_category_box: { cat: 'FINANCE', name: '🗂️ توزيع المصاريف والمدفوعات حسب الفئة والنسبة %', desc: 'يكشف أعلى بنود الصرف ونسبة كل فئة من إجمالي الخارج.' },
+    outflows_detail_table: { cat: 'FINANCE', name: '📋 السجل التفصيلي لعمليات الصرف والمدفوعات', desc: 'جدول/قائمة كاملة بجميع السندات مع التاريخ، المستفيد، المصدر، والمبلغ.' }
+  };
+
+  function defaultExpOpts(isThermal) {
+    return {
+      showFundingSource: true,
+      showBeneficiary: true,
+      showCentimes: true,
+      showAmountInWords: !isThermal,
+      showShiftRef: true,
+      signatureMode: isThermal ? 'dual' : 'triple'
+    };
+  }
+
+  function applyExpState() {
+    const PSP = window.GherbiPrintStudioPro;
+    if (!PSP || !PSP.state || PSP.state._nativeExpenseStateV1) return false;
+    PSP.state._nativeExpenseStateV1 = true;
+
+    const st = PSP.state;
+    if (Array.isArray(st.SECTIONS_CATALOG)) {
+      for (const [sid, meta] of Object.entries(EXP_NEW_SECTIONS)) {
+        if (!st.SECTIONS_CATALOG.some((x) => x && x.id === sid)) {
+          st.SECTIONS_CATALOG.push({ id: sid, cat: meta.cat, name: meta.name, desc: meta.desc });
+        }
+      }
+    }
+
+    const prevGetTpl = st.getTemplate.bind(st);
+    st.getTemplate = function getTemplateWithExpenseNative(docId) {
+      const tpl = prevGetTpl(docId);
+      if (!tpl || typeof tpl !== 'object') return tpl;
+      const isThermal = tpl.paperSize === '80mm' || tpl.paperSize === '58mm';
+      tpl.expenseOptions = Object.assign(defaultExpOpts(isThermal), tpl.expenseOptions || {});
+
+      if (EXP_DOC_IDS.has(tpl.id)) {
+        if (!Array.isArray(tpl.sections)) tpl.sections = [];
+        for (const [sid, meta] of Object.entries(EXP_NEW_SECTIONS)) {
+          if (!tpl.sections.some((s) => s && s.id === sid)) {
+            tpl.sections.push({
+              id: sid,
+              enabled: false,
+              title: '',
+              note: '',
+              align: 'right',
+              fontScale: 100,
+              border: 'default',
+              bg: 'default',
+              label: meta.name
+            });
+          }
+        }
+
+        if (!tpl._expNativeV1Migrated) {
+          tpl._expNativeV1Migrated = true;
+          const isVoucher = tpl.id === 'expense_voucher' || tpl.id === 'expense_voucher_a4';
+          const ideal = isVoucher
+            ? ['shop_header', 'doc_banner', 'expense_voucher_card', 'dual_signatures', 'footer_terms']
+            : ['shop_header', 'doc_banner', 'outflows_report_kpis', 'outflows_by_source_box', 'outflows_by_category_box', 'outflows_detail_table', 'dual_signatures', 'footer_terms'];
+
+          const byId = new Map();
+          tpl.sections.forEach((s) => { if (s && s.id && !byId.has(s.id)) byId.set(s.id, s); });
+          const rebuilt = [];
+          const used = new Set();
+          ideal.forEach((sid) => {
+            used.add(sid);
+            const old = byId.get(sid);
+            const cMeta = (st.SECTIONS_CATALOG || []).find((x) => x && x.id === sid) || EXP_NEW_SECTIONS[sid];
+            rebuilt.push({
+              id: sid,
+              enabled: true,
+              title: (old && old.title) || '',
+              note: (old && old.note) || '',
+              align: sid === 'shop_header' || sid === 'doc_banner' || sid === 'footer_terms' ? 'center' : 'right',
+              fontScale: (old && old.fontScale) || 100,
+              border: (old && old.border) || 'default',
+              bg: (old && old.bg) || 'default',
+              label: (cMeta && cMeta.name) || sid
+            });
+          });
+          tpl.sections.forEach((s) => {
+            if (s && s.id && !used.has(s.id)) {
+              used.add(s.id);
+              rebuilt.push(Object.assign({}, s, { enabled: false }));
+            }
+          });
+          tpl.sections = rebuilt;
+        }
+      }
+
+      return tpl;
+    };
+
+    if (typeof st.normalizeDocData === 'function' && !st._normExpPreservedV1) {
+      st._normExpPreservedV1 = true;
+      const prevNorm = st.normalizeDocData.bind(st);
+      st.normalizeDocData = function (docId, rawData) {
+        const out = prevNorm(docId, rawData);
+        if (rawData && typeof rawData === 'object') {
+          if (rawData.expenseVoucher) out.expenseVoucher = rawData.expenseVoucher;
+          if (rawData.outflowsReport) out.outflowsReport = rawData.outflowsReport;
+        }
+        return out;
+      };
+    }
+
+    if (typeof st.ensureAllTemplatesInitialized === 'function') {
+      st.ensureAllTemplatesInitialized();
+    }
+    return true;
+  }
+
+  if (!applyExpState()) {
+    let k = 0;
+    const iv = setInterval(() => {
+      k++;
+      if (applyExpState() || k >= 40) clearInterval(iv);
+    }, 80);
+  }
+})();
+
+/* === [WAR STAGE 6C: NATIVE Z-REPORT EXTERNAL FUNDING STATE] === */
+(function installPspStage6CShiftExternalFundingState() {
+  'use strict';
+
+  const Z_IDS = new Set(["receipt_thermal","caisse_z_report","caisse_shift_full_audit_a4","caisse_cash_in_voucher_80mm"]);
+  const EXT_SEC_META = {
+    id: 'shift_external_funding_box',
+    cat: 'FINANCE',
+    name: '🏦 المعاملات المموّلة من خارج درج الكاشير (خزينة / بنك / مال خارجي)',
+    desc: 'توثّق المدفوعات التي تمّت خلال الوردية من الخزينة الرئيسية أو البنك/CCP أو جيب المالك دون خصمها من الدرج.'
+  };
+
+  function applyS6CState() {
+    const PSP = window.GherbiPrintStudioPro;
+    if (!PSP || !PSP.state || PSP.state._s6cShiftExtStateInstalledV2) return false;
+    PSP.state._s6cShiftExtStateInstalledV2 = true;
+
+    const st = PSP.state;
+    if (Array.isArray(st.SECTIONS_CATALOG) && !st.SECTIONS_CATALOG.some((x) => x && x.id === EXT_SEC_META.id)) {
+      st.SECTIONS_CATALOG.push(EXT_SEC_META);
+    }
+
+    const prevGetTpl = st.getTemplate.bind(st);
+    st.getTemplate = function getTemplateWithShiftExtFundingV2(docId) {
+      const tpl = prevGetTpl(docId);
+      if (!tpl || typeof tpl !== 'object') return tpl;
+
+      if (Z_IDS.has(tpl.id) || Z_IDS.has(docId)) {
+        if (!tpl.shiftOptions || typeof tpl.shiftOptions !== 'object') tpl.shiftOptions = {};
+        if (tpl.shiftOptions.showExternalFundingSection === undefined) {
+          tpl.shiftOptions.showExternalFundingSection = true;
+        }
+        if (!Array.isArray(tpl.sections)) tpl.sections = [];
+
+        let secObj = tpl.sections.find((s) => s && s.id === EXT_SEC_META.id);
+        if (!secObj) {
+          secObj = {
+            id: EXT_SEC_META.id,
+            enabled: tpl.shiftOptions.showExternalFundingSection !== false,
+            title: '',
+            note: '',
+            align: 'right',
+            fontScale: 100,
+            border: 'default',
+            bg: 'default',
+            label: EXT_SEC_META.name
+          };
+          const sigIdx = tpl.sections.findIndex((s) => s && (s.id === 'dual_signatures' || s.id === 'footer_terms'));
+          if (sigIdx >= 0) tpl.sections.splice(sigIdx, 0, secObj);
+          else tpl.sections.push(secObj);
+          tpl._s6cExtMigratedV2 = true;
+        } else if (!tpl._s6cExtMigratedV2) {
+          tpl._s6cExtMigratedV2 = true;
+          secObj.enabled = tpl.shiftOptions.showExternalFundingSection !== false;
+          secObj.label = EXT_SEC_META.name;
+          // وضع القسم قبل التوقيعات مباشرةً ليكون منظماً
+          const curIdx = tpl.sections.indexOf(secObj);
+          const sigIdx = tpl.sections.findIndex((s) => s && (s.id === 'dual_signatures' || s.id === 'footer_terms'));
+          if (sigIdx >= 0 && curIdx > sigIdx) {
+            tpl.sections.splice(curIdx, 1);
+            tpl.sections.splice(sigIdx, 0, secObj);
+          }
+        }
+      }
+      return tpl;
+    };
+
+    if (typeof st.normalizeDocData === 'function' && !st._s6cNormPreservedV2) {
+      st._s6cNormPreservedV2 = true;
+      const prevNorm = st.normalizeDocData.bind(st);
+      st.normalizeDocData = function (docId, rawData) {
+        const out = prevNorm(docId, rawData);
+        if (rawData && typeof rawData === 'object') {
+          if (rawData.externalFundedTx) out.externalFundedTx = rawData.externalFundedTx;
+          if (rawData.externalFundedTotals) out.externalFundedTotals = rawData.externalFundedTotals;
+        }
+        return out;
+      };
+    }
+
+    if (typeof st.ensureAllTemplatesInitialized === 'function') {
+      st.ensureAllTemplatesInitialized();
+    }
+    return true;
+  }
+
+  if (!applyS6CState()) {
+    let k = 0;
+    const iv = setInterval(() => {
+      k++;
+      if (applyS6CState() || k >= 40) clearInterval(iv);
+    }, 80);
+  }
 })();

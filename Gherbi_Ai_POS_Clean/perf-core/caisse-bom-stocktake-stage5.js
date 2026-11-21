@@ -259,7 +259,8 @@
           receivedAmount: rec.countedBalance,
           remainingDebt: 0,
           previousBalance: rec.newCreditGiven,
-          shiftSummary: rec
+          shiftSummary: rec,
+          forensicDossier: details.forensicDossier || null
         };
 
         this.metrics.zReportsRouted++;
@@ -1013,522 +1014,106 @@
   }
 })();
 
-/* === [WAR STAGE 5D: EXECUTIVE Z-REPORT 80MM & A4 WAR-ROOM RENDERER] === */
-(function installStage5DExecutiveZReportRenderer() {
+/* === [WAR STAGE 5E: EXACT TRANSACTIONS-FIRST DRAWER ACCOUNTING] === */
+(function installStage5ExactTransactionsPriority() {
   'use strict';
 
-  function esc(str) {
-    return String(str ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
-  function fmtMoney(val, showPlus) {
-    const n = Number(val || 0);
-    const absStr = Math.abs(n).toFixed(2);
-    const parts = absStr.split('.');
-    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    const sign = n < -0.004 ? '-' : showPlus && n > 0.004 ? '+' : '';
-    return '<span dir="rtl" style="white-space:nowrap;unicode-bidi:isolate;font-weight:900;">\u2066' + sign + parts.join('.') + '\u2069&#160;د.ج</span>';
-  }
-
-  function buildSampleForensicDossier() {
-    return {
-      outflows: [
-        { time: '11:20', typeLabel: 'سلفة عامل #2', beneficiary: 'محمد (العامل)', reason: 'سلفة نقدية من الصندوق', amount: 1000 },
-        { time: '15:40', typeLabel: 'نقل وشحن', beneficiary: 'موزع البضاعة', reason: 'تفريغ ونقل سلع التموين', amount: 500 }
-      ],
-      inflows: [
-        { time: '08:05', typeLabel: 'إيداع صرف', source: 'المدير العام', reason: 'تغذية الدرج بفئات صغيرة', amount: 1000 }
-      ],
-      debtCollections: [
-        { time: '14:15', customerName: 'أمين بن يحيى', customerPhone: '0550112233', note: 'دفعة من الدين السابق', amount: 1200, remainingDebtNow: 550 }
-      ],
-      debtCollectionsGrouped: [
-        { customerName: 'أمين بن يحيى', count: 1, total: 1200, lastTime: '14:15', remainingDebtNow: 550 }
-      ],
-      creditSalesToday: [
-        { docNumber: 'FAC-0124', time: '16:30', customerName: 'كريم بن عيسى', customerPhone: '0661445566', invoiceTotal: 1450, paidToday: 500, creditAdded: 950, cumulativeDebtNow: 2150 },
-        { docNumber: 'FAC-0127', time: '18:10', customerName: 'سليم مرابط', customerPhone: '0770889900', invoiceTotal: 620, paidToday: 0, creditAdded: 620, cumulativeDebtNow: 620 }
-      ],
-      topDebtors: [
-        { name: 'كريم بن عيسى', phone: '0661445566', debt: 2150 },
-        { name: 'سليم مرابط', phone: '0770889900', debt: 620 },
-        { name: 'أمين بن يحيى', phone: '0550112233', debt: 550 }
-      ],
-      auditEventsCount: 0,
-      ownerAlerts: [
-        { level: 'info', text: 'تم منح ديون جديدة بقيمة 1,570.00 د.ج لـ (2) زبائن في هذه الوردية.' }
-      ],
-      kpis: {
-        salesCount: 24,
-        totalSalesRevenue: 17370,
-        avgBasket: 723.75,
-        totalDiscounts: 150,
-        totalOutflows: 1500,
-        totalInflows: 1000,
-        totalDebtCollected: 1200,
-        totalCreditAddedToday: 1570,
-        storeTotalDebtReal: 3320,
-        debtorsCount: 3
-      },
-      paymentBreakdown: {
-        cash: 14800,
-        cib: 1000,
-        baridimob: 0,
-        cheque: 0,
-        credit: 1570,
-        other: 0
-      }
-    };
-  }
-
-  function renderThermal80mmWarBlock(dossier, rec, theme) {
-    const primary = (theme && theme.primary) || '#0f172a';
-    const border = (theme && theme.border) || '#cbd5e1';
-    const outflows = Array.isArray(dossier.outflows) ? dossier.outflows : [];
-    const creditSales = Array.isArray(dossier.creditSalesToday) ? dossier.creditSalesToday : [];
-    const collections = Array.isArray(dossier.debtCollectionsGrouped) ? dossier.debtCollectionsGrouped : [];
-    const alerts = Array.isArray(dossier.ownerAlerts) ? dossier.ownerAlerts : [];
-    const kpis = dossier.kpis || {};
-    const pm = dossier.paymentBreakdown || {};
-
-    let html = '<div data-s5d-war-dossier="1" style="margin-top:6px;font-family:\'Cairo\',\'Tajawal\',Tahoma,Arial,sans-serif;direction:rtl;text-align:right;font-size:9.2px;line-height:1.35;color:#0f172a;">';
-
-    // 1. شريط تنبيهات المستشار الحربي لصاحب المتجر (يظهر عند وجود تنبيه)
-    if (alerts.length > 0) {
-      html += '<div style="border:1.5px solid #e11d48;background:#fff1f2;border-radius:6px;padding:4px 5px;margin-bottom:6px;">';
-      html += '<div style="font-weight:900;color:#9f1239;font-size:9.3px;margin-bottom:2px;">🛡️ تنبيهات الرقابة لصاحب المتجر:</div>';
-      for (let i = 0; i < alerts.length; i++) {
-        const al = alerts[i];
-        const col = al.level === 'danger' ? '#be123c' : al.level === 'warning' ? '#b45309' : '#1d4ed8';
-        html += '<div style="color:' + col + ';font-weight:800;font-size:8.6px;margin-top:1px;">• ' + esc(al.text) + '</div>';
-      }
-      html += '</div>';
-    }
-
-    // 2. دفتر الأموال الخارجة (المصاريف، السلَف، السحوبات — من أخذ؟ لماذا؟ كم؟)
-    html += '<div style="border:1px solid #fecdd3;border-radius:6px;padding:4px 5px;margin-bottom:6px;background:#fff;">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px dashed #fda4af;padding-bottom:2px;margin-bottom:3px;font-weight:900;color:#9f1239;">';
-    html += '<span>💸 الأموال الخارجة (مصاريف / سلَف) (' + outflows.length + ')</span>';
-    html += '<span>' + fmtMoney(-Math.abs(Number(kpis.totalOutflows || 0))) + '</span>';
-    html += '</div>';
-    if (outflows.length === 0) {
-      html += '<div style="color:#047857;font-weight:700;font-size:8.5px;text-align:center;">✔ لا توجد مصاريف أو سحوبات في هذه الوردية</div>';
-    } else {
-      for (let i = 0; i < outflows.length; i++) {
-        const o = outflows[i];
-        html += '<div style="border-bottom:1px dotted #e2e8f0;padding:2.5px 0;">';
-        html += '<div style="display:flex;justify-content:space-between;gap:4px;font-weight:900;">';
-        html += '<span>' + (i + 1) + '. ' + esc(o.beneficiary) + ' <span style="font-weight:700;color:#64748b;font-size:8px;">(' + esc(o.time || '--:--') + ')</span></span>';
-        html += '<span style="color:#be123c;">' + fmtMoney(-Math.abs(o.amount)) + '</span>';
-        html += '</div>';
-        html += '<div style="font-size:8.3px;color:#475569;padding-right:8px;">السبب: ' + esc(o.typeLabel) + (o.reason && o.reason !== o.typeLabel ? ' — ' + esc(o.reason) : '') + '</div>';
-        html += '</div>';
-      }
-    }
-    html += '</div>';
-
-    // 3. دفتر الزبائن الذين أخذوا بالدين اليوم (كريدي الوردية)
-    html += '<div style="border:1px solid #fed7aa;border-radius:6px;padding:4px 5px;margin-bottom:6px;background:#fff;">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px dashed #fdba74;padding-bottom:2px;margin-bottom:3px;font-weight:900;color:#9a3412;">';
-    html += '<span>📝 ديون اليوم (الزبائن المدينون) (' + creditSales.length + ')</span>';
-    html += '<span>' + fmtMoney(Number(kpis.totalCreditAddedToday || 0), true) + '</span>';
-    html += '</div>';
-    if (creditSales.length === 0) {
-      html += '<div style="color:#047857;font-weight:700;font-size:8.5px;text-align:center;">✔ لم تُسجل مبيعات بالدين في هذه الوردية</div>';
-    } else {
-      for (let i = 0; i < creditSales.length; i++) {
-        const cs = creditSales[i];
-        html += '<div style="border-bottom:1px dotted #e2e8f0;padding:2.5px 0;">';
-        html += '<div style="display:flex;justify-content:space-between;gap:4px;font-weight:900;">';
-        html += '<span>' + (i + 1) + '. ' + esc(cs.customerName) + '</span>';
-        html += '<span style="color:#c2410c;">' + fmtMoney(cs.creditAdded, true) + '</span>';
-        html += '</div>';
-        html += '<div style="font-size:8px;color:#475569;display:flex;justify-content:space-between;">';
-        html += '<span>فاتورة ' + esc(cs.docNumber) + ' (' + esc(cs.time || '') + ') | مدفوع: ' + fmtMoney(cs.paidToday) + '</span>';
-        html += '<span>دينه الكلي: ' + fmtMoney(cs.cumulativeDebtNow) + '</span>';
-        html += '</div>';
-        html += '</div>';
-      }
-    }
-    html += '</div>';
-
-    // 4. تحصيلات الديون المقبوضة في الوردية بأسماء الزبائن الحقيقية
-    if (collections.length > 0) {
-      html += '<div style="border:1px solid #a7f3d0;border-radius:6px;padding:4px 5px;margin-bottom:6px;background:#ecfdf5;">';
-      html += '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px dashed #34d399;padding-bottom:2px;margin-bottom:3px;font-weight:900;color:#065f46;">';
-      html += '<span>🤝 تحصيلات الديون بالوردية (' + collections.length + ')</span>';
-      html += '<span>' + fmtMoney(Number(kpis.totalDebtCollected || 0), true) + '</span>';
-      html += '</div>';
-      for (let i = 0; i < collections.length; i++) {
-        const col = collections[i];
-        html += '<div style="display:flex;justify-content:space-between;font-size:8.6px;padding:1.5px 0;border-bottom:1px dotted #d1fae5;">';
-        html += '<span style="font-weight:800;">' + esc(col.customerName) + (col.count > 1 ? ' (' + col.count + ' دفعات)' : '') + '</span>';
-        html += '<span style="color:#047857;font-weight:900;">' + fmtMoney(col.total, true) + '</span>';
-        html += '</div>';
-      }
-      html += '</div>';
-    }
-
-    // 5. ملخص وسائل الدفع ومؤشرات الأداء السريعة
-    html += '<div style="border:1px solid ' + border + ';border-radius:6px;padding:4px 5px;margin-bottom:6px;background:#f8fafc;">';
-    html += '<div style="font-weight:900;color:' + primary + ';border-bottom:1px dashed #cbd5e1;padding-bottom:2px;margin-bottom:3px;">💳 تفصيل المبيعات ووسائل الدفع</div>';
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 6px;font-size:8.4px;">';
-    html += '<div>عدد الفواتير: <b>' + Number(kpis.salesCount || 0) + '</b></div>';
-    html += '<div>رقم الأعمال: ' + fmtMoney(kpis.totalSalesRevenue || 0) + '</div>';
-    html += '<div>نقداً (Cash): ' + fmtMoney(pm.cash || 0) + '</div>';
-    html += '<div>إلكتروني (CIB/CCP): ' + fmtMoney(Number(pm.cib || 0) + Number(pm.baridimob || 0)) + '</div>';
-    html += '<div>آجل (كريدي): ' + fmtMoney(pm.credit || 0) + '</div>';
-    html += '<div>التخفيضات: ' + fmtMoney(kpis.totalDiscounts || 0) + '</div>';
-    html += '</div></div>';
-
-    // 6. خانة المصادقة والتوقيع المزدوجة (80mm)
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;padding-top:5px;border-top:1.5px dashed #94a3b8;text-align:center;font-size:8.3px;font-weight:800;color:#334155;">';
-    html += '<div style="border:1px dashed #cbd5e1;border-radius:5px;padding:4px 3px 16px;">توقيع الكاشير (المسلّم)<br><span style="font-weight:700;font-size:7.8px;color:#64748b;">' + esc((rec && rec.cashierName) || '') + '</span></div>';
-    html += '<div style="border:1px dashed #cbd5e1;border-radius:5px;padding:4px 3px 16px;">توقيع صاحب المتجر<br><span style="font-weight:700;font-size:7.8px;color:#64748b;">المصادقة والاستلام</span></div>';
-    html += '</div>';
-
-    html += '</div>';
-    return html;
-  }
-
-  function renderExecutiveA4WarBlock(dossier, rec, theme) {
-    const primary = (theme && theme.primary) || '#1e3a8a';
-    const border = (theme && theme.border) || '#cbd5e1';
-    const outflows = Array.isArray(dossier.outflows) ? dossier.outflows : [];
-    const inflows = Array.isArray(dossier.inflows) ? dossier.inflows : [];
-    const creditSales = Array.isArray(dossier.creditSalesToday) ? dossier.creditSalesToday : [];
-    const debtCols = Array.isArray(dossier.debtCollections) ? dossier.debtCollections : [];
-    const topDebtors = Array.isArray(dossier.topDebtors) ? dossier.topDebtors : [];
-    const alerts = Array.isArray(dossier.ownerAlerts) ? dossier.ownerAlerts : [];
-    const kpis = dossier.kpis || {};
-    const pm = dossier.paymentBreakdown || {};
-
-    let html = '<div data-s5d-war-dossier="1" style="margin-top:12px;font-family:\'Cairo\',\'Tajawal\',Tahoma,Arial,sans-serif;direction:rtl;text-align:right;font-size:11px;line-height:1.45;color:#0f172a;">';
-
-    // 1. لوحة مؤشرات القيادة العلوية (4 KPIs)
-    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;">';
-    html += '<div style="border:1.5px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:7px;text-align:center;">';
-    html += '<div style="font-size:9.5px;font-weight:800;color:#1e40af;">📊 رقم أعمال الوردية</div>';
-    html += '<div style="font-size:13px;color:#1e3a8a;margin-top:2px;">' + fmtMoney(kpis.totalSalesRevenue || 0) + '</div>';
-    html += '<div style="font-size:8.8px;color:#475569;">' + Number(kpis.salesCount || 0) + ' فاتورة | متوسط: ' + fmtMoney(kpis.avgBasket || 0) + '</div></div>';
-
-    html += '<div style="border:1.5px solid #fecdd3;background:#fff1f2;border-radius:8px;padding:7px;text-align:center;">';
-    html += '<div style="font-size:9.5px;font-weight:800;color:#9f1239;">💸 الأموال الخارجة (مصاريف/سلَف)</div>';
-    html += '<div style="font-size:13px;color:#be123c;margin-top:2px;">' + fmtMoney(-Math.abs(Number(kpis.totalOutflows || 0))) + '</div>';
-    html += '<div style="font-size:8.8px;color:#475569;">' + outflows.length + ' عملية خروج من الدرج</div></div>';
-
-    html += '<div style="border:1.5px solid #fed7aa;background:#fff7ed;border-radius:8px;padding:7px;text-align:center;">';
-    html += '<div style="font-size:9.5px;font-weight:800;color:#9a3412;">📝 كريدي ممنوح في الوردية</div>';
-    html += '<div style="font-size:13px;color:#c2410c;margin-top:2px;">' + fmtMoney(kpis.totalCreditAddedToday || 0, true) + '</div>';
-    html += '<div style="font-size:8.8px;color:#475569;">' + creditSales.length + ' زبائن أخذوا بالدين اليوم</div></div>';
-
-    html += '<div style="border:1.5px solid #a7f3d0;background:#ecfdf5;border-radius:8px;padding:7px;text-align:center;">';
-    html += '<div style="font-size:9.5px;font-weight:800;color:#065f46;">🤝 تحصيلات الديون المقبوضة</div>';
-    html += '<div style="font-size:13px;color:#047857;margin-top:2px;">' + fmtMoney(kpis.totalDebtCollected || 0, true) + '</div>';
-    html += '<div style="font-size:8.8px;color:#475569;">ديون المتجر الكلية: ' + fmtMoney(kpis.storeTotalDebtReal || 0) + '</div></div>';
-    html += '</div>';
-
-    // 2. صندوق تنبيهات المستشار الرقابي
-    if (alerts.length > 0) {
-      html += '<div style="border:1.5px solid #e11d48;background:#fff1f2;border-radius:8px;padding:7px 10px;margin-bottom:10px;">';
-      html += '<div style="font-weight:900;color:#9f1239;font-size:11px;margin-bottom:3px;">🛡️ تقرير رادار الرقابة وتنبيهات صاحب المتجر:</div>';
-      for (let i = 0; i < alerts.length; i++) {
-        const al = alerts[i];
-        const col = al.level === 'danger' ? '#be123c' : al.level === 'warning' ? '#b45309' : '#1d4ed8';
-        html += '<div style="color:' + col + ';font-weight:800;font-size:10px;margin-top:2px;">• ' + esc(al.text) + '</div>';
-      }
-      html += '</div>';
-    }
-
-    // 3. جدول #1: سجل الأموال الخارجة والمصاريف والسلَف بالتفصيل
-    html += '<div style="margin-bottom:10px;">';
-    html += '<div style="font-weight:900;font-size:11.5px;color:#9f1239;border-bottom:2px solid #fda4af;padding-bottom:3px;margin-bottom:5px;">1️⃣ سجل الأموال الخارجة من الدرج (المصاريف، السلَف، السحوبات، وتسديد الموردين)</div>';
-    if (outflows.length === 0) {
-      html += '<div style="padding:6px;border:1px dashed #a7f3d0;background:#ecfdf5;border-radius:6px;color:#065f46;font-weight:800;text-align:center;">✔ لم تخرج أي مصاريف أو سحوبات نقدية من الدرج خلال هذه الوردية</div>';
-    } else {
-      html += '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
-      html += '<thead><tr style="background:#ffe4e6;color:#881337;">';
-      html += '<th style="border:1px solid #fecdd3;padding:4px;width:5%;">#</th>';
-      html += '<th style="border:1px solid #fecdd3;padding:4px;width:10%;">الساعة</th>';
-      html += '<th style="border:1px solid #fecdd3;padding:4px;width:18%;">النوع</th>';
-      html += '<th style="border:1px solid #fecdd3;padding:4px;width:22%;">المستفيد / الآخذ</th>';
-      html += '<th style="border:1px solid #fecdd3;padding:4px;width:30%;">السبب والبيان التفصيلي</th>';
-      html += '<th style="border:1px solid #fecdd3;padding:4px;width:15%;">المبلغ</th>';
-      html += '</tr></thead><tbody>';
-      for (let i = 0; i < outflows.length; i++) {
-        const o = outflows[i];
-        html += '<tr>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">' + (i + 1) + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">' + esc(o.time || '--:--') + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;font-weight:800;">' + esc(o.typeLabel) + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;font-weight:900;color:#9f1239;">' + esc(o.beneficiary) + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;">' + esc(o.reason) + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#be123c;">' + fmtMoney(-Math.abs(o.amount)) + '</td>';
-        html += '</tr>';
-      }
-      html += '</tbody></table>';
-    }
-    html += '</div>';
-
-    // 4. جدول #2: قائمة الزبائن الذين أخذوا بالدين اليوم (كريدي الوردية)
-    html += '<div style="margin-bottom:10px;">';
-    html += '<div style="font-weight:900;font-size:11.5px;color:#9a3412;border-bottom:2px solid #fdba74;padding-bottom:3px;margin-bottom:5px;">2️⃣ قائمة الزبائن المدينين اليوم (المبيعات الآجلة والدفع الجزئي في هذه الوردية)</div>';
-    if (creditSales.length === 0) {
-      html += '<div style="padding:6px;border:1px dashed #a7f3d0;background:#ecfdf5;border-radius:6px;color:#065f46;font-weight:800;text-align:center;">✔ جميع مبيعات هذه الوردية كانت مدفوعة بالكامل بدون ديون جديدة</div>';
-    } else {
-      html += '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
-      html += '<thead><tr style="background:#ffedd5;color:#7c2d12;">';
-      html += '<th style="border:1px solid #fed7aa;padding:4px;width:5%;">#</th>';
-      html += '<th style="border:1px solid #fed7aa;padding:4px;width:15%;">الفاتورة / الوقت</th>';
-      html += '<th style="border:1px solid #fed7aa;padding:4px;width:28%;">اسم الزبون والهاتف</th>';
-      html += '<th style="border:1px solid #fed7aa;padding:4px;width:13%;">الإجمالي</th>';
-      html += '<th style="border:1px solid #fed7aa;padding:4px;width:13%;">المدفوع</th>';
-      html += '<th style="border:1px solid #fed7aa;padding:4px;width:13%;">دين اليوم (+)</th>';
-      html += '<th style="border:1px solid #fed7aa;padding:4px;width:13%;">دينه الكلي الآن</th>';
-      html += '</tr></thead><tbody>';
-      for (let i = 0; i < creditSales.length; i++) {
-        const cs = creditSales[i];
-        html += '<tr>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">' + (i + 1) + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">' + esc(cs.docNumber) + '<br><span style="font-size:8.5px;color:#64748b;">' + esc(cs.time || '') + '</span></td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;font-weight:900;">' + esc(cs.customerName) + (cs.customerPhone ? '<br><span style="font-size:8.5px;color:#475569;">' + esc(cs.customerPhone) + '</span>' : '') + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;text-align:left;">' + fmtMoney(cs.invoiceTotal) + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#047857;">' + fmtMoney(cs.paidToday) + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#c2410c;">' + fmtMoney(cs.creditAdded, true) + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#991b1b;">' + fmtMoney(cs.cumulativeDebtNow) + '</td>';
-        html += '</tr>';
-      }
-      html += '</tbody></table>';
-    }
-    html += '</div>';
-
-    // 5. جدول #3: تحصيلات الديون والإيداعات النقدية (الأموال الداخلة للدرج بأسماء الزبائن)
-    if (debtCols.length > 0 || inflows.length > 0) {
-      html += '<div style="margin-bottom:10px;">';
-      html += '<div style="font-weight:900;font-size:11.5px;color:#065f46;border-bottom:2px solid #6ee7b7;padding-bottom:3px;margin-bottom:5px;">3️⃣ سجل تحصيلات الديون والإيداعات النقدية الداخلة للدرج</div>';
-      html += '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
-      html += '<thead><tr style="background:#d1fae5;color:#064e3b;">';
-      html += '<th style="border:1px solid #a7f3d0;padding:4px;width:5%;">#</th>';
-      html += '<th style="border:1px solid #a7f3d0;padding:4px;width:11%;">الساعة</th>';
-      html += '<th style="border:1px solid #a7f3d0;padding:4px;width:18%;">النوع</th>';
-      html += '<th style="border:1px solid #a7f3d0;padding:4px;width:26%;">اسم الزبون / المصدر</th>';
-      html += '<th style="border:1px solid #a7f3d0;padding:4px;width:25%;">البيان / الباقي عليه</th>';
-      html += '<th style="border:1px solid #a7f3d0;padding:4px;width:15%;">المبلغ المقبوض</th>';
-      html += '</tr></thead><tbody>';
-      let rowNum = 0;
-      for (let i = 0; i < debtCols.length; i++) {
-        const dc = debtCols[i];
-        rowNum++;
-        html += '<tr>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">' + rowNum + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">' + esc(dc.time || '--:--') + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;font-weight:800;">تحصيل دين زبون</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;font-weight:900;color:#065f46;">' + esc(dc.customerName) + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;">' + esc(dc.note) + (dc.remainingDebtNow !== null && dc.remainingDebtNow !== undefined ? ' | الباقي: ' + fmtMoney(dc.remainingDebtNow) : '') + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#047857;">' + fmtMoney(dc.amount, true) + '</td>';
-        html += '</tr>';
-      }
-      for (let i = 0; i < inflows.length; i++) {
-        const inf = inflows[i];
-        rowNum++;
-        html += '<tr>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">' + rowNum + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">' + esc(inf.time || '--:--') + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;font-weight:800;">' + esc(inf.typeLabel) + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;font-weight:900;">' + esc(inf.source) + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;">' + esc(inf.reason) + '</td>';
-        html += '<td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#047857;">' + fmtMoney(inf.amount, true) + '</td>';
-        html += '</tr>';
-      }
-      html += '</tbody></table></div>';
-    }
-
-    // 6. صف مزدوج: تفصيل وسائل الدفع + أهم المدينين في المتجر للمتابعة غداً
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">';
-    html += '<div style="border:1px solid ' + border + ';border-radius:8px;padding:7px;background:#f8fafc;">';
-    html += '<div style="font-weight:900;color:' + primary + ';border-bottom:1px dashed #cbd5e1;padding-bottom:3px;margin-bottom:4px;">💳 تفصيل المبيعات حسب وسيلة الدفع</div>';
-    html += '<div style="display:flex;justify-content:space-between;padding:2px 0;"><span>💵 الدفع نقداً (Espèces):</span>' + fmtMoney(pm.cash || 0) + '</div>';
-    html += '<div style="display:flex;justify-content:space-between;padding:2px 0;"><span>💳 بطاقة ذهبية / CIB:</span>' + fmtMoney(pm.cib || 0) + '</div>';
-    html += '<div style="display:flex;justify-content:space-between;padding:2px 0;"><span>📱 بريدي موب (BaridiMob):</span>' + fmtMoney(pm.baridimob || 0) + '</div>';
-    html += '<div style="display:flex;justify-content:space-between;padding:2px 0;"><span>🏦 شيك بنكي / صك:</span>' + fmtMoney(pm.cheque || 0) + '</div>';
-    html += '<div style="display:flex;justify-content:space-between;padding:2px 0;"><span>📝 بيع آجل (كريدي):</span>' + fmtMoney(pm.credit || 0) + '</div>';
-    html += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-top:1px dashed #cbd5e1;margin-top:2px;font-weight:900;"><span>🏷️ إجمالي التخفيضات الممنوحة:</span>' + fmtMoney(kpis.totalDiscounts || 0) + '</div>';
-    html += '</div>';
-
-    html += '<div style="border:1px solid ' + border + ';border-radius:8px;padding:7px;background:#f8fafc;">';
-    html += '<div style="font-weight:900;color:#9a3412;border-bottom:1px dashed #fdba74;padding-bottom:3px;margin-bottom:4px;">📌 أكبر المدينين في المتجر حالياً (للمتابعة والتحصيل)</div>';
-    if (topDebtors.length === 0) {
-      html += '<div style="color:#047857;font-weight:800;padding:12px 0;text-align:center;">✔ لا توجد ديون عالقة على الزبائن حالياً</div>';
-    } else {
-      for (let i = 0; i < Math.min(5, topDebtors.length); i++) {
-        const td = topDebtors[i];
-        html += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dotted #e2e8f0;font-size:9.8px;">';
-        html += '<span style="font-weight:800;">' + (i + 1) + '. ' + esc(td.name) + (td.phone ? ' <span style="color:#64748b;font-weight:600;">(' + esc(td.phone) + ')</span>' : '') + '</span>';
-        html += '<span style="color:#b91c1c;">' + fmtMoney(td.debt) + '</span>';
-        html += '</div>';
-      }
-      html += '<div style="display:flex;justify-content:space-between;padding-top:4px;font-weight:900;color:#7c2d12;"><span>إجمالي ذمم الزبائن بالمتجر (' + Number(kpis.debtorsCount || topDebtors.length) + '):</span>' + fmtMoney(kpis.storeTotalDebtReal || 0) + '</div>';
-    }
-    html += '</div></div>';
-
-    // 7. جدول المصادقة والتوقيعات الثلاثية (A4)
-    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:10px;text-align:center;font-size:10px;font-weight:900;color:#334155;">';
-    html += '<div style="border:1.5px dashed #94a3b8;border-radius:8px;padding:8px 6px 36px;">أمين الصندوق (المسلّم)<br><span style="font-weight:700;font-size:9px;color:#64748b;">' + esc((rec && rec.cashierName) || '') + '</span></div>';
-    html += '<div style="border:1.5px dashed #94a3b8;border-radius:8px;padding:8px 6px 36px;">المراجع / المحاسب<br><span style="font-weight:700;font-size:9px;color:#64748b;">مطابقة الجرد والوثائق</span></div>';
-    html += '<div style="border:1.5px dashed #94a3b8;border-radius:8px;padding:8px 6px 36px;">صاحب المتجر / المدير<br><span style="font-weight:700;font-size:9px;color:#64748b;">المصادقة والختم النهائي</span></div>';
-    html += '</div>';
-
-    html += '</div>';
-    return html;
-  }
-
-  function injectBlockIntoPaperHtml(html, blockHtml) {
-    if (!html || !blockHtml || html.includes('data-s5d-war-dossier="1"')) return html;
-
-    // 1. حقن قبل طبقة التذييل الرسمية إذا كانت موجودة
-    const footerMarkers = [
-      /<div[^>]*data-layer-id=["']footer_stamp_layer["'][^>]*>/i,
-      /<div[^>]*class=["'][^"']*psp-footer[^"']*["'][^>]*>/i,
-      /<div[^>]*>[^<]*وثيقة محاسبية ورقابية رسمية/i
-    ];
-    for (let i = 0; i < footerMarkers.length; i++) {
-      const m = html.match(footerMarkers[i]);
-      if (m && typeof m.index === 'number') {
-        return html.slice(0, m.index) + blockHtml + html.slice(m.index);
-      }
-    }
-
-    // 2. قبل إغلاق آخر div للورقة أو قبل </body>
-    const bodyCloseIdx = html.lastIndexOf('</body>');
-    if (bodyCloseIdx !== -1) {
-      const lastDivBeforeBody = html.lastIndexOf('</div>', bodyCloseIdx);
-      if (lastDivBeforeBody !== -1) {
-        return html.slice(0, lastDivBeforeBody) + blockHtml + html.slice(lastDivBeforeBody);
-      }
-      return html.slice(0, bodyCloseIdx) + blockHtml + html.slice(bodyCloseIdx);
-    }
-
-    const lastDiv = html.lastIndexOf('</div>');
-    if (lastDiv !== -1) {
-      return html.slice(0, lastDiv) + blockHtml + html.slice(lastDiv);
-    }
-    return html + blockHtml;
-  }
-
-  function installStage5D() {
+  function patchS5() {
     const s5 = window.GherbiStage5Ops;
-    const PSP = window.GherbiPrintStudioPro;
-    if (!s5 || !PSP || !PSP.renderer || s5._stage5DInstalled) return false;
-    s5._stage5DInstalled = true;
+    if (!s5 || s5._exactTxPriorityV2) return false;
+    s5._exactTxPriorityV2 = true;
 
-    s5.buildSampleForensicDossier = buildSampleForensicDossier;
-    s5.renderThermal80mmWarBlock = renderThermal80mmWarBlock;
-    s5.renderExecutiveA4WarBlock = renderExecutiveA4WarBlock;
+    s5.computeExactShiftReconciliation = function computeDrawerFromTransactionsFirst(details) {
+      const d = details && typeof details === 'object' ? details : {};
+      const sess = d.session || {};
+      const sum = d.summary || {};
+      const fd = d.forensicDossier || null;
+      const txs = Array.isArray(d.transactions) ? d.transactions : [];
 
-    // 1. تمرير forensicDossier الحقيقي عبر printShiftZReport مع ضبط إجمالي ديون المتجر الحقيقي
-    const prevPrintZ = s5.printShiftZReport.bind(s5);
-    s5.printShiftZReport = async function stage5DPrintShiftZ(sessionIdOrDetails, format = '80mm', opts = {}) {
-      let details = null;
-      if (sessionIdOrDetails && typeof sessionIdOrDetails === 'object') {
-        details = sessionIdOrDetails;
-      } else {
-        const sid = Number(sessionIdOrDetails || 0);
-        if (sid > 0 && window.api && typeof window.api.getSessionDetails === 'function') {
-          details = await window.api.getSessionDetails(sid);
-        } else {
-          details = await s5.fetchActiveSession(null, { force: true });
+      const openingBalance = Number(Number(sess.opening_balance ?? sum.openingBalance ?? 0).toFixed(2));
+
+      let cashSales = 0;
+      let debtPayments = 0;
+      let orderDeposits = 0;
+      let cashIn = 0;
+      let cashOut = 0;
+      let expenses = 0;
+
+      // المصدر الوحيد للحقيقة النقدية بالدرج عند توفر حركات الخزينة هو caisse_transactions!
+      if (txs.length > 0) {
+        for (let i = 0; i < txs.length; i++) {
+          const tx = txs[i];
+          if (!tx) continue;
+          const amt = Math.abs(Number(tx.amount || 0)) || 0;
+          const tp = String(tx.type || '').toLowerCase();
+          if (tp === 'sale' || tp === 'cash_sale' || tp === 'sale_cash') cashSales += amt;
+          else if (tp === 'debt_payment' || tp === 'customer_payment') debtPayments += amt;
+          else if (tp === 'order_deposit' || tp === 'deposit') orderDeposits += amt;
+          else if (tp === 'cash_in' || tp === 'capital_in') cashIn += amt;
+          else if (tp === 'cash_out' || tp === 'withdrawal') cashOut += amt;
+          else if (tp === 'expense' || tp === 'refund' || tp === 'sale_refund') expenses += amt;
         }
+        cashSales = Number(cashSales.toFixed(2));
+        debtPayments = Number(debtPayments.toFixed(2));
+        orderDeposits = Number(orderDeposits.toFixed(2));
+        cashIn = Number(cashIn.toFixed(2));
+        cashOut = Number(cashOut.toFixed(2));
+        expenses = Number(expenses.toFixed(2));
+      } else {
+        cashSales = Number(Number(sum.cashSales ?? 0).toFixed(2));
+        debtPayments = Number(Number(sum.debtPayments ?? 0).toFixed(2));
+        orderDeposits = Number(Number(sum.orderDeposits ?? 0).toFixed(2));
+        cashIn = Number(Number(sum.cashIn ?? 0).toFixed(2));
+        cashOut = Number(Number(sum.cashOut ?? 0).toFixed(2));
+        expenses = Number(Number(sum.expenses ?? 0).toFixed(2));
       }
-      if (!details) return await prevPrintZ(sessionIdOrDetails, format, opts);
 
-      // تخزين مؤقت لـ forensicDossier الحالي للربط التلقائي عند الرسم
-      s5._lastRenderedShiftDossier = details.forensicDossier || null;
-      s5._lastRenderedShiftRec = s5.computeExactShiftReconciliation(details);
-      if (details.forensicDossier && details.forensicDossier.kpis) {
-        s5._lastRenderedShiftRec.totalStoreCustomerDebt = details.forensicDossier.kpis.storeTotalDebtReal;
-        s5._lastRenderedShiftRec.newCreditGiven = details.forensicDossier.kpis.totalCreditAddedToday;
-      }
+      const expectedBalance = Number(
+        (openingBalance + cashSales + debtPayments + orderDeposits + cashIn - cashOut - expenses).toFixed(2)
+      );
+      const hasCounted = sess.closing_balance !== undefined && sess.closing_balance !== null && sess.closing_balance !== '';
+      const countedBalance = hasCounted ? Number(Number(sess.closing_balance).toFixed(2)) : expectedBalance;
+      const difference = Number((countedBalance - expectedBalance).toFixed(2));
 
-      const out = await prevPrintZ(details, format, opts);
-      return out;
+      const newCreditGiven = Number(
+        Math.max(0, Number((fd && fd.kpis && fd.kpis.totalCreditAddedToday) ?? sum.newCreditGiven ?? 0)).toFixed(2)
+      );
+      const totalStoreCustomerDebt = Number(
+        Math.max(0, Number((fd && fd.kpis && fd.kpis.storeTotalDebtReal) ?? sum.totalStoreCustomerDebt ?? newCreditGiven)).toFixed(2)
+      );
+
+      return {
+        sessionId: Number(sess.id || d.id || 0),
+        cashierName: sess.user_name || window.AppState?.currentUser?.name || 'المدير العام',
+        openedAt: (fd && fd.openedAt) || String(sess.opened_at || '').replace('T', ' ').slice(0, 16),
+        closedAt: (fd && fd.closedAt) || String(sess.closed_at || new Date().toISOString()).replace('T', ' ').slice(0, 16),
+        durationLabel: (fd && fd.durationLabel) || sum.durationLabel || '',
+        status: sess.status || 'open',
+        openingBalance,
+        cashSales,
+        debtPayments,
+        orderDeposits,
+        cashIn,
+        cashOut,
+        expenses,
+        expectedBalance,
+        countedBalance,
+        difference,
+        newCreditGiven,
+        totalStoreCustomerDebt,
+        transactionsCount: txs.length,
+        closeNote: sess.close_note || ''
+      };
     };
 
-    // 2. تغليف دوال الرسم في Print Studio Pro لحقن التقرير القيادي تلقائياً في caisse_z_report (80mm) و caisse_shift_full_audit_a4 (A4)
-    const renderer = PSP.renderer;
-    const candidateMethods = Object.keys(renderer).filter(
-      (k) => typeof renderer[k] === 'function' && /render/i.test(k) && !/layer/i.test(k)
-    );
-
-    for (let i = 0; i < candidateMethods.length; i++) {
-      const mName = candidateMethods[i];
-      const origFn = renderer[mName].bind(renderer);
-
-      renderer[mName] = function stage5DWrappedRender(...args) {
-        let result = origFn(...args);
-        try {
-          const tpl = args[0] && typeof args[0] === 'object' ? args[0] : null;
-          const docData = args[1] && typeof args[1] === 'object' ? args[1] : null;
-          const docId = String((tpl && tpl.id) || (docData && docData.docType) || '');
-          if (docId !== 'caisse_z_report' && docId !== 'caisse_shift_full_audit_a4') {
-            return result;
-          }
-
-          const htmlStr = typeof result === 'string' ? result : result && typeof result.fullHtml === 'string' ? result.fullHtml : '';
-          if (!htmlStr || htmlStr.includes('data-s5d-war-dossier="1"')) return result;
-
-          const paper = String((tpl && tpl.paperSize) || (docId === 'caisse_shift_full_audit_a4' ? 'a4' : '80mm')).toLowerCase();
-          const isThermal = paper === '80mm' || paper === '58mm';
-
-          // اختيار الملف الجنائي الحقيقي إن وُجد في docData أو آخر مناوبة، وإلا بيانات نموذجية غنية لمعاينة مركز الطباعة
-          const hasRealShift = Boolean((docData && docData.shiftSummary && docData.shiftSummary.sessionId) || (docData && docData.forensicDossier));
-          const dossier =
-            (docData && docData.forensicDossier) ||
-            (hasRealShift && s5._lastRenderedShiftDossier) ||
-            buildSampleForensicDossier();
-          const rec =
-            (docData && docData.shiftSummary) ||
-            (hasRealShift && s5._lastRenderedShiftRec) ||
-            { cashierName: (docData && docData.cashierName) || 'المدير العام' };
-
-          const themeObj =
-            (PSP.templates && PSP.templates.THEMES && tpl && PSP.templates.THEMES[tpl.themeId]) ||
-            (window.GherbiPrintStudioPro?.THEMES && tpl && window.GherbiPrintStudioPro.THEMES[tpl.themeId]) ||
-            { primary: '#1e3a8a', border: '#cbd5e1' };
-
-          const warBlock = isThermal
-            ? renderThermal80mmWarBlock(dossier, rec, themeObj)
-            : renderExecutiveA4WarBlock(dossier, rec, themeObj);
-
-          // تصحيح رقم "المتجر:" في بطاقة الميزان العلوية إذا كانت القيمة الحقيقية متوفرة
-          let patchedHtml = htmlStr;
-          if (dossier && dossier.kpis && dossier.kpis.storeTotalDebtReal !== undefined) {
-            const realStoreStr = fmtMoney(dossier.kpis.storeTotalDebtReal);
-            patchedHtml = patchedHtml.replace(/(المتجر:\s*)(?:<[^>]+>)*[0-9,.\s\u2066-\u2069&#160;]+د\.ج(?:<\/[^>]+>)*/g, '$1' + realStoreStr);
-          }
-
-          patchedHtml = injectBlockIntoPaperHtml(patchedHtml, warBlock);
-
-          if (typeof result === 'string') return patchedHtml;
-          return { ...result, fullHtml: patchedHtml };
-        } catch (_) {
-          return result;
-        }
-      };
-    }
-
-    console.log('🛡️ [WAR STAGE 5D]: تم تفعيل محرك تقارير إغلاق الوردية القيادية (80mm + A4: مصاريف، سلَف، ديون اليوم، تحصيلات، ورادار الرقابة).');
     return true;
   }
 
-  if (!installStage5D()) {
+  if (!patchS5()) {
     let k = 0;
     const iv = setInterval(() => {
       k++;
-      if (installStage5D() || k >= 40) clearInterval(iv);
+      if (patchS5() || k >= 30) clearInterval(iv);
     }, 100);
   }
 })();

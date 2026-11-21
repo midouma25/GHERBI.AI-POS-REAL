@@ -276,6 +276,806 @@
         </table>`;
     }
 
+    
+    /* [PSP_NATIVE_ZREPORT_HELPERS_START] */
+function formatAlgerianCentimesV2(val) {
+  const n = Number(val || 0);
+  if (!Number.isFinite(n) || Math.abs(n) < 0.005) return '0 سنتيم';
+  const sign = n < 0 ? '-' : '';
+  const totalCent = Math.round(Math.abs(n) * 100);
+  const millions = Math.floor(totalCent / 1000000);
+  const remAfterM = totalCent % 1000000;
+  const thousands = Math.floor(remAfterM / 1000);
+  const rem = remAfterM % 1000;
+  const parts = [];
+  if (millions > 0) {
+    parts.push(millions === 1 ? 'مليون' : millions === 2 ? 'مليونين' : (millions <= 10 ? millions + ' ملايين' : millions + ' مليون'));
+  }
+  if (thousands > 0) {
+    parts.push(thousands === 1 ? 'ألف' : thousands === 2 ? 'ألفين' : (thousands <= 10 ? thousands + ' آلاف' : thousands + ' ألف'));
+  }
+  if (rem > 0) parts.push(String(rem));
+  return sign + parts.join(' و ') + ' سنتيم';
+}
+function getDefaultZReportSampleDossier() {
+  return {
+    openedAt: '2026-11-20 08:00',
+    closedAt: '2026-11-20 20:00',
+    durationLabel: '12 ساعة',
+    outflows: [
+      { time: '11:20', typeLabel: 'سلفة عامل #2', beneficiary: 'محمد (العامل)', reason: 'سلفة نقدية من الصندوق', amount: 1000 },
+      { time: '15:40', typeLabel: 'نقل وشحن', beneficiary: 'موزع البضاعة', reason: 'تفريغ ونقل سلع التموين', amount: 500 }
+    ],
+    debtCollections: [
+      { time: '14:15', customerName: 'أمين بن يحيى', note: 'دفعة من الدين السابق', amount: 1200, remainingDebtNow: 550 }
+    ],
+    debtCollectionsGrouped: [
+      { customerName: 'أمين بن يحيى', count: 1, total: 1200, remainingDebtNow: 550 }
+    ],
+    creditSalesToday: [
+      { docNumber: 'FAC-0124', time: '16:30', customerName: 'كريم بن عيسى', customerPhone: '0661445566', invoiceTotal: 1450, paidToday: 500, creditAdded: 950, cumulativeDebtNow: 2150 },
+      { docNumber: 'FAC-0127', time: '18:10', customerName: 'سليم مرابط', customerPhone: '0770889900', invoiceTotal: 620, paidToday: 0, creditAdded: 620, cumulativeDebtNow: 620 }
+    ],
+    topDebtors: [
+      { name: 'كريم بن عيسى', phone: '0661445566', debt: 2150 },
+      { name: 'سليم مرابط', phone: '0770889900', debt: 620 },
+      { name: 'أمين بن يحيى', phone: '0550112233', debt: 550 }
+    ],
+    ownerAlerts: [
+      { level: 'info', text: 'تم منح ديون جديدة بقيمة 1,570.00 د.ج لـ (2) زبائن في هذه الوردية.' }
+    ],
+    kpis: {
+      salesCount: 24,
+      totalSalesRevenue: 17370,
+      avgBasket: 723.75,
+      totalDiscounts: 150,
+      cashSalesDirect: 14800,
+      settledViaDebtPayments: 0,
+      totalOutflows: 1500,
+      totalDebtCollected: 1200,
+      totalCreditAddedToday: 1570,
+      storeTotalDebtReal: 3320,
+      debtorsCount: 3
+    },
+    paymentBreakdown: { cash: 14800, debtCollectedCash: 1200, settledViaDebtPayments: 0, cib: 1000, baridimob: 0, cheque: 0, credit: 1570, other: 0 }
+  };
+}
+function renderNativeZReportSection(secId, tpl, doc, theme, isThermal, customTitle, noteBlock, h) {
+  const esc = h.esc;
+  const bidiHtml = h.bidiHtml;
+  const moneyHtml = h.moneyHtml;
+  const fd = doc.forensicDossier || getDefaultZReportSampleDossier();
+  const ss = doc.shiftSummary || {};
+  const sOpts = (tpl && tpl.shiftOptions) || {};
+  const showEmpty = sOpts.showZeroEmptySections !== false;
+
+  // 1. ميزان الوردية المزدوج المطوّر (مع توقيت الافتتاح والإغلاق + السنتيم الجزائري + الفارق الدقيق)
+  if (secId === 'shift_cash_debt_balance') {
+    const opening = Number(ss.openingBalance ?? 8000);
+    const cashSales = Number(ss.cashSales ?? (fd.kpis && fd.kpis.cashSalesDirect) ?? 0);
+    const debtCollected = Number(ss.debtPayments ?? (fd.kpis && fd.kpis.totalDebtCollected) ?? 0);
+    const deposits = Number(ss.orderDeposits ?? 0);
+    const cashIn = Number(ss.cashIn ?? 0);
+    const cashOut = Number(ss.cashOut ?? 0);
+    const expenses = Number(ss.expenses ?? 0);
+    const expectedDrawer = ss.expectedBalance !== undefined
+      ? Number(ss.expectedBalance)
+      : Number((opening + cashSales + debtCollected + deposits + cashIn - cashOut - expenses).toFixed(2));
+    const countedDrawer = ss.countedBalance !== undefined ? Number(ss.countedBalance) : expectedDrawer;
+    const diff = Number((countedDrawer - expectedDrawer).toFixed(2));
+    const newCredit = Number(ss.newCreditGiven ?? (fd.kpis && fd.kpis.totalCreditAddedToday) ?? 0);
+    const storeDebt = Number(ss.totalStoreCustomerDebt ?? (fd.kpis && fd.kpis.storeTotalDebtReal) ?? newCredit);
+
+    const openedAt = ss.openedAt || fd.openedAt || '';
+    const closedAt = ss.closedAt || fd.closedAt || doc.date || '';
+    const dur = ss.durationLabel || fd.durationLabel || '';
+    const showTimes = sOpts.showShiftTimes !== false;
+    const showCent = sOpts.showDrawerCentimes !== false;
+
+    const diffColor = Math.abs(diff) < 0.01 ? '#047857' : diff < 0 ? '#be123c' : '#b45309';
+    const diffBadge = Math.abs(diff) < 0.01 ? 'مطابق تماماً' : diff < 0 ? 'عجز بالدرج' : 'فائض بالدرج';
+
+    const timesBar = showTimes && (openedAt || closedAt)
+      ? `<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px;font-size:${isThermal ? '8px' : '9.6px'};font-weight:800;color:#334155;background:#ffffff;border:1px dashed #cbd5e1;border-radius:5px;padding:3px 6px;margin-bottom:5px;">` +
+        `<span>🕒 الافتتاح: <bdi dir="ltr">${esc(openedAt || '--')}</bdi></span>` +
+        `<span>🔒 الإغلاق: <bdi dir="ltr">${esc(closedAt || '--')}</bdi></span>` +
+        (dur ? `<span style="color:#1d4ed8;">⏱️ المدة: ${esc(dur)}</span>` : '') +
+        `</div>`
+      : '';
+
+    const centLine = showCent
+      ? `<div style="font-size:${isThermal ? '8px' : '9.4px'};font-weight:800;color:#b45309;margin-top:1px;">بالسنتيم: ${esc(formatAlgerianCentimesV2(expectedDrawer))}</div>`
+      : '';
+
+    return (
+      `<div style="border:2px solid ${theme.primary || '#0f172a'};border-radius:8px;padding:${isThermal ? '6px' : '8px 10px'};background:#f8fafc;color:#0f172a;font-size:${isThermal ? '9px' : '11px'};">` +
+      `<div style="font-weight:900;text-align:center;background:${theme.primary || '#0f172a'};color:#ffffff;padding:3px 6px;border-radius:5px;margin-bottom:5px;">${bidiHtml(customTitle || 'ميزان الوردية المزدوج: سيولة الدرج مقابل الديون')}</div>` +
+      timesBar +
+      `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;text-align:center;font-weight:900;">` +
+      `<div style="background:#eff6ff;border:1.5px solid #93c5fd;border-radius:7px;padding:5px;">` +
+      `<div style="font-size:${isThermal ? '8.4px' : '9.8px'};color:#1d4ed8;">السيولة المتوقعة بالدرج</div>` +
+      `<div style="font-size:${isThermal ? '11.5px' : '14px'};color:#1e3a8a;margin-top:1px;">${moneyHtml(expectedDrawer)}</div>` +
+      centLine +
+      `<div style="font-size:${isThermal ? '8px' : '9.2px'};color:#047857;margin-top:2px;">المعدود: ${moneyHtml(countedDrawer)}</div>` +
+      `<div style="font-size:${isThermal ? '8px' : '9.2px'};color:${diffColor};">الفارق: ${moneyHtml(diff, diff > 0 ? '+' : '')} (${diffBadge})</div>` +
+      `</div>` +
+      `<div style="background:#fff1f2;border:1.5px solid #fda4af;border-radius:7px;padding:5px;">` +
+      `<div style="font-size:${isThermal ? '8.4px' : '9.8px'};color:#be123c;">ديون ممنوحة بالوردية (آجلة)</div>` +
+      `<div style="font-size:${isThermal ? '11.5px' : '14px'};color:#881337;margin-top:1px;">${moneyHtml(newCredit)}</div>` +
+      `<div style="font-size:${isThermal ? '8px' : '9.2px'};color:#047857;margin-top:2px;">تحصيل ديون للدرج: ${moneyHtml(debtCollected, '+')}</div>` +
+      `<div style="font-size:${isThermal ? '8px' : '9.2px'};color:#475569;">إجمالي ذمم المتجر: ${moneyHtml(storeDebt)}</div>` +
+      `</div></div>` +
+      `<div style="margin-top:4px;font-size:${isThermal ? '7.8px' : '9px'};font-weight:800;color:#475569;text-align:center;">الديون الممنوحة ذمم لدى الزبائن لا تُجمع مع كاش الدرج، بينما تحصيلات الديون مضافة فعلياً في الدرج.</div>` +
+      `${noteBlock}</div>`
+    );
+  }
+
+  // 2. معادلة حركة المداخيل والمصاريف النقدية بالدرج (دقيقة 100% من caisse_transactions)
+  if (secId === 'shift_flows_summary') {
+    const opening = Number(ss.openingBalance ?? 8000);
+    const cashSales = Number(ss.cashSales ?? (fd.kpis && fd.kpis.cashSalesDirect) ?? 0);
+    const debtCollected = Number(ss.debtPayments ?? (fd.kpis && fd.kpis.totalDebtCollected) ?? 0);
+    const deposits = Number(ss.orderDeposits ?? 0);
+    const cashIn = Number(ss.cashIn ?? 0);
+    const totalIn = Number((deposits + cashIn).toFixed(2));
+    const totalOut = Number((Number(ss.expenses || 0) + Number(ss.cashOut || 0)).toFixed(2));
+    const expectedDrawer = ss.expectedBalance !== undefined
+      ? Number(ss.expectedBalance)
+      : Number((opening + cashSales + debtCollected + totalIn - totalOut).toFixed(2));
+
+    return (
+      `<div style="border:1.5px dashed #475569;border-radius:7px;padding:${isThermal ? '5px 6px' : '7px 10px'};background:#ffffff;font-size:${isThermal ? '8.8px' : '10.5px'};font-weight:800;color:#1e293b;line-height:1.55;">` +
+      `<div style="font-weight:900;color:#0f172a;border-bottom:1px dashed #cbd5e1;padding-bottom:2px;margin-bottom:4px;">${bidiHtml(customTitle || 'معادلة حركة السيولة النقدية في الدرج:')}</div>` +
+      `<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;">` +
+      `<div>الرصيد الافتتاحي: <strong>${moneyHtml(opening)}</strong></div>` +
+      `<div style="color:#047857;">مبيعات كاش مباشرة: <strong>${moneyHtml(cashSales, '+')}</strong></div>` +
+      `<div style="color:#047857;">تحصيل ديون نقداً: <strong>${moneyHtml(debtCollected, '+')}</strong></div>` +
+      `<div style="color:#0284c7;">إيداعات وعربون: <strong>${moneyHtml(totalIn, '+')}</strong></div>` +
+      `<div style="color:#be123c;">مصاريف وسحوبات: <strong>${moneyHtml(-Math.abs(totalOut))}</strong></div>` +
+      `<div style="color:#1e3a8a;font-weight:900;">صافي الدرج المتوقع: <strong>${moneyHtml(expectedDrawer)}</strong></div>` +
+      `</div>${noteBlock}</div>`
+    );
+  }
+
+  // 3. رادار تنبيهات الرقابة لصاحب المتجر
+  if (secId === 'shift_owner_alerts') {
+    const alerts = Array.isArray(fd.ownerAlerts) ? fd.ownerAlerts : [];
+    if (alerts.length === 0) {
+      if (!showEmpty) return '';
+      return (
+        `<div style="border:1.5px solid #6ee7b7;background:#ecfdf5;border-radius:7px;padding:${isThermal ? '4px 6px' : '7px 10px'};font-size:${isThermal ? '8.6px' : '10.2px'};font-weight:800;color:#065f46;text-align:center;">` +
+        `✅ ${bidiHtml(customTitle || 'رادار الرقابة: الوردية مطابقة وسليمة 100% ولا توجد تنبيهات خطيرة')}` +
+        `${noteBlock}</div>`
+      );
+    }
+    const rows = alerts.map((al) => {
+      const col = al.level === 'danger' ? '#be123c' : al.level === 'warning' ? '#b45309' : '#1d4ed8';
+      return `<div style="color:${col};font-weight:800;font-size:${isThermal ? '8.4px' : '10px'};margin-top:2px;">• ${bidiHtml(al.text)}</div>`;
+    }).join('');
+    return (
+      `<div style="border:1.5px solid #e11d48;background:#fff1f2;border-radius:7px;padding:${isThermal ? '5px 6px' : '7px 10px'};color:#0f172a;">` +
+      `<div style="font-weight:900;color:#9f1239;font-size:${isThermal ? '9.1px' : '11px'};margin-bottom:2px;">🛡️ ${bidiHtml(customTitle || 'تنبيهات رادار الرقابة لصاحب المتجر:')}</div>` +
+      `${rows}${noteBlock}</div>`
+    );
+  }
+
+  // 4. دفتر الأموال الخارجة (المصاريف، السلَف، السحوبات — من أخذ؟ لماذا؟ متى؟ كم؟)
+  if (secId === 'shift_outflows_detail') {
+    const showBen = sOpts.showBeneficiary !== false;
+    const showTm = sOpts.showOutflowTime !== false;
+    const outflows = Array.isArray(fd.outflows) ? fd.outflows : [];
+    const totalOut = outflows.reduce((a, b) => a + Math.abs(Number(b.amount || 0)), 0);
+
+    if (outflows.length === 0) {
+      if (!showEmpty) return '';
+      return (
+        `<div style="border:1px dashed #a7f3d0;background:#ecfdf5;border-radius:7px;padding:${isThermal ? '4px 6px' : '7px 10px'};font-size:${isThermal ? '8.6px' : '10.2px'};font-weight:800;color:#065f46;text-align:center;">` +
+        `✔ ${bidiHtml(customTitle || 'دفتر الأموال الخارجة: لا توجد مصاريف أو سلَف في هذه الوردية')}` +
+        `${noteBlock}</div>`
+      );
+    }
+
+    if (isThermal) {
+      const lines = outflows.map((o, idx) => {
+        const who = showBen ? bidiHtml(o.beneficiary) : bidiHtml(o.typeLabel);
+        const tm = showTm && o.time ? ` <span style="font-weight:700;color:#64748b;font-size:7.8px;">(${esc(o.time)})</span>` : '';
+        const extraReason = o.reason && o.reason !== o.typeLabel ? ` — ${bidiHtml(o.reason)}` : '';
+        return (
+          `<div style="border-bottom:1px dotted #e2e8f0;padding:2.5px 0;">` +
+          `<div style="display:flex;justify-content:space-between;gap:4px;font-weight:900;font-size:8.9px;">` +
+          `<span>${idx + 1}. ${who}${tm}</span>` +
+          `<span style="color:#be123c;">${moneyHtml(-Math.abs(o.amount || 0))}</span>` +
+          `</div>` +
+          `<div style="font-size:8px;color:#475569;padding-right:8px;">السبب: ${bidiHtml(o.typeLabel)}${extraReason}</div>` +
+          `</div>`
+        );
+      }).join('');
+      return (
+        `<div style="border:1.5px solid #fecdd3;border-radius:7px;padding:5px 6px;background:#ffffff;color:#0f172a;">` +
+        `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px dashed #fda4af;padding-bottom:2px;margin-bottom:3px;font-weight:900;font-size:9.1px;color:#9f1239;">` +
+        `<span>💸 ${bidiHtml(customTitle || 'الأموال الخارجة (مصاريف / سلَف)')} (${outflows.length})</span>` +
+        `<span>${moneyHtml(-totalOut)}</span>` +
+        `</div>${lines}${noteBlock}</div>`
+      );
+    }
+
+    const trs = outflows.map((o, idx) => (
+      `<tr>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">${idx + 1}</td>` +
+      (showTm ? `<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">${esc(o.time || '--:--')}</td>` : '') +
+      `<td style="border:1px solid #e2e8f0;padding:4px;font-weight:800;">${bidiHtml(o.typeLabel)}</td>` +
+      (showBen ? `<td style="border:1px solid #e2e8f0;padding:4px;font-weight:900;color:#9f1239;">${bidiHtml(o.beneficiary)}</td>` : '') +
+      `<td style="border:1px solid #e2e8f0;padding:4px;">${bidiHtml(o.reason)}</td>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#be123c;">${moneyHtml(-Math.abs(o.amount || 0))}</td>` +
+      `</tr>`
+    )).join('');
+    return (
+      `<div>` +
+      `<div style="display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:11.5px;color:#9f1239;border-bottom:2px solid #fda4af;padding-bottom:3px;margin-bottom:5px;">` +
+      `<span>💸 ${bidiHtml(customTitle || 'سجل الأموال الخارجة من الدرج (المصاريف، السلَف، السحوبات)')}</span>` +
+      `<span>الإجمالي: ${moneyHtml(-totalOut)}</span>` +
+      `</div>` +
+      `<table style="width:100%;border-collapse:collapse;font-size:10px;">` +
+      `<thead><tr style="background:#ffe4e6;color:#881337;">` +
+      `<th style="border:1px solid #fecdd3;padding:4px;width:5%;">#</th>` +
+      (showTm ? `<th style="border:1px solid #fecdd3;padding:4px;width:10%;">الساعة</th>` : '') +
+      `<th style="border:1px solid #fecdd3;padding:4px;width:17%;">النوع</th>` +
+      (showBen ? `<th style="border:1px solid #fecdd3;padding:4px;width:22%;">المستفيد / الآخذ</th>` : '') +
+      `<th style="border:1px solid #fecdd3;padding:4px;">السبب والبيان التفصيلي</th>` +
+      `<th style="border:1px solid #fecdd3;padding:4px;width:15%;">المبلغ</th>` +
+      `</tr></thead><tbody>${trs}</tbody></table>${noteBlock}</div>`
+    );
+  }
+
+  // 5. دفتر زبائن الكريدي اليوم
+  if (secId === 'shift_credit_sales_today') {
+    const showPhone = sOpts.showCustomerPhone !== false;
+    const showCum = sOpts.showCumulativeDebt !== false;
+    const list = Array.isArray(fd.creditSalesToday) ? fd.creditSalesToday : [];
+    const totalCred = list.reduce((a, b) => a + Math.max(0, Number(b.creditAdded || 0)), 0);
+
+    if (list.length === 0) {
+      if (!showEmpty) return '';
+      return (
+        `<div style="border:1px dashed #a7f3d0;background:#ecfdf5;border-radius:7px;padding:${isThermal ? '4px 6px' : '7px 10px'};font-size:${isThermal ? '8.6px' : '10.2px'};font-weight:800;color:#065f46;text-align:center;">` +
+        `✔ ${bidiHtml(customTitle || 'ديون اليوم: جميع مبيعات الوردية مدفوعة بدون ديون جديدة')}` +
+        `${noteBlock}</div>`
+      );
+    }
+
+    if (isThermal) {
+      const lines = list.map((cs, idx) => (
+        `<div style="border-bottom:1px dotted #e2e8f0;padding:2.5px 0;">` +
+        `<div style="display:flex;justify-content:space-between;gap:4px;font-weight:900;font-size:8.9px;">` +
+        `<span>${idx + 1}. ${bidiHtml(cs.customerName)}${showPhone && cs.customerPhone ? ` <span style="font-weight:700;color:#64748b;font-size:7.6px;">${esc(cs.customerPhone)}</span>` : ''}</span>` +
+        `<span style="color:#c2410c;">${moneyHtml(cs.creditAdded, '+')}</span>` +
+        `</div>` +
+        `<div style="font-size:7.9px;color:#475569;display:flex;justify-content:space-between;gap:4px;">` +
+        `<span>فاتورة ${bidiHtml(cs.docNumber || '')} | مدفوع: ${moneyHtml(cs.paidToday || 0)}</span>` +
+        (showCum ? `<span>دينه الكلي: ${moneyHtml(cs.cumulativeDebtNow || 0)}</span>` : '') +
+        `</div></div>`
+      )).join('');
+      return (
+        `<div style="border:1.5px solid #fed7aa;border-radius:7px;padding:5px 6px;background:#ffffff;color:#0f172a;">` +
+        `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px dashed #fdba74;padding-bottom:2px;margin-bottom:3px;font-weight:900;font-size:9.1px;color:#9a3412;">` +
+        `<span>📝 ${bidiHtml(customTitle || 'ديون اليوم (الزبائن المدينون)')} (${list.length})</span>` +
+        `<span>${moneyHtml(totalCred, '+')}</span>` +
+        `</div>${lines}${noteBlock}</div>`
+      );
+    }
+
+    const trs = list.map((cs, idx) => (
+      `<tr>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">${idx + 1}</td>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">${bidiHtml(cs.docNumber || '')}<br><span style="font-size:8.5px;color:#64748b;">${esc(cs.time || '')}</span></td>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;font-weight:900;">${bidiHtml(cs.customerName)}${showPhone && cs.customerPhone ? `<br><span style="font-size:8.5px;color:#475569;">${esc(cs.customerPhone)}</span>` : ''}</td>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;text-align:left;">${moneyHtml(cs.invoiceTotal || 0)}</td>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#047857;">${moneyHtml(cs.paidToday || 0)}</td>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#c2410c;">${moneyHtml(cs.creditAdded || 0, '+')}</td>` +
+      (showCum ? `<td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#991b1b;">${moneyHtml(cs.cumulativeDebtNow || 0)}</td>` : '') +
+      `</tr>`
+    )).join('');
+    return (
+      `<div>` +
+      `<div style="display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:11.5px;color:#9a3412;border-bottom:2px solid #fdba74;padding-bottom:3px;margin-bottom:5px;">` +
+      `<span>📝 ${bidiHtml(customTitle || 'قائمة الزبائن المدينين اليوم (المبيعات الآجلة والدفع الجزئي)')}</span>` +
+      `<span>إجمالي دين الوردية: ${moneyHtml(totalCred, '+')}</span>` +
+      `</div>` +
+      `<table style="width:100%;border-collapse:collapse;font-size:10px;">` +
+      `<thead><tr style="background:#ffedd5;color:#7c2d12;">` +
+      `<th style="border:1px solid #fed7aa;padding:4px;width:5%;">#</th>` +
+      `<th style="border:1px solid #fed7aa;padding:4px;width:15%;">الفاتورة / الوقت</th>` +
+      `<th style="border:1px solid #fed7aa;padding:4px;">اسم الزبون</th>` +
+      `<th style="border:1px solid #fed7aa;padding:4px;width:13%;">الإجمالي</th>` +
+      `<th style="border:1px solid #fed7aa;padding:4px;width:13%;">المدفوع</th>` +
+      `<th style="border:1px solid #fed7aa;padding:4px;width:13%;">دين اليوم (+)</th>` +
+      (showCum ? `<th style="border:1px solid #fed7aa;padding:4px;width:13%;">دينه الكلي الآن</th>` : '') +
+      `</tr></thead><tbody>${trs}</tbody></table>${noteBlock}</div>`
+    );
+  }
+
+  // 6. سجل تحصيلات الديون بالوردية بأسماء الزبائن
+  if (secId === 'shift_debt_collections') {
+    const colsGrouped = Array.isArray(fd.debtCollectionsGrouped) ? fd.debtCollectionsGrouped : [];
+    const colsRaw = Array.isArray(fd.debtCollections) ? fd.debtCollections : [];
+    const totalCol =
+      colsRaw.reduce((a, b) => a + Math.max(0, Number(b.amount || 0)), 0) ||
+      colsGrouped.reduce((a, b) => a + Math.max(0, Number(b.total || 0)), 0);
+
+    if (colsRaw.length === 0 && colsGrouped.length === 0) {
+      if (!showEmpty) return '';
+      return (
+        `<div style="border:1px dashed #cbd5e1;background:#f8fafc;border-radius:7px;padding:${isThermal ? '4px 6px' : '6px 10px'};font-size:${isThermal ? '8.5px' : '10px'};font-weight:700;color:#475569;text-align:center;">` +
+        `${bidiHtml(customTitle || 'تحصيلات الديون بالوردية: لا توجد دفعات تحصيل ديون مسجلة')}` +
+        `${noteBlock}</div>`
+      );
+    }
+
+    if (isThermal) {
+      const list = colsGrouped.length > 0 ? colsGrouped : colsRaw.map((x) => ({ customerName: x.customerName, count: 1, total: x.amount }));
+      const rows = list.map((c) => (
+        `<div style="display:flex;justify-content:space-between;font-size:8.7px;padding:1.5px 0;border-bottom:1px dotted #a7f3d0;">` +
+        `<span style="font-weight:800;">${bidiHtml(c.customerName)}${c.count > 1 ? ` (${c.count} دفعات)` : ''}</span>` +
+        `<span style="color:#047857;font-weight:900;">${moneyHtml(c.total, '+')}</span>` +
+        `</div>`
+      )).join('');
+      return (
+        `<div style="border:1.5px solid #a7f3d0;border-radius:7px;padding:5px 6px;background:#ecfdf5;color:#0f172a;">` +
+        `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px dashed #34d399;padding-bottom:2px;margin-bottom:3px;font-weight:900;font-size:9.1px;color:#065f46;">` +
+        `<span>🤝 ${bidiHtml(customTitle || 'تحصيلات الديون بالوردية')} (${list.length})</span>` +
+        `<span>${moneyHtml(totalCol, '+')}</span>` +
+        `</div>${rows}${noteBlock}</div>`
+      );
+    }
+
+    const trs = colsRaw.map((dc, idx) => (
+      `<tr>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">${idx + 1}</td>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">${esc(dc.time || '--:--')}</td>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;font-weight:900;color:#065f46;">${bidiHtml(dc.customerName)}</td>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;">${bidiHtml(dc.note || 'تسديد دين')}${dc.remainingDebtNow !== null && dc.remainingDebtNow !== undefined ? ` | الباقي: ${moneyHtml(dc.remainingDebtNow)}` : ''}</td>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#047857;">${moneyHtml(dc.amount || 0, '+')}</td>` +
+      `</tr>`
+    )).join('');
+    return (
+      `<div>` +
+      `<div style="display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:11.5px;color:#065f46;border-bottom:2px solid #6ee7b7;padding-bottom:3px;margin-bottom:5px;">` +
+      `<span>🤝 ${bidiHtml(customTitle || 'سجل تحصيلات الديون المقبوضة في الدرج بأسماء الزبائن')}</span>` +
+      `<span>إجمالي المحصل: ${moneyHtml(totalCol, '+')}</span>` +
+      `</div>` +
+      `<table style="width:100%;border-collapse:collapse;font-size:10px;">` +
+      `<thead><tr style="background:#d1fae5;color:#064e3b;">` +
+      `<th style="border:1px solid #a7f3d0;padding:4px;width:5%;">#</th>` +
+      `<th style="border:1px solid #a7f3d0;padding:4px;width:12%;">الساعة</th>` +
+      `<th style="border:1px solid #a7f3d0;padding:4px;width:28%;">اسم الزبون</th>` +
+      `<th style="border:1px solid #a7f3d0;padding:4px;">البيان والرصيد المتبقي</th>` +
+      `<th style="border:1px solid #a7f3d0;padding:4px;width:16%;">المبلغ المقبوض</th>` +
+      `</tr></thead><tbody>${trs}</tbody></table>${noteBlock}</div>`
+    );
+  }
+
+  // 7. تفصيل المبيعات ووسائل الدفع ومؤشرات الأداء (بدون خلط بين الكاش المباشر وتسديدات الديون!)
+  if (secId === 'shift_payment_kpis') {
+    const kpis = fd.kpis || {};
+    const pm = fd.paymentBreakdown || {};
+    const elec = Number(pm.cib || 0) + Number(pm.baridimob || 0);
+    const settledLater = Number(kpis.settledViaDebtPayments ?? pm.settledViaDebtPayments ?? 0);
+    return (
+      `<div style="border:1.5px solid ${theme.border};border-radius:7px;padding:${isThermal ? '5px 6px' : '8px 10px'};background:#f8fafc;color:#0f172a;font-size:${isThermal ? '8.4px' : '10.2px'};">` +
+      `<div style="font-weight:900;color:${theme.primary};border-bottom:1px dashed #cbd5e1;padding-bottom:2px;margin-bottom:4px;font-size:${isThermal ? '9.1px' : '11px'};">💳 ${bidiHtml(customTitle || 'تفصيل المبيعات ووسائل الدفع ومؤشرات الأداء')}</div>` +
+      `<div style="display:grid;grid-template-columns:${isThermal ? '1fr 1fr' : 'repeat(3,1fr)'};gap:${isThermal ? '3px 6px' : '5px 10px'};font-weight:800;">` +
+      `<div>عدد الفواتير: <strong>${Number(kpis.salesCount || 0)}</strong></div>` +
+      `<div>رقم الأعمال: <strong>${moneyHtml(kpis.totalSalesRevenue || 0)}</strong></div>` +
+      `<div>متوسط السلة: <strong>${moneyHtml(kpis.avgBasket || 0)}</strong></div>` +
+      `<div>💵 مبيعات كاش مباشرة: <strong>${moneyHtml(pm.cash || 0)}</strong></div>` +
+      `<div>💳 إلكتروني (CIB/CCP): <strong>${moneyHtml(elec)}</strong></div>` +
+      `<div>📝 ديون متبقية اليوم: <strong>${moneyHtml(pm.credit || 0)}</strong></div>` +
+      (settledLater > 0.009 ? `<div style="color:#047857;">🔄 فواتير سُدّدت عبر الكريدي: <strong>${moneyHtml(settledLater)}</strong></div>` : `<div>🏦 شيك/صك: <strong>${moneyHtml(pm.cheque || 0)}</strong></div>`) +
+      `<div>🏷️ التخفيضات: <strong>${moneyHtml(kpis.totalDiscounts || 0)}</strong></div>` +
+      `<div>📌 إجمالي ديون المتجر: <strong>${moneyHtml(kpis.storeTotalDebtReal || 0)}</strong></div>` +
+      `</div>${noteBlock}</div>`
+    );
+  }
+
+  // 8. أكبر المدينين في المتجر للمتابعة غداً
+  if (secId === 'shift_top_debtors') {
+    const limit = Math.max(1, Number(sOpts.topDebtorsLimit || 5));
+    const showPhone = sOpts.showCustomerPhone !== false;
+    const topList = (Array.isArray(fd.topDebtors) ? fd.topDebtors : []).slice(0, limit);
+    const totalStore = Number((fd.kpis && fd.kpis.storeTotalDebtReal) || topList.reduce((a, b) => a + Number(b.debt || 0), 0));
+    if (topList.length === 0) {
+      if (!showEmpty) return '';
+      return (
+        `<div style="border:1px dashed #a7f3d0;background:#ecfdf5;border-radius:7px;padding:6px 10px;font-size:10px;font-weight:800;color:#065f46;text-align:center;">` +
+        `✔ لا توجد ديون عالقة على الزبائن حالياً${noteBlock}</div>`
+      );
+    }
+    const rows = topList.map((td, idx) => (
+      `<div style="display:flex;justify-content:space-between;padding:2.5px 0;border-bottom:1px dotted #e2e8f0;font-size:${isThermal ? '8.5px' : '10px'};">` +
+      `<span style="font-weight:800;">${idx + 1}. ${bidiHtml(td.name)}${showPhone && td.phone ? ` <span style="color:#64748b;font-weight:600;">(${esc(td.phone)})</span>` : ''}</span>` +
+      `<span style="color:#b91c1c;font-weight:900;">${moneyHtml(td.debt || 0)}</span>` +
+      `</div>`
+    )).join('');
+    return (
+      `<div style="border:1.5px solid #fed7aa;border-radius:7px;padding:${isThermal ? '5px 6px' : '7px 10px'};background:#fffbeb;color:#0f172a;">` +
+      `<div style="display:flex;justify-content:space-between;font-weight:900;color:#9a3412;border-bottom:1px dashed #fdba74;padding-bottom:2px;margin-bottom:3px;font-size:${isThermal ? '9.1px' : '11px'};">` +
+      `<span>📌 ${bidiHtml(customTitle || 'أكبر المدينين في المتجر (للمتابعة غداً)')}</span>` +
+      `<span>الكل: ${moneyHtml(totalStore)}</span>` +
+      `</div>${rows}${noteBlock}</div>`
+    );
+  }
+
+  return '';
+}
+function renderNativeZReportSignatures(tpl, doc, isThermal, noteBlock, esc) {
+  const sigMode = (tpl && tpl.shiftOptions && tpl.shiftOptions.signatureMode) || (isThermal ? 'dual' : 'triple');
+  const cashierLbl = esc((doc && doc.shiftSummary && doc.shiftSummary.cashierName) || (doc && doc.cashierName) || 'أمين الصندوق');
+  if (sigMode === 'dual' || isThermal) {
+    return (
+      `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px;text-align:center;font-size:${isThermal ? '8.4px' : '10px'};font-weight:900;color:#334155;">` +
+      `<div style="border:1.5px dashed #94a3b8;border-radius:6px;padding:5px 4px ${isThermal ? '20px' : '32px'};">توقيع الكاشير (المسلّم)<br><span style="font-weight:700;font-size:8px;color:#64748b;">${cashierLbl}</span></div>` +
+      `<div style="border:1.5px dashed #94a3b8;border-radius:6px;padding:5px 4px ${isThermal ? '20px' : '32px'};">توقيع صاحب المتجر<br><span style="font-weight:700;font-size:8px;color:#64748b;">المصادقة والاستلام</span></div>` +
+      `</div>${noteBlock}`
+    );
+  }
+  return (
+    `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px;text-align:center;font-size:10px;font-weight:900;color:#334155;">` +
+    `<div style="border:1.5px dashed #94a3b8;border-radius:7px;padding:7px 5px 34px;">أمين الصندوق (المسلّم)<br><span style="font-weight:700;font-size:8.8px;color:#64748b;">${cashierLbl}</span></div>` +
+    `<div style="border:1.5px dashed #94a3b8;border-radius:7px;padding:7px 5px 34px;">المراجع / المحاسب<br><span style="font-weight:700;font-size:8.8px;color:#64748b;">مطابقة الجرد والوثائق</span></div>` +
+    `<div style="border:1.5px dashed #94a3b8;border-radius:7px;padding:7px 5px 34px;">صاحب المتجر / المدير<br><span style="font-weight:700;font-size:8.8px;color:#64748b;">المصادقة والختم النهائي</span></div>` +
+    `</div>${noteBlock}`
+  );
+}
+/* [PSP_NATIVE_ZREPORT_HELPERS_END] */
+    /* [PSP_NATIVE_EXPENSE_HELPERS_START] */
+function renderNativeExpenseOrOutflowsSection(secId, tpl, doc, theme, isThermal, customTitle, noteBlock, h) {
+  const esc = h.esc;
+  const bidiHtml = h.bidiHtml;
+  const moneyHtml = h.moneyHtml;
+  const amountToWords = h.amountToWords;
+  const formatCent = h.formatCent;
+  const mode = h.mode || 'preview';
+  const isPreviewMode = mode === 'preview';
+
+  const eOpts = (tpl && tpl.expenseOptions) || {};
+  const showSrc = eOpts.showFundingSource !== false;
+  const showBen = eOpts.showBeneficiary !== false;
+  const showCent = eOpts.showCentimes !== false;
+  const showWords = eOpts.showAmountInWords !== false;
+  const showShift = eOpts.showShiftRef !== false;
+
+  const sampleVoucher = {
+    docRef: 'EXP-DEMO-01',
+    date: '2026-11-20',
+    time: '14:30',
+    category: 'رواتب وأجور وسلفات العمال (معاينة نموذجية)',
+    beneficiary: 'اسم المستفيد (مثال)',
+    description: 'سند صرف تجريبي لمعاينة التصميم في مركز الطباعة',
+    amount: 1000,
+    fundingSource: 'active_shift',
+    fundingLabel: 'درج الوردية',
+    sessionId: 11,
+    cashierName: 'المدير العام'
+  };
+
+  const sampleReport = {
+    periodLabel: 'معاينة نموذجية في مركز الطباعة (أرقام تجريبية)',
+    totals: { grandTotal: 4000, expensesTotal: 1000, workersTotal: 1000, suppliersTotal: 2000, purchasesTotal: 0, cashOutTotal: 0, count: 3 },
+    byFundingSource: { active_shift: 1000, shop_vault: 1000, bank_ccp: 2000, external_owner: 0 },
+    byCategory: [
+      { category: 'تسبقات وتسديد الموردين', total: 2000, count: 1, pct: 50 },
+      { category: 'رواتب وسلف العمال', total: 1000, count: 1, pct: 25 },
+      { category: 'مصاريف تشغيلية', total: 1000, count: 1, pct: 25 }
+    ],
+    items: [
+      { date: '2026-11-20', time: '14:30', kindLabel: 'سلفة عامل', category: 'رواتب وسلف العمال', beneficiary: 'عامل (مثال)', description: 'سلفة نقدية (معاينة)', amount: 1000, fundingLabel: 'درج الوردية', docRef: 'EXP-001' },
+      { date: '2026-11-20', time: '12:00', kindLabel: 'مصروف تشغيلي', category: 'مصاريف تشغيلية', beneficiary: 'كهرباء وغاز', description: 'فاتورة (معاينة)', amount: 1000, fundingLabel: 'الخزينة الرئيسية', docRef: 'EXP-002' },
+      { date: '2026-11-20', time: '10:30', kindLabel: 'تسديد مورد', category: 'تسبقات وتسديد الموردين', beneficiary: 'مورد (مثال)', description: 'دفعة حساب مورد (معاينة)', amount: 2000, fundingLabel: 'بنك / CCP', docRef: 'REC-001' }
+    ]
+  };
+
+  const emptyRealReport = {
+    periodLabel: 'النطاق المحدد (لا توجد عمليات مسجلة)',
+    totals: { grandTotal: 0, expensesTotal: 0, workersTotal: 0, suppliersTotal: 0, purchasesTotal: 0, cashOutTotal: 0, count: 0 },
+    byFundingSource: { active_shift: 0, shop_vault: 0, bank_ccp: 0, external_owner: 0 },
+    byCategory: [],
+    items: []
+  };
+
+  // قاعدة حديدية: في الطباعة الحقيقية (mode !== 'preview') لا نعود أبداً للبيانات النموذجية!
+  const activeReport = doc.outflowsReport || (isPreviewMode ? sampleReport : emptyRealReport);
+
+  if (secId === 'expense_voucher_card') {
+    const v = doc.expenseVoucher || (isPreviewMode ? sampleVoucher : {
+      docRef: doc.docNumber || 'EXP',
+      date: doc.date || '',
+      category: 'مصروف تشغيلي',
+      beneficiary: doc.partyName || '',
+      description: '',
+      amount: Number(doc.total || 0),
+      fundingLabel: 'درج الوردية'
+    });
+    const amt = Number(v.amount ?? doc.total ?? 0);
+    const centText = showCent ? formatCent(amt) : '';
+    const wordsText = showWords && typeof amountToWords === 'function' ? amountToWords(amt, tpl.lang || 'ar') : '';
+    const primary = (theme && theme.primary) || '#be123c';
+
+    return (
+      `<div style="border:2px solid ${primary};border-radius:8px;padding:${isThermal ? '6px' : '12px 14px'};background:#ffffff;color:#0f172a;font-size:${isThermal ? '9.2px' : '11.5px'};line-height:1.55;">` +
+      `<div style="text-align:center;background:#fff1f2;border:1.5px solid #fda4af;border-radius:7px;padding:${isThermal ? '6px 4px' : '10px'};margin-bottom:8px;">` +
+      `<div style="font-size:${isThermal ? '8.6px' : '10.5px'};font-weight:800;color:#9f1239;">المبلغ المصروف (Montant Décaissé)</div>` +
+      `<div style="font-size:${isThermal ? '15px' : '22px'};font-weight:900;color:#be123c;margin-top:2px;">${moneyHtml(amt)}</div>` +
+      (centText ? `<div style="font-size:${isThermal ? '8.4px' : '10px'};font-weight:800;color:#b45309;margin-top:2px;">بالسنتيم: ${esc(centText)}</div>` : '') +
+      (wordsText ? `<div style="font-size:${isThermal ? '8.2px' : '10.2px'};font-weight:800;color:#334155;margin-top:3px;border-top:1px dashed #fda4af;padding-top:3px;">أوقف هذا السند على مبلغ: ${bidiHtml(wordsText)}</div>` : '') +
+      `</div>` +
+      `<div style="display:grid;grid-template-columns:${isThermal ? '1fr' : '1fr 1fr'};gap:${isThermal ? '3px' : '6px 12px'};font-weight:800;">` +
+      `<div>رقم السند: <strong><bdi dir="ltr">${esc(v.docRef || doc.docNumber || 'EXP')}</bdi></strong></div>` +
+      `<div>التاريخ والوقت: <strong><bdi dir="ltr">${esc((v.date || '') + (v.time ? ' ' + v.time : ''))}</bdi></strong></div>` +
+      `<div>فئة المصروف: <strong style="color:${primary};">${bidiHtml(v.category || 'مصاريف عامة')}</strong></div>` +
+      (showBen ? `<div>المستفيد / القابض: <strong style="color:#0f172a;">${bidiHtml(v.beneficiary || doc.partyName || 'غير محدد')}</strong></div>` : '') +
+      (showSrc ? `<div style="${isThermal ? '' : 'grid-column:span 2;'}background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:3px 7px;color:#1d4ed8;">🏦 مصدر المال: <strong>${bidiHtml(v.fundingLabel || 'درج الوردية')}</strong></div>` : '') +
+      (showShift ? `<div>المسؤول / الكاشير: <strong>${bidiHtml(v.cashierName || doc.cashierName || 'المدير العام')}</strong>${v.sessionId ? ` (وردية #${esc(v.sessionId)})` : ''}</div>` : '') +
+      `</div>` +
+      `<div style="margin-top:7px;padding:6px 8px;border:1px dashed #94a3b8;border-radius:6px;background:#f8fafc;">` +
+      `<span style="font-weight:900;color:#475569;">البيان والسبب التفصيلي: </span>` +
+      `<span style="font-weight:800;color:#0f172a;">${bidiHtml(v.description || 'مصروف تشغيلي')}</span>` +
+      `</div>${noteBlock}</div>`
+    );
+  }
+
+  if (secId === 'outflows_report_kpis') {
+    const r = activeReport;
+    const t = r.totals || {};
+    const primary = (theme && theme.primary) || '#0f172a';
+    const supAndPurch = Number(t.suppliersTotal || 0) + Number(t.purchasesTotal || 0);
+    const expAndWork = Number(t.expensesTotal || 0) + Number(t.workersTotal || 0);
+
+    return (
+      `<div style="border:2px solid ${primary};border-radius:8px;padding:${isThermal ? '5px 6px' : '9px 11px'};background:#f8fafc;color:#0f172a;">` +
+      `<div style="text-align:center;font-weight:900;background:${primary};color:#ffffff;padding:3px 6px;border-radius:5px;font-size:${isThermal ? '9px' : '11.5px'};margin-bottom:6px;">` +
+      `${bidiHtml(customTitle || ('نطاق التقرير: ' + (r.periodLabel || 'جميع الفترات')))}` +
+      `</div>` +
+      `<div style="display:grid;grid-template-columns:${isThermal ? '1fr 1fr' : 'repeat(4,1fr)'};gap:6px;text-align:center;font-weight:900;">` +
+      `<div style="background:#fff1f2;border:1.5px solid #fda4af;border-radius:7px;padding:5px;">` +
+      `<div style="font-size:${isThermal ? '8px' : '9.5px'};color:#9f1239;">إجمالي الأموال الخارجة (${Number(t.count || 0)})</div>` +
+      `<div style="font-size:${isThermal ? '11px' : '13.5px'};color:#be123c;">${moneyHtml(t.grandTotal || 0)}</div>` +
+      (showCent ? `<div style="font-size:7.8px;color:#b45309;">${esc(formatCent(t.grandTotal || 0))}</div>` : '') +
+      `</div>` +
+      `<div style="background:#eff6ff;border:1.5px solid #93c5fd;border-radius:7px;padding:5px;">` +
+      `<div style="font-size:${isThermal ? '8px' : '9.5px'};color:#1d4ed8;">مصاريف تشغيلية</div>` +
+      `<div style="font-size:${isThermal ? '10.5px' : '12.5px'};color:#1e3a8a;">${moneyHtml(t.expensesTotal || 0)}</div>` +
+      `</div>` +
+      `<div style="background:#fef3c7;border:1.5px solid #fcd34d;border-radius:7px;padding:5px;">` +
+      `<div style="font-size:${isThermal ? '8px' : '9.5px'};color:#92400e;">رواتب وسلف العمال</div>` +
+      `<div style="font-size:${isThermal ? '10.5px' : '12.5px'};color:#78350f;">${moneyHtml(t.workersTotal || 0)}</div>` +
+      `</div>` +
+      `<div style="background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:7px;padding:5px;">` +
+      `<div style="font-size:${isThermal ? '8px' : '9.5px'};color:#065f46;">موردين ومشتريات</div>` +
+      `<div style="font-size:${isThermal ? '10.5px' : '12.5px'};color:#047857;">${moneyHtml(supAndPurch)}</div>` +
+      `</div></div>` +
+      (expAndWork > 0 && supAndPurch > 0 && !isThermal ? `<div style="margin-top:5px;text-align:center;font-size:9.3px;font-weight:800;color:#475569;">المصاريف والرواتب: ${moneyHtml(expAndWork)} | الموردين والمشتريات: ${moneyHtml(supAndPurch)} | سحوبات أخرى: ${moneyHtml(t.cashOutTotal || 0)}</div>` : '') +
+      `${noteBlock}</div>`
+    );
+  }
+
+  if (secId === 'outflows_by_source_box') {
+    if (!showSrc) return '';
+    const bfs = (activeReport && activeReport.byFundingSource) || {};
+    return (
+      `<div style="border:1.5px solid #bfdbfe;border-radius:7px;padding:${isThermal ? '5px 6px' : '7px 10px'};background:#f0f9ff;color:#0f172a;font-size:${isThermal ? '8.5px' : '10.5px'};font-weight:800;">` +
+      `<div style="font-weight:900;color:#0369a1;border-bottom:1px dashed #7dd3fc;padding-bottom:2px;margin-bottom:4px;">🏦 ${bidiHtml(customTitle || 'التوزيع حسب مصدر المال (مصفوفة الخزائن الأربعة):')}</div>` +
+      `<div style="display:grid;grid-template-columns:${isThermal ? '1fr 1fr' : 'repeat(4,1fr)'};gap:4px 8px;">` +
+      `<div>💵 درج الوردية: <strong style="color:#166534;">${moneyHtml(bfs.active_shift || 0)}</strong></div>` +
+      `<div>🔐 الخزينة الرئيسية: <strong style="color:#3730a3;">${moneyHtml(bfs.shop_vault || 0)}</strong></div>` +
+      `<div>🏦 بنك / CCP / شيك: <strong style="color:#0369a1;">${moneyHtml(bfs.bank_ccp || 0)}</strong></div>` +
+      `<div>👤 مال خارجي / المالك: <strong style="color:#92400e;">${moneyHtml(bfs.external_owner || 0)}</strong></div>` +
+      `</div>${noteBlock}</div>`
+    );
+  }
+
+  if (secId === 'outflows_by_category_box') {
+    const cats = Array.isArray(activeReport.byCategory) ? activeReport.byCategory : [];
+    if (cats.length === 0) return '';
+    const rows = cats.map((c) => (
+      `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px dotted #e2e8f0;font-size:${isThermal ? '8.4px' : '10px'};">` +
+      `<span style="font-weight:800;">• ${bidiHtml(c.category)} (${Number(c.count || 0)}) — <span style="color:#be123c;">${Number(c.pct || 0)}%</span></span>` +
+      `<strong style="color:#0f172a;">${moneyHtml(c.total || 0)}</strong>` +
+      `</div>`
+    )).join('');
+    return (
+      `<div style="border:1.5px solid #cbd5e1;border-radius:7px;padding:${isThermal ? '5px 6px' : '7px 10px'};background:#ffffff;color:#0f172a;">` +
+      `<div style="font-weight:900;color:#0f172a;border-bottom:1px dashed #cbd5e1;padding-bottom:2px;margin-bottom:3px;font-size:${isThermal ? '9px' : '11px'};">🗂️ ${bidiHtml(customTitle || 'توزيع المصاريف والمدفوعات حسب الفئة:')}</div>` +
+      `${rows}${noteBlock}</div>`
+    );
+  }
+
+  if (secId === 'outflows_detail_table') {
+    const list = Array.isArray(activeReport.items) ? activeReport.items : [];
+    if (list.length === 0) {
+      return `<div style="border:1px dashed #cbd5e1;border-radius:7px;padding:8px;text-align:center;font-weight:800;color:#64748b;">لا توجد عمليات صرف أو مدفوعات مسجلة في هذا النطاق.</div>`;
+    }
+
+    if (isThermal) {
+      const lines = list.map((it, idx) => (
+        `<div style="border-bottom:1px dotted #cbd5e1;padding:3px 0;font-size:8.4px;">` +
+        `<div style="display:flex;justify-content:space-between;gap:4px;font-weight:900;">` +
+        `<span>${idx + 1}. ${showBen ? bidiHtml(it.beneficiary) : bidiHtml(it.category)}</span>` +
+        `<span style="color:#be123c;">${moneyHtml(-Math.abs(it.amount || 0))}</span>` +
+        `</div>` +
+        `<div style="font-size:7.8px;color:#475569;display:flex;justify-content:space-between;gap:4px;">` +
+        `<span>${bidiHtml(it.description || it.category)}</span>` +
+        `<span>${esc(it.date || '')}${showSrc ? ' | ' + bidiHtml(it.fundingLabel || '') : ''}</span>` +
+        `</div></div>`
+      )).join('');
+      return (
+        `<div style="border:1.5px solid #fecdd3;border-radius:7px;padding:5px 6px;background:#ffffff;color:#0f172a;">` +
+        `<div style="font-weight:900;color:#9f1239;border-bottom:1px dashed #fda4af;padding-bottom:2px;margin-bottom:3px;font-size:9px;">📋 ${bidiHtml(customTitle || 'تفصيل العمليات والسندات')} (${list.length})</div>` +
+        `${lines}${noteBlock}</div>`
+      );
+    }
+
+    const trs = list.map((it, idx) => (
+      `<tr>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">${idx + 1}</td>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;text-align:center;"><bdi dir="ltr">${esc(it.date || '')}</bdi><br><span style="font-size:8.3px;color:#64748b;">${esc(it.docRef || '')}</span></td>` +
+      `<td style="border:1px solid #e2e8f0;padding:4px;font-weight:800;">${bidiHtml(it.category)}<br><span style="font-size:8.3px;color:#64748b;">${bidiHtml(it.kindLabel || '')}</span></td>` +
+      (showBen ? `<td style="border:1px solid #e2e8f0;padding:4px;font-weight:900;color:#0f172a;">${bidiHtml(it.beneficiary || '')}</td>` : '') +
+      `<td style="border:1px solid #e2e8f0;padding:4px;">${bidiHtml(it.description || '')}</td>` +
+      (showSrc ? `<td style="border:1px solid #e2e8f0;padding:4px;font-weight:800;color:#1d4ed8;">${bidiHtml(it.fundingLabel || '')}</td>` : '') +
+      `<td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#be123c;">${moneyHtml(-Math.abs(it.amount || 0))}</td>` +
+      `</tr>`
+    )).join('');
+    return (
+      `<div>` +
+      `<div style="font-weight:900;font-size:11.5px;color:#9f1239;border-bottom:2px solid #fda4af;padding-bottom:3px;margin-bottom:5px;">📋 ${bidiHtml(customTitle || 'السجل التفصيلي لجميع المصاريف والمدفوعات الخارجة')} (${list.length} عملية)</div>` +
+      `<table style="width:100%;border-collapse:collapse;font-size:9.8px;">` +
+      `<thead><tr style="background:#ffe4e6;color:#881337;">` +
+      `<th style="border:1px solid #fecdd3;padding:4px;width:4%;">#</th>` +
+      `<th style="border:1px solid #fecdd3;padding:4px;width:13%;">التاريخ / السند</th>` +
+      `<th style="border:1px solid #fecdd3;padding:4px;width:17%;">الفئة / النوع</th>` +
+      (showBen ? `<th style="border:1px solid #fecdd3;padding:4px;width:16%;">المستفيد / المورد</th>` : '') +
+      `<th style="border:1px solid #fecdd3;padding:4px;">البيان والتفاصيل</th>` +
+      (showSrc ? `<th style="border:1px solid #fecdd3;padding:4px;width:14%;">مصدر المال</th>` : '') +
+      `<th style="border:1px solid #fecdd3;padding:4px;width:14%;">المبلغ</th>` +
+      `</tr></thead><tbody>${trs}</tbody></table>${noteBlock}</div>`
+    );
+  }
+  return '';
+}
+function renderNativeExpenseSignatures(tpl, doc, isThermal, noteBlock, esc) {
+  const sigMode = (tpl && tpl.expenseOptions && tpl.expenseOptions.signatureMode) || (isThermal ? 'dual' : 'triple');
+  const isVoucher = tpl && (tpl.id === 'expense_voucher' || tpl.id === 'expense_voucher_a4');
+  const benLbl = esc((doc && doc.expenseVoucher && doc.expenseVoucher.beneficiary) || (doc && doc.partyName) || 'القابض / المستلم');
+
+  if (sigMode === 'dual' || isThermal) {
+    return (
+      `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:5px;text-align:center;font-size:${isThermal ? '8.4px' : '10px'};font-weight:900;color:#334155;">` +
+      `<div style="border:1.5px dashed #94a3b8;border-radius:6px;padding:5px 4px ${isThermal ? '20px' : '32px'};">${isVoucher ? 'توقيع المستفيد (القابض)' : 'إعداد أمين الصندوق'}<br><span style="font-weight:700;font-size:8px;color:#64748b;">${isVoucher ? benLbl : 'المدير العام'}</span></div>` +
+      `<div style="border:1.5px dashed #94a3b8;border-radius:6px;padding:5px 4px ${isThermal ? '20px' : '32px'};">مصادقة صاحب المتجر<br><span style="font-weight:700;font-size:8px;color:#64748b;">الإمضاء والختم</span></div>` +
+      `</div>${noteBlock}`
+    );
+  }
+  return (
+    `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px;text-align:center;font-size:10px;font-weight:900;color:#334155;">` +
+    `<div style="border:1.5px dashed #94a3b8;border-radius:7px;padding:7px 5px 34px;">${isVoucher ? 'المستفيد (القابض)' : 'أمين الصندوق'}<br><span style="font-weight:700;font-size:8.8px;color:#64748b;">${isVoucher ? benLbl : 'إعداد الكشف'}</span></div>` +
+    `<div style="border:1.5px dashed #94a3b8;border-radius:7px;padding:7px 5px 34px;">المحاسب / المراقب<br><span style="font-weight:700;font-size:8.8px;color:#64748b;">مراجعة السندات والمصادر</span></div>` +
+    `<div style="border:1.5px dashed #94a3b8;border-radius:7px;padding:7px 5px 34px;">صاحب المتجر / المدير<br><span style="font-weight:700;font-size:8.8px;color:#64748b;">المصادقة والاعتماد النهائي</span></div>` +
+    `</div>${noteBlock}`
+  );
+}
+/* [PSP_NATIVE_EXPENSE_HELPERS_END] */
+/* [PSP_STAGE6C_SHIFT_EXT_HELPER_START] */
+function renderNativeShiftExternalFundingSection(tpl, doc, theme, isThermal, customTitle, noteBlock, h) {
+  const esc = h.esc;
+  const bidiHtml = h.bidiHtml;
+  const moneyHtml = h.moneyHtml;
+  const mode = h.mode || 'preview';
+  const isPreviewMode = mode === 'preview';
+
+  const sOpts = (tpl && tpl.shiftOptions) || {};
+  if (sOpts.showExternalFundingSection === false) return '';
+
+  const dossier = (doc && (doc.forensicDossier || doc.shiftSummary)) || {};
+  const hasRealArray = Array.isArray(dossier.externalFundedTx) || Array.isArray(doc && doc.externalFundedTx);
+
+  const sampleItems = [
+    { sourceType: 'shop_vault', sourceLabel: 'الخزينة الرئيسية', partyName: 'قباضة الضرائب (G12)', notes: 'تسديد قسط ضريبي من الخزينة', amount: 3000, time: '10:15' },
+    { sourceType: 'bank_ccp', sourceLabel: 'بنك / CCP / شيك', partyName: 'ULTRA JOY 2026', notes: 'تسبقة مورد عبر تحويل بريدي', amount: 2000, time: '11:40' },
+    { sourceType: 'external_owner', sourceLabel: 'مال خارجي: المالك', partyName: 'محمد (العامل)', notes: 'سلفة نقدية من جيب المالك', amount: 1000, time: '14:20' }
+  ];
+  const sampleTotals = { shop_vault: 3000, bank_ccp: 2000, external_owner: 1000, grandTotal: 6000, count: 3 };
+
+  let items = [];
+  let totals = { shop_vault: 0, bank_ccp: 0, external_owner: 0, grandTotal: 0, count: 0 };
+
+  if (hasRealArray) {
+    items = Array.isArray(dossier.externalFundedTx) ? dossier.externalFundedTx : doc.externalFundedTx;
+    const rawTot = dossier.externalFundedTotals || (doc && doc.externalFundedTotals) || null;
+    if (rawTot && typeof rawTot === 'object') {
+      totals = Object.assign(totals, rawTot);
+    } else {
+      for (const it of items) {
+        const st = String(it.sourceType || it.source_type || 'shop_vault');
+        const amt = Number(Math.abs(Number(it.amount || 0)).toFixed(2));
+        if (totals[st] !== undefined) totals[st] = Number((totals[st] + amt).toFixed(2));
+        totals.grandTotal = Number((totals.grandTotal + amt).toFixed(2));
+        totals.count += 1;
+      }
+    }
+  } else if (isPreviewMode) {
+    items = sampleItems;
+    totals = sampleTotals;
+  }
+
+  const titleText = customTitle || 'المعاملات المموّلة من خارج درج الكاشير (الخزينة / البنك / المال الخارجي)';
+
+  if (items.length === 0) {
+    return (
+      `<div style="border:1.5px dashed #93c5fd;border-radius:7px;padding:${isThermal ? '4px 6px' : '6px 10px'};background:#f0f9ff;color:#0369a1;font-size:${isThermal ? '8.2px' : '10px'};font-weight:800;text-align:center;">` +
+      `🏦 ${bidiHtml(titleText)}: لا توجد مدفوعات خارج الدرج خلال هذه الوردية (${moneyHtml(0)}).${noteBlock}</div>`
+    );
+  }
+
+  const headerHtml =
+    `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px dashed #7dd3fc;padding-bottom:3px;margin-bottom:5px;font-weight:900;color:#0369a1;font-size:${isThermal ? '8.8px' : '11px'};">` +
+    `<span>🏦 ${bidiHtml(titleText)} (${Number(totals.count || items.length)})</span>` +
+    `<span style="color:#b45309;">${moneyHtml(totals.grandTotal || 0)}</span>` +
+    `</div>`;
+
+  const summaryGrid =
+    `<div style="display:grid;grid-template-columns:${isThermal ? '1fr' : 'repeat(3,1fr)'};gap:${isThermal ? '2px' : '6px'};margin-bottom:5px;font-size:${isThermal ? '8.2px' : '10px'};font-weight:800;">` +
+    `<div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:5px;padding:3px 6px;display:flex;justify-content:space-between;"><span>🔐 الخزينة الرئيسية:</span><strong style="color:#3730a3;">${moneyHtml(totals.shop_vault || 0)}</strong></div>` +
+    `<div style="background:#e0f2fe;border:1px solid #bae6fd;border-radius:5px;padding:3px 6px;display:flex;justify-content:space-between;"><span>🏦 بنك / CCP / شيك:</span><strong style="color:#0369a1;">${moneyHtml(totals.bank_ccp || 0)}</strong></div>` +
+    `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:5px;padding:3px 6px;display:flex;justify-content:space-between;"><span>👤 مال خارجي / المالك:</span><strong style="color:#92400e;">${moneyHtml(totals.external_owner || 0)}</strong></div>` +
+    `</div>`;
+
+  let bodyHtml = '';
+  if (isThermal) {
+    bodyHtml = items.map((it, idx) => (
+      `<div style="border-bottom:1px dotted #bae6fd;padding:2.5px 0;font-size:8.1px;">` +
+      `<div style="display:flex;justify-content:space-between;gap:4px;font-weight:900;color:#0f172a;">` +
+      `<span>${idx + 1}. ${bidiHtml(it.partyName || it.party_name || it.category || 'عملية')}</span>` +
+      `<span style="color:#b45309;">${moneyHtml(it.amount || 0)}</span>` +
+      `</div>` +
+      `<div style="display:flex;justify-content:space-between;gap:4px;font-size:7.6px;color:#475569;">` +
+      `<span>${bidiHtml(it.notes || '')}</span>` +
+      `<span style="color:#0369a1;font-weight:800;">${bidiHtml(it.sourceLabel || it.sourceType || '')}</span>` +
+      `</div></div>`
+    )).join('');
+  } else {
+    const trs = items.map((it, idx) => (
+      `<tr>` +
+      `<td style="border:1px solid #cbd5e1;padding:3.5px;text-align:center;">${idx + 1}</td>` +
+      `<td style="border:1px solid #cbd5e1;padding:3.5px;font-weight:900;color:#0369a1;">${bidiHtml(it.sourceLabel || it.sourceType || '')}</td>` +
+      `<td style="border:1px solid #cbd5e1;padding:3.5px;font-weight:900;">${bidiHtml(it.partyName || it.party_name || it.category || '')}</td>` +
+      `<td style="border:1px solid #cbd5e1;padding:3.5px;">${bidiHtml(it.notes || '')}</td>` +
+      `<td style="border:1px solid #cbd5e1;padding:3.5px;text-align:center;"><bdi dir="ltr">${esc(it.time || '--:--')}</bdi></td>` +
+      `<td style="border:1px solid #cbd5e1;padding:3.5px;text-align:left;font-weight:900;color:#b45309;">${moneyHtml(it.amount || 0)}</td>` +
+      `</tr>`
+    )).join('');
+    bodyHtml =
+      `<table style="width:100%;border-collapse:collapse;font-size:9.5px;background:#ffffff;">` +
+      `<thead><tr style="background:#e0f2fe;color:#0c4a6e;">` +
+      `<th style="border:1px solid #bae6fd;padding:3.5px;width:5%;">#</th>` +
+      `<th style="border:1px solid #bae6fd;padding:3.5px;width:21%;">مصدر المال / الدافع</th>` +
+      `<th style="border:1px solid #bae6fd;padding:3.5px;width:22%;">المستفيد / المورد</th>` +
+      `<th style="border:1px solid #bae6fd;padding:3.5px;">البيان والتفاصيل</th>` +
+      `<th style="border:1px solid #bae6fd;padding:3.5px;width:10%;">الوقت</th>` +
+      `<th style="border:1px solid #bae6fd;padding:3.5px;width:15%;">المبلغ</th>` +
+      `</tr></thead><tbody>${trs}</tbody></table>`;
+  }
+
+  const accountingGuardBanner =
+    `<div style="margin-top:4px;padding:3px 6px;border-radius:5px;background:#ecfdf5;border:1px solid #6ee7b7;color:#065f46;font-size:${isThermal ? '7.6px' : '9px'};font-weight:900;text-align:center;">` +
+    `✅ ملاحظة محاسبية: هذه المبالغ خارج درج الكاشير ولم تُخصم من الرصيد الدفتري المتوقع للصندوق.` +
+    `</div>`;
+
+  return (
+    `<div data-s6c-ext-funding-box="1" style="border:1.5px solid #38bdf8;border-radius:8px;padding:${isThermal ? '5px 6px' : '8px 10px'};background:#f0f9ff;color:#0f172a;">` +
+    `${headerHtml}${summaryGrid}${bodyHtml}${accountingGuardBanner}${noteBlock}</div>`
+  );
+}
+/* [PSP_STAGE6C_SHIFT_EXT_HELPER_END] */
     function renderSectionContent(sec, tpl, doc, shop, theme, isThermal, mode, t) {
       const id = sec.id;
       const isPrintOrPdf = mode === 'print' || mode === 'pdf';
@@ -299,6 +1099,47 @@
         : Math.max(Number((prevDebt + remToday).toFixed(2)), Math.max(0, Number(doc.customerCurrentTotalDebt || 0)));
       const totalItemsQty = (doc.items || []).reduce((s, it) => s + Number(it.qty ?? it.quantity ?? 1), 0);
 
+      
+      /* [PSP_NATIVE_EXPENSE_PRE_SWITCH_START] */
+      const _pspExpSecId = sec && sec.id ? String(sec.id) : "";
+      if (
+        _pspExpSecId === "expense_voucher_card" ||
+        _pspExpSecId === "outflows_report_kpis" ||
+        _pspExpSecId === "outflows_by_source_box" ||
+        _pspExpSecId === "outflows_by_category_box" ||
+        _pspExpSecId === "outflows_detail_table"
+      ) {
+        return renderNativeExpenseOrOutflowsSection(_pspExpSecId, tpl, doc, theme, isThermal, customTitle, noteBlock, { esc, bidiHtml, moneyHtml, amountToWords, formatCent: formatAlgerianCentimesV2, mode });
+      }
+      if (_pspExpSecId === "dual_signatures" && (tpl.id === "expense_voucher" || tpl.id === "expense_voucher_a4" || tpl.id === "expenses_period_report_a4" || tpl.id === "expenses_period_report_80mm")) {
+        return renderNativeExpenseSignatures(tpl, doc, isThermal, noteBlock, esc);
+      }
+/* [PSP_NATIVE_EXPENSE_PRE_SWITCH_END] */
+      
+      /* [PSP_STAGE6C_SHIFT_EXT_DISPATCH_START] */
+      if (_pspExpSecId === "shift_external_funding_box") {
+        return renderNativeShiftExternalFundingSection(tpl, doc, theme, isThermal, customTitle, noteBlock, { esc, bidiHtml, moneyHtml, formatCent: formatAlgerianCentimesV2, mode });
+      }
+/* [PSP_STAGE6C_SHIFT_EXT_DISPATCH_END] */
+      
+      /* [PSP_NATIVE_ZREPORT_PRE_SWITCH_START] */
+      const _pspNativeZSecId = sec && sec.id ? String(sec.id) : "";
+      if (
+        _pspNativeZSecId === "shift_cash_debt_balance" ||
+        _pspNativeZSecId === "shift_flows_summary" ||
+        _pspNativeZSecId === "shift_owner_alerts" ||
+        _pspNativeZSecId === "shift_outflows_detail" ||
+        _pspNativeZSecId === "shift_credit_sales_today" ||
+        _pspNativeZSecId === "shift_debt_collections" ||
+        _pspNativeZSecId === "shift_payment_kpis" ||
+        _pspNativeZSecId === "shift_top_debtors"
+      ) {
+        return renderNativeZReportSection(_pspNativeZSecId, tpl, doc, theme, isThermal, customTitle, noteBlock, { esc, bidiHtml, moneyHtml });
+      }
+      if (_pspNativeZSecId === "dual_signatures" && (tpl.id === "caisse_z_report" || tpl.id === "caisse_shift_full_audit_a4")) {
+        return renderNativeZReportSignatures(tpl, doc, isThermal, noteBlock, esc);
+      }
+/* [PSP_NATIVE_ZREPORT_PRE_SWITCH_END] */
       switch (id) {
         case 'shop_header': {
           const fiscalParts = [
@@ -543,6 +1384,277 @@
             </div>`;
         }
 
+        /* === [PSP NATIVE Z-REPORT 6 SECTIONS CASES] === */
+        case 'shift_owner_radar_alerts': {
+          const fd = doc.forensicDossier || {
+            ownerAlerts: [
+              { level: 'info', text: 'تم منح ديون جديدة بقيمة 1,570.00 د.ج لـ (2) زبائن في هذه الوردية.' }
+            ]
+          };
+          const alerts = Array.isArray(fd.ownerAlerts) ? fd.ownerAlerts : [];
+          if (alerts.length === 0 && mode !== 'preview') return '';
+          const rows = alerts.length > 0
+            ? alerts.map((al) => {
+                const col = al.level === 'danger' ? '#be123c' : al.level === 'warning' ? '#b45309' : '#1d4ed8';
+                return `<div style="color:${col};font-weight:800;font-size:${isThermal ? '8.6px' : '10.2px'};margin-top:2px;">• ${bidiHtml(al.text)}</div>`;
+              }).join('')
+            : `<div style="color:#047857;font-weight:800;font-size:${isThermal ? '8.6px' : '10px'};">✔ الوردية سليمة 100% — لا توجد فوارق أو تنبيهات رقابية.</div>`;
+          return `
+            <div style="border:1.5px solid ${alerts.length > 0 ? '#e11d48' : '#10b981'};background:${alerts.length > 0 ? '#fff1f2' : '#ecfdf5'};border-radius:7px;padding:${isThermal ? '4px 6px' : '7px 10px'};color:#0f172a;">
+              <div style="font-weight:900;color:${alerts.length > 0 ? '#9f1239' : '#065f46'};font-size:${isThermal ? '9.3px' : '11px'};margin-bottom:2px;">
+                ${bidiHtml(customTitle || '🛡️ تنبيهات رادار الرقابة لصاحب المتجر')}
+              </div>
+              ${rows}
+              ${noteBlock}
+            </div>`;
+        }
+
+        case 'shift_outflows_detail': {
+          const fd = doc.forensicDossier || {
+            outflows: [
+              { time: '11:20', typeLabel: 'سلفة عامل #2', beneficiary: 'محمد (العامل)', reason: 'سلفة نقدية من الصندوق', amount: 1000 },
+              { time: '15:40', typeLabel: 'نقل وشحن', beneficiary: 'موزع البضاعة', reason: 'تفريغ ونقل سلع التموين', amount: 500 }
+            ],
+            kpis: { totalOutflows: 1500 }
+          };
+          const list = Array.isArray(fd.outflows) ? fd.outflows : [];
+          const totOut = Number((fd.kpis && fd.kpis.totalOutflows) ?? list.reduce((a, x) => a + Number(x.amount || 0), 0));
+          if (isThermal) {
+            const rowsHtml = list.length === 0
+              ? '<div style="color:#047857;font-weight:700;font-size:8.5px;text-align:center;">✔ لا توجد مصاريف أو سحوبات في هذه الوردية</div>'
+              : list.map((o, idx) => `
+                  <div style="border-bottom:1px dotted #e2e8f0;padding:2.5px 0;">
+                    <div style="display:flex;justify-content:space-between;gap:4px;font-weight:900;font-size:9px;">
+                      <span>${idx + 1}. ${bidiHtml(o.beneficiary)} <span style="font-weight:700;color:#64748b;font-size:8px;">(${esc(o.time || '--:--')})</span></span>
+                      <span style="color:#be123c;">${moneyHtml(-Math.abs(Number(o.amount || 0)))}</span>
+                    </div>
+                    <div style="font-size:8.2px;color:#475569;padding-right:8px;">السبب: ${bidiHtml(o.typeLabel)}${o.reason && o.reason !== o.typeLabel ? ' — ' + bidiHtml(o.reason) : ''}</div>
+                  </div>`).join('');
+            return `
+              <div style="border:1.5px solid #fecdd3;border-radius:7px;padding:4px 6px;background:#ffffff;color:#0f172a;">
+                <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px dashed #fda4af;padding-bottom:2px;margin-bottom:3px;font-weight:900;color:#9f1239;font-size:9.3px;">
+                  <span>${bidiHtml(customTitle || ('💸 الأموال الخارجة (مصاريف / سلَف) (' + list.length + ')'))}</span>
+                  <span>${moneyHtml(-Math.abs(totOut))}</span>
+                </div>
+                ${rowsHtml}
+                ${noteBlock}
+              </div>`;
+          }
+          const tableRows = list.length === 0
+            ? '<tr><td colspan="6" style="border:1px solid #e2e8f0;padding:6px;text-align:center;color:#047857;font-weight:800;">✔ لم تخرج أي مصاريف أو سحوبات نقدية من الدرج خلال هذه الوردية</td></tr>'
+            : list.map((o, idx) => `
+                <tr>
+                  <td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">${idx + 1}</td>
+                  <td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">${esc(o.time || '--:--')}</td>
+                  <td style="border:1px solid #e2e8f0;padding:4px;font-weight:800;">${bidiHtml(o.typeLabel)}</td>
+                  <td style="border:1px solid #e2e8f0;padding:4px;font-weight:900;color:#9f1239;">${bidiHtml(o.beneficiary)}</td>
+                  <td style="border:1px solid #e2e8f0;padding:4px;">${bidiHtml(o.reason)}</td>
+                  <td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#be123c;">${moneyHtml(-Math.abs(Number(o.amount || 0)))}</td>
+                </tr>`).join('');
+          return `
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:11.2px;color:#9f1239;border-bottom:2px solid #fda4af;padding-bottom:3px;margin-bottom:5px;">
+                <span>${bidiHtml(customTitle || '💸 سجل الأموال الخارجة من الدرج (المصاريف، السلَف، السحوبات، وتسديد الموردين)')}</span>
+                <span>${moneyHtml(-Math.abs(totOut))}</span>
+              </div>
+              <table style="width:100%;border-collapse:collapse;font-size:10px;">
+                <thead><tr style="background:#ffe4e6;color:#881337;">
+                  <th style="border:1px solid #fecdd3;padding:4px;width:5%;">#</th>
+                  <th style="border:1px solid #fecdd3;padding:4px;width:10%;">الساعة</th>
+                  <th style="border:1px solid #fecdd3;padding:4px;width:18%;">النوع</th>
+                  <th style="border:1px solid #fecdd3;padding:4px;width:22%;">المستفيد / الآخذ</th>
+                  <th style="border:1px solid #fecdd3;padding:4px;width:30%;">السبب والبيان التفصيلي</th>
+                  <th style="border:1px solid #fecdd3;padding:4px;width:15%;">المبلغ</th>
+                </tr></thead>
+                <tbody>${tableRows}</tbody>
+              </table>
+              ${noteBlock}
+            </div>`;
+        }
+
+        case 'shift_credit_sales_detail': {
+          const fd = doc.forensicDossier || {
+            creditSalesToday: [
+              { docNumber: 'FAC-0124', time: '16:30', customerName: 'كريم بن عيسى', customerPhone: '0661445566', invoiceTotal: 1450, paidToday: 500, creditAdded: 950, cumulativeDebtNow: 2150 },
+              { docNumber: 'FAC-0127', time: '18:10', customerName: 'سليم مرابط', customerPhone: '0770889900', invoiceTotal: 620, paidToday: 0, creditAdded: 620, cumulativeDebtNow: 620 }
+            ],
+            kpis: { totalCreditAddedToday: 1570 }
+          };
+          const list = Array.isArray(fd.creditSalesToday) ? fd.creditSalesToday : [];
+          const totCred = Number((fd.kpis && fd.kpis.totalCreditAddedToday) ?? list.reduce((a, x) => a + Number(x.creditAdded || 0), 0));
+          if (isThermal) {
+            const rowsHtml = list.length === 0
+              ? '<div style="color:#047857;font-weight:700;font-size:8.5px;text-align:center;">✔ لم تُسجل مبيعات بالدين في هذه الوردية</div>'
+              : list.map((cs, idx) => `
+                  <div style="border-bottom:1px dotted #e2e8f0;padding:2.5px 0;">
+                    <div style="display:flex;justify-content:space-between;gap:4px;font-weight:900;font-size:9px;">
+                      <span>${idx + 1}. ${bidiHtml(cs.customerName)}</span>
+                      <span style="color:#c2410c;">${moneyHtml(cs.creditAdded, '+')}</span>
+                    </div>
+                    <div style="font-size:8px;color:#475569;display:flex;justify-content:space-between;">
+                      <span>${esc(cs.docNumber || '')} (${esc(cs.time || '')}) | مدفوع: ${moneyHtml(cs.paidToday || 0)}</span>
+                      <span>دينه الكلي: ${moneyHtml(cs.cumulativeDebtNow || cs.creditAdded)}</span>
+                    </div>
+                  </div>`).join('');
+            return `
+              <div style="border:1.5px solid #fed7aa;border-radius:7px;padding:4px 6px;background:#ffffff;color:#0f172a;">
+                <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px dashed #fdba74;padding-bottom:2px;margin-bottom:3px;font-weight:900;color:#9a3412;font-size:9.3px;">
+                  <span>${bidiHtml(customTitle || ('📝 ديون اليوم (الزبائن المدينون) (' + list.length + ')'))}</span>
+                  <span>${moneyHtml(totCred, '+')}</span>
+                </div>
+                ${rowsHtml}
+                ${noteBlock}
+              </div>`;
+          }
+          const tableRows = list.length === 0
+            ? '<tr><td colspan="7" style="border:1px solid #e2e8f0;padding:6px;text-align:center;color:#047857;font-weight:800;">✔ جميع مبيعات هذه الوردية كانت مدفوعة بالكامل بدون ديون جديدة</td></tr>'
+            : list.map((cs, idx) => `
+                <tr>
+                  <td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">${idx + 1}</td>
+                  <td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">${esc(cs.docNumber || '')}<br><span style="font-size:8.5px;color:#64748b;">${esc(cs.time || '')}</span></td>
+                  <td style="border:1px solid #e2e8f0;padding:4px;font-weight:900;">${bidiHtml(cs.customerName)}${cs.customerPhone ? '<br><span style="font-size:8.5px;color:#475569;">' + esc(cs.customerPhone) + '</span>' : ''}</td>
+                  <td style="border:1px solid #e2e8f0;padding:4px;text-align:left;">${moneyHtml(cs.invoiceTotal || 0)}</td>
+                  <td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#047857;">${moneyHtml(cs.paidToday || 0)}</td>
+                  <td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#c2410c;">${moneyHtml(cs.creditAdded || 0, '+')}</td>
+                  <td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#991b1b;">${moneyHtml(cs.cumulativeDebtNow || cs.creditAdded || 0)}</td>
+                </tr>`).join('');
+          return `
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:11.2px;color:#9a3412;border-bottom:2px solid #fdba74;padding-bottom:3px;margin-bottom:5px;">
+                <span>${bidiHtml(customTitle || '📝 قائمة الزبائن المدينين اليوم (المبيعات الآجلة والدفع الجزئي)')}</span>
+                <span>${moneyHtml(totCred, '+')}</span>
+              </div>
+              <table style="width:100%;border-collapse:collapse;font-size:10px;">
+                <thead><tr style="background:#ffedd5;color:#7c2d12;">
+                  <th style="border:1px solid #fed7aa;padding:4px;width:5%;">#</th>
+                  <th style="border:1px solid #fed7aa;padding:4px;width:15%;">الفاتورة / الوقت</th>
+                  <th style="border:1px solid #fed7aa;padding:4px;width:28%;">اسم الزبون والهاتف</th>
+                  <th style="border:1px solid #fed7aa;padding:4px;width:13%;">الإجمالي</th>
+                  <th style="border:1px solid #fed7aa;padding:4px;width:13%;">المدفوع</th>
+                  <th style="border:1px solid #fed7aa;padding:4px;width:13%;">دين اليوم (+)</th>
+                  <th style="border:1px solid #fed7aa;padding:4px;width:13%;">دينه الكلي الآن</th>
+                </tr></thead>
+                <tbody>${tableRows}</tbody>
+              </table>
+              ${noteBlock}
+            </div>`;
+        }
+
+        case 'shift_debt_collections_detail': {
+          const fd = doc.forensicDossier || {
+            debtCollections: [
+              { time: '14:15', customerName: 'أمين بن يحيى', note: 'دفعة من الدين السابق', amount: 1200, remainingDebtNow: 550 }
+            ],
+            debtCollectionsGrouped: [
+              { customerName: 'أمين بن يحيى', count: 1, total: 1200, remainingDebtNow: 550 }
+            ],
+            kpis: { totalDebtCollected: 1200 }
+          };
+          const grouped = Array.isArray(fd.debtCollectionsGrouped) ? fd.debtCollectionsGrouped : [];
+          const rawCols = Array.isArray(fd.debtCollections) ? fd.debtCollections : [];
+          const totCol = Number((fd.kpis && fd.kpis.totalDebtCollected) ?? rawCols.reduce((a, x) => a + Number(x.amount || 0), 0));
+          if (isThermal) {
+            const rowsHtml = grouped.length === 0
+              ? '<div style="color:#64748b;font-weight:700;font-size:8.5px;text-align:center;">لا توجد تحصيلات ديون في هذه الوردية</div>'
+              : grouped.map((c) => `
+                  <div style="display:flex;justify-content:space-between;font-size:8.8px;padding:1.5px 0;border-bottom:1px dotted #a7f3d0;">
+                    <span style="font-weight:800;">${bidiHtml(c.customerName)}${c.count > 1 ? ' (' + c.count + ' دفعات)' : ''}</span>
+                    <span style="color:#047857;font-weight:900;">${moneyHtml(c.total, '+')}</span>
+                  </div>`).join('');
+            return `
+              <div style="border:1.5px solid #a7f3d0;border-radius:7px;padding:4px 6px;background:#ecfdf5;color:#0f172a;">
+                <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px dashed #34d399;padding-bottom:2px;margin-bottom:3px;font-weight:900;color:#065f46;font-size:9.3px;">
+                  <span>${bidiHtml(customTitle || ('🤝 تحصيلات الديون بالوردية (' + grouped.length + ')'))}</span>
+                  <span>${moneyHtml(totCol, '+')}</span>
+                </div>
+                ${rowsHtml}
+                ${noteBlock}
+              </div>`;
+          }
+          const tableRows = rawCols.length === 0
+            ? '<tr><td colspan="5" style="border:1px solid #e2e8f0;padding:6px;text-align:center;color:#64748b;font-weight:800;">لا توجد تحصيلات ديون مسجلة خلال هذه الوردية</td></tr>'
+            : rawCols.map((dc, idx) => `
+                <tr>
+                  <td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">${idx + 1}</td>
+                  <td style="border:1px solid #e2e8f0;padding:4px;text-align:center;">${esc(dc.time || '--:--')}</td>
+                  <td style="border:1px solid #e2e8f0;padding:4px;font-weight:900;color:#065f46;">${bidiHtml(dc.customerName)}</td>
+                  <td style="border:1px solid #e2e8f0;padding:4px;">${bidiHtml(dc.note || 'تسديد دين')}${dc.remainingDebtNow !== null && dc.remainingDebtNow !== undefined ? ' | الباقي: ' + moneyHtml(dc.remainingDebtNow) : ''}</td>
+                  <td style="border:1px solid #e2e8f0;padding:4px;text-align:left;color:#047857;">${moneyHtml(dc.amount || 0, '+')}</td>
+                </tr>`).join('');
+          return `
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:11.2px;color:#065f46;border-bottom:2px solid #6ee7b7;padding-bottom:3px;margin-bottom:5px;">
+                <span>${bidiHtml(customTitle || '🤝 سجل تحصيلات الديون المقبوضة في الدرج (بأسماء الزبائن)')}</span>
+                <span>${moneyHtml(totCol, '+')}</span>
+              </div>
+              <table style="width:100%;border-collapse:collapse;font-size:10px;">
+                <thead><tr style="background:#d1fae5;color:#064e3b;">
+                  <th style="border:1px solid #a7f3d0;padding:4px;width:5%;">#</th>
+                  <th style="border:1px solid #a7f3d0;padding:4px;width:12%;">الساعة</th>
+                  <th style="border:1px solid #a7f3d0;padding:4px;width:28%;">اسم الزبون</th>
+                  <th style="border:1px solid #a7f3d0;padding:4px;width:40%;">البيان والرصيد المتبقي</th>
+                  <th style="border:1px solid #a7f3d0;padding:4px;width:15%;">المبلغ المقبوض</th>
+                </tr></thead>
+                <tbody>${tableRows}</tbody>
+              </table>
+              ${noteBlock}
+            </div>`;
+        }
+
+        case 'shift_payment_methods_kpis': {
+          const fd = doc.forensicDossier || {
+            kpis: { salesCount: 24, totalSalesRevenue: 17370, avgBasket: 723.75, totalDiscounts: 150 },
+            paymentBreakdown: { cash: 14800, cib: 1000, baridimob: 0, cheque: 0, credit: 1570 }
+          };
+          const k = fd.kpis || {};
+          const pm = fd.paymentBreakdown || {};
+          return `
+            <div style="border:1.5px solid ${theme.border || '#cbd5e1'};border-radius:7px;padding:${isThermal ? '4px 6px' : '7px 10px'};background:#f8fafc;color:#0f172a;font-size:${isThermal ? '8.5px' : '10.2px'};">
+              <div style="font-weight:900;color:${theme.primary || '#0f172a'};border-bottom:1px dashed #cbd5e1;padding-bottom:2px;margin-bottom:4px;font-size:${isThermal ? '9.2px' : '11px'};">
+                ${bidiHtml(customTitle || '💳 تفصيل المبيعات ووسائل الدفع ومؤشرات الأداء')}
+              </div>
+              <div style="display:grid;grid-template-columns:${isThermal ? '1fr 1fr' : 'repeat(3,1fr)'};gap:3px 8px;font-weight:800;">
+                <div>عدد الفواتير: <strong>${Number(k.salesCount || 0)}</strong></div>
+                <div>رقم الأعمال: ${moneyHtml(k.totalSalesRevenue || 0)}</div>
+                <div>متوسط السلة: ${moneyHtml(k.avgBasket || 0)}</div>
+                <div>نقداً (Cash): ${moneyHtml(pm.cash || 0)}</div>
+                <div>إلكتروني (CIB/CCP): ${moneyHtml(Number(pm.cib || 0) + Number(pm.baridimob || 0))}</div>
+                <div>آجل (كريدي): ${moneyHtml(pm.credit || 0)}</div>
+                <div>شيكات: ${moneyHtml(pm.cheque || 0)}</div>
+                <div>التخفيضات: ${moneyHtml(k.totalDiscounts || 0)}</div>
+              </div>
+              ${noteBlock}
+            </div>`;
+        }
+
+        case 'shift_top_debtors_followup': {
+          const fd = doc.forensicDossier || {
+            topDebtors: [
+              { name: 'كريم بن عيسى', phone: '0661445566', debt: 2150 },
+              { name: 'سليم مرابط', phone: '0770889900', debt: 620 },
+              { name: 'أمين بن يحيى', phone: '0550112233', debt: 550 }
+            ],
+            kpis: { storeTotalDebtReal: 3320, debtorsCount: 3 }
+          };
+          const list = Array.isArray(fd.topDebtors) ? fd.topDebtors : [];
+          const rows = list.length === 0
+            ? '<div style="color:#047857;font-weight:800;text-align:center;padding:4px 0;">✔ لا توجد ديون عالقة على الزبائن حالياً</div>'
+            : list.slice(0, isThermal ? 5 : 8).map((td, idx) => `
+                <div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dotted #e2e8f0;font-size:${isThermal ? '8.5px' : '10px'};">
+                  <span style="font-weight:800;">${idx + 1}. ${bidiHtml(td.name)}${td.phone ? ' <span style="color:#64748b;font-weight:600;">(' + esc(td.phone) + ')</span>' : ''}</span>
+                  <span style="color:#b91c1c;">${moneyHtml(td.debt || 0)}</span>
+                </div>`).join('');
+          return `
+            <div style="border:1.5px solid #fed7aa;border-radius:7px;padding:${isThermal ? '4px 6px' : '7px 10px'};background:#fff7ed;color:#0f172a;">
+              <div style="display:flex;justify-content:space-between;font-weight:900;color:#9a3412;border-bottom:1px dashed #fdba74;padding-bottom:2px;margin-bottom:4px;font-size:${isThermal ? '9.2px' : '11px'};">
+                <span>${bidiHtml(customTitle || '📌 أكبر المدينين في المتجر حالياً (للمتابعة والتحصيل)')}</span>
+                <span>${moneyHtml((fd.kpis && fd.kpis.storeTotalDebtReal) || 0)}</span>
+              </div>
+              ${rows}
+              ${noteBlock}
+            </div>`;
+        }
+
         case 'shift_cash_debt_balance': {
           const ss = doc.shiftSummary || {};
           const expectedDrawer = Number(ss.expectedBalance ?? doc.total ?? 0);
@@ -590,6 +1702,7 @@
             </div>`;
         }
 
+        
         case 'caisse_billetage': {
           const ss = doc.shiftSummary || {};
           const expected = Number(ss.expectedBalance ?? doc.total ?? 0);
@@ -653,8 +1766,11 @@
               ${noteBlock}
             </div>`;
 
-        case 'dual_signatures':
-          return `
+        case 'dual_signatures': 
+          /* [PSP_NATIVE_Z_SIG_HOOK] */
+          if (tpl.id === 'caisse_z_report' || tpl.id === 'caisse_shift_full_audit_a4') {
+            return renderNativeZReportSignatures(tpl, doc, isThermal, noteBlock, esc);
+          }return `
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding-top:14px;padding-bottom:6px;text-align:center;font-size:${isThermal ? '9.6px' : '11.5px'};font-weight:900;color:#334155;">
               <div>
                 <div>${esc(t.signCustomer)}</div>
@@ -714,6 +1830,10 @@
     }
 
     function renderDocument(templateConfig, rawDocData, mode = 'preview', options = {}) {
+      /* [PSP_RESET_DEDUP_SET_V2] */
+      /* [PSP_REAL_PAYLOAD_PRIORITY_V2] */
+      const _pspOrigRawPayload = rawDocData && typeof rawDocData === "object" ? rawDocData : null;
+      if (rawDocData && typeof rawDocData === 'object' && rawDocData._pspRenderedSecSet) { try { delete rawDocData._pspRenderedSecSet; } catch (_) {} }
       const tpl = templateConfig || PSP.state.getActiveTemplate();
       const doc = normalizeDocData(rawDocData || {}, tpl.id);
       const shop = PSP.state.getShopIdentity();
@@ -739,6 +1859,33 @@
 
       const sectionsHtml = enabledSections
         .map((sec) => {
+          /* [PSP_FD_RENDER_GUARD] */
+          if (rawDocData && rawDocData.forensicDossier) { doc.forensicDossier = rawDocData.forensicDossier; }
+          /* [PSP_EXPENSE_OPTS_RENDER_GUARD] */
+          if (rawDocData && rawDocData.expenseVoucher) doc.expenseVoucher = rawDocData.expenseVoucher;
+          if (_pspOrigRawPayload && _pspOrigRawPayload.expenseVoucher) doc.expenseVoucher = _pspOrigRawPayload.expenseVoucher;
+          if (_pspOrigRawPayload && _pspOrigRawPayload.outflowsReport) doc.outflowsReport = _pspOrigRawPayload.outflowsReport;
+          if (_pspOrigRawPayload && _pspOrigRawPayload.forensicDossier) doc.forensicDossier = _pspOrigRawPayload.forensicDossier;
+          {
+            const _stExpTpl = (window.GherbiPrintStudioPro && window.GherbiPrintStudioPro.state && typeof window.GherbiPrintStudioPro.state.getTemplate === "function")
+              ? window.GherbiPrintStudioPro.state.getTemplate(tpl.id)
+              : null;
+            tpl.expenseOptions = Object.assign({}, tpl.expenseOptions || {}, (_stExpTpl && _stExpTpl.expenseOptions) || {}, (templateConfig && templateConfig.expenseOptions) || {});
+          }
+          /* [PSP_S6C_EXT_FUNDING_RENDER_GUARD] */
+          if (rawDocData && rawDocData.externalFundedTx) doc.externalFundedTx = rawDocData.externalFundedTx;
+          if (rawDocData && rawDocData.externalFundedTotals) doc.externalFundedTotals = rawDocData.externalFundedTotals;
+          /* [PSP_SHIFT_OPTIONS_RENDER_GUARD] */
+          {
+            const _stTpl = (window.GherbiPrintStudioPro && window.GherbiPrintStudioPro.state && typeof window.GherbiPrintStudioPro.state.getTemplate === "function")
+              ? window.GherbiPrintStudioPro.state.getTemplate(tpl.id)
+              : null;
+            tpl.shiftOptions = Object.assign({}, tpl.shiftOptions || {}, (_stTpl && _stTpl.shiftOptions) || {}, (templateConfig && templateConfig.shiftOptions) || {});
+          }
+          /* [PSP_RENDER_DEDUP_SECTIONS_V2] */
+          if (!doc._pspRenderedSecSet) doc._pspRenderedSecSet = new Set();
+          if (sec && sec.id && doc._pspRenderedSecSet.has(sec.id)) return '';
+          if (sec && sec.id) doc._pspRenderedSecSet.add(sec.id);
           const inner = renderSectionContent(sec, tpl, doc, shop, theme, isThermal, mode, t);
           if (!inner || !inner.trim()) return '';
 

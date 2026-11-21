@@ -1326,10 +1326,16 @@
           'shop_header',
           'doc_banner',
           'party_box',
+          'shift_owner_radar_alerts',
           'shift_cash_debt_balance',
           'items_table',
+          'shift_outflows_detail',
+          'shift_credit_sales_detail',
+          'shift_debt_collections_detail',
+          'shift_payment_methods_kpis',
           'shift_flows_summary',
           'caisse_billetage',
+          'dual_signatures',
           'footer_terms'
         ],
         defaultColumns: { index: false, barcode: false, name: true, unit: false, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
@@ -1383,11 +1389,16 @@
           'shop_header',
           'doc_banner',
           'party_box',
+          'shift_owner_radar_alerts',
           'shift_cash_debt_balance',
+          'shift_payment_methods_kpis',
           'items_table',
+          'shift_outflows_detail',
+          'shift_credit_sales_detail',
+          'shift_debt_collections_detail',
+          'shift_top_debtors_followup',
           'shift_flows_summary',
           'caisse_billetage',
-          'totals_waterfall',
           'dual_signatures',
           'footer_terms'
         ],
@@ -1595,6 +1606,171 @@
         }
       }
     ];
+
+    /* === [WAR STAGE 6B2: NATIVE EXPENSE VOUCHERS (80MM/A4) & PERIOD OUTFLOWS REPORTS IN PRINT STUDIO PRO] === */
+    (function installExpenseTemplatesIntoStudio34(TEMPLATES_34) {
+  'use strict';
+  if (!Array.isArray(TEMPLATES_34)) return;
+
+  const sampleExpense = {
+    docNumber: 'EXP-2026-0005',
+    date: '2026-11-20 14:30',
+    partyName: 'محمد (العامل — Cashier)',
+    partyPhone: '0550112233',
+    cashierName: 'المدير العام',
+    total: 1000,
+    paidAmount: 1000,
+    remainingDebt: 0,
+    expenseVoucher: {
+      docRef: 'EXP-0005',
+      date: '2026-11-20',
+      time: '14:30',
+      category: 'رواتب وأجور وسلفات العمال',
+      beneficiary: 'محمد (العامل)',
+      description: 'سلفة نقدية للعامل من مبيعات الصندوق',
+      amount: 1000,
+      fundingSource: 'active_shift',
+      fundingLabel: 'درج الوردية #11',
+      externalPayer: '',
+      sessionId: 11,
+      cashierName: 'المدير العام'
+    },
+    items: [
+      { barcode: 'EXP', name: 'سلفة نقدية للعامل — [المستفيد: محمد]', unit: 'سند', qty: 1, price: 1000, subtotal: 1000 }
+    ]
+  };
+
+  const samplePeriodReport = {
+    docNumber: 'OUT-2026-001',
+    date: '2026-11-20 20:00',
+    cashierName: 'المدير العام',
+    total: 8106.67,
+    paidAmount: 8106.67,
+    outflowsReport: {
+      periodLabel: 'اليوم (2026-11-20) — شامل المصاريف والموردين والمشتريات',
+      scope: 'today',
+      totals: {
+        grandTotal: 8106.67,
+        expensesTotal: 3106.67,
+        workersTotal: 2000,
+        suppliersTotal: 2000,
+        purchasesTotal: 1000,
+        cashOutTotal: 0,
+        count: 6
+      },
+      byFundingSource: {
+        active_shift: 2106.67,
+        shop_vault: 3000,
+        bank_ccp: 2000,
+        external_owner: 1000
+      },
+      byCategory: [
+        { category: 'ضرائب وجباية (IFU G12)', total: 3000, count: 1, pct: 37 },
+        { category: 'رواتب وأجور العمال', total: 2000, count: 2, pct: 25 },
+        { category: 'تسديد وتسبقات الموردين', total: 2000, count: 1, pct: 25 },
+        { category: 'مشتريات وتموين', total: 1000, count: 1, pct: 12 },
+        { category: 'مصاريف عامة', total: 106.67, count: 1, pct: 1 }
+      ],
+      items: [
+        { date: '2026-11-20', time: '14:30', kindLabel: 'رواتب وسلف العمال', category: 'رواتب وأجور العمال', beneficiary: 'محمد', description: 'سلفة نقدية للعامل', amount: 1000, fundingSource: 'active_shift', fundingLabel: 'درج الوردية', docRef: 'EXP-0005' },
+        { date: '2026-11-20', time: '12:15', kindLabel: 'رواتب وسلف العمال', category: 'رواتب وأجور العمال', beneficiary: 'محمد', description: 'سلفة نقدية إضافية', amount: 1000, fundingSource: 'external_owner', fundingLabel: 'مال خارجي: المالك', docRef: 'EXP-0004' },
+        { date: '2026-11-20', time: '11:00', kindLabel: 'تسبقة مورد (Avance)', category: 'تسبقات الموردين', beneficiary: 'ULTRA JOY 2026', description: 'تسبقة مسبقة لحساب التموين', amount: 2000, fundingSource: 'bank_ccp', fundingLabel: 'بنك / CCP / شيك', docRef: 'REC-0099' },
+        { date: '2026-11-20', time: '10:00', kindLabel: 'دفعة فاتورة شراء', category: 'مشتريات وتموين', beneficiary: 'مجمع التوزيع الغذائي', description: 'دفعة فاتورة شراء #ACH-4303', amount: 1000, fundingSource: 'active_shift', fundingLabel: 'درج الوردية', docRef: 'REC-0098' },
+        { date: '2026-11-13', time: '09:30', kindLabel: 'مصروف تشغيلي', category: 'ضرائب وجباية (IFU G12)', beneficiary: 'قباضة الضرائب', description: 'تسديد القسط الأول G12', amount: 3000, fundingSource: 'shop_vault', fundingLabel: 'الخزينة الرئيسية', docRef: 'EXP-0003' }
+      ]
+    }
+  };
+
+  // ترقية قالب expense_voucher (80mm) الموجود أصلاً
+  const existingExp80 = TEMPLATES_34.find((t) => t && t.id === 'expense_voucher');
+  if (existingExp80) {
+    existingExp80.name = 'سند صرف مصروف / سلفة عامل (80mm الحراري)';
+    existingExp80.cleanTitle = 'سند صرف نقدي — مصروف تشغيلي / سلفة عامل';
+    existingExp80.defaultPaper = '80mm';
+    existingExp80.sourcePage = 'expenses';
+    existingExp80.sourceLabel = 'المصاريف ورأس المال — طباعة سند صرف حراري 80mm';
+    existingExp80.defaultSections = ['shop_header', 'doc_banner', 'expense_voucher_card', 'dual_signatures', 'footer_terms'];
+    existingExp80.sampleData = sampleExpense;
+  }
+
+  const additions = [
+    {
+      id: 'expense_voucher_a4',
+      num: 35,
+      cat: 'FINANCE',
+      name: 'سند صرف رسمي للمصاريف وسلف العمال (A4)',
+      cleanTitle: 'سند صرف محاسبي رسمي — مصروف تشغيلي / سلفة عامل (Bon de Décaissement)',
+      defaultPaper: 'a4',
+      defaultTheme: 'crimson_bold',
+      defaultLang: 'ar',
+      sourcePage: 'expenses',
+      sourceLabel: 'المصاريف ورأس المال — طباعة سند صرف رسمي A4',
+      proDesc: 'سند صرف رسمي مقاس A4 يوثّق المستفيد ومصدر المال (درج/خزينة/بنك/خارجي) والتفقيط والتوقيعات الثلاثية.',
+      isNew: true,
+      defaultSections: ['shop_header', 'doc_banner', 'expense_voucher_card', 'dual_signatures', 'footer_terms'],
+      defaultColumns: { index: true, barcode: false, name: true, unit: false, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleData: sampleExpense
+    },
+    {
+      id: 'expenses_period_report_a4',
+      num: 36,
+      cat: 'FINANCE',
+      name: 'التقرير النهائي الشامل للمصاريف والتدفقات الخارجة (A4)',
+      cleanTitle: 'التقرير الرسمي الشامل للمصاريف والمدفوعات الخارجة (حسب الفترة / الوردية)',
+      defaultPaper: 'a4',
+      defaultTheme: 'executive_dark',
+      defaultLang: 'ar',
+      sourcePage: 'expenses',
+      sourceLabel: 'المصاريف ورأس المال — التقرير النهائي الشامل A4 (يوم/فترة/وردية)',
+      proDesc: 'يجمع المصاريف وسلف العمال وتسديدات الموردين والمشتريات مع التفصيل حسب مصادر التمويل الأربعة والفئات.',
+      isNew: true,
+      defaultSections: [
+        'shop_header',
+        'doc_banner',
+        'outflows_report_kpis',
+        'outflows_by_source_box',
+        'outflows_by_category_box',
+        'outflows_detail_table',
+        'dual_signatures',
+        'footer_terms'
+      ],
+      defaultColumns: { index: true, barcode: false, name: true, unit: false, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleData: samplePeriodReport
+    },
+    {
+      id: 'expenses_period_report_80mm',
+      num: 37,
+      cat: 'FINANCE',
+      name: 'تذكرة ملخص المصاريف والتدفقات الخارجة (80mm)',
+      cleanTitle: 'ملخص المصاريف والمدفوعات الخارجة (يوم / فترة / وردية)',
+      defaultPaper: '80mm',
+      defaultTheme: 'executive_dark',
+      defaultLang: 'ar',
+      sourcePage: 'expenses',
+      sourceLabel: 'المصاريف ورأس المال — تذكرة ملخص المصاريف الحرارية 80mm',
+      proDesc: 'تذكرة حرارية 80mm تعرض مجموع المصاريف والمدفوعات الخارجة وتوزيعها حسب الـ 4 مصادر والفئات.',
+      isNew: true,
+      defaultSections: [
+        'shop_header',
+        'doc_banner',
+        'outflows_report_kpis',
+        'outflows_by_source_box',
+        'outflows_by_category_box',
+        'outflows_detail_table',
+        'dual_signatures',
+        'footer_terms'
+      ],
+      defaultColumns: { index: false, barcode: false, name: true, unit: false, qty: false, unitPrice: false, discount: false, tva: false, subtotal: true },
+      sampleData: samplePeriodReport
+    }
+  ];
+
+  for (const tpl of additions) {
+    if (!TEMPLATES_34.some((x) => x && x.id === tpl.id)) {
+      TEMPLATES_34.push(tpl);
+    }
+  }
+})(TEMPLATES_34);
 
     PSP.categories = CATEGORIES;
     PSP.templates34 = TEMPLATES_34;
